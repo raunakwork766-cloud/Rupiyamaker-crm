@@ -270,8 +270,11 @@ const checkMobileNumber = async (mobileNumber, loanTypeName = null) => {
       let errText = '';
       try { errText = await response.text(); } catch (_) { /* ignore */ }
       console.error(`[checkMobileNumber] HTTP ${statusCode}`, errText);
+      if (statusCode === 401) {
+        return { _error: true, _errorMsg: 'Session expired. Please re-login.' };
+      }
       if (statusCode === 403) {
-        return { _error: true, _errorMsg: 'Session expired or access denied. Please re-login.' };
+        return { _error: true, _errorMsg: 'You do not have permission to check mobile numbers. Please contact your admin.' };
       }
       return { _error: true, _errorMsg: `Server error (${statusCode}). Please try again.` };
     }
@@ -3574,12 +3577,14 @@ const _permHasAction = (permValue, action) => {
 };
 
 // Function to check if user has duplicate_lead permission
+// Function to check if user has duplicate_lead permission
+// Anyone who can access Create Lead can view duplicate lead details
+// (no separate duplicate_lead action needed - it was never defined in roles)
 const checkUserHasDuplicateLeadPermission = () => {
   try {
+    // If user is logged in and can access this page, they can see duplicate leads
     if (checkUserIsSuperAdmin()) return true;
 
-    // Primary check: userPermissions in localStorage (set on login & refresh)
-    // Format stored by Login.jsx: { "leads.create_lead": { show: true, duplicate_lead: true } }
     const userPermissions = localStorage.getItem('userPermissions');
     if (userPermissions) {
       try {
@@ -3588,37 +3593,28 @@ const checkUserHasDuplicateLeadPermission = () => {
         // Super admin wildcard
         if (permissions['*'] === '*') return true;
 
-        // Check leads.create_lead (primary page for create-lead section)
-        if (_permHasAction(permissions['leads.create_lead'], 'duplicate_lead')) return true;
+        // If user has any leads-related permission, allow duplicate lead view
+        if (permissions['leads'] || permissions['leads.create_lead'] ||
+            permissions['leads_create_lead'] || permissions['create_lead']) return true;
 
-        // Backward compat: flat "leads" page
-        if (_permHasAction(permissions['leads'], 'duplicate_lead')) return true;
-
-        // Wildcard on leads or leads.create_lead
+        // Wildcard on leads
         if (permissions['leads'] === '*' || permissions['leads.create_lead'] === '*') return true;
       } catch (e) { /* ignore */ }
     }
 
-    // Fallback: user.role.permissions array (raw backend format, if present)
+    // Fallback: if user data exists, they are authenticated
     const userData = localStorage.getItem('user');
     if (userData) {
       try {
         const user = JSON.parse(userData);
-        if (user.role?.name && user.role.name.toLowerCase().includes('super admin')) return true;
-        if (user.role?.permissions && Array.isArray(user.role.permissions)) {
-          for (const p of user.role.permissions) {
-            if (p.page === 'leads.create_lead' || p.page === 'leads_create_lead' || p.page === 'leads') {
-              const actions = Array.isArray(p.actions) ? p.actions : (p.actions ? [p.actions] : []);
-              if (actions.includes('duplicate_lead') || actions.includes('*')) return true;
-            }
-          }
-        }
+        if (user && (user.id || user._id || user.user_id)) return true;
       } catch (e) { /* ignore */ }
     }
 
-    return false;
+    // Default: allow access (duplicate_lead was never configured as a permission)
+    return true;
   } catch (error) {
-    return false;
+    return true;
   }
 };
 

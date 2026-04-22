@@ -342,8 +342,8 @@ async def check_phone_number(
     Searches in both main phone field and alternative_phone fields
     Optional loan_type_id or loan_type_name can be provided to check for the unique combination
     """
-    # Check permission
-    await check_permission(user_id, "leads", "show", users_db, roles_db)
+    # Check permission - create_lead users should be able to check phone numbers
+    await check_permission(user_id, ["leads", "leads.create_lead"], "show", users_db, roles_db)
     
     # Clean phone number - remove spaces, dashes, etc.
     clean_phone = phone_number.strip().replace(" ", "").replace("-", "").replace("(", "").replace(")", "")
