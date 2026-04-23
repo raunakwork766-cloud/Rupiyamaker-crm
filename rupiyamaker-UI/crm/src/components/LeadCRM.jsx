@@ -4157,8 +4157,9 @@ const LeadCRM = memo(function LeadCRM({ user, selectedLoanType: initialLoanType,
                     || '';
             }
             if (key === 'financial_details.cibil_score') {
-                return lead.financial_details?.cibil_score
-                    || lead.dynamic_fields?.financial_details?.cibil_score
+                return lead.dynamic_fields?.financial_details?.cibil_score
+                    || lead.dynamic_fields?.personal_details?.cibil_score
+                    || lead.financial_details?.cibil_score
                     || lead.cibil_score
                     || '';
             }
@@ -7968,22 +7969,24 @@ const LeadCRM = memo(function LeadCRM({ user, selectedLoanType: initialLoanType,
                                                             // Helper function to extract total BT position from multiple sources
                                                             const extractTotalBtPos = (lead) => {
                                                                 const btPosSources = [
-                                                                    lead.total_bt_pos,
-                                                                    lead.totalBtPos,
-                                                                    lead.financial_details?.total_bt_pos,
-                                                                    lead.financial_details?.totalBtPos,
+                                                                    // dynamic_fields.eligibility_details is where ObligationSection saves totalBtPos
+                                                                    lead.dynamic_fields?.eligibility_details?.totalBtPos,
+                                                                    lead.dynamic_fields?.eligibility_details?.total_bt_pos,
+                                                                    lead.dynamic_fields?.obligation_data?.totalBtPos,
+                                                                    lead.dynamic_fields?.obligation_data?.total_bt_pos,
                                                                     lead.dynamic_fields?.financial_details?.total_bt_pos,
                                                                     lead.dynamic_fields?.financial_details?.totalBtPos,
+                                                                    lead.eligibility_details?.totalBtPos,
+                                                                    lead.eligibility_details?.total_bt_pos,
                                                                     lead.obligation_data?.total_bt_pos,
                                                                     lead.obligation_data?.totalBtPos,
                                                                     lead.obligation_data?.financial_details?.total_bt_pos,
                                                                     lead.obligation_data?.financial_details?.totalBtPos,
-                                                                    lead.dynamic_fields?.obligation_data?.total_bt_pos,
-                                                                    lead.dynamic_fields?.obligation_data?.totalBtPos,
-                                                                    lead.eligibility_details?.total_bt_pos,
-                                                                    lead.eligibility_details?.totalBtPos,
-                                                                    lead.dynamic_fields?.eligibility_details?.total_bt_pos,
-                                                                    lead.dynamic_fields?.eligibility_details?.totalBtPos,
+                                                                    // Root-level fields as last fallback (may be stale)
+                                                                    lead.financial_details?.total_bt_pos,
+                                                                    lead.financial_details?.totalBtPos,
+                                                                    lead.total_bt_pos,
+                                                                    lead.totalBtPos,
                                                                     lead.bt_position,
                                                                     lead.btPosition,
                                                                     lead.total_balance_transfer,
@@ -8026,11 +8029,15 @@ const LeadCRM = memo(function LeadCRM({ user, selectedLoanType: initialLoanType,
                                                         <td className="text-md font-semibold py-2 px-4 whitespace-nowrap text-white">
                                                         {(() => {
                                                             // Try multiple paths for cibil_score
-                                                            const cibilScore = lead.financial_details?.cibil_score || 
-                                                                lead.dynamic_fields?.financial_details?.cibil_score ||
+                                                            // dynamic_fields.financial_details is where ObligationSection saves cibil_score
+                                                            const cibilScore = lead.dynamic_fields?.financial_details?.cibil_score ||
+                                                                lead.dynamic_fields?.personal_details?.cibil_score ||
+                                                                lead.dynamic_fields?.obligation_data?.cibil_score ||
+                                                                lead.dynamic_fields?.obligation_data?.financial_details?.cibil_score ||
+                                                                // Root-level fields as last fallback (may be stale)
+                                                                lead.financial_details?.cibil_score ||
                                                                 lead.obligation_data?.cibil_score ||
-                                                                lead.obligation_data?.financial_details?.cibil_score ||
-                                                                lead.dynamic_fields?.obligation_data?.cibil_score;
+                                                                lead.obligation_data?.financial_details?.cibil_score;
                                                             
                                                             // If it's an object, try to extract cibil_score property
                                                             if (cibilScore && typeof cibilScore === 'object') {
@@ -8468,22 +8475,24 @@ const LeadCRM = memo(function LeadCRM({ user, selectedLoanType: initialLoanType,
                                                                     // Helper function to extract total BT position from multiple sources - EXACT copy
                                                                     const extractTotalBtPos = (lead) => {
                                                                         const btPosSources = [
-                                                                            lead.total_bt_pos,
-                                                                            lead.totalBtPos,
-                                                                            lead.financial_details?.total_bt_pos,
-                                                                            lead.financial_details?.totalBtPos,
+                                                                            // dynamic_fields.eligibility_details is where ObligationSection saves totalBtPos
+                                                                            lead.dynamic_fields?.eligibility_details?.totalBtPos,
+                                                                            lead.dynamic_fields?.eligibility_details?.total_bt_pos,
+                                                                            lead.dynamic_fields?.obligation_data?.totalBtPos,
+                                                                            lead.dynamic_fields?.obligation_data?.total_bt_pos,
                                                                             lead.dynamic_fields?.financial_details?.total_bt_pos,
                                                                             lead.dynamic_fields?.financial_details?.totalBtPos,
+                                                                            lead.eligibility_details?.totalBtPos,
+                                                                            lead.eligibility_details?.total_bt_pos,
                                                                             lead.obligation_data?.total_bt_pos,
                                                                             lead.obligation_data?.totalBtPos,
                                                                             lead.obligation_data?.financial_details?.total_bt_pos,
                                                                             lead.obligation_data?.financial_details?.totalBtPos,
-                                                                            lead.dynamic_fields?.obligation_data?.total_bt_pos,
-                                                                            lead.dynamic_fields?.obligation_data?.totalBtPos,
-                                                                            lead.eligibility_details?.total_bt_pos,
-                                                                            lead.eligibility_details?.totalBtPos,
-                                                                            lead.dynamic_fields?.eligibility_details?.total_bt_pos,
-                                                                            lead.dynamic_fields?.eligibility_details?.totalBtPos,
+                                                                            // Root-level fields as last fallback (may be stale)
+                                                                            lead.financial_details?.total_bt_pos,
+                                                                            lead.financial_details?.totalBtPos,
+                                                                            lead.total_bt_pos,
+                                                                            lead.totalBtPos,
                                                                             lead.bt_position,
                                                                             lead.btPosition,
                                                                             lead.total_balance_transfer,
@@ -8528,17 +8537,19 @@ const LeadCRM = memo(function LeadCRM({ user, selectedLoanType: initialLoanType,
                                                             <td className="text-md font-semibold py-2 px-4 whitespace-nowrap text-white">
                                                                 {(() => {
                                                                     // Try all possible CIBIL score sources including nested objects
-                                                                    let cibilScore = lead.financial_details?.cibil_score || 
-                                                                                   lead.dynamic_fields?.financial_details?.cibil_score ||
-                                                                                   lead.obligation_data?.cibil_score ||
-                                                                                   lead.obligation_data?.financial_details?.cibil_score ||
+                                                                    // dynamic_fields.financial_details is where ObligationSection saves cibil_score
+                                                                    let cibilScore = lead.dynamic_fields?.financial_details?.cibil_score ||
+                                                                                   lead.dynamic_fields?.personal_details?.cibil_score ||
                                                                                    lead.dynamic_fields?.obligation_data?.cibil_score ||
                                                                                    lead.dynamic_fields?.obligation_data?.financial_details?.cibil_score ||
+                                                                                   // Root-level fields as last fallback (may be stale)
+                                                                                   lead.financial_details?.cibil_score ||
+                                                                                   lead.obligation_data?.cibil_score ||
+                                                                                   lead.obligation_data?.financial_details?.cibil_score ||
                                                                                    lead.cibil_score ||
                                                                                    lead.credit_score ||
                                                                                    lead.dynamic_fields?.financial_details?.credit_score ||
                                                                                    lead.financial_details?.credit_score ||
-                                                                                   lead.dynamic_fields?.personal_details?.cibil_score ||
                                                                                    lead.personal_details?.cibil_score ||
                                                                                    lead.obligation_data?.cibil ||
                                                                                    lead.dynamic_fields?.obligation_data?.cibil ||

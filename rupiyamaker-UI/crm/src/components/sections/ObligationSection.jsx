@@ -6561,6 +6561,10 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
             total_obligation: obligationData.totalObligation,
             eligibility: obligationData.eligibility,
             loan_eligibility_status: obligationData.loanEligibilityStatus
+          },
+          // Update eligibility_details so the table immediately reflects the new computed values
+          eligibility_details: obligationData.dynamic_fields?.eligibility_details || {
+            ...leadData.dynamic_fields?.eligibility_details
           }
         };
         
