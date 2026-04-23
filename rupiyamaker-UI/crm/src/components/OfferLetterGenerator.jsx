@@ -596,7 +596,7 @@ const OfferLetterGenerator = ({ user }) => {
         <div style={{ display:'flex', flexDirection:'column', alignItems:'flex-start', gap:4 }}>
           <div style={{ display:'flex', alignItems:'stretch', gap:12 }}>
             <span style={{ fontFamily:"'Arial Black',Arial,sans-serif", fontSize:62, fontWeight:900, color:tc, lineHeight:1, letterSpacing:-2 }}>{p1}</span>
-            <span style={{ width:4, background:'#cc1818', borderRadius:3, flexShrink:0, alignSelf:'stretch' }} />
+            <span style={{ width:4, background:'#FF4802', borderRadius:3, flexShrink:0, alignSelf:'stretch' }} />
             <div style={{ display:'flex', flexDirection:'column', justifyContent:'center', gap:1 }}>
               <span style={{ fontFamily:'Arial,Helvetica,sans-serif', fontSize:14, fontWeight:700, letterSpacing:5, color:'#00bfff', textTransform:'uppercase' }}>{p2}</span>
               <span style={{ fontFamily:"'Arial Black',Arial,sans-serif", fontSize:32, fontWeight:900, color:'#00bfff', letterSpacing:-1, lineHeight:1 }}>{p3}</span>
@@ -611,8 +611,8 @@ const OfferLetterGenerator = ({ user }) => {
       <div style={{ textAlign:'right', fontFamily:'Arial,sans-serif', transformOrigin:'top right', transform:`scale(${addrScale})` }}>
         {/* Label row */}
         <div style={{ display:'flex', alignItems:'center', justifyContent:'flex-end', gap:6, marginBottom:5 }}>
-          <div style={{ height:1, width:28, background:'#cc1818', opacity:0.8 }} />
-          <span style={{ fontSize:addrSize - 1, fontWeight:800, letterSpacing:'0.12em', textTransform:'uppercase', color:'#cc1818' }}>Registered Office</span>
+          <div style={{ height:1, width:28, background:'#FF4802', opacity:0.8 }} />
+          <span style={{ fontSize:addrSize - 1, fontWeight:800, letterSpacing:'0.12em', textTransform:'uppercase', color:'#FF4802' }}>Registered Office</span>
         </div>
         {/* Address lines */}
         <div style={{ fontSize:addrSize, lineHeight:1.7, color:'#ffffff' }}>
