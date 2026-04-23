@@ -134,7 +134,8 @@ export const hrmsService = {
 
             // Add status filter — default to active only; pass 'all' to get everyone (e.g. AllEmployees management page)
             if (status === 'all') {
-                // no is_active filter — return all employees including inactive
+                // Tell backend to include inactive employees (backend filters them out by default without this flag)
+                params.append('include_all', 'true');
             } else if (status === 'inactive') {
                 params.append('is_active', 'false');
             } else {
