@@ -2768,10 +2768,11 @@ const LeadCRM = memo(function LeadCRM({ user, selectedLoanType: initialLoanType,
         let filtered = Array.isArray(leads) ? [...leads] : [];
 
         // Apply search filter - USE DEBOUNCED SEARCH TERM for performance
-        // Support multiple search terms separated by spaces (same as main filter)
+        // Support multiple search terms separated by comma (space is part of name)
         if (debouncedSearchTerm) {
-            // Split search term by spaces and filter out empty strings
-            const searchTerms = debouncedSearchTerm.trim().split(/\s+/).filter(term => term.length > 0);
+            // Split search term by comma - each comma-separated term is a separate search
+            // Space within a term is treated as part of the name (e.g. "Ram Kumar" searches full name)
+            const searchTerms = debouncedSearchTerm.split(',').map(t => t.trim()).filter(term => term.length > 0);
             
             filtered = filtered.filter(lead => {
                 // Lead matches if ANY of the search terms match ANY of the fields
@@ -3192,18 +3193,11 @@ const LeadCRM = memo(function LeadCRM({ user, selectedLoanType: initialLoanType,
         let filtered = Array.isArray(leads) ? [...leads] : [];
 
         // Apply search filter - USE DEBOUNCED SEARCH TERM for smooth typing
-        // Support multiple search terms separated by spaces
+        // Support multiple search terms separated by comma (space is part of name)
         if (debouncedSearchTerm) {
-            // Split search term by spaces and filter out empty strings
-            const searchTerms = debouncedSearchTerm.trim().split(/\s+/).filter(term => term.length > 0);
-            
-            if (process.env.NODE_ENV === 'development') {
-                console.log('🔍 Multi-Search Active:', { 
-                    originalSearch: debouncedSearchTerm,
-                    searchTerms: searchTerms,
-                    termCount: searchTerms.length
-                });
-            }
+            // Split search term by comma - each comma-separated term is a separate search
+            // Space within a term is treated as part of the name (e.g. "Ram Kumar" searches full name)
+            const searchTerms = debouncedSearchTerm.split(',').map(t => t.trim()).filter(term => term.length > 0);
             
             filtered = filtered.filter(lead => {
                 // Lead matches if ANY of the search terms match ANY of the fields

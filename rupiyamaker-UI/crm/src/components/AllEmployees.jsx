@@ -2020,7 +2020,7 @@ const AllEmployees = () => {
                                                         </td>
                                                         <td className="text-md font-semibold py-2 px-4 whitespace-nowrap text-white">
                                                             <div className="flex items-center gap-3">
-                                                                <div className="w-8 h-8 rounded-full overflow-hidden bg-gradient-to-r from-blue-500 to-purple-600 flex items-center justify-center text-white font-bold text-sm">
+                                                                <div className="w-10 h-10 rounded-md overflow-hidden bg-gradient-to-r from-blue-500 to-purple-600 flex items-center justify-center text-white font-bold text-sm">
                                                                     {employee.profile_photo ? (
                                                                         <img
                                                                             src={getProfilePictureUrlWithCacheBusting(employee.profile_photo)}

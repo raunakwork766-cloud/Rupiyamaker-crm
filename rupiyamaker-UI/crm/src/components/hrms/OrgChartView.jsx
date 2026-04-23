@@ -47,6 +47,21 @@ import { getProfilePictureUrlWithCacheBusting } from '../../utils/mediaUtils';
 
   /* Toolbar btns */
   .oc3-btn:hover { background:#21262d !important; color:#c9d1d9 !important; }
+
+  /* Avatar square */
+  .oc3-av { flex-shrink:0; overflow:hidden; display:flex; align-items:center; justify-content:center; font-weight:700; color:#fff; transition:border-color .2s; }
+  .oc3-av img { width:100%; height:100%; object-fit:cover; display:block; }
+
+  /* Hover photo popup */
+  @keyframes oc3-pop { from{opacity:0;transform:translateX(-50%) scale(.85)} to{opacity:1;transform:translateX(-50%) scale(1)} }
+  .oc3-av-popup {
+    position:absolute; bottom:calc(100% + 8px); left:50%; transform:translateX(-50%);
+    width:120px; height:120px; border-radius:10px; overflow:hidden;
+    border:2.5px solid #4493f8; box-shadow:0 8px 28px rgba(0,0,0,.7);
+    z-index:200; pointer-events:none;
+    animation:oc3-pop .18s ease;
+  }
+  .oc3-av-popup img { width:100%; height:100%; object-fit:cover; display:block; }
 `;
     document.head.appendChild(s);
 })();
@@ -90,23 +105,39 @@ const buildTree = (roles) => {
     return sort(roots);
 };
 
-// ─── Avatar circle ──────────────────────────────────────────────────────────
+// ─── Avatar square ──────────────────────────────────────────────────────────
 const Av = ({ emp, idx, size }) => {
     const [err, setErr] = useState(false);
-    const url = !err ? getProfilePictureUrlWithCacheBusting(emp.profile_picture || emp.photo) : null;
-    const S = size || 32;
+    const [hovered, setHovered] = useState(false);
+    // Use profile_photo (correct field name matching AllEmployees.jsx)
+    const rawPath = emp.profile_photo || emp.profile_picture || emp.photo;
+    const url = (!err && rawPath) ? getProfilePictureUrlWithCacheBusting(rawPath) : null;
+    const S = size || 52;
     return (
-        <div style={{
-            width: S, height: S, borderRadius: '50%', flexShrink: 0,
-            background: url ? 'transparent' : clr(idx),
-            border: '2px solid #0d1117',
-            overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center',
-            fontSize: S * 0.33, fontWeight: 700, color: '#fff',
-        }}>
-            {url
-                ? <img src={url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={() => setErr(true)} />
-                : initials(emp.first_name, emp.last_name)
-            }
+        <div style={{ position: 'relative', flexShrink: 0 }}
+             onMouseEnter={() => setHovered(true)}
+             onMouseLeave={() => setHovered(false)}>
+            <div
+                className="oc3-av"
+                style={{
+                    width: S, height: S,
+                    borderRadius: 8,
+                    background: url ? '#0d1117' : clr(idx),
+                    border: `2px solid ${hovered && url ? '#4493f8' : 'rgba(68,147,248,0.25)'}`,
+                    fontSize: S * 0.33,
+                    cursor: url ? 'pointer' : 'default',
+                }}
+            >
+                {url
+                    ? <img src={url} alt={`${emp.first_name || ''} ${emp.last_name || ''}`.trim()} onError={() => setErr(true)} />
+                    : initials(emp.first_name, emp.last_name)
+                }
+            </div>
+            {hovered && url && (
+                <div className="oc3-av-popup">
+                    <img src={url} alt="" />
+                </div>
+            )}
         </div>
     );
 };
@@ -114,12 +145,12 @@ const Av = ({ emp, idx, size }) => {
 // ─── Member row in the expanded list ───────────────────────────────────────
 const MemberRow = ({ emp, idx }) => (
     <div style={{
-        display: 'flex', alignItems: 'center', gap: 9,
-        padding: '8px 12px',
+        display: 'flex', alignItems: 'center', gap: 11,
+        padding: '10px 12px',
         borderBottom: '1px solid #161b22',
         background: idx % 2 ? 'rgba(255,255,255,.025)' : 'transparent',
     }}>
-        <Av emp={emp} idx={idx} size={34} />
+        <Av emp={emp} idx={idx} size={52} />
         <div style={{ minWidth: 0, flex: 1 }}>
             <div style={{ fontSize: '.83rem', fontWeight: 700, color: '#e6edf3', marginBottom: 1 }}>
                 {`${emp.first_name || ''} ${emp.last_name || ''}`.trim() || '—'}
