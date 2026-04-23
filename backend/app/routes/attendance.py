@@ -899,6 +899,8 @@ async def get_attendance_calendar(
                 "role_name": employee.get("role_name"),
                 "designation": employee.get("designation"),
                 "joining_date": str(employee.get("joining_date", "")) if employee.get("joining_date") else None,
+                "inactive_from_date": employee.get("inactive_from_date"),
+                "employee_status": employee.get("employee_status", "active"),
                 "days": days,
                 "stats": {
                     "total_days": total_days,

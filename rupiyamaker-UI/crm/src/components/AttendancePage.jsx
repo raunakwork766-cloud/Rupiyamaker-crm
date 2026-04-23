@@ -2945,8 +2945,8 @@ export default function MonthlyAttendanceTable() {
       const hrmsEmp = hrmsLookup.get(String(empId)) || hrmsLookup.get(String(employee.user_mongo_id || ''))
       const empSalary = salaryMap[empId] || salaryMap[String(empId)] || 0;
       
-      // Determine employee active status from HRMS employee status map
-      const empStatus = employeeStatusMap[empId] || employeeStatusMap[String(empId)];
+      // Determine employee active status from HRMS employee status map, with attendance API as fallback
+      const empStatus = employeeStatusMap[empId] || employeeStatusMap[String(empId)] || employee.employee_status;
       const isActiveEmp = empStatus
         ? (empStatus === 'active')
         : (!activeEmployeeIds || activeEmployeeIds.size === 0
