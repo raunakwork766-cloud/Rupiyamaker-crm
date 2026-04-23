@@ -1,269 +1,215 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { MessageSquare, Plus, Trash2, Calendar, Edit3, Send } from 'lucide-react';
 import { formatDateTimeIST } from '../../utils/timezoneUtils';
 
-// Updated: 2025-12-10 - Fixed multi-line support
-// API base URL - Use proxy in development
-const API_BASE_URL = '/api'; // Always use API proxy
+const API_BASE_URL = '/api';
 
-// RemarksSection component for displaying and managing lead notes/remarks
-export default function Remarks({ leadId, userId, formatDate, canEdit = true }) {
+function getRelativeTime(dateStr) {
+    if (!dateStr) return '';
+    try {
+        const date = new Date(dateStr);
+        const now = new Date();
+        const diffMs = now - date;
+        const diffSecs = Math.floor(diffMs / 1000);
+        const diffMins = Math.floor(diffSecs / 60);
+        const diffHours = Math.floor(diffMins / 60);
+        const diffDays = Math.floor(diffHours / 24);
+        if (diffSecs < 60) return 'Just now';
+        if (diffMins < 60) return `${diffMins} min ago`;
+        if (diffHours < 24) return `${diffHours} hour${diffHours > 1 ? 's' : ''} ago`;
+        if (diffDays < 7) return `${diffDays} day${diffDays > 1 ? 's' : ''} ago`;
+        return formatDateTimeIST(dateStr);
+    } catch {
+        return '';
+    }
+}
+
+function getAvatarColor(name) {
+    const colors = [
+        'bg-blue-500', 'bg-purple-500', 'bg-pink-500', 'bg-green-500',
+        'bg-orange-500', 'bg-cyan-500', 'bg-rose-500', 'bg-indigo-500',
+    ];
+    if (!name) return colors[0];
+    let hash = 0;
+    for (let i = 0; i < name.length; i++) hash = name.charCodeAt(i) + ((hash << 5) - hash);
+    return colors[Math.abs(hash) % colors.length];
+}
+
+function getInitials(name) {
+    if (!name) return '?';
+    const parts = name.trim().split(/\s+/);
+    return parts.slice(0, 2).map(p => p[0]?.toUpperCase() || '').join('');
+}
+
+export default function Remarks({ leadId, userId, formatDate, canEdit = true, isLoginLead = false }) {
     const [notes, setNotes] = useState([]);
     const [isLoading, setIsLoading] = useState(false);
-    const [error, setError] = useState('');
-    const [success, setSuccess] = useState('');
     const [newNote, setNewNote] = useState('');
-    const [noteType, setNoteType] = useState('general');
     const [isAddingNote, setIsAddingNote] = useState(false);
-
+    const bottomRef = useRef(null);
     const textareaRef = useRef(null);
 
-    // Note types based on leads.html
-    const noteTypes = [
-        { value: 'general', label: 'General Note' },
-        { value: 'call', label: 'Call Log' },
-        { value: 'meeting', label: 'Meeting Note' },
-        { value: 'followup', label: 'Follow-up' }
-    ];
+    useEffect(() => { loadNotes(); }, [leadId]);
 
     useEffect(() => {
-        loadNotes();
-    }, [leadId]);
-
-    // Initialize textarea height
-    useEffect(() => {
-        if (textareaRef.current) {
-            textareaRef.current.style.height = '60px';
+        if (notes.length > 0) {
+            bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
         }
-    }, []);
+    }, [notes]);
+
+    const notesBaseUrl = isLoginLead
+        ? `${API_BASE_URL}/lead-login/login-leads/${leadId}/notes`
+        : `${API_BASE_URL}/leads/${leadId}/notes`;
 
     const loadNotes = async () => {
         try {
             setIsLoading(true);
-            const response = await fetch(`${API_BASE_URL}/leads/${leadId}/notes?user_id=${userId}`);
+            const response = await fetch(`${notesBaseUrl}?user_id=${userId}`);
             if (response.ok) {
                 const data = await response.json();
                 setNotes(data || []);
             }
         } catch (error) {
             console.error('Error loading notes:', error);
-            setError('Failed to load notes');
         } finally {
             setIsLoading(false);
         }
     };
 
-    const adjustTextareaHeight = () => {
-        if (textareaRef.current) {
-            textareaRef.current.style.height = 'auto';
-            textareaRef.current.style.height = `${Math.min(textareaRef.current.scrollHeight, 300)}px`;
-        }
-    };
-
-    const handleNoteChange = (e) => {
-        setNewNote(e.target.value);
-        adjustTextareaHeight();
-    };
-
-    const handleKeyDown = (e) => {
-        // Allow Shift+Enter for new line, prevent plain Enter
-        if (e.key === 'Enter' && !e.shiftKey) {
-            e.preventDefault();
-            return;
-        }
-        
-        // After Shift+Enter, adjust height
-        if (e.key === 'Enter' && e.shiftKey) {
-            setTimeout(adjustTextareaHeight, 0);
-        }
-    };
-
     const addNote = async () => {
-        if (!newNote.trim()) return;
-
+        if (!newNote.trim() || isAddingNote) return;
         try {
             setIsAddingNote(true);
-            setError('');
-
-            const response = await fetch(`${API_BASE_URL}/leads/${leadId}/notes?user_id=${userId}`, {
+            const response = await fetch(`${notesBaseUrl}?user_id=${userId}`, {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
+                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     lead_id: leadId,
-                    content: newNote.toUpperCase(),
-                    note_type: noteType,
+                    content: newNote.trim().toUpperCase(),
+                    note_type: 'general',
                     created_by: userId
                 })
             });
-
             if (response.ok) {
-                loadNotes(); // Reload notes after adding a new one
                 setNewNote('');
-                setNoteType('general');
-                setSuccess('Note added successfully');
-                setTimeout(() => setSuccess(''), 3000);
                 if (textareaRef.current) {
-                    textareaRef.current.style.height = "60px";
+                    textareaRef.current.style.height = 'auto';
                 }
-            } else {
-                throw new Error('Failed to add note');
+                loadNotes();
             }
         } catch (error) {
             console.error('Error adding note:', error);
-            setError('Failed to add note');
         } finally {
             setIsAddingNote(false);
         }
     };
 
+    const handleKeyDown = (e) => {
+        if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            addNote();
+        }
+    };
+
     const deleteNote = async (noteId) => {
         if (!confirm('Are you sure you want to delete this note?')) return;
-
         try {
-            const response = await fetch(`${API_BASE_URL}/leads/${leadId}/notes/${noteId}?user_id=${userId}`, {
+            const response = await fetch(`${notesBaseUrl}/${noteId}?user_id=${userId}`, {
                 method: 'DELETE'
             });
-
             if (response.ok) {
                 setNotes(prev => prev.filter(note => note._id !== noteId));
-                setSuccess('Note deleted successfully');
-                setTimeout(() => setSuccess(''), 3000);
-            } else {
-                throw new Error('Failed to delete note');
             }
         } catch (error) {
             console.error('Error deleting note:', error);
-            setError('Failed to delete note');
         }
     };
-
-    // Get badge color based on note type
-    const getNoteTypeBadgeColor = (type) => {
-        switch (type) {
-            case 'call':
-                return 'bg-blue-600';
-            case 'meeting':
-                return 'bg-cyan-600';
-            case 'followup':
-                return 'bg-yellow-600';
-            default:
-                return 'bg-gray-600';
-        }
-    };
-
-    if (isLoading) {
-        return (
-            <div className="flex items-center justify-center h-32">
-                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
-            </div>
-        );
-    }
 
     return (
-        <div className="space-y-4">
-            {/* Error/Success Messages */}
-            {error && (
-                <div className="bg-red-900/50 border border-red-500 text-red-200 px-4 py-3 rounded-lg">
-                    {error}
-                </div>
-            )}
-            {success && (
-                <div className="bg-green-900/50 border border-green-500 text-green-200 px-4 py-3 rounded-lg">
-                    {success}
-                </div>
-            )}
-
-            {/* Add New Note */}
-            <div className="bg-white p-4 rounded-lg border border-gray-700">
-                <div className="mb-3 flex items-center space-x-2">
-                    <label className="text-sm font-medium text-gray-600">Note Type:</label>
-                    <select
-                        value={noteType}
-                        onChange={(e) => setNoteType(e.target.value)}
-                        className="text-black bg-white border border-gray-600 rounded px-2 py-1 text-sm"
-                    >
-                        {noteTypes.map(type => (
-                            <option key={type.value} value={type.value}>{type.label}</option>
-                        ))}
-                    </select>
-                </div>
-
-                {/* Note Content */}
-                <div className="flex space-x-3">
-                    <textarea
-                        ref={textareaRef}
-                        value={newNote}
-                        onChange={canEdit ? handleNoteChange : undefined}
-                        onKeyDown={canEdit ? handleKeyDown : undefined}
-                        disabled={!canEdit}
-                        placeholder="Enter note content... (Press Shift+Enter for new line, click Send to submit)"
-                        className="flex-1 bg-white border border-gray-600 rounded-lg px-3 py-2 text-black placeholder-gray-400 focus:outline-none focus:border-blue-500 resize-none text-base"
-                        rows={1}
-                        style={{ minHeight: '60px', maxHeight: '300px', lineHeight: '1.5', overflow: 'auto' }}
-                    />
-                    <button
-                        onClick={addNote}
-                        disabled={!newNote.trim() || isAddingNote}
-                        className="bg-blue-600 hover:bg-blue-700 disabled:bg-blue disabled:cursor-not-allowed text-white px-4 py-2 rounded-lg flex items-center"
-                    >
-                        <Send />
-                    </button>
-                </div>
-            </div>
-
-            {/* Notes List */}
-            <div className="space-y-3">
-                {notes.length === 0 ? (
-                    <div className="text-center py-8 bg-white text-gray-400">
-                        <MessageSquare className="w-12 h-12 mx-auto mb-3 opacity-50" />
-                        <p>No notes yet. Add your first note above.</p>
+        <div className="flex flex-col h-full bg-white">
+            {/* Notes List - scrollable, fills available space */}
+            <div className="flex-1 overflow-y-auto px-2 py-1.5 space-y-1.5 min-h-0">
+                {isLoading ? (
+                    <div className="flex items-center justify-center h-16">
+                        <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-[#03B0F5]"></div>
+                    </div>
+                ) : notes.length === 0 ? (
+                    <div className="text-center py-4 text-gray-400">
+                        <svg className="w-6 h-6 mx-auto mb-1 opacity-40" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                        </svg>
+                        <p className="text-xs">No notes yet</p>
                     </div>
                 ) : (
-                    notes.map((note) => (
-                        <div key={note._id} className="bg-white p-4 rounded-lg border border-gray-700">
-                            <div className="flex justify-between items-start ">
-                                <div className="flex items-center space-x-3">
-                                    {/* Note Type Badge */}
-                                    <span className={`px-2 py-1 rounded-full text-md font-medium text-black ${getNoteTypeBadgeColor(note.note_type)}`}>
-                                        {noteTypes.find(type => type.value === note.note_type)?.label || note.note_type}
-                                    </span>
-
-                                    {/* Creator Info */}
-                                    <span className="text-blue-400 font-medium">
-                                        {note.creator_name || 'Unknown User'}
-                                    </span>
-
-                                    {/* Created Date */}
-                                    <span className="text-black text-md flex items-center">
-                                        <Calendar className="w-3 h-3 mr-1" />
-                                        {formatDate ? formatDate(note.created_at) : formatDateTimeIST(note.created_at)}
-                                    </span>
+                    notes.map((note, index) => {
+                        const name = note.creator_name || 'Unknown';
+                        const initials = getInitials(name);
+                        const avatarColor = getAvatarColor(name);
+                        const isLatest = index === notes.length - 1;
+                        return (
+                            <div key={note._id} className="flex items-start gap-1.5 group">
+                                {/* Avatar */}
+                                <div className={`w-5 h-5 rounded-full ${avatarColor} text-white flex items-center justify-center text-[9px] font-bold flex-shrink-0 mt-0.5`}>
+                                    {initials}
                                 </div>
-
-                                {/* Action Buttons */}
-                                <div className="flex space-x-2">
-                                    {note.can_delete && (
+                                {/* Content */}
+                                <div className="flex-1 min-w-0">
+                                    <div className="flex items-center gap-1 mb-0.5 flex-wrap">
+                                        <span className="text-[10px] font-bold text-gray-800 truncate">{name}</span>
+                                        <span className="text-[9px] text-gray-400 whitespace-nowrap ml-auto">{getRelativeTime(note.created_at)}</span>
+                                    </div>
+                                    <div className={`px-2 py-1 rounded-lg text-[10px] leading-snug break-words ${isLatest ? 'bg-gray-800 text-white' : 'bg-gray-100 text-gray-800'}`}>
+                                        {note.content}
+                                    </div>
+                                    {note.can_delete && canEdit && (
                                         <button
                                             onClick={() => deleteNote(note._id)}
-                                            className="text-red-400 hover:text-red-300 p-1"
-                                            title="Delete note"
+                                            className="opacity-0 group-hover:opacity-100 text-red-400 hover:text-red-600 text-[9px] mt-0.5 transition-opacity pl-1"
                                         >
-                                            <Trash2 className="w-4 h-4" />
+                                            Delete
                                         </button>
                                     )}
                                 </div>
                             </div>
-
-                            {/* Note Content */}
-                            <p className="text-black whitespace-pre-wrap break-words leading-relaxed mt-3 uppercase text-base bg-gray-50 p-3 rounded border-l-4 border-blue-400">
-                                {note.content}
-                            </p>
-                        </div>
-                    ))
+                        );
+                    })
                 )}
+                <div ref={bottomRef} />
             </div>
+
+            {/* Input Area - BOTTOM, compact */}
+            {canEdit && (
+                <div className="flex-shrink-0 border-t border-gray-100 bg-white px-2 py-2">
+                    <div className="flex items-end gap-1.5 rounded-lg border border-gray-200 overflow-hidden bg-gray-50 focus-within:border-[#03B0F5] focus-within:ring-1 focus-within:ring-[#03B0F5]/30 transition-all px-2 py-1.5">
+                        <textarea
+                            ref={textareaRef}
+                            value={newNote}
+                            onChange={e => {
+                                setNewNote(e.target.value);
+                                e.target.style.height = 'auto';
+                                e.target.style.height = Math.min(e.target.scrollHeight, 80) + 'px';
+                            }}
+                            onKeyDown={handleKeyDown}
+                            placeholder="Write a note..."
+                            className="flex-1 text-xs text-gray-700 placeholder-gray-400 bg-transparent resize-none outline-none border-0 leading-relaxed"
+                            rows={1}
+                            style={{ minHeight: '32px', maxHeight: '80px' }}
+                        />
+                        <button
+                            onClick={addNote}
+                            disabled={!newNote.trim() || isAddingNote}
+                            className="flex-shrink-0 flex items-center justify-center w-7 h-7 rounded-md bg-[#03B0F5] disabled:bg-gray-200 disabled:text-gray-400 text-white transition-colors hover:bg-[#0097d1] mb-0.5"
+                        >
+                            {isAddingNote ? (
+                                <div className="w-3 h-3 rounded-full border-2 border-white border-t-transparent animate-spin" />
+                            ) : (
+                                <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24">
+                                    <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/>
+                                </svg>
+                            )}
+                        </button>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

@@ -1132,7 +1132,7 @@ function App() {
                     onLogout={handleLogout}
                     user={user}
                   />
-                  <div className="flex-1 overflow-y-auto">
+                  <div className="flex-1 overflow-hidden flex flex-col">
                     {/* Conditional rendering based on view mode */}
                     {isMobileView ? (
                       // Mobile view - Force Feed component only with optimized styling
@@ -1140,8 +1140,10 @@ function App() {
                         <OptimizedAppRoutes user={user} selectedLabel={selectedLabel} />
                       </div>
                     ) : (
-                      // Desktop view - Show all routes normally
-                      <OptimizedAppRoutes user={user} selectedLabel={selectedLabel} />
+                      // Desktop view - Show all routes normally (flex-1 overflow-y-auto allows non-CRM pages to scroll)
+                      <div className="flex-1 overflow-y-auto flex flex-col">
+                        <OptimizedAppRoutes user={user} selectedLabel={selectedLabel} />
+                      </div>
                     )}
                   </div>
                 </div>

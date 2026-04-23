@@ -68,6 +68,7 @@ function useDebounce(value, delay) {
 // ⚡ PERFORMANCE: Lazy load heavy components to reduce initial bundle size
 const LeadDetails = lazy(() => import('./LeadDetails'));
 const OperationsSection = lazy(() => import('./sections/OperationsSection'));
+import RemarksPanel from './sections/Remarks';
 
 // Import components for detailed lead view
 import { 
@@ -4973,18 +4974,6 @@ const LoginCRM = ({ user, selectedLoanType: initialLoanType, department = "login
             ]
           },
           {
-            label: "REMARK",
-            getContent: (leadData) => [
-              {
-                content: (
-                  <div className="p-6 bg-white rounded-xl shadow-2xl text-[1rem] text-gray-100 border-l-4 border-cyan-500/60">
-                    <RemarkSection leadData={leadData} canEdit={canEditLogin()} />
-                  </div>
-                ),
-              },
-            ],
-          },
-          {
             label: "TASK",
             getContent: (lead) => [
               {
@@ -5135,7 +5124,9 @@ const LoginCRM = ({ user, selectedLoanType: initialLoanType, department = "login
         );
         
         return (
-            <div className={activeTab === 1 ? 'h-screen overflow-hidden bg-black text-white text-sm sm:text-base w-full flex flex-col' : 'min-h-screen bg-black text-white text-sm sm:text-base w-full'}>
+            <div className="flex flex-col h-full overflow-hidden bg-black text-white text-sm sm:text-base w-full">
+                {/* Top section: Header + Tabs — full width */}
+                <div className="flex-shrink-0 w-full flex flex-col">
                 {/* Header */}
                 <div className="flex items-center gap-2 sm:gap-3 px-4 sm:px-6 py-4 sm:py-6 bg-[#0c1019] shadow-lg">
                     <div className="flex items-center gap-2">
@@ -5166,8 +5157,9 @@ const LoginCRM = ({ user, selectedLoanType: initialLoanType, department = "login
 
                 {/* Tabs */}
                 <div 
-                  className="flex flex-wrap items-center gap-2 px-4 sm:px-7 py-2 sm:py-3 bg-black border-b border-[#232c3a] overflow-x-auto relative "
+                  className="flex items-center gap-0 px-2 sm:px-4 bg-[#0a0f1a] border-b border-[#1e2a3a] overflow-x-auto relative flex-shrink-0"
                   data-tab-area="true"
+                  style={{scrollbarWidth:'none', msOverflowStyle:'none'}}
                 >
                     {detailSections.map((tab, idx) => (
                         <button
@@ -5175,46 +5167,25 @@ const LoginCRM = ({ user, selectedLoanType: initialLoanType, department = "login
                             data-tab-button="true"
                             data-tab-index={idx}
                             className={`
-                                flex items-center px-3 sm:px-6 py-2 sm:py-3 rounded-3xl font-extrabold border shadow-md text-sm sm:text-lg transition whitespace-nowrap relative  cursor-pointer
+                                flex items-center gap-1.5 px-3 sm:px-5 py-2.5 text-xs sm:text-sm font-semibold transition-all whitespace-nowrap border-b-2 -mb-px relative cursor-pointer
                                 ${idx === activeTab
-                                    ? "bg-[#03B0F5] via-blue-700 to-cyan-500 text-white border-cyan-400 shadow-lg scale-105"
-                                    : "bg-white text-[#03B0F5] border-[#2D3C56] hover:bg-cyan-400/10 hover:text-cyan-400"
+                                    ? "text-[#03B0F5] border-[#03B0F5] bg-[#03B0F5]/8"
+                                    : "text-gray-400 border-transparent hover:text-gray-200 hover:border-gray-500"
                                 }
-                                focus:outline-none focus:ring-2 focus:ring-cyan-400
+                                focus:outline-none focus:ring-0
                             `}
-                            style={{
-                                boxShadow: idx === activeTab ? "0 4px 16px 0 #1cb5e080" : undefined,
-                                cursor: "pointer",
-                                letterSpacing: "0.01em"
-                            }}
+                            style={{ cursor: "pointer", letterSpacing: "0.03em" }}
                             onClick={(e) => {
-                                // Ensure tab navigation always works
                                 e.preventDefault();
                                 e.stopPropagation();
-                                
-                                // Force tab change regardless of any content event blocking
-                                try {
-                                    handleTabChange(idx);
-                                } catch (error) {
-                                    // Fallback: directly set the active tab
-                                    setActiveTab(idx);
-                                }
+                                try { handleTabChange(idx); } catch { setActiveTab(idx); }
                             }}
-                            onMouseDown={(e) => {
-                                // Additional safeguard for tab clicks
-                                e.stopPropagation();
-                            }}
+                            onMouseDown={(e) => e.stopPropagation()}
                             tabIndex={0}
                             onKeyDown={(e) => {
-                                // Allow keyboard navigation
                                 if (e.key === 'Enter' || e.key === ' ') {
-                                    e.preventDefault();
-                                    e.stopPropagation();
-                                    try {
-                                        handleTabChange(idx);
-                                    } catch (error) {
-                                        setActiveTab(idx);
-                                    }
+                                    e.preventDefault(); e.stopPropagation();
+                                    try { handleTabChange(idx); } catch { setActiveTab(idx); }
                                 }
                             }}
                         >
@@ -5222,14 +5193,14 @@ const LoginCRM = ({ user, selectedLoanType: initialLoanType, department = "login
                             {tab.label}
                         </button>
                     ))}
-                    {/* Download button — shown in tab row when OBLIGATION tab is active */}
+                    {/* Download button */}
                     {activeTab === 1 && obligationDownloadFn && (
                         <button
                             type="button"
                             onClick={obligationDownloadFn}
-                            className="ml-auto flex items-center gap-1.5 px-3 py-2 rounded-3xl font-extrabold text-sm border border-green-500 bg-green-600/20 text-green-400 hover:bg-green-600/40 transition whitespace-nowrap"
+                            className="ml-auto flex items-center gap-1.5 px-3 py-1.5 mr-2 rounded font-semibold text-xs border border-green-500 bg-green-600/20 text-green-400 hover:bg-green-600/40 transition whitespace-nowrap"
                         >
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                                 <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
                                 <polyline points="7,10 12,15 17,10"/>
                                 <line x1="12" y1="15" x2="12" y2="3"/>
@@ -5241,8 +5212,13 @@ const LoginCRM = ({ user, selectedLoanType: initialLoanType, department = "login
 
                
 
-                {/* Content */}
-                <div className={activeTab === 1 ? 'flex-1 min-h-0 overflow-hidden w-full' : 'px-2 sm:px-4 lg:px-6 py-4 lg:py-6 w-full relative z-0'}>
+                </div>{/* end top section */}
+
+                {/* Content Row: Left content + Right panel */}
+                <div className="flex flex-1 min-h-0 overflow-hidden">
+
+                {/* Content (left side) */}
+                <div className={activeTab === 1 ? 'flex-1 min-h-0 overflow-hidden' : 'flex-1 overflow-y-auto px-2 sm:px-4 lg:px-6 py-4 lg:py-6 relative z-0'}>
                     <div className={activeTab === 1 ? 'w-full h-full' : 'w-full relative z-0'}>
                         {sectionData.map((section, idx) => {
                             const sectionKey = `${activeTab}-${idx}`;
@@ -5252,10 +5228,13 @@ const LoginCRM = ({ user, selectedLoanType: initialLoanType, department = "login
                                 <div key={idx} className={activeTab === 1 ? 'w-full h-full' : 'mb-6 w-full'}>
                                     {section.label && (
                                         <button
-                                            className="w-full px-2 sm:px-5 py-3 font-extrabold text-base sm:text-lg lg:text-[1.05rem] text-[#03B0F5] bg-gray-200 hover:bg-gray-300 border-2 border-gray-400 rounded-lg flex items-center justify-between transition-colors duration-200 shadow-md"
+                                            className="w-full px-3 sm:px-4 py-2 font-bold text-sm text-[#03B0F5] bg-[#0d1520] hover:bg-[#0f1a28] border border-[#1e3a5a] rounded-lg flex items-center justify-between transition-colors duration-150 shadow-sm"
                                             onClick={() => toggleSectionCollapse(sectionKey)}
                                         >
-                                            <span>{section.label}</span>
+                                            <span className="flex items-center gap-2">
+                                                <span className="w-1 h-4 bg-[#03B0F5] rounded-full inline-block"></span>
+                                                {section.label}
+                                            </span>
                                             <svg
                                                 className={`w-5 h-5 transform transition-transform duration-200 ${isCollapsed ? '' : 'rotate-180'}`}
                                                 fill="none"
@@ -5276,6 +5255,28 @@ const LoginCRM = ({ user, selectedLoanType: initialLoanType, department = "login
                         })}
                     </div>
                 </div>
+
+                {/* Activity & Comments - Persistent Right Panel (hidden for OBLIGATION tab) */}
+                {activeTab !== 1 && (
+                    <div className="w-80 flex-shrink-0 flex flex-col bg-white border-l border-gray-200 overflow-hidden">
+                        <div className="px-3 py-1.5 border-b border-gray-100 bg-gray-50 flex items-center justify-between flex-shrink-0">
+                            <div className="flex items-center gap-2">
+                                <svg className="w-4 h-4 text-[#03B0F5]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" /></svg>
+                                <h3 className="text-xs font-bold text-gray-700 uppercase tracking-wide">Remark</h3>
+                            </div>
+                            <span className="text-gray-400 text-lg leading-none select-none">···</span>
+                        </div>
+                        <div className="flex-1 min-h-0 overflow-hidden">
+                            <RemarksPanel
+                                leadId={selectedLead._id}
+                                userId={localStorage.getItem('userId') || ''}
+                                canEdit={canEditLogin()}
+                                isLoginLead={!!(selectedLead.original_lead_id || selectedLead.login_created_at)}
+                            />
+                        </div>
+                    </div>
+                )}
+                </div>{/* end content row */}
             </div>
         );
     }

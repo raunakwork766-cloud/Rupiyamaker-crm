@@ -188,14 +188,16 @@ export default function AboutSection({ lead, onSave, canEdit = true }) {
   const [canEditAlternateNumber, setCanEditAlternateNumber] = useState(false);
   const [isUserSuperAdmin, setIsUserSuperAdmin] = useState(false);
   const [canViewDataCode, setCanViewDataCode] = useState(false);
+  const [canViewMobileNumber, setCanViewMobileNumber] = useState(false);
+  const [canViewAlternateNumber, setCanViewAlternateNumber] = useState(false);
   
   // Auto-save feedback state
   const [saveStatus, setSaveStatus] = useState('');
   const [isSaving, setIsSaving] = useState(false);
   
   // Label styling (matching LoginFormSection)
-  const labelClass = "block font-semibold mb-1 uppercase tracking-wide";
-  const labelStyle = { color: "#374151", fontWeight: 600, fontSize: "11px" };
+  const labelClass = "block font-semibold uppercase tracking-wide";
+  const labelStyle = { color: "#374151", fontWeight: 600, fontSize: "10px" };
   
   // Validation states
   const [validationErrors, setValidationErrors] = useState({});
@@ -532,6 +534,7 @@ export default function AboutSection({ lead, onSave, canEdit = true }) {
     fetchAssignableUsers();
     checkUserPermissions();
     checkDataCodePermission();
+    checkMobilePermissions();
     fetchAllUsersForSuperAdmin();
     fetchDepartments();
   }, []);
@@ -880,7 +883,76 @@ export default function AboutSection({ lead, onSave, canEdit = true }) {
     }
   };
 
-  // Fetch loan types from API
+  // Check if user has permission to view Mobile Number and Alternate Number fields
+  const checkMobilePermissions = () => {
+    try {
+      const userPermissions = getUserPermissions();
+
+      // Super admin always has access
+      if (isSuperAdmin(userPermissions)) {
+        setCanViewMobileNumber(true);
+        setCanViewAlternateNumber(true);
+        return;
+      }
+
+      const userRole = localStorage.getItem('userRole');
+      const userData = JSON.parse(localStorage.getItem('userData') || '{}');
+      if (userData.role_name === 'Super Admin' || userRole === 'Super Admin') {
+        setCanViewMobileNumber(true);
+        setCanViewAlternateNumber(true);
+        return;
+      }
+
+      // Check from normalized localStorage permissions (object format set at login)
+      const plOddPerms =
+        userPermissions['leads.pl_&_odd_leads'] ||
+        userPermissions['leads.pl_odd_leads'] ||
+        userPermissions['leads_pl_&_odd_leads'] ||
+        userPermissions['leads_pl_odd_leads'];
+
+      const checkAction = (perms, action) => {
+        if (!perms) return false;
+        if (perms === '*') return true;
+        if (typeof perms === 'object' && !Array.isArray(perms)) return perms[action] === true;
+        if (Array.isArray(perms)) return perms.includes(action);
+        return false;
+      };
+
+      if (plOddPerms) {
+        setCanViewMobileNumber(checkAction(plOddPerms, 'view_mobile_number'));
+        setCanViewAlternateNumber(checkAction(plOddPerms, 'view_alternate_number'));
+        return;
+      }
+
+      // Also check from userData.role.permissions (raw backend array format)
+      const user = JSON.parse(localStorage.getItem('user') || '{}');
+      if (user.role?.permissions && Array.isArray(user.role.permissions)) {
+        const plOddPermission = user.role.permissions.find(p =>
+          p.page === 'leads.pl_&_odd_leads' ||
+          p.page === 'leads.pl_odd_leads' ||
+          p.page === 'leads_pl_&_odd_leads' ||
+          p.page === 'leads_pl_odd_leads'
+        );
+        if (plOddPermission && plOddPermission.actions) {
+          const actions = Array.isArray(plOddPermission.actions)
+            ? plOddPermission.actions
+            : [plOddPermission.actions];
+          setCanViewMobileNumber(actions.includes('view_mobile_number'));
+          setCanViewAlternateNumber(actions.includes('view_alternate_number'));
+          return;
+        }
+      }
+
+      setCanViewMobileNumber(false);
+      setCanViewAlternateNumber(false);
+    } catch (error) {
+      console.error('Error checking mobile number permissions:', error);
+      setCanViewMobileNumber(false);
+      setCanViewAlternateNumber(false);
+    }
+  };
+
+
   const fetchLoanTypes = async () => {
     try {
       const userId = localStorage.getItem('userId');
@@ -1748,7 +1820,7 @@ export default function AboutSection({ lead, onSave, canEdit = true }) {
   };
 
   return (
-    <div className="p-4 rounded-xl border border-cyan-300/40 bg-white shadow-md text-[0.9rem] relative overflow-visible">
+    <div className="p-3 rounded-xl border border-cyan-300/40 bg-white shadow-md text-[0.85rem] relative overflow-visible">
       <div className="absolute -right-12 -top-10 w-40 h-40 bg-white rounded-full blur-2xl" />
       <div className="absolute -left-16 top-20 w-28 h-28 bg-white rounded-full blur-2xl" />
       
@@ -1769,14 +1841,14 @@ export default function AboutSection({ lead, onSave, canEdit = true }) {
       )}
       
       <div>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 font-bold text-cyan-300 text-sm z-10 relative">
-          <div className="flex flex-col gap-1">
+        <div className="grid grid-cols-3 gap-x-3 gap-y-2 font-bold text-cyan-300 text-sm z-10 relative">
+          <div className="flex flex-col gap-0.5">
             <label className={labelClass} style={labelStyle}>LEAD ID</label>
             <input
-              className="w-full p-2 border border-[#00bcd4] rounded-md bg-gray-100 text-green-600 text-md font-bold cursor-not-allowed"
+              className="w-full h-8 px-2 py-1 border border-[#00bcd4] rounded-md bg-gray-100 text-green-600 text-xs font-bold cursor-not-allowed"
               value={fields.id}
               readOnly={true}
-              placeholder="Lead ID (Read-only)"
+              placeholder="Lead ID"
               title="Lead ID cannot be modified"
             />
           </div>
@@ -1805,10 +1877,10 @@ export default function AboutSection({ lead, onSave, canEdit = true }) {
               // Login CRM: show when file was sent to Login Department — always read-only
               const loginDate = lead?.login_date || lead?.login_created_at;
               return (
-                <div className="flex flex-col gap-1">
+                <div className="flex flex-col gap-0.5">
                   <label className={labelClass} style={labelStyle}>LOGIN DATE & TIME</label>
                   <input
-                    className="w-full p-2 border border-[#00bcd4] rounded-md bg-gray-100 text-green-600 text-md font-bold cursor-not-allowed"
+                    className="w-full h-8 px-2 py-1 border border-[#00bcd4] rounded-md bg-gray-100 text-green-600 text-xs font-bold cursor-not-allowed"
                     value={formatAMPM(loginDate)}
                     readOnly={true}
                     placeholder="Login date and time"
@@ -1820,7 +1892,7 @@ export default function AboutSection({ lead, onSave, canEdit = true }) {
 
             // Lead CRM: show original lead creation date
             return (
-              <div className="flex flex-col gap-1">
+              <div className="flex flex-col gap-0.5">
                 <label className={labelClass} style={labelStyle}>LEAD DATE & TIME</label>
                 {isUserSuperAdmin ? (
                   <div className="relative">
@@ -1849,7 +1921,7 @@ export default function AboutSection({ lead, onSave, canEdit = true }) {
                     />
                     <input
                       type="text"
-                      className="w-full p-2 border border-[#00bcd4] rounded-md bg-white text-green-600 text-md font-bold cursor-pointer"
+                      className="w-full h-8 px-2 py-1 border border-[#00bcd4] rounded-md bg-white text-green-600 text-xs font-bold cursor-pointer"
                       value={formatAMPM(fields.createdDate)}
                       readOnly={true}
                       onClick={() => document.getElementById('createdDate_hidden_picker')?.showPicker()}
@@ -1858,7 +1930,7 @@ export default function AboutSection({ lead, onSave, canEdit = true }) {
                   </div>
                 ) : (
                   <input
-                    className="w-full p-2 border border-[#00bcd4] rounded-md bg-gray-100 text-green-600 text-md font-bold cursor-not-allowed"
+                    className="w-full h-8 px-2 py-1 border border-[#00bcd4] rounded-md bg-gray-100 text-green-600 text-xs font-bold cursor-not-allowed"
                     value={formatAMPM(lead?.created_at)}
                     readOnly={true}
                     placeholder="Date & Time (Read-only)"
@@ -1869,49 +1941,49 @@ export default function AboutSection({ lead, onSave, canEdit = true }) {
             );
           })()}
 
-          <div className="flex flex-col gap-1">
+          <div className="flex flex-col gap-0.5">
             <label className={labelClass} style={labelStyle}>PRODUCT NAME</label>
-            <div className="w-full p-2 border border-[#00bcd4] rounded-md bg-gray-100 text-green-600 text-md font-bold cursor-not-allowed select-none">
+            <div className="w-full h-8 px-2 py-1 border border-[#00bcd4] rounded-md bg-gray-100 text-green-600 text-xs font-bold cursor-not-allowed select-none flex items-center">
               {fields.productName || "—"}
             </div>
           </div>
 
           {/* Created By Field - with inline team tag */}
-          <div className="flex flex-col gap-1">
+          <div className="flex flex-col gap-0.5">
             <label className={labelClass} style={labelStyle}>CREATED BY</label>
             {isUserSuperAdmin ? (
               <div className="relative dropdown-container">
-                <input
-                  type="text"
-                  className="w-full p-2 border border-[#00bcd4] rounded-md bg-white text-green-600 text-md font-bold"
-                  value={createdBySearch !== '' ? createdBySearch : (() => {
-                    if (lead?.created_by_name) return typeof lead.created_by_name === 'object' ? (lead.created_by_name.name || '') : lead.created_by_name;
-                    if (lead?.created_by) return typeof lead.created_by === 'object' ? (lead.created_by.name || '') : lead.created_by;
-                    return '';
+                <div className="flex items-center border border-[#00bcd4] rounded-md bg-white overflow-hidden w-full h-8">
+                  <input
+                    type="text"
+                    className="flex-1 p-2 outline-none bg-transparent text-green-600 text-xs font-bold min-w-0"
+                    value={createdBySearch !== '' ? createdBySearch : (() => {
+                      if (lead?.created_by_name) return typeof lead.created_by_name === 'object' ? (lead.created_by_name.name || '') : lead.created_by_name;
+                      if (lead?.created_by) return typeof lead.created_by === 'object' ? (lead.created_by.name || '') : lead.created_by;
+                      return '';
+                    })()}
+                    placeholder="Search user..."
+                    onChange={e => { setCreatedBySearch(e.target.value); setShowCreatedByDropdown(true); }}
+                    onFocus={() => setShowCreatedByDropdown(true)}
+                  />
+                  {!createdBySearch && (() => {
+                    const tn = lead?.department_name
+                      ? (typeof lead.department_name === 'object' ? lead.department_name.name : lead.department_name)
+                      : (lead?.team_name ? (typeof lead.team_name === 'object' ? lead.team_name.name : lead.team_name) : null);
+                    return tn && tn !== 'N/A' ? (
+                      <span className="mr-2 px-2 py-0.5 bg-[#03B0F5] text-white text-xs font-bold rounded-full whitespace-nowrap flex-shrink-0">{tn}</span>
+                    ) : null;
                   })()}
-                  placeholder="Search user..."
-                  onChange={e => { setCreatedBySearch(e.target.value); setShowCreatedByDropdown(true); }}
-                  onFocus={() => setShowCreatedByDropdown(true)}
-                />
-                {!createdBySearch && (() => {
-                  const tn = lead?.department_name
-                    ? (typeof lead.department_name === 'object' ? lead.department_name.name : lead.department_name)
-                    : (lead?.team_name ? (typeof lead.team_name === 'object' ? lead.team_name.name : lead.team_name) : null);
-                  return tn && tn !== 'N/A' ? (
-                    <div className="flex items-center gap-1 mt-1">
-                      <span className="px-2 py-0.5 bg-[#03B0F5] text-white text-xs font-bold rounded-full">{tn}</span>
-                    </div>
-                  ) : null;
-                })()}
+                </div>
                 {showCreatedByDropdown && (
-                  <div className="absolute z-50 w-full bg-white border border-gray-200 rounded-md shadow-lg max-h-48 overflow-y-auto mt-1">
+                  <div className="absolute z-50 w-full bg-white border border-gray-200 rounded-md shadow-md max-h-40 overflow-y-auto mt-0.5">
                     {allUsers
                       .filter(u => !createdBySearch || u.name.toLowerCase().includes(createdBySearch.toLowerCase()))
                       .slice(0, 30)
                       .map(u => (
                         <div
                           key={u.id}
-                          className="px-3 py-2 hover:bg-blue-50 cursor-pointer text-sm text-gray-800"
+                          className="px-2.5 py-1.5 hover:bg-blue-50 cursor-pointer text-xs text-gray-800"
                           onMouseDown={e => {
                             e.preventDefault();
                             handleBlur('createdByName', u.name);
@@ -1922,9 +1994,9 @@ export default function AboutSection({ lead, onSave, canEdit = true }) {
                             setShowCreatedByDropdown(false);
                           }}
                         >
-                          <div className="font-bold">{u.name}</div>
+                          <div className="font-bold text-xs">{u.name}</div>
                           {(u.role_name || u.department) && (
-                            <div className="text-xs text-gray-400">{u.role_name}{u.department ? ` · ${u.department}` : ''}</div>
+                            <div className="text-[10px] text-gray-400">{u.role_name}{u.department ? ` · ${u.department}` : ''}</div>
                           )}
                         </div>
                       ))}
@@ -1935,8 +2007,8 @@ export default function AboutSection({ lead, onSave, canEdit = true }) {
                 )}
               </div>
             ) : (
-              <div className="w-full p-2 border border-[#00bcd4] rounded-md bg-gray-100 min-h-[40px] flex items-center gap-2 flex-wrap">
-                <span className="text-green-600 text-md font-bold">
+              <div className="flex items-center gap-2 px-2 py-1 border border-[#00bcd4] rounded-md bg-gray-100 h-8 w-full">
+                <span className="text-green-600 text-xs font-bold whitespace-nowrap">
                   {(() => {
                     if (lead?.created_by_name) return typeof lead.created_by_name === 'object' ? (lead.created_by_name.name || lead.created_by_name.first_name || 'Unknown') : lead.created_by_name;
                     if (lead?.created_by) return typeof lead.created_by === 'object' ? (lead.created_by.name || lead.created_by.first_name || 'Unknown') : lead.created_by;
@@ -1954,11 +2026,11 @@ export default function AboutSection({ lead, onSave, canEdit = true }) {
               </div>
             )}
           </div>
-          <div className="flex flex-col gap-1">
+          <div className="flex flex-col gap-0.5">
             <label className={labelClass} style={labelStyle}>SOURCE NAME</label>
             <div ref={campaignDropdownRef} className="relative w-full">
               <div
-                className={`w-full p-2 border border-[#00bcd4] rounded-md text-green-600 text-md font-bold min-h-[40px] flex items-center cursor-pointer transition-all duration-300 hover:border-[#0097a7] ${!canEdit ? 'bg-gray-100 cursor-not-allowed' : 'bg-white'}`}
+                className={`w-full px-2 py-1 border border-[#00bcd4] rounded-md text-green-600 text-xs font-bold min-h-[32px] flex items-center cursor-pointer transition-all duration-300 hover:border-[#0097a7] ${!canEdit ? 'bg-gray-100 cursor-not-allowed' : 'bg-white'}`}
                 onClick={() => {
                   if (canEdit) {
                     setShowProductDropdown(false);
@@ -1975,14 +2047,14 @@ export default function AboutSection({ lead, onSave, canEdit = true }) {
                 </div>
               </div>
               {showCampaignDropdown && canEdit && (
-                <div className="absolute z-[500] top-full left-0 right-0 mt-1 bg-white border-2 border-[#00bcd4] rounded-lg shadow-xl overflow-hidden">
-                  <div className="p-2 border-b border-gray-100">
+                <div className="absolute z-[500] top-full left-0 right-0 mt-0.5 bg-white border border-[#00bcd4] rounded-md shadow-lg overflow-hidden">
+                  <div className="px-2 py-1.5 border-b border-gray-100">
                     <div className="relative">
-                      <svg className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
+                      <svg className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
                       <input
                         autoFocus
                         type="text"
-                        className="w-full pl-8 pr-3 py-2 text-sm border border-gray-200 rounded-md focus:outline-none focus:border-[#03B0F5] text-black"
+                        className="w-full pl-6 pr-2 py-1 text-xs border border-gray-200 rounded focus:outline-none focus:border-[#03B0F5] text-black"
                         placeholder="Search source..."
                         value={campaignSearchTerm}
                         onChange={e => setCampaignSearchTerm(e.target.value)}
@@ -1990,12 +2062,12 @@ export default function AboutSection({ lead, onSave, canEdit = true }) {
                       />
                     </div>
                   </div>
-                  <div className="max-h-52 overflow-y-auto">
+                  <div className="max-h-40 overflow-y-auto">
                     {getFilteredCampaigns().length > 0 ? (
                       getFilteredCampaigns().map(campaign => (
                         <div
                           key={campaign._id}
-                          className={`px-3 py-2.5 cursor-pointer text-sm font-medium transition-colors ${fields.campaignName === campaign.name ? 'bg-[#03B0F5] text-white font-bold' : 'hover:bg-[#e0f7fa] text-black'}`}
+                          className={`px-2.5 py-1.5 cursor-pointer text-xs font-medium transition-colors ${fields.campaignName === campaign.name ? 'bg-[#03B0F5] text-white font-bold' : 'hover:bg-[#e0f7fa] text-black'}`}
                           onClick={() => {
                             handleChange("campaignName", campaign.name);
                             handleBlur("campaignName", campaign.name);
@@ -2007,7 +2079,7 @@ export default function AboutSection({ lead, onSave, canEdit = true }) {
                         </div>
                       ))
                     ) : (
-                      <div className="text-center py-5 text-gray-400 text-sm">
+                      <div className="text-center py-3 text-gray-400 text-xs">
                         {campaignSearchTerm ? `No results for "${campaignSearchTerm}"` : 'No sources available'}
                       </div>
                     )}
@@ -2017,11 +2089,11 @@ export default function AboutSection({ lead, onSave, canEdit = true }) {
             </div>
           </div>
           {canViewDataCode && (
-          <div className="flex flex-col gap-1">
+          <div className="flex flex-col gap-0.5">
             <label className={labelClass} style={labelStyle}>DATA CODE</label>
             <div className="relative w-full dropdown-container">
               <div
-                className={`w-full p-2 border border-[#00bcd4] rounded-md text-green-600 text-md font-bold min-h-[40px] flex flex-wrap gap-2 items-center cursor-pointer transition-all duration-300 focus-within:border-[#0097a7] focus-within:shadow-[0_0_0_3px_rgba(0,188,212,0.1)] ${!canEdit ? 'bg-gray-100 cursor-not-allowed' : 'bg-white'}`}
+                className={`w-full px-2 py-1 border border-[#00bcd4] rounded-md text-green-600 text-xs font-bold min-h-[32px] flex flex-wrap gap-2 items-center cursor-pointer transition-all duration-300 focus-within:border-[#0097a7] focus-within:shadow-[0_0_0_3px_rgba(0,188,212,0.1)] ${!canEdit ? 'bg-gray-100 cursor-not-allowed' : 'bg-white'}`}
                 onClick={() => {
                   if (canEdit) {
                     setShowProductDropdown(false);
@@ -2071,25 +2143,25 @@ export default function AboutSection({ lead, onSave, canEdit = true }) {
                 )}
               </div>
               {showDataCodeDropdown && canEdit && (
-                <div className="absolute w-full bg-white border border-gray-300 rounded-md shadow-lg max-h-60 overflow-y-auto z-50 mt-1">
-                  <div className="p-3 border-b border-gray-200">
+                <div className="absolute w-full bg-white border border-[#00bcd4] rounded-md shadow-lg max-h-44 overflow-y-auto z-50 mt-0.5">
+                  <div className="px-2 py-1.5 border-b border-gray-100">
                     <input
                       type="text"
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:border-[#00bcd4]"
+                      className="w-full px-2 py-1 border border-gray-200 rounded text-xs focus:outline-none focus:border-[#00bcd4]"
                       placeholder="Search data codes..."
                       value={dataCodeSearchTerm}
                       onChange={(e) => setDataCodeSearchTerm(e.target.value)}
                       onClick={(e) => e.stopPropagation()}
                     />
                   </div>
-                  <div className="max-h-48 overflow-y-auto">
+                  <div className="overflow-y-auto">
                     {getFilteredDataCodes().length > 0 ? (
                       getFilteredDataCodes().map(dataCode => {
                         const selected = fields.dataCode ? fields.dataCode.split(',').map(s => s.trim()).filter(Boolean).includes(dataCode.name) : false;
                         return (
                           <div
                             key={dataCode._id}
-                            className={`px-4 py-2 text-md font-bold text-green-600 hover:bg-gray-100 cursor-pointer flex items-center justify-between ${selected ? 'bg-[#e0f7fa]' : ''}`}
+                            className={`px-2.5 py-1.5 text-xs font-bold text-green-600 hover:bg-gray-100 cursor-pointer flex items-center justify-between ${selected ? 'bg-[#e0f7fa]' : ''}`}
                             onClick={() => {
                               const codes = fields.dataCode ? fields.dataCode.split(',').map(s => s.trim()).filter(Boolean) : [];
                               const newVal = selected
@@ -2114,10 +2186,10 @@ export default function AboutSection({ lead, onSave, canEdit = true }) {
             </div>
           </div>
           )}
-          <div className="flex flex-col gap-1">
+          <div className="flex flex-col gap-0.5">
             <label className={labelClass} style={labelStyle}>CUSTOMER NAME</label>
             <input
-              className={`w-full p-2 border border-[#00bcd4] rounded-md bg-white text-green-600 text-md font-bold transition-all duration-300 focus:border-[#0097a7] focus:shadow-[0_0_0_3px_rgba(0,188,212,0.1)] ${
+              className={`w-full px-2 py-1 border border-[#00bcd4] rounded-md bg-white text-green-600 text-xs font-bold transition-all duration-300 focus:border-[#0097a7] focus:shadow-[0_0_0_3px_rgba(0,188,212,0.1)] ${
                 !canEdit ? 'bg-gray-100 cursor-not-allowed' : ''
               }`}
               value={fields.customerName}
@@ -2127,11 +2199,12 @@ export default function AboutSection({ lead, onSave, canEdit = true }) {
               placeholder={!canEdit ? "Read-only: No edit permission" : "Enter customer name"}
             />
           </div>
-          <div className="flex flex-col gap-1">
+          {canViewMobileNumber && (
+          <div className="flex flex-col gap-0.5">
             <label className={labelClass} style={labelStyle}>MOBILE NUMBER</label>
             <div className="flex-1">
               <input
-                className={`w-full p-2 border rounded-md text-green-600 text-md font-bold transition-all duration-300 focus:border-[#0097a7] focus:shadow-[0_0_0_3px_rgba(0,188,212,0.1)] ${
+                className={`w-full px-2 py-1 border rounded-md text-green-600 text-xs font-bold transition-all duration-300 focus:border-[#0097a7] focus:shadow-[0_0_0_3px_rgba(0,188,212,0.1)] ${
                   (!canEdit || !isUserSuperAdmin) ? 'bg-gray-100 cursor-not-allowed border-[#00bcd4]' : 
                   validationErrors.mobileNumber ? 'border-red-500 bg-red-50' : 'border-[#00bcd4] bg-white'
                 }`}
@@ -2157,11 +2230,13 @@ export default function AboutSection({ lead, onSave, canEdit = true }) {
               )}
             </div>
           </div>
-          <div className="flex flex-col gap-1">
+          )}
+          {canViewAlternateNumber && (
+          <div className="flex flex-col gap-0.5">
             <label className={labelClass} style={labelStyle}>ALTERNATE NUMBER</label>
             <div className="flex-1">
               <input
-                className={`w-full p-2 border rounded-md text-green-600 text-md font-bold transition-all duration-300 focus:border-[#0097a7] focus:shadow-[0_0_0_3px_rgba(0,188,212,0.1)] ${
+                className={`w-full px-2 py-1 border rounded-md text-green-600 text-xs font-bold transition-all duration-300 focus:border-[#0097a7] focus:shadow-[0_0_0_3px_rgba(0,188,212,0.1)] ${
                   !canEditAlternateNumber ? 'bg-gray-100 cursor-not-allowed border-[#00bcd4]' : 
                   validationErrors.alternateNumber ? 'border-red-500 bg-red-50' : 'border-[#00bcd4] bg-white'
                 }`}
@@ -2193,11 +2268,12 @@ export default function AboutSection({ lead, onSave, canEdit = true }) {
               )}
             </div>
           </div>
-          <div className="flex flex-col gap-1">
+          )}
+          <div className="flex flex-col gap-0.5">
             <label className={labelClass} style={labelStyle}>PINCODE & CITY</label>
             <div className="relative w-full">
               <input
-                className={`w-full p-2 pr-10 border border-[#00bcd4] rounded-md bg-white text-green-600 text-md font-bold transition-all duration-300 focus:border-[#0097a7] focus:shadow-[0_0_0_3px_rgba(0,188,212,0.1)] ${
+                className={`w-full p-2 pr-10 border border-[#00bcd4] rounded-md bg-white text-green-600 text-xs font-bold transition-all duration-300 focus:border-[#0097a7] focus:shadow-[0_0_0_3px_rgba(0,188,212,0.1)] ${
                   !canEdit ? 'bg-gray-100 cursor-not-allowed' : ''
                 }`}
                 value={fields.pincode_city}
@@ -2236,11 +2312,11 @@ export default function AboutSection({ lead, onSave, canEdit = true }) {
               </button>
             </div>
           </div>
-          <div className="flex flex-col gap-1">
+          <div className="flex flex-col gap-0.5">
             <label className={labelClass} style={labelStyle}>ASSIGNED Lead</label>
             <div ref={assignInlineDropdownRef} className="relative w-full">
               <div
-                className={`w-full p-2 border border-[#00bcd4] rounded-md text-green-600 text-md font-bold min-h-[40px] flex flex-wrap gap-2 items-center transition-all duration-300 ${canEditAssignedLead ? 'bg-white cursor-pointer hover:border-[#0097a7]' : 'bg-gray-100 cursor-not-allowed'}`}
+                className={`w-full px-2 py-1 border border-[#00bcd4] rounded-md text-green-600 text-xs font-bold min-h-[32px] flex flex-wrap gap-2 items-center transition-all duration-300 ${canEditAssignedLead ? 'bg-white cursor-pointer hover:border-[#0097a7]' : 'bg-gray-100 cursor-not-allowed'}`}
                 onClick={() => { if (canEditAssignedLead) setShowAssignInlineDropdown(prev => !prev); }}
               >
                 {assignReportTo.length === 0 && (
@@ -2280,14 +2356,14 @@ export default function AboutSection({ lead, onSave, canEdit = true }) {
                   (u.designation || '').toLowerCase().includes(assignInlineSearch.toLowerCase())
                 );
                 return (
-                  <div className="absolute z-[500] top-full left-0 right-0 mt-1 bg-white border-2 border-[#00bcd4] rounded-lg shadow-xl overflow-hidden">
-                    <div className="p-2 border-b border-gray-100">
+                  <div className="absolute z-[500] top-full left-0 right-0 mt-0.5 bg-white border border-[#00bcd4] rounded-md shadow-lg overflow-hidden">
+                    <div className="px-2 py-1.5 border-b border-gray-100">
                       <div className="relative">
-                        <svg className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
+                        <svg className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
                         <input
                           autoFocus
                           type="text"
-                          className="w-full pl-8 pr-3 py-2 text-sm border border-gray-200 rounded-md focus:outline-none focus:border-[#03B0F5] text-black"
+                          className="w-full pl-6 pr-2 py-1 text-xs border border-gray-200 rounded focus:outline-none focus:border-[#03B0F5] text-black"
                           placeholder="Search by name or designation..."
                           value={assignInlineSearch}
                           onChange={e => setAssignInlineSearch(e.target.value.toUpperCase())}
@@ -2295,24 +2371,24 @@ export default function AboutSection({ lead, onSave, canEdit = true }) {
                         />
                       </div>
                     </div>
-                    <div className="max-h-52 overflow-y-auto">
+                    <div className="max-h-40 overflow-y-auto">
                       {filtered.length > 0 ? filtered.map(u => (
                         <div
                           key={u.id}
-                          className="group flex items-center gap-3 px-3 py-2.5 cursor-pointer hover:bg-[#e0f7fa] transition-colors"
+                          className="group flex items-center gap-2 px-2.5 py-1.5 cursor-pointer hover:bg-[#e0f7fa] transition-colors"
                           onClick={(e) => { e.stopPropagation(); handleAddAssignReportTo(u); }}
                         >
-                          <div className="w-8 h-8 rounded-full bg-[#03B0F5] text-white flex items-center justify-center flex-shrink-0 text-xs font-bold">
+                          <div className="w-6 h-6 rounded-full bg-[#03B0F5] text-white flex items-center justify-center flex-shrink-0 text-[10px] font-bold">
                             {u.name.split(' ').map(p => p[0]).slice(0, 2).join('').toUpperCase() || '?'}
                           </div>
                           <div className="flex flex-col flex-grow min-w-0">
-                            <span className="text-sm font-medium text-black truncate">{u.name}</span>
-                            {u.designation && <span className="text-xs text-gray-500 truncate">{u.designation}</span>}
+                            <span className="text-xs font-medium text-black truncate">{u.name}</span>
+                            {u.designation && <span className="text-[10px] text-gray-500 truncate">{u.designation}</span>}
                           </div>
-                          <div className="w-6 h-6 rounded-full bg-[#03B0F5] text-white flex items-center justify-center text-sm font-bold opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">+</div>
+                          <div className="w-5 h-5 rounded-full bg-[#03B0F5] text-white flex items-center justify-center text-xs font-bold opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">+</div>
                         </div>
                       )) : (
-                        <div className="text-center py-5 text-gray-400 text-sm">
+                        <div className="text-center py-3 text-gray-400 text-xs">
                           {assignInlineSearch ? 'No matching users found' : 'No users available'}
                         </div>
                       )}
