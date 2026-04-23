@@ -649,6 +649,7 @@ const exportToPDF = async (attendanceData, selectedYear, selectedMonth, holidays
   attendanceData.forEach((record, rowIdx) => {
     const stats = calculateMonthlyStats(record, selectedYear, selectedMonth, daysInMonth, holidays)
     const joiningDateKey = normalizeDateKey(record.joining_date || record.date_of_joining)
+    const inactiveDateKeyExport = record.isActive === false ? normalizeDateKey(record.inactive_from_date) : null
     const row = sheet.getRow(3 + rowIdx)
     row.height = 18
 
@@ -677,10 +678,12 @@ const exportToPDF = async (attendanceData, selectedYear, selectedMonth, holidays
       const isSun = getDayName(selectedYear, selectedMonth, d) === 'Sun'
       const isHoliday = holidays.some(h => h.date === dateKey)
       const isBeforeJoining = joiningDateKey && dateKey < joiningDateKey
+      const isAfterInactiveExport = inactiveDateKeyExport && dateKey > inactiveDateKeyExport
+      const isBlackedOutExport = isBeforeJoining || isAfterInactiveExport
 
-      let rawStatus = isBeforeJoining ? null : record[`day${d}`]
+      let rawStatus = isBlackedOutExport ? null : record[`day${d}`]
       // If no status and it's a past working day → treat as Absent (same as UI)
-      if (!rawStatus && !isSun && !isHoliday && !isBeforeJoining && dateKey <= todayKey) rawStatus = 'A'
+      if (!rawStatus && !isSun && !isHoliday && !isBlackedOutExport && dateKey <= todayKey) rawStatus = 'A'
 
       const cell = row.getCell(3 + d)
 
@@ -690,8 +693,8 @@ const exportToPDF = async (attendanceData, selectedYear, selectedMonth, holidays
         cell.font = { bold: true, size: 9, color: { argb: 'FF' + s.font.toUpperCase() } }
         cell.fill = fill(s.fillHex)
       } else {
-        // Empty future/pre-joining day — use special bg if holiday/weekend
-        const bgHex = isBeforeJoining ? '0A0A0D' : (isHoliday ? '061A1C' : isSun ? '2E1065' : '0A0A0D')
+        // Empty future/pre-joining/post-inactive day — use special bg if holiday/weekend
+        const bgHex = isBlackedOutExport ? '0A0A0D' : (isHoliday ? '061A1C' : isSun ? '2E1065' : '0A0A0D')
         cell.value = ''
         cell.font = { size: 9, color: { argb: 'FF52525B' } }
         cell.fill = fill(bgHex)
@@ -2954,6 +2957,8 @@ export default function MonthlyAttendanceTable() {
       const resolvedName = hrmsName || employee.employee_name || hrmsEmp?.name || hrmsEmp?.username || String(empId)
       const resolvedDesignation = employee.designation || hrmsEmp?.designation || ''
       const resolvedJoiningDate = employee.joining_date || hrmsEmp?.joining_date || hrmsEmp?.date_of_joining || ''
+      // Inactive-from date: set by backend when employee is deactivated
+      const resolvedInactiveFrom = hrmsEmp?.inactive_from_date || employee.inactive_from_date || null
 
       const employeeRecord = {
         id: employee.employee_id,
@@ -2964,6 +2969,7 @@ export default function MonthlyAttendanceTable() {
         role: employee.role_name || "",
         designation: resolvedDesignation,
         joining_date: resolvedJoiningDate,
+        inactive_from_date: resolvedInactiveFrom,
         photo: employee.employee_photo,
         salary: empSalary,
         isActive: isActiveEmp
@@ -3030,6 +3036,7 @@ export default function MonthlyAttendanceTable() {
           role: emp.designation || "",
           designation: emp.designation || "",
           joining_date: emp.joining_date || emp.date_of_joining || "",
+          inactive_from_date: emp.inactive_from_date || null,
           photo: emp.profile_photo,
           salary: empSalary,
           isActive: isActiveEmp
@@ -4115,6 +4122,7 @@ export default function MonthlyAttendanceTable() {
                 const stats = calculateMonthlyStats(record, selectedYear, selectedMonth, daysInMonth, holidays)
                 const isEvenRow = index % 2 === 0
                 const joiningDateKey = normalizeDateKey(record.joining_date || record.date_of_joining)
+                const inactiveDateKey = record.isActive === false ? normalizeDateKey(record.inactive_from_date) : null
                 
                 // Calculate salary
                 const monthlySalary = record.salary || 0
@@ -4149,30 +4157,33 @@ export default function MonthlyAttendanceTable() {
                       const isSundayDay = getDayName(selectedYear, selectedMonth, day) === 'Sun'
                       const isHolidayDay = holidays.some(h => h.date === dateKey)
                       const isBeforeJoining = joiningDateKey && dateKey < joiningDateKey
+                      // Black out days AFTER the employee became inactive (like pre-joining blackout)
+                      const isAfterInactive = inactiveDateKey && dateKey > inactiveDateKey
+                      const isBlackedOut = isBeforeJoining || isAfterInactive
                       
                       // Holiday takes priority over Sunday for background colour
                       // Sunday → solid purple, Holiday (incl. Sunday holiday) → cyan tint, Normal → black
-                      const cellBg = isBeforeJoining ? '#000000' : (isHolidayDay ? 'rgba(6,182,212,0.12)' : isSundayDay ? '#2e1065' : '#000000')
-                      const cellBorder = isHolidayDay ? '1px solid #06b6d4' : isSundayDay ? '1px solid #5b21b6' : '1px solid #1f1f22'
+                      const cellBg = isBlackedOut ? '#000000' : (isHolidayDay ? 'rgba(6,182,212,0.12)' : isSundayDay ? '#2e1065' : '#000000')
+                      const cellBorder = isBlackedOut ? '1px solid #111' : (isHolidayDay ? '1px solid #06b6d4' : isSundayDay ? '1px solid #5b21b6' : '1px solid #1f1f22')
 
                       // Compute todayKey fresh each render — avoids ANY stale-closure/hook issues
                       const _ist = getISTToday()
                       const todayKey = `${_ist.year}-${String(_ist.month).padStart(2,'0')}-${String(_ist.day).padStart(2,'0')}`
 
                       // Rule: blank cell on today or any past working date → show Absent ("0")
-                      // Sundays, holidays, and cells with an existing leave status are untouched.
+                      // Sundays, holidays, blacked-out cells, and cells with an existing leave status are untouched.
                       let cellStatus = record[`day${day}`]
-                      if (!cellStatus && !isBeforeJoining && !isSundayDay && !isHolidayDay && !leaveStatus && dateKey <= todayKey) {
+                      if (!cellStatus && !isBlackedOut && !isSundayDay && !isHolidayDay && !leaveStatus && dateKey <= todayKey) {
                         cellStatus = 'A'
                       }
 
                       return (
                         <td
                           key={day}
-                          style={{textAlign:'center',cursor:isBeforeJoining ? 'default' : 'pointer',border:isBeforeJoining ? '1px solid #111' : cellBorder,padding:'4px 2px',backgroundColor:isBeforeJoining ? '#000' : cellBg,verticalAlign:'middle',transition:'background 0.15s'}}
-                          onClick={() => !isBeforeJoining && handleDayClick(record, day)}
+                          style={{textAlign:'center',cursor:isBlackedOut ? 'default' : 'pointer',border:cellBorder,padding:'4px 2px',backgroundColor:cellBg,verticalAlign:'middle',transition:'background 0.15s'}}
+                          onClick={() => !isBlackedOut && handleDayClick(record, day)}
                         >
-                          {isBeforeJoining ? null : getStatusBadge(cellStatus, leaveStatus)}
+                          {isBlackedOut ? null : getStatusBadge(cellStatus, leaveStatus)}
                         </td>
                       )
                     })}

@@ -481,8 +481,12 @@ class UsersDB:
         # Don't automatically change login_enabled or otp_required - let admin control those
         if status == "inactive":
             update_fields["is_active"] = False  # This is crucial for session monitoring!
+            # Record the exact date the employee became inactive (for attendance blackout)
+            from datetime import date
+            update_fields["inactive_from_date"] = get_ist_now().date().isoformat()
         elif status == "active":
             update_fields["is_active"] = True  # Reactivate the user
+            update_fields["inactive_from_date"] = None  # Clear deactivation date on reactivation
             
         result = await self.collection.update_one(
             {"_id": ObjectId(employee_id)},
