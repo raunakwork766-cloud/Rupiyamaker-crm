@@ -35,6 +35,7 @@ backend.log
 
 # Build outputs
 dist/
+dist-dev/
 build/
 *.pyc
 __pycache__/
