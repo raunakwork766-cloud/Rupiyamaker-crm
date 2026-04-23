@@ -7937,19 +7937,46 @@ const LeadCRM = memo(function LeadCRM({ user, selectedLoanType: initialLoanType,
 
                                                     <td className="text-md font-semibold py-2 px-4 whitespace-nowrap text-white">
                                                         {(() => {
-                                                            // FOIR Eligibility = finalEligibility saved by ObligationSection ONLY
+                                                            // FOIR Eligibility = finalEligibility saved by ObligationSection
                                                             const ed = lead.dynamic_fields?.eligibility_details ?? lead.eligibility_details ?? null;
 
-                                                            // No eligibility_details object at all → obligation section never saved
-                                                            if (!ed || typeof ed !== 'object') return '-';
+                                                            // Helper: recalculate FOIR from saved CE inputs (ROI + tenure + monthly_emi_can_pay)
+                                                            // Used when finalEligibility was stored as 0 because ROI/tenure weren't filled at save time
+                                                            const recalcFoirFromCE = (lead) => {
+                                                                const ce = lead.dynamic_fields?.check_eligibility;
+                                                                if (!ce) return null;
+                                                                const roiVal = parseFloat(String(ce.roi || '').replace(/[^0-9.]/g, '')) || 0;
+                                                                const tenureVal = parseFloat(String(ce.tenure_months || '').replace(/[^0-9.]/g, '')) || 0;
+                                                                const emiCanPay = Number(ce.monthly_emi_can_pay || 0);
+                                                                if (roiVal > 0 && tenureVal > 0 && emiCanPay > 0) {
+                                                                    const monthlyRate = roiVal / 100 / 12;
+                                                                    const powerTerm = Math.pow(1 + monthlyRate, tenureVal);
+                                                                    const recalc = emiCanPay * (powerTerm - 1) / (monthlyRate * powerTerm);
+                                                                    if (recalc > 0) return Math.round(recalc);
+                                                                }
+                                                                return null;
+                                                            };
+
+                                                            // No eligibility_details at all → try CE recalc
+                                                            if (!ed || typeof ed !== 'object') {
+                                                                const recalc = recalcFoirFromCE(lead);
+                                                                return recalc ? formatCurrency(recalc) : '-';
+                                                            }
 
                                                             const fe = ed.finalEligibility ?? ed.final_eligibility ?? null;
 
-                                                            // finalEligibility field was never written
-                                                            if (fe === null || fe === undefined || fe === '') return '-';
+                                                            // finalEligibility never written → try CE recalc
+                                                            if (fe === null || fe === undefined || fe === '') {
+                                                                const recalc = recalcFoirFromCE(lead);
+                                                                return recalc ? formatCurrency(recalc) : '-';
+                                                            }
 
-                                                            // Saved as 0 (obligations exceed FOIR, or ROI/tenure not yet filled)
-                                                            if (fe === '0' || fe === 0) return '₹ 0';
+                                                            // Stored as 0 — ROI/tenure may not have been set at save time; try CE recalc
+                                                            if (fe === '0' || fe === 0) {
+                                                                const recalc = recalcFoirFromCE(lead);
+                                                                if (recalc) return formatCurrency(recalc);
+                                                                return '₹ 0'; // genuinely 0
+                                                            }
 
                                                             // Already formatted Indian number (e.g. "11,34,593")
                                                             if (typeof fe === 'string' && (fe.includes(',') || fe.includes('₹'))) {
@@ -8388,77 +8415,37 @@ const LeadCRM = memo(function LeadCRM({ user, selectedLoanType: initialLoanType,
                                                             {/* FOIR Eligibility column - exact copy from normal table */}
                                                             <td className="text-md font-semibold py-2 px-4 whitespace-nowrap text-white">
                                                                 {(() => {
-                                                                    // Extract FOIR eligibility from multiple possible paths - exact copy
-                                                                    const extractFoirEligibility = (lead) => {
-                                                                        const foirSources = [
-                                                                            // Primary path - FOIR eligibility (final calculated result) from ObligationSection
-                                                                            lead.dynamic_fields?.eligibility_details?.finalEligibility,
-                                                                            lead.eligibility_details?.finalEligibility,
-                                                                            lead.dynamic_fields?.obligation_data?.eligibility?.finalEligibility,
-                                                                            
-                                                                            // Alternative FOIR eligibility paths
-                                                                            lead.dynamic_fields?.eligibility_details?.foir_eligibility,
-                                                                            lead.eligibility_details?.foir_eligibility,
-                                                                            lead.dynamic_fields?.obligation_data?.eligibility?.foir_eligibility,
-                                                                            
-                                                                            // Check in check_eligibility section for calculated eligibility
-                                                                            lead.dynamic_fields?.check_eligibility?.foir_eligibility,
-                                                                            lead.dynamic_fields?.check_eligibility?.final_eligibility,
-                                                                            lead.dynamic_fields?.check_eligibility?.loan_eligibility,
-                                                                            
-                                                                            // Alternative naming for final eligibility
-                                                                            lead.dynamic_fields?.eligibility_details?.final_eligibility,
-                                                                            lead.eligibility_details?.final_eligibility,
-                                                                            lead.dynamic_fields?.obligation_data?.eligibility?.final_eligibility,
-                                                                            
-                                                                            // Loan eligibility amount (calculated result)
-                                                                            lead.dynamic_fields?.eligibility_details?.loanEligibility,
-                                                                            lead.eligibility_details?.loanEligibility,
-                                                                            lead.dynamic_fields?.obligation_data?.eligibility?.loanEligibility,
-                                                                            
-                                                                            // Alternative loan eligibility naming
-                                                                            lead.dynamic_fields?.eligibility_details?.loan_eligibility,
-                                                                            lead.eligibility_details?.loan_eligibility,
-                                                                            lead.dynamic_fields?.obligation_data?.eligibility?.loan_eligibility,
-                                                                            
-                                                                            // Calculated eligibility alternatives
-                                                                            lead.dynamic_fields?.obligation_data?.calculatedEligibility,
-                                                                            lead.dynamic_fields?.eligibility_details?.calculatedEligibility,
-                                                                            lead.calculated_eligibility,
-                                                                            
-                                                                            // Alternative paths for eligibility object
-                                                                            lead.eligibility?.finalEligibility,
-                                                                            lead.dynamic_fields?.eligibility?.finalEligibility,
-                                                                            lead.eligibility?.foir_eligibility,
-                                                                            lead.dynamic_fields?.eligibility?.foir_eligibility,
-                                                                        ];
-                                                                        
-                                                                        return foirSources.find(eligibility => eligibility !== undefined && eligibility !== null && eligibility !== '' && eligibility !== '0' && eligibility !== 0);
+                                                                    // Helper: recalculate FOIR from saved CE inputs
+                                                                    const recalcFoirFromCE = (lead) => {
+                                                                        const ce = lead.dynamic_fields?.check_eligibility;
+                                                                        if (!ce) return null;
+                                                                        const roiVal = parseFloat(String(ce.roi || '').replace(/[^0-9.]/g, '')) || 0;
+                                                                        const tenureVal = parseFloat(String(ce.tenure_months || '').replace(/[^0-9.]/g, '')) || 0;
+                                                                        const emiCanPay = Number(ce.monthly_emi_can_pay || 0);
+                                                                        if (roiVal > 0 && tenureVal > 0 && emiCanPay > 0) {
+                                                                            const monthlyRate = roiVal / 100 / 12;
+                                                                            const powerTerm = Math.pow(1 + monthlyRate, tenureVal);
+                                                                            const recalc = emiCanPay * (powerTerm - 1) / (monthlyRate * powerTerm);
+                                                                            if (recalc > 0) return Math.round(recalc);
+                                                                        }
+                                                                        return null;
                                                                     };
-                                                                    
-                                                                    let foirEligibilityValue = extractFoirEligibility(lead);
-                                                                    
-                                                                    // Handle object eligibility values
-                                                                    if (foirEligibilityValue && typeof foirEligibilityValue === 'object') {
-                                                                        if (foirEligibilityValue.finalEligibility !== undefined) {
-                                                                            foirEligibilityValue = foirEligibilityValue.finalEligibility;
-                                                                        } else if (foirEligibilityValue.amount !== undefined) {
-                                                                            foirEligibilityValue = foirEligibilityValue.amount;
-                                                                        } else if (foirEligibilityValue.eligibility !== undefined) {
-                                                                            foirEligibilityValue = foirEligibilityValue.eligibility;
-                                                                        } else {
-                                                                            foirEligibilityValue = null; // Unable to extract valid eligibility
+
+                                                                    const ed = lead.dynamic_fields?.eligibility_details ?? lead.eligibility_details ?? null;
+                                                                    if (ed && typeof ed === 'object') {
+                                                                        const fe = ed.finalEligibility ?? ed.final_eligibility ?? null;
+                                                                        if (fe !== null && fe !== undefined && fe !== '') {
+                                                                            if (fe === '0' || fe === 0) {
+                                                                                const recalc = recalcFoirFromCE(lead);
+                                                                                if (recalc) return formatCurrency(recalc);
+                                                                                return '₹ 0';
+                                                                            }
+                                                                            if (typeof fe === 'string' && (fe.includes(',') || fe.includes('₹'))) return fe;
+                                                                            return formatCurrency(fe);
                                                                         }
                                                                     }
-                                                                    
-                                                                    // Format and return the eligibility
-                                                                    if (foirEligibilityValue !== null && foirEligibilityValue !== undefined && foirEligibilityValue !== '') {
-                                                                        // If already formatted string with currency, return as is
-                                                                        if (typeof foirEligibilityValue === 'string' && (foirEligibilityValue.includes('₹') || foirEligibilityValue.includes(','))) {
-                                                                            return foirEligibilityValue;
-                                                                        }
-                                                                        return formatCurrency(foirEligibilityValue);
-                                                                    }
+                                                                    const recalc = recalcFoirFromCE(lead);
+                                                                    if (recalc) return formatCurrency(recalc);
                                                                     return "-";
                                                                 })()}
                                                             </td>
