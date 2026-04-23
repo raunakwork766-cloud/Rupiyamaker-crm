@@ -496,20 +496,21 @@ const AllEmployees = () => {
                 return true; // Show all if no specific tab
             });
 
-            // Sort employees: RM007 first, then others by employee_id
+            // Sort employees: RM007 first, then others by numeric part of employee_id ascending
             const sortedEmployees = filteredEmployees.sort((a, b) => {
-                // Check if either employee is RM007
-                const aIsRM007 = a.employee_id === '007' || a.employee_id === 7;
-                const bIsRM007 = b.employee_id === '007' || b.employee_id === 7;
+                const aId = String(a.employee_id || '');
+                const bId = String(b.employee_id || '');
 
-                // If one is RM007, put it first
+                // RM007 always first
+                const aIsRM007 = aId.toUpperCase() === 'RM007';
+                const bIsRM007 = bId.toUpperCase() === 'RM007';
                 if (aIsRM007 && !bIsRM007) return -1;
                 if (!aIsRM007 && bIsRM007) return 1;
 
-                // If both are RM007 or neither is RM007, sort by employee_id
-                const aId = parseInt(a.employee_id) || 0;
-                const bId = parseInt(b.employee_id) || 0;
-                return aId - bId;
+                // Extract numeric part (e.g. "RM012" → 12) for correct numeric ordering
+                const aNum = parseInt(aId.replace(/[^0-9]/g, ''), 10) || 0;
+                const bNum = parseInt(bId.replace(/[^0-9]/g, ''), 10) || 0;
+                return aNum - bNum;
             });
 
             // Always update counts from full dataset regardless of which tab is active
