@@ -998,7 +998,8 @@ async def update_employee_status(
     success = await users_db.update_employee_status(
         employee_id, 
         status_data.status, 
-        status_data.remark
+        status_data.remark,
+        status_data.inactive_from_date
     )
     
     if not success:

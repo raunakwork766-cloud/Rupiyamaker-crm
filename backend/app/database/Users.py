@@ -464,7 +464,7 @@ class UsersDB:
         
         return updates_count
         
-    async def update_employee_status(self, employee_id: str, status: str, remark: str = None) -> bool:
+    async def update_employee_status(self, employee_id: str, status: str, remark: str = None, inactive_from_date: str = None) -> bool:
         """Update the status of an employee (active/inactive) with minimal cascade logic"""
         if not ObjectId.is_valid(employee_id):
             return False
@@ -481,9 +481,11 @@ class UsersDB:
         # Don't automatically change login_enabled or otp_required - let admin control those
         if status == "inactive":
             update_fields["is_active"] = False  # This is crucial for session monitoring!
-            # Record the exact date the employee became inactive (for attendance blackout)
-            from datetime import date
-            update_fields["inactive_from_date"] = get_ist_now().date().isoformat()
+            # Use provided date if given, otherwise default to today (IST)
+            if inactive_from_date:
+                update_fields["inactive_from_date"] = inactive_from_date
+            else:
+                update_fields["inactive_from_date"] = get_ist_now().date().isoformat()
         elif status == "active":
             update_fields["is_active"] = True  # Reactivate the user
             update_fields["inactive_from_date"] = None  # Clear deactivation date on reactivation

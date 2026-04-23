@@ -258,6 +258,9 @@ const AllEmployees = () => {
     const [masterOTPState, setMasterOTPState] = useState({ checked: false, label: 'Off' });
     const [createdEmpPopup, setCreatedEmpPopup] = useState(null); // custom popup after employee creation
 
+    // Inactive date picker modal
+    const [inactiveDateModal, setInactiveDateModal] = useState({ visible: false, employee: null, date: '' });
+
     // Add department and role mapping states
     const [departments, setDepartments] = useState({});
     const [roles, setRoles] = useState({});
@@ -1097,9 +1100,24 @@ const AllEmployees = () => {
             return;
         }
 
+        // When marking inactive, ask for the date first
+        if (!isActive) {
+            const today = new Date();
+            const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+            setInactiveDateModal({ visible: true, employee, date: todayStr });
+            return;
+        }
+
+        await _doStatusUpdate(employee, isActive, null);
+    };
+
+    const _doStatusUpdate = async (employee, isActive, inactiveFromDate) => {
+        const newStatus = isActive ? 'active' : 'inactive';
+        const employeeId = employee._id;
+
         try {
             // Update status via API
-            await hrmsService.updateEmployeeStatus(employeeId, newStatus, `Status changed to ${newStatus}`);
+            await hrmsService.updateEmployeeStatus(employeeId, newStatus, `Status changed to ${newStatus}`, inactiveFromDate);
 
             // If status is set to inactive, cascade disable login and OTP
             if (!isActive) {
@@ -2291,6 +2309,59 @@ const AllEmployees = () => {
                             <span>{confirmModal.content}</span>
                         </div>
                     </Modal>
+
+                    {/* Inactive Date Picker Modal */}
+                    {inactiveDateModal.visible && (
+                        <div
+                            style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.7)',display:'flex',alignItems:'center',justifyContent:'center',zIndex:9999}}
+                            onClick={() => setInactiveDateModal({ visible: false, employee: null, date: '' })}
+                        >
+                            <div
+                                style={{background:'#1a1a1f',border:'1px solid #3a3a42',borderRadius:'12px',padding:'28px 32px',minWidth:'360px',boxShadow:'0 20px 60px rgba(0,0,0,0.8)'}}
+                                onClick={e => e.stopPropagation()}
+                            >
+                                <h3 style={{color:'#fff',fontSize:'16px',fontWeight:700,marginBottom:'6px'}}>Mark Employee as Inactive</h3>
+                                <p style={{color:'#a1a1aa',fontSize:'13px',marginBottom:'20px'}}>
+                                    {inactiveDateModal.employee
+                                        ? `${inactiveDateModal.employee.first_name || ''} ${inactiveDateModal.employee.last_name || ''}`.trim()
+                                        : ''}
+                                    &nbsp;— kis date se inactive hai?
+                                </p>
+                                <label style={{display:'block',color:'#a1a1aa',fontSize:'12px',marginBottom:'6px',fontWeight:600,textTransform:'uppercase',letterSpacing:'0.5px'}}>
+                                    Inactive From Date
+                                </label>
+                                <input
+                                    type="date"
+                                    value={inactiveDateModal.date}
+                                    onChange={e => setInactiveDateModal(prev => ({ ...prev, date: e.target.value }))}
+                                    style={{
+                                        width:'100%',padding:'10px 12px',borderRadius:'8px',border:'1px solid #3a3a42',
+                                        background:'#0d0d10',color:'#fff',fontSize:'14px',outline:'none',
+                                        colorScheme:'dark',marginBottom:'24px'
+                                    }}
+                                />
+                                <div style={{display:'flex',gap:'10px',justifyContent:'flex-end'}}>
+                                    <button
+                                        onClick={() => setInactiveDateModal({ visible: false, employee: null, date: '' })}
+                                        style={{padding:'9px 20px',borderRadius:'8px',border:'1px solid #3a3a42',background:'transparent',color:'#a1a1aa',fontSize:'13px',cursor:'pointer',fontWeight:600}}
+                                    >
+                                        Cancel
+                                    </button>
+                                    <button
+                                        disabled={!inactiveDateModal.date}
+                                        onClick={async () => {
+                                            const { employee, date } = inactiveDateModal;
+                                            setInactiveDateModal({ visible: false, employee: null, date: '' });
+                                            await _doStatusUpdate(employee, false, date);
+                                        }}
+                                        style={{padding:'9px 20px',borderRadius:'8px',border:'none',background: inactiveDateModal.date ? '#ef4444' : '#4b5563',color:'#fff',fontSize:'13px',cursor: inactiveDateModal.date ? 'pointer' : 'not-allowed',fontWeight:700}}
+                                    >
+                                        Confirm Inactive
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
 
                     {/* Filter Popup (matching LeadCRM style) */}
                     {showFilterPopup && (

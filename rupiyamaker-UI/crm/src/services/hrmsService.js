@@ -348,13 +348,14 @@ export const hrmsService = {
     },
 
     // Update employee status (active/inactive) using dedicated HRMS endpoint
-    updateEmployeeStatus: async (employeeId, status, remark) => {
+    updateEmployeeStatus: async (employeeId, status, remark, inactiveFromDate = null) => {
         const userId = getUserId();
         try {
-            const response = await api.patch(`/hrms/employees/${employeeId}/status?user_id=${userId}`, {
-                status,
-                remark
-            });
+            const body = { status, remark };
+            if (status === 'inactive' && inactiveFromDate) {
+                body.inactive_from_date = inactiveFromDate;
+            }
+            const response = await api.patch(`/hrms/employees/${employeeId}/status?user_id=${userId}`, body);
             return {
                 data: response,
                 success: true
