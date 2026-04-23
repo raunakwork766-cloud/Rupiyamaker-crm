@@ -72,7 +72,7 @@ const RoleSettings = () => {
         // Leads CRM - Section-wise permissions
         'Leads CRM': {
             'Create LEAD': ['show', 'duplicate_lead', 'bank_name_permission'],
-            'PL & ODD LEADS': ['show', 'view_team', 'view_all', 'view_data_code', 'view_mobile_number', 'view_alternate_number', 'status_change', 'rollback_login', 'download_obligation', 'delete'],
+            'PL & ODD LEADS': ['show', 'view_team', 'view_all', 'view_data_code', 'status_change', 'rollback_login', 'download_obligation', 'delete'],
         },
 
         'login': ['show', 'view_team', 'view_all', 'channel', 'edit', 'delete'],
@@ -98,7 +98,7 @@ const RoleSettings = () => {
             'feeds': { show:'Show in Sidebar', post:'Create Feed', delete:'Delete Feed' },
             'dashboard': { show:'Show in Sidebar' },
             'Leads CRM|Create LEAD': { show:'Show in Sidebar', duplicate_lead:'Duplicate Lead', bank_name_permission:'Bank Name Permission' },
-            'Leads CRM|PL & ODD LEADS': { show:'Show in Sidebar', view_team:'View Team', view_all:'View All', view_data_code:'View Data Code', view_mobile_number:'View Mobile Number', view_alternate_number:'View Alternate Number', status_change:'Status Change', rollback_login:'Roll Back Login', download_obligation:'Download Obligation', delete:'Delete' },
+            'Leads CRM|PL & ODD LEADS': { show:'Show in Sidebar', view_team:'View Team', view_all:'View All', view_data_code:'View Data Code', status_change:'Status Change', rollback_login:'Roll Back Login', download_obligation:'Download Obligation', delete:'Delete' },
             'login': { show:'Show in Sidebar', view_team:'View Team', view_all:'View All', channel:'View Channel Name', edit:'Edit Data', delete:'Delete' },
             'tasks': { show:'Show in Sidebar', view_team:'View Team', view_all:'View All', delete:'Delete' },
             'tickets': { show:'Show in Sidebar', view_team:'View Team', view_all:'View All', delete:'Delete' },
@@ -175,8 +175,6 @@ const RoleSettings = () => {
         'edit': '✏️ Edit Data - Can modify existing records',
         'duplicate_lead': '🔄 Duplicate Lead - Can handle duplicate lead actions',
         'view_data_code': '🏷️ View Data Code - Can see the Data Code field in lead details',
-        'view_mobile_number': '📱 View Mobile Number - Can see the Mobile Number field in lead details',
-        'view_alternate_number': '📲 View Alternate Number - Can see the Alternate Number field in lead details',
         'status_change': '🔄 Status Change - Can update record status',
         'rollback_login': '↩️ Roll Back Login - Can rollback login actions',
         'download_obligation': '📥 Download Obligation - Can download obligation documents',
@@ -916,7 +914,7 @@ const RoleSettings = () => {
                             if (a === 'all') return 'view_all';
                             return a;
                         });
-                        const otherActions = actions.filter(a => ['assign', 'download_obligation', 'status_update', 'view_data_code', 'view_mobile_number', 'view_alternate_number', 'delete'].includes(a));
+                        const otherActions = actions.filter(a => ['assign', 'download_obligation', 'status_update', 'view_data_code', 'delete'].includes(a));
                         
                         // If we have create-type actions, add to Create LEAD section
                         if (createActions.length > 0) {

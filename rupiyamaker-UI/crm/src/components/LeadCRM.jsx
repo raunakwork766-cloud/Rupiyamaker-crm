@@ -92,7 +92,6 @@ import {
     LazySection
 } from './LazyLeadSections';
 import { canApproveLeadReassignment } from '../utils/permissions';
-import RemarksPanel from './sections/Remarks';
 
 // API base URL - Use proxy in development
 const API_BASE_URL = '/api'; // Always use proxy
@@ -2691,6 +2690,18 @@ const LeadCRM = memo(function LeadCRM({ user, selectedLoanType: initialLoanType,
                     )
                 }
             ]
+        },
+        {
+            label: "REMARK",
+            getContent: (leadData, handleChangeFunc) => [
+                {
+                    content: (
+                        <div className="p-6 bg-white rounded-xl shadow-2xl text-[1rem] text-gray-100 border-l-4 border-cyan-500/60">
+                            <RemarkSection leadData={leadData} />
+                        </div>
+                    ),
+                },
+            ],
         },
         {
             label: "TASK",
@@ -6561,9 +6572,7 @@ const LeadCRM = memo(function LeadCRM({ user, selectedLoanType: initialLoanType,
         );
 
         return (
-            <div className="flex flex-col h-full overflow-hidden bg-black text-white text-base w-full" style={{fontSize:'90%'}}>
-                {/* Top section: Header + Tabs — full width */}
-                <div className="flex-shrink-0 w-full flex flex-col">
+            <div className={activeTab === 1 ? 'h-screen overflow-hidden bg-black text-white text-base flex flex-col' : 'min-h-screen bg-black text-white text-base'} style={activeTab === 1 ? {fontSize:'90%'} : {}}>
                 {/* Header */}
                 <div className="flex items-center gap-2 px-2 sm:px-3 lg:px-4 py-0.5 bg-black shadow-lg w-full">
                     <div className="flex items-center gap-1.5 flex-wrap">
@@ -6827,21 +6836,26 @@ const LeadCRM = memo(function LeadCRM({ user, selectedLoanType: initialLoanType,
                 )}
 
                 {/* Tabs */}
-                <div className="flex items-center gap-0 px-2 sm:px-4 bg-[#0a0f1a] border-b border-[#1e2a3a] w-full overflow-x-auto flex-shrink-0" style={{scrollbarWidth:'none', msOverflowStyle:'none'}}>
+                <div className="flex flex-wrap items-center gap-2 px-2 sm:px-4 lg:px-7 py-3 bg-black border-b border-[#232c3a] w-full overflow-x-auto">
                     {detailSections.map((tab, idx) => (
                         <button
                             key={tab.label}
                             className={`
-                                flex items-center gap-1.5 px-3 sm:px-5 py-2.5 text-xs sm:text-sm font-semibold transition-all whitespace-nowrap border-b-2 -mb-px
+                                flex items-center px-3 sm:px-4 lg:px-6 py-2 sm:py-3 rounded-3xl font-extrabold border shadow-md text-sm sm:text-base lg:text-[1.05rem] transition whitespace-nowrap
                                 ${idx === activeTab
-                                    ? "text-[#03B0F5] border-[#03B0F5] bg-[#03B0F5]/8"
-                                    : "text-gray-400 border-transparent hover:text-gray-200 hover:border-gray-500"
+                                    ? "bg-[#03B0F5] via-blue-700 to-cyan-500 text-white border-cyan-400 shadow-lg scale-105"
+                                    : "bg-white text-[#03B0F5] border-[#2D3C56] hover:bg-cyan-400/10 hover:text-cyan-400"
                                 }
                                 focus:outline-none
                             `}
-                            style={{ cursor: "pointer", letterSpacing: "0.03em" }}
+                            style={{
+                                boxShadow: idx === activeTab ? "0 4px 16px 0 #1cb5e080" : undefined,
+                                cursor: "pointer",
+                                letterSpacing: "0.01em"
+                            }}
                             onClick={() => {
                                 handleTabNavigation(idx);
+                                // Auto-open About section (index 0) only when switching to LEAD DETAILS tab (index 0)
                                 if (!hasUnsavedObligationChanges || idx === activeTab) {
                                     setOpenSections(idx === 0 ? [0] : []);
                                 }
@@ -6851,14 +6865,14 @@ const LeadCRM = memo(function LeadCRM({ user, selectedLoanType: initialLoanType,
                             {tab.label}
                         </button>
                     ))}
-                    {/* Download button */}
+                    {/* Download button — shown in tab row when OBLIGATION tab is active, only if user has download_obligation permission */}
                     {activeTab === 1 && obligationDownloadFn && canDownloadObligation() && (
                         <button
                             type="button"
                             onClick={obligationDownloadFn}
-                            className="ml-auto flex items-center gap-1.5 px-3 py-1.5 mr-2 rounded font-semibold text-xs border border-green-500 bg-green-600/20 text-green-400 hover:bg-green-600/40 transition whitespace-nowrap"
+                            className="ml-auto flex items-center gap-1.5 px-3 py-2 rounded-3xl font-extrabold text-sm border border-green-500 bg-green-600/20 text-green-400 hover:bg-green-600/40 transition whitespace-nowrap"
                         >
-                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                                 <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
                                 <polyline points="7,10 12,15 17,10"/>
                                 <line x1="12" y1="15" x2="12" y2="3"/>
@@ -6867,13 +6881,9 @@ const LeadCRM = memo(function LeadCRM({ user, selectedLoanType: initialLoanType,
                         </button>
                     )}
                 </div>
-                </div>{/* end top section */}
 
-                {/* Content Row: Left content + Right panel */}
-                <div className="flex flex-1 min-h-0 overflow-hidden">
-
-                {/* Section Content (left side) */}
-                <div className={activeTab === 1 ? 'flex-1 min-h-0 overflow-hidden' : 'flex-1 overflow-y-auto px-2 sm:px-4 lg:px-6 py-6'}>
+                {/* Section Content */}
+                <div className={activeTab === 1 ? 'flex-1 min-h-0 w-full overflow-hidden' : 'px-2 sm:px-4 lg:px-6 py-6 w-full'}>
                     <div className={activeTab === 1 ? 'w-full h-full' : 'w-full'}>
                         {sectionData.map((section, idx) => (
                             <div key={idx} className={activeTab === 1 ? 'w-full h-full' : 'mb-6 w-full'}>
@@ -6882,16 +6892,13 @@ const LeadCRM = memo(function LeadCRM({ user, selectedLoanType: initialLoanType,
                                         {activeTab === 0 ? (
                                             // Collapsible dropdown for LEAD DETAILS tab only
                                             <button
-                                                className="w-full px-3 sm:px-4 py-2 font-bold text-sm text-[#03B0F5] bg-[#0d1520] hover:bg-[#0f1a28] border border-[#1e3a5a] rounded-lg flex items-center justify-between transition-colors duration-150 shadow-sm"
+                                                className="w-full px-2 sm:px-5 py-3 font-extrabold text-base sm:text-lg lg:text-[1.05rem] text-[#03B0F5] bg-gray-200 hover:bg-gray-300 border-2 border-gray-400 rounded-lg flex items-center justify-between transition-colors duration-200 shadow-md"
                                                 onClick={() => {
                                                     // Use helper function to check for unsaved changes
                                                     handleSectionNavigation(idx);
                                                 }}
                                             >
-                                                <span className="flex items-center gap-2">
-                                                    <span className="w-1 h-4 bg-[#03B0F5] rounded-full inline-block"></span>
-                                                    {section.label}
-                                                </span>
+                                                <span>{section.label}</span>
                                                 <svg
                                                     className={`w-5 h-5 transform transition-transform duration-200 ${openSections.includes(idx) ? 'rotate-180' : ''}`}
                                                     fill="none"
@@ -6926,28 +6933,6 @@ const LeadCRM = memo(function LeadCRM({ user, selectedLoanType: initialLoanType,
                         ))}
                     </div>
                 </div>
-
-                {/* Activity & Comments - Persistent Right Panel (hidden for OBLIGATION tab) */}
-                {activeTab !== 1 && (
-                    <div className="w-80 flex-shrink-0 flex flex-col bg-white border-l border-gray-200 overflow-hidden">
-                        <div className="px-3 py-1.5 border-b border-gray-100 bg-gray-50 flex items-center justify-between flex-shrink-0">
-                            <div className="flex items-center gap-2">
-                                <svg className="w-4 h-4 text-[#03B0F5]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" /></svg>
-                                <h3 className="text-xs font-bold text-gray-700 uppercase tracking-wide">Remark</h3>
-                            </div>
-                            <span className="text-gray-400 text-lg leading-none select-none">···</span>
-                        </div>
-                        <div className="flex-1 min-h-0 overflow-hidden">
-                            <RemarksPanel
-                                leadId={selectedLead._id}
-                                userId={localStorage.getItem('userId') || ''}
-                                canEdit={true}
-                                isLoginLead={false}
-                            />
-                        </div>
-                    </div>
-                )}
-                </div>{/* end content row */}
 
                 {/* Unsaved Changes Modal */}
                 {showUnsavedChangesModal && (

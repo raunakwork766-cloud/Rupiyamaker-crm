@@ -1,12 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import FaceRegistration from './FaceRegistration';
+import PaidLeaveManagement from './PaidLeaveManagement';
 
 // API base URL - Use proxy in development
 const API_BASE_URL = '/api'; // Always use API proxy
 
 const AttendanceSettingsTab = ({ userId }) => {
-  const [subTab, setSubTab] = React.useState('settings'); // 'settings', 'face-registration'
+  const [subTab, setSubTab] = React.useState('settings'); // 'settings', 'face-registration', 'leave-management'
   const [settings, setSettings] = useState({
     // Shift Timing Settings (New)
     shift_start_time: '10:00',
@@ -306,8 +307,9 @@ const AttendanceSettingsTab = ({ userId }) => {
       {/* ── Sub-Tab Navigation ── */}
       <div className="flex rounded-xl overflow-hidden border border-gray-200 shadow-sm mb-5">
         {[
-          { id: 'settings',          label: 'Attendance Settings', icon: '⚙️' },
-          { id: 'face-registration', label: 'Face Registration',   icon: '📷' },
+          { id: 'settings',         label: 'Attendance Settings', icon: '⚙️' },
+          { id: 'face-registration', label: 'Face Registration',  icon: '📷' },
+          { id: 'leave-management',  label: 'Leave Management',   icon: '📋' },
         ].map(t => (
           <button
             key={t.id}
@@ -324,6 +326,7 @@ const AttendanceSettingsTab = ({ userId }) => {
       </div>
 
       {subTab === 'face-registration' && <FaceRegistration />}
+      {subTab === 'leave-management'  && <PaidLeaveManagement />}
 
       {subTab === 'settings' && (
         <div className="space-y-5">
@@ -359,196 +362,148 @@ const AttendanceSettingsTab = ({ userId }) => {
             </div>
           </div>
 
-          {/* ═══════════════════════════════════════════════════════════
-               SECTION 1 — SHIFT TIMING
-          ═══════════════════════════════════════════════════════════ */}
+          {/* ── ROW 1: Shift Timing (full width) ── */}
           <SectionCard
-            icon="🕐"
-            title="Shift Timing"
-            subtitle="Define official work hours and the latest acceptable check-in time"
+            icon={<i className="fa-regular fa-clock text-sm"></i>}
+            title="Shift Timing Settings (Primary)"
+            subtitle="Main shift timing — overrides check-in/check-out times"
             color="blue"
           >
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-              <TimeInput label="Shift Start" hint="official start" field="shift_start_time" value={settings.shift_start_time} />
-              <TimeInput label="Shift End"   hint="official end"   field="shift_end_time"   value={settings.shift_end_time} />
+              <TimeInput label="Shift Start Time" hint="e.g. 10:00 AM" field="shift_start_time" value={settings.shift_start_time} />
+              <TimeInput label="Shift End Time"   hint="e.g. 7:00 PM"  field="shift_end_time"   value={settings.shift_end_time} />
               <div>
-                <FieldLabel hint="punch-in after this = Half Day">Reporting Deadline ⚠️</FieldLabel>
+                <FieldLabel hint="After this = Half Day">Reporting Deadline</FieldLabel>
                 <input
                   type="time"
                   value={formatTime(settings.reporting_deadline)}
                   onChange={e => handleTimeChange('reporting_deadline', e.target.value)}
-                  className="w-full border-2 border-amber-400 rounded-lg px-3 py-2 text-sm font-mono text-gray-800 focus:outline-none focus:border-amber-500 bg-amber-50"
+                  className="w-full border-2 border-yellow-400 rounded-lg px-3 py-2 text-sm font-mono text-gray-800 focus:outline-none focus:border-yellow-500 bg-yellow-50"
                 />
               </div>
             </div>
-            <div className="mt-4 grid grid-cols-1 sm:grid-cols-3 gap-2">
-              <div className="flex items-center gap-2 bg-green-50 border border-green-200 rounded-lg px-3 py-2">
-                <span className="text-green-600 text-base">✅</span>
-                <div>
-                  <div className="text-[10px] font-bold text-green-700 uppercase">Full Day</div>
-                  <div className="text-[11px] text-green-800">Check-in before <strong>{formatTime(settings.reporting_deadline)}</strong></div>
-                </div>
-              </div>
-              <div className="flex items-center gap-2 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
-                <span className="text-amber-600 text-base">🕐</span>
-                <div>
-                  <div className="text-[10px] font-bold text-amber-700 uppercase">Half Day</div>
-                  <div className="text-[11px] text-amber-800">Check-in after <strong>{formatTime(settings.reporting_deadline)}</strong></div>
-                </div>
-              </div>
-              <div className="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2">
-                <span className="text-gray-500 text-base">🔒</span>
-                <div>
-                  <div className="text-[10px] font-bold text-gray-600 uppercase">Permissions</div>
-                  <div className="text-[11px] text-gray-700 flex gap-2">
-                    <Toggle label="Early In" field="allow_early_check_in"  value={settings.allow_early_check_in}  color="green" />
-                  </div>
-                </div>
-              </div>
+            <div className="mt-3">
+              <InfoBox type="info">
+                <strong>Rule:</strong> Punch In before <strong>{formatTime(settings.reporting_deadline)}</strong> = Present &nbsp;|&nbsp; Punch In after <strong>{formatTime(settings.reporting_deadline)}</strong> = Half Day
+              </InfoBox>
             </div>
           </SectionCard>
 
-          {/* ═══════════════════════════════════════════════════════════
-               SECTION 2 — WORKING HOURS
-          ═══════════════════════════════════════════════════════════ */}
+          {/* ── ROW 2: Working Hours + Leave Allotment ── */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+            <SectionCard
+              icon={<i className="fa-solid fa-timer text-sm"></i>}
+              title="Working Hours (Main Calculation)"
+              subtitle="These hours determine final attendance status"
+              color="indigo"
+            >
+              <div className="space-y-3">
+                <NumberInput label="Full Day Working Hours" hint="hours" field="full_day_working_hours" value={settings.full_day_working_hours} min={1} max={24} step={0.5} />
+                <NumberInput label="Half Day Minimum Hours"  hint="hours" field="half_day_minimum_working_hours" value={settings.half_day_minimum_working_hours} min={1} max={12} step={0.5} />
+                <InfoBox type="warning">
+                  ≥ <strong>{settings.full_day_working_hours} hrs</strong> = Full Day (1) &nbsp;•&nbsp;
+                  ≥ <strong>{settings.half_day_minimum_working_hours} hrs</strong> = Half Day (0.5) &nbsp;•&nbsp;
+                  Below = Zero (0)
+                </InfoBox>
+              </div>
+            </SectionCard>
+
+            <SectionCard
+              icon="📋"
+              title="Monthly Leave Allotment per Employee"
+              subtitle="EL & PL days credited each month per employee"
+              color="teal"
+            >
+              <div className="space-y-3">
+                <NumberInput label="EL per Month (Earned Leave)" hint="days" field="default_earned_leave_monthly" value={settings.default_earned_leave_monthly} min={0} max={5} step={0.5} />
+                <NumberInput label="PL per Month (Paid Leave)"   hint="days" field="default_paid_leave_monthly"  value={settings.default_paid_leave_monthly}  min={0} max={5} step={0.5} />
+                <InfoBox type="info">
+                  Every employee gets <strong>{Math.round(settings.default_earned_leave_monthly ?? 1.5)} EL</strong> and <strong>{settings.default_paid_leave_monthly ?? 1} PL</strong> per month.
+                </InfoBox>
+              </div>
+            </SectionCard>
+          </div>
+
+          {/* ── ROW 3: Grace Period ── */}
           <SectionCard
             icon="⏱️"
-            title="Working Hours Thresholds"
-            subtitle="Minimum hours required to count as Full Day or Half Day"
-            color="indigo"
-          >
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div>
-                <NumberInput label="Full Day — Minimum Hours" hint="e.g. 9 hrs" field="full_day_working_hours" value={settings.full_day_working_hours} min={1} max={24} step={0.5} />
-              </div>
-              <div>
-                <NumberInput label="Half Day — Minimum Hours" hint="e.g. 5 hrs" field="half_day_minimum_working_hours" value={settings.half_day_minimum_working_hours} min={1} max={12} step={0.5} />
-              </div>
-            </div>
-            <div className="mt-4 flex flex-wrap gap-2">
-              <div className="flex items-center gap-2 bg-blue-50 border border-blue-200 rounded-lg px-3 py-2 text-[11px] font-semibold text-blue-800">
-                ≥ {settings.full_day_working_hours}h → <span className="text-green-700 ml-1">Full Day (1.0)</span>
-              </div>
-              <div className="flex items-center gap-2 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 text-[11px] font-semibold text-amber-800">
-                ≥ {settings.half_day_minimum_working_hours}h → <span className="text-amber-700 ml-1">Half Day (0.5)</span>
-              </div>
-              <div className="flex items-center gap-2 bg-red-50 border border-red-200 rounded-lg px-3 py-2 text-[11px] font-semibold text-red-800">
-                Below {settings.half_day_minimum_working_hours}h → <span className="text-red-700 ml-1">Zero (0)</span>
-              </div>
-            </div>
-          </SectionCard>
-
-          {/* ═══════════════════════════════════════════════════════════
-               SECTION 3 — GRACE PERIOD + AUTO GRACE (merged)
-          ═══════════════════════════════════════════════════════════ */}
-          <SectionCard
-            icon="🎖️"
-            title="Grace Period & Auto Grace"
-            subtitle="Allow late arrival within a grace window — earn extra graces based on attendance performance"
+            title="Grace Period Configuration"
+            subtitle="Allow limited late arrival without penalty"
             color="yellow"
           >
-            {/* Grace Period row */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
-              <div>
-                <NumberInput label="Grace Window" hint="minutes per use" field="grace_period_minutes" value={settings.grace_period_minutes} min={0} max={60} step={5} />
-                <p className="text-[10px] text-gray-500 mt-1">
-                  With grace: check-in deadline extends to{' '}
-                  <strong className="text-gray-700">
-                    {(() => {
-                      const [h, m] = (settings.reporting_deadline || '10:15').split(':').map(Number);
-                      const total = h * 60 + m + (settings.grace_period_minutes || 0);
-                      return `${String(Math.floor(total / 60)).padStart(2,'0')}:${String(total % 60).padStart(2,'0')}`;
-                    })()}
-                  </strong>
-                </p>
-              </div>
-              <div>
-                <NumberInput label="Manual Grace Limit" hint="uses per month" field="grace_usage_limit" value={settings.grace_usage_limit} min={0} max={10} step={1} />
-                <p className="text-[10px] text-gray-500 mt-1">Employee can manually use grace up to this many times per month</p>
-              </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <NumberInput label="Grace Period" hint="minutes" field="grace_period_minutes" value={settings.grace_period_minutes} min={0} max={60} step={5} />
+              <NumberInput label="Grace Usage Limit" hint="per month" field="grace_usage_limit" value={settings.grace_usage_limit} min={0} max={10} step={1} />
             </div>
-
-            <div className="border-t border-dashed border-gray-200 pt-4">
-              <div className="flex items-center justify-between mb-3">
-                <div>
-                  <p className="text-xs font-bold text-gray-700">Auto Grace (Earned by Attendance)</p>
-                  <p className="text-[10px] text-gray-500">System auto-awards grace marks when employee reaches present-day thresholds</p>
-                </div>
-                <Toggle
-                  label={settings.auto_grace_enabled ? 'ON' : 'OFF'}
-                  field="auto_grace_enabled"
-                  value={settings.auto_grace_enabled}
-                  color="green"
-                />
-              </div>
-
-              <div className="mb-3">
-                <NumberInput
-                  label="Max Auto Graces per Month"
-                  hint="total graces system can award"
-                  field="auto_grace_monthly_limit"
-                  value={settings.auto_grace_monthly_limit}
-                  min={1} max={10}
-                  disabled={!settings.auto_grace_enabled}
-                />
-              </div>
-
-              {/* Dynamic threshold inputs based on auto_grace_monthly_limit */}
-              <div className={`grid gap-3 ${!settings.auto_grace_enabled ? 'opacity-40 pointer-events-none' : ''}`}
-                style={{ gridTemplateColumns: `repeat(${Math.min(settings.auto_grace_monthly_limit ?? 3, 5)}, minmax(0,1fr))` }}>
-                {Array.from({ length: settings.auto_grace_monthly_limit ?? 3 }, (_, i) => {
-                  const num = i + 1;
-                  const medals = ['🥉','🥈','🥇','🏅','⭐','🌟','💫','🎯','🔥','👑'];
-                  const field = `auto_grace_threshold_${num}`;
-                  const defaultVal = 12 + (num * 4);
-                  return (
-                    <div key={num} className="bg-gray-50 rounded-lg p-2.5 border border-gray-200">
-                      <div className="text-[10px] font-bold text-gray-500 mb-1.5 flex items-center gap-1">
-                        <span>{medals[i] || '🎖️'}</span> Grace {num}
-                      </div>
-                      <div className="text-[9px] text-gray-400 mb-1.5">Present days needed</div>
-                      <input
-                        type="number"
-                        value={settings[field] ?? defaultVal}
-                        onChange={e => handleSettingChange(field, parseInt(e.target.value) || defaultVal)}
-                        min={1} max={31}
-                        className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm font-bold text-center text-gray-800 focus:outline-none focus:border-yellow-400 bg-white"
-                      />
-                    </div>
-                  );
-                })}
-              </div>
-
-              {settings.auto_grace_enabled && (
-                <div className="mt-3">
-                  <InfoBox type="success">
-                    {Array.from({ length: settings.auto_grace_monthly_limit ?? 3 }, (_, i) => {
-                      const num = i + 1;
-                      const field = `auto_grace_threshold_${num}`;
-                      const defaultVal = 12 + (num * 4);
-                      return `Grace ${num} after ${settings[field] ?? defaultVal} days`;
-                    }).join(' → ')}. Max <strong>{settings.auto_grace_monthly_limit}</strong>/month, auto-applied on check-out.
-                  </InfoBox>
-                </div>
-              )}
+            <div className="mt-3">
+              <InfoBox type="info">
+                Deadline {formatTime(settings.reporting_deadline)} + {settings.grace_period_minutes} min grace = check-in by <strong>{(() => {
+                  const [h, m] = (settings.reporting_deadline || '10:15').split(':').map(Number);
+                  const total = h * 60 + m + (settings.grace_period_minutes || 0);
+                  return `${String(Math.floor(total / 60)).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}`;
+                })()}</strong> = Present (if grace applies)
+              </InfoBox>
             </div>
           </SectionCard>
 
-          {/* ═══════════════════════════════════════════════════════════
-               SECTION 4 — LEAVE & ABSCONDING RULES + SUNDAY RULES (side by side)
-          ═══════════════════════════════════════════════════════════ */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+          {/* ── ROW 4: Auto Grace ── */}
+          <SectionCard
+            icon="🎖️"
+            title="Auto Grace — Threshold Based"
+            subtitle="Grace marks earned automatically based on monthly attendance"
+            color="green"
+          >
+            <div className="space-y-4">
+              <Toggle
+                label={settings.auto_grace_enabled ? '✅ Auto Grace Enabled' : '⛔ Auto Grace Disabled'}
+                field="auto_grace_enabled"
+                value={settings.auto_grace_enabled}
+                color="green"
+              />
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                <NumberInput label="Max Graces / Month" field="auto_grace_monthly_limit" value={settings.auto_grace_monthly_limit} min={1} max={10} disabled={!settings.auto_grace_enabled} />
+                <div>
+                  <FieldLabel hint="unlock 1st grace">🥉 Grace 1 — Present Days</FieldLabel>
+                  <input type="number" value={settings.auto_grace_threshold_1} onChange={e => handleSettingChange('auto_grace_threshold_1', parseInt(e.target.value))} min={1} max={31} disabled={!settings.auto_grace_enabled}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-800 focus:outline-none focus:border-green-400 bg-white disabled:bg-gray-50 disabled:text-gray-400" />
+                </div>
+                <div>
+                  <FieldLabel hint="unlock 2nd grace">🥈 Grace 2 — Present Days</FieldLabel>
+                  <input type="number" value={settings.auto_grace_threshold_2} onChange={e => handleSettingChange('auto_grace_threshold_2', parseInt(e.target.value))} min={1} max={31} disabled={!settings.auto_grace_enabled}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-800 focus:outline-none focus:border-green-400 bg-white disabled:bg-gray-50 disabled:text-gray-400" />
+                </div>
+                <div>
+                  <FieldLabel hint="unlock 3rd grace">🥇 Grace 3 — Present Days</FieldLabel>
+                  <input type="number" value={settings.auto_grace_threshold_3} onChange={e => handleSettingChange('auto_grace_threshold_3', parseInt(e.target.value))} min={1} max={31} disabled={!settings.auto_grace_enabled}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-800 focus:outline-none focus:border-green-400 bg-white disabled:bg-gray-50 disabled:text-gray-400" />
+                </div>
+              </div>
+              <InfoBox type="success">
+                🥉 After <strong>{settings.auto_grace_threshold_1} days</strong> → Grace 1 &nbsp;|&nbsp;
+                🥈 After <strong>{settings.auto_grace_threshold_2} days</strong> → Grace 2 &nbsp;|&nbsp;
+                🥇 After <strong>{settings.auto_grace_threshold_3} days</strong> → Grace 3 &nbsp;|&nbsp;
+                Max <strong>{settings.auto_grace_monthly_limit}</strong> graces/month. All auto-applied on check-out.
+              </InfoBox>
+            </div>
+          </SectionCard>
 
-            <SectionCard icon="🚫" title="Absconding Rules" subtitle="Auto-conversion of leave to absconding when unapproved" color="red">
+          {/* ── ROW 5: Leave Rules + Sunday Rules ── */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+            <SectionCard icon="🚫" title="Leave & Absconding Rules" subtitle="Auto-conversion and penalty settings" color="red">
               <div className="space-y-3">
-                <NumberInput label="Auto-Convert to Absconding After" hint="consecutive unapproved days" field="pending_leave_auto_convert_days" value={settings.pending_leave_auto_convert_days} min={1} max={7} />
+                <NumberInput label="Pending Leave Auto-Convert" hint="days" field="pending_leave_auto_convert_days" value={settings.pending_leave_auto_convert_days} min={1} max={7} />
+                <div>
+                  <FieldLabel hint="fixed at -1">Absconding Penalty</FieldLabel>
+                  <input type="number" value={settings.absconding_penalty} disabled
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-400 bg-gray-50 cursor-not-allowed" />
+                </div>
                 <InfoBox type="error">
-                  Leave pending &gt; <strong>{settings.pending_leave_auto_convert_days} days</strong> without approval → auto-marked <strong>Absconding (−1)</strong>. Manager can revert.
+                  Leave not approved for <strong>{settings.pending_leave_auto_convert_days} days</strong> → Auto Absconding (-1). Manager can still approve to convert back.
                 </InfoBox>
-                <div className="pt-1 space-y-3">
+                <div className="border-t border-gray-100 pt-3 space-y-3">
                   <Toggle
                     label="Consecutive Absent → Absconding"
-                    desc="Mon–Sat consecutive absents without leave auto-convert to Absconding"
+                    desc="Auto-convert consecutive absent days (Mon–Sat) without approved leave to Absconding"
                     field="enable_consecutive_absent_absconding"
                     value={settings.enable_consecutive_absent_absconding ?? true}
                     color="red"
@@ -561,56 +516,82 @@ const AttendanceSettingsTab = ({ userId }) => {
                     min={2} max={7}
                     disabled={!settings.enable_consecutive_absent_absconding}
                   />
+                  <InfoBox type="warning">
+                    <strong>{settings.consecutive_absent_absconding_days ?? 3}+ consecutive absent days</strong> (Mon–Sat) without approved leave → auto-marked as <strong>Absconding</strong> by scheduler.
+                  </InfoBox>
                 </div>
               </div>
             </SectionCard>
 
-            <SectionCard icon="📅" title="Sunday & Sandwich Rules" subtitle="Penalty rules when Sundays border absconding days" color="purple">
-              <div className="space-y-3">
+            <SectionCard icon="📅" title="Sunday & Sandwich Rules" subtitle="Weekend penalty rules for absconding" color="purple">
+              <div className="space-y-4">
                 <Toggle
                   label="Sunday Sandwich Rule"
-                  desc="Saturday/Monday absconding → Sunday becomes Zero automatically"
+                  desc="Saturday/Monday absconding → Sunday automatically becomes Zero"
                   field="enable_sunday_sandwich_rule"
                   value={settings.enable_sunday_sandwich_rule}
                   color="blue"
                 />
                 <Toggle
                   label="Adjacent Absconding Rule"
-                  desc="Sat abscond → next Sun = Absent | Mon abscond → prev Sun = Absent"
+                  desc="Sat Abscond → next Sunday = Absent | Mon Abscond → prev Sunday = Absent"
                   field="enable_adjacent_absconding_rule"
                   value={settings.enable_adjacent_absconding_rule ?? true}
                   color="yellow"
                 />
                 <NumberInput
-                  label="Min Working Days to Keep Sunday Paid"
-                  hint="below this → Sunday = 0"
+                  label="Minimum Working Days for Sunday"
+                  hint="if less → Sunday = 0"
                   field="minimum_working_days_for_sunday"
                   value={settings.minimum_working_days_for_sunday}
                   min={3} max={6}
                   disabled={!settings.enable_sunday_sandwich_rule}
                 />
                 <InfoBox type="warning">
-                  Working days &lt; <strong>{settings.minimum_working_days_for_sunday}</strong> in a week → Sunday = <strong>Zero</strong>
+                  Working days &lt; <strong>{settings.minimum_working_days_for_sunday}</strong> in a week → Sunday = <strong>Zero (0)</strong>. Penalty applied once per Sunday.
                 </InfoBox>
               </div>
             </SectionCard>
           </div>
 
-          {/* ═══════════════════════════════════════════════════════════
-               SECTION 5 — WEEKEND + SECURITY + GEOFENCE
-          ═══════════════════════════════════════════════════════════ */}
+          {/* ── ROW 6: Time Config + Working Hours (Legacy) ── */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+            <SectionCard icon={<i className="fa-regular fa-clock text-sm"></i>} title="Time Configuration (Legacy)" subtitle="Standard check-in/check-out times (overridden by Shift Timing above)" color="blue">
+              <div className="grid grid-cols-2 gap-3">
+                <TimeInput label="Check-in Time"              field="check_in_time"            value={settings.check_in_time} />
+                <TimeInput label="Check-out Time"             field="check_out_time"           value={settings.check_out_time} />
+                <TimeInput label="Late Arrival Threshold"     hint="after = half day" field="late_arrival_threshold"  value={settings.late_arrival_threshold} />
+                <TimeInput label="Early Departure Threshold"  hint="before = half day" field="early_departure_threshold" value={settings.early_departure_threshold} />
+              </div>
+            </SectionCard>
 
-            <SectionCard icon="📆" title="Weekend Days" subtitle="Select which days are non-working weekends" color="teal">
-              <div className="grid grid-cols-2 gap-2">
+            <SectionCard icon="🕐" title="Working Hours Configuration (Legacy)" subtitle="Legacy minimum hours per attendance status" color="indigo">
+              <div className="grid grid-cols-2 gap-3">
+                <NumberInput label="Total Working Hours"     hint="hrs/day" field="total_working_hours"           value={settings.total_working_hours}           min={1} max={24} step={0.5} />
+                <NumberInput label="Min Hours Full Day"      hint="hours"   field="minimum_working_hours_full_day" value={settings.minimum_working_hours_full_day} min={1} max={24} step={0.5} />
+                <NumberInput label="Min Hours Half Day"      hint="hours"   field="minimum_working_hours_half_day" value={settings.minimum_working_hours_half_day} min={1} max={12} step={0.5} />
+                <NumberInput label="Overtime Threshold"      hint="hours"   field="overtime_threshold"             value={settings.overtime_threshold}             min={1} max={24} step={0.5} />
+              </div>
+            </SectionCard>
+          </div>
+
+          {/* ── ROW 7: Weekend + Permissions + Security + Geofence ── */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+            <SectionCard icon="📆" title="Weekend Configuration" subtitle="Days considered as non-working weekends" color="teal">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                 {weekDays.map(d => (
-                  <label key={d.value} className={`flex items-center gap-2 px-3 py-2.5 rounded-lg border cursor-pointer transition text-sm font-semibold ${
+                  <label key={d.value} className={`flex items-center gap-2 px-3 py-2 rounded-lg border cursor-pointer transition text-sm font-medium ${
                     settings.weekend_days.includes(d.value)
                       ? 'bg-blue-50 border-blue-400 text-blue-700'
-                      : 'bg-white border-gray-200 text-gray-500 hover:border-gray-400'
+                      : 'bg-white border-gray-200 text-gray-600 hover:border-gray-400'
                   }`}>
-                    <input type="checkbox" checked={settings.weekend_days.includes(d.value)} onChange={() => handleWeekendDayChange(d.value)} className="hidden" />
-                    <div className={`w-4 h-4 rounded flex items-center justify-center border shrink-0 ${settings.weekend_days.includes(d.value) ? 'bg-blue-500 border-blue-500' : 'border-gray-300'}`}>
+                    <input
+                      type="checkbox"
+                      checked={settings.weekend_days.includes(d.value)}
+                      onChange={() => handleWeekendDayChange(d.value)}
+                      className="hidden"
+                    />
+                    <div className={`w-4 h-4 rounded flex items-center justify-center border ${settings.weekend_days.includes(d.value) ? 'bg-blue-500 border-blue-500' : 'border-gray-300'}`}>
                       {settings.weekend_days.includes(d.value) && <i className="fa-solid fa-check text-white text-[8px]"></i>}
                     </div>
                     {d.label}
@@ -619,37 +600,39 @@ const AttendanceSettingsTab = ({ userId }) => {
               </div>
             </SectionCard>
 
-            <div className="space-y-4">
-              <SectionCard icon="🔐" title="Check-in Requirements" subtitle="Control what employees must provide when checking in" color="indigo">
+            <div className="space-y-5">
+              <SectionCard icon="🔐" title="Check-in/out Permissions" subtitle="Control early/late check-in and check-out" color="green">
                 <div className="space-y-3">
-                  <Toggle label="Allow Late Check-out"   desc="Employees can check out after scheduled end time" field="allow_late_check_out"  value={settings.allow_late_check_out}   color="green" />
-                  <Toggle label="Photo Required"         desc="Selfie required at check-in/check-out"           field="require_photo"        value={settings.require_photo}        color="blue" />
-                  <Toggle label="Geolocation Required"   desc="GPS location required at check-in/check-out"      field="require_geolocation"  value={settings.require_geolocation}  color="blue" />
-                  <Toggle label="Enable Geofence"        desc="Restrict check-in to office radius only"          field="geofence_enabled"     value={settings.geofence_enabled}     color="blue" />
+                  <Toggle label="Allow Early Check-in"  desc="Employees can check in before scheduled time" field="allow_early_check_in"  value={settings.allow_early_check_in}  color="green" />
+                  <Toggle label="Allow Late Check-out"  desc="Employees can check out after scheduled time" field="allow_late_check_out"  value={settings.allow_late_check_out}   color="green" />
+                </div>
+              </SectionCard>
+
+              <SectionCard icon={<i className="fa-solid fa-camera text-sm"></i>} title="Requirements & Security" subtitle="Mandatory fields and validations" color="indigo">
+                <div className="space-y-3">
+                  <Toggle label="Photo Required"          desc="Selfie required for check-in/check-out"          field="require_photo"       value={settings.require_photo}       color="blue" />
+                  <Toggle label="Geolocation Required"    desc="GPS location required for check-in/check-out"     field="require_geolocation" value={settings.require_geolocation} color="blue" />
+                  <Toggle label="Enable Geofence"         desc="Restrict check-in to office radius"               field="geofence_enabled"    value={settings.geofence_enabled}    color="blue" />
                 </div>
               </SectionCard>
             </div>
           </div>
 
-          {/* ═══════════════════════════════════════════════════════════
-               SECTION 6 — GEOFENCE (conditional)
-          ═══════════════════════════════════════════════════════════ */}
+          {/* ── ROW 8: Geofence ── */}
           {settings.geofence_enabled && (
-            <SectionCard icon="📍" title="Geofence Configuration" subtitle="Set office location and maximum allowed distance for check-in" color="teal">
+            <SectionCard icon={<i className="fa-solid fa-location-dot text-sm"></i>} title="Geofence Configuration" subtitle="Set office location and allowed radius" color="teal">
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <div>
                   <FieldLabel>Office Latitude</FieldLabel>
                   <input type="number" step="any" value={settings.office_latitude || ''} onChange={e => handleSettingChange('office_latitude', parseFloat(e.target.value) || null)}
-                    placeholder="e.g. 28.6139"
                     className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-800 focus:outline-none focus:border-teal-400 bg-white" />
                 </div>
                 <div>
                   <FieldLabel>Office Longitude</FieldLabel>
                   <input type="number" step="any" value={settings.office_longitude || ''} onChange={e => handleSettingChange('office_longitude', parseFloat(e.target.value) || null)}
-                    placeholder="e.g. 77.2090"
                     className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-800 focus:outline-none focus:border-teal-400 bg-white" />
                 </div>
-                <NumberInput label="Allowed Radius" hint="meters" field="geofence_radius" value={settings.geofence_radius} min={10} max={10000} step={10} />
+                <NumberInput label="Geofence Radius" hint="meters" field="geofence_radius" value={settings.geofence_radius} min={10} max={10000} step={10} />
               </div>
             </SectionCard>
           )}

@@ -295,7 +295,7 @@ const LoginFormSection = forwardRef(function LoginFormSection({
       e.target.style.height = 'auto';
       e.target.style.height = e.target.scrollHeight + 'px';
     }) : undefined,
-    style: { minHeight: '28px', maxHeight: '100px', fontSize: '11px' },
+    style: { minHeight: '40px', maxHeight: '200px', fontSize: '18px' },
     rows: 1,
     readOnly: !canEdit,
     // For all forms, call handleBlur on blur to ensure values are updated properly
@@ -589,17 +589,17 @@ const LoginFormSection = forwardRef(function LoginFormSection({
   };
 
   // Style classes to match About/HowToProcess sections
-  const labelClass = "block font-semibold uppercase tracking-wide";
-  const labelStyle = { color: "#374151", fontWeight: 600, fontSize: "10px" };
+  const labelClass = "block font-bold mb-2 uppercase";
+  const labelStyle = { color: "black", fontWeight: 650, fontSize: "15px" };
   const inputClass =
-    "w-full h-8 px-2 py-1 border border-[#00bcd4] rounded-md bg-white text-green-600 text-xs font-bold focus:outline-none focus:border-[#03B0F5]";
-  const inputStyle = {};
+    "w-full px-2 py-2 border border-black rounded text-green-600 font-bold focus:outline-none focus:ring-2 focus:ring-cyan-400 h-10";
+  const inputStyle = { fontSize: "15px" };
   const inputReadOnlyClass =
-    "w-full h-8 px-2 py-1 border border-[#00bcd4] rounded-md text-green-600 text-xs font-bold bg-white cursor-not-allowed opacity-80";
-  const inputReadOnlyStyle = {};
+    "w-full px-2 py-2 border border-black rounded text-green-600 font-bold bg-gray-100 cursor-not-allowed h-10";
+  const inputReadOnlyStyle = { fontSize: "15px" };
 
   return (
-    <div className="p-3 rounded-xl border border-cyan-300/40 bg-white shadow-md space-y-3">{/* Removed form tag since no submit button */}
+    <div className="p-4 rounded-2xl border-2 border-cyan-400/70 bg-white shadow-2xl space-y-6">{/* Removed form tag since no submit button */}
       {/* Save status indicator */}
       {saveStatus && (
         <div className={`text-sm font-semibold mb-2 ${saveStatus === 'Saved' ? 'text-green-500' :
@@ -623,11 +623,11 @@ const LoginFormSection = forwardRef(function LoginFormSection({
 
       {/* Share and Export Buttons at the top - show separate share buttons for applicant and co-applicant */}
       {!isPublic && canEdit && (
-        <div className="flex justify-between items-center mb-2">
+        <div className="flex justify-between items-center mb-6">
           <button
             type="button"
             onClick={handleShare}
-            className="flex items-center text-xs gap-1.5 px-3 py-1.5 bg-green-600 text-white font-semibold rounded-md shadow-md hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-opacity-75 transition duration-300"
+            className="flex items-center text-xl gap-2 px-8 py-3 bg-green-600 text-white font-semibold rounded-md shadow-md hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-opacity-75 transition duration-300"
           >
             <Share2 className="w-5 h-5" />
             {isCoApplicant ? 'Share Co-Applicant Form' : 'Share Applicant Form'}
@@ -638,7 +638,7 @@ const LoginFormSection = forwardRef(function LoginFormSection({
             <button
               type="button"
               onClick={handleExportToExcel}
-              className="flex items-center text-xs gap-1.5 px-3 py-1.5 bg-blue-600 text-white font-semibold rounded-md shadow-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-75 transition duration-300"
+              className="flex items-center text-xl gap-2 px-8 py-3 bg-blue-600 text-white font-semibold rounded-md shadow-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-75 transition duration-300"
             >
               <Download className="w-5 h-5" />
               Export to Excel
@@ -649,11 +649,11 @@ const LoginFormSection = forwardRef(function LoginFormSection({
 
       {/* Export Button for Co-Applicant and not on public form */}
       {isCoApplicant && !isPublic && canEdit && (
-        <div className="flex justify-end items-center mb-2">
+        <div className="flex justify-end items-center mb-6">
           <button
             type="button"
             onClick={handleExportToExcel}
-            className="flex items-center text-xs gap-1.5 px-3 py-1.5 bg-blue-600 text-white font-semibold rounded-md shadow-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-75 transition duration-300"
+            className="flex items-center text-xl gap-2 px-8 py-3 bg-blue-600 text-white font-semibold rounded-md shadow-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-75 transition duration-300"
           >
             <Download className="w-5 h-5" />
             Export to Excel
@@ -661,10 +661,10 @@ const LoginFormSection = forwardRef(function LoginFormSection({
         </div>
       )}
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-x-3 gap-y-2 items-start">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-x-4 gap-y-6 items-start">
         {/* Show reference name for both primary applicant and co-applicant, but not on public form */}
         {!isPublic && (
-          <div className="flex flex-col gap-0.5">
+          <div className="flex flex-col h-full">
             <label className={labelClass} style={labelStyle}>Login Call Reference</label>
             <input
               {...getInputProps("referenceNameForLogin", fields.referenceNameForLogin)}
@@ -674,34 +674,34 @@ const LoginFormSection = forwardRef(function LoginFormSection({
         {/* Hide sensitive fields (Aadhar, PAN, Father's name, Bank details) only for public forms */}
         {!isPublic && (
           <>
-            <div className="flex flex-col gap-0.5">
+            <div className="flex flex-col h-full">
               <label className={labelClass} style={labelStyle}>Aadhar Number</label>
               <input
                 {...getInputProps("aadharNumber", fields.aadharNumber)}
               />
             </div>
-            <div className="flex flex-col gap-0.5">
+            <div className="flex flex-col h-full">
               <label className={labelClass} style={labelStyle}>Pan Card</label>
               <input
                 {...getInputProps("panCard", fields.panCard)}
               />
             </div>
-            <div className="flex flex-col gap-0.5">
+            <div className="flex flex-col h-full">
               <label className={labelClass} style={labelStyle}>Father's Name</label>
               <input
                 {...getInputProps("fathersName", fields.fathersName)}
               />
             </div>
-            <div className="flex flex-col gap-0.5">
+            <div className="flex flex-col h-full">
               <label className={labelClass} style={labelStyle}>Salary A/C Bank Name</label>
               <div className="relative" ref={bankDropdownRef}>
                 {/* SearchableSelect-style dropdown button */}
                 <div
-                  className={`w-full h-8 px-2 py-1 border rounded-md cursor-pointer flex items-center justify-between ${
+                  className={`w-full px-3 py-2 border rounded-lg cursor-pointer flex items-center justify-between ${
                     (isPublic || !canEdit) 
-                      ? 'bg-white text-gray-400 border-[#00bcd4] cursor-not-allowed opacity-80'
-                      : 'bg-white text-black border-[#00bcd4] hover:border-[#03B0F5]'
-                  } ${showBankDropdown ? 'border-[#03B0F5]' : ''}`}
+                      ? 'bg-gray-100 text-gray-400 border-gray-300 cursor-not-allowed'
+                      : 'bg-white text-black border-black hover:border-cyan-400 focus:border-cyan-400'
+                  } ${showBankDropdown ? 'border-cyan-400' : ''}`}
                   onClick={() => {
                     if (!isPublic && canEdit) {
                       setShowBankDropdown(!showBankDropdown);
@@ -710,7 +710,7 @@ const LoginFormSection = forwardRef(function LoginFormSection({
                       }
                     }
                   }}
-                  style={{fontSize: "11px", fontWeight: 'bold', color: fields.salaryAccountBank ? '#16a34a' : '#6b7280'}}
+                  style={{fontSize: "15px", fontWeight: 'bold', color: fields.salaryAccountBank ? '#16a34a' : '#6b7280'}}
                 >
                   <span className="flex-1">
                     {fields.salaryAccountBank || "Select Bank"}
@@ -729,7 +729,7 @@ const LoginFormSection = forwardRef(function LoginFormSection({
                 {showBankDropdown && !isPublic && canEdit && (
                   <div className="absolute z-50 w-full mt-1 bg-white border border-gray-300 rounded-lg shadow-lg">
                     {/* Search input */}
-                    <div className="p-1.5 border-b border-gray-200">
+                    <div className="p-3 border-b border-gray-200">
                       <div className="relative">
                         <div className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none">
                           <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -738,7 +738,7 @@ const LoginFormSection = forwardRef(function LoginFormSection({
                         </div>
                         <input
                           type="text"
-                          className="w-full pl-8 pr-2 py-1 border border-gray-300 rounded-md text-xs text-black focus:outline-none focus:border-[#00bcd4]"
+                          className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg text-black focus:outline-none focus:border-cyan-400"
                           placeholder="Search banks..."
                           value={bankSearch}
                           onChange={(e) => setBankSearch(e.target.value)}
@@ -748,11 +748,11 @@ const LoginFormSection = forwardRef(function LoginFormSection({
                     </div>
 
                     {/* Options list */}
-                    <div className="max-h-40 overflow-y-auto">
+                    <div className="max-h-60 overflow-y-auto">
                       {/* Clear option */}
                       {fields.salaryAccountBank && (
                         <div
-                          className="px-2 py-1.5 cursor-pointer text-red-600 hover:bg-red-50 border-b border-gray-100 text-xs font-medium"
+                          className="px-3 py-2 cursor-pointer text-red-600 hover:bg-red-50 border-b border-gray-100 font-medium"
                           onClick={() => {
                             handleChange("salaryAccountBank", "");
                             setBankSearch("");
@@ -774,7 +774,7 @@ const LoginFormSection = forwardRef(function LoginFormSection({
                         
                         if (filteredBanks.length === 0) {
                           return (
-                            <div className="px-2 py-1.5 text-xs text-gray-500 text-center">
+                            <div className="px-3 py-2 text-gray-500 text-center">
                               {bankSearch ? `No results found for "${bankSearch}"` : "No banks available"}
                             </div>
                           );
@@ -783,7 +783,7 @@ const LoginFormSection = forwardRef(function LoginFormSection({
                         return filteredBanks.map((bank, index) => (
                           <div
                             key={bank || index}
-                            className={`px-2 py-1.5 cursor-pointer text-xs text-black hover:bg-gray-100 ${
+                            className={`px-3 py-2 cursor-pointer text-black hover:bg-gray-100 ${
                               fields.salaryAccountBank === bank ? 'bg-sky-50 text-sky-700 font-medium' : ''
                             }`}
                             onClick={() => {
@@ -801,14 +801,14 @@ const LoginFormSection = forwardRef(function LoginFormSection({
                 )}
               </div>
             </div>
-            <div className="flex flex-col gap-0.5">
+            <div className="flex flex-col h-full">
               <label className={labelClass} style={labelStyle}>Salary A/C Bank Number</label>
               <input
                 {...getInputProps("salaryAccountBankNumber", fields.salaryAccountBankNumber)}
                 placeholder="Enter salary account number"
               />
             </div>
-            <div className="flex flex-col gap-0.5">
+            <div className="flex flex-col h-full">
               <label className={labelClass} style={labelStyle}>IFSC Code</label>
               <input
                 {...getInputProps("ifscCode", fields.ifscCode)}
@@ -825,7 +825,7 @@ const LoginFormSection = forwardRef(function LoginFormSection({
           </div>
         )}
 
-        <div className="flex flex-col gap-0.5">
+        <div className="flex flex-col h-full">
           <label className={labelClass} style={labelStyle}>Customer Name</label>
           <input
             {...getInputProps("customerName", fields.customerName)}
@@ -833,7 +833,7 @@ const LoginFormSection = forwardRef(function LoginFormSection({
         </div>
 
 
-        <div className="flex flex-col gap-0.5">
+        <div className="flex flex-col h-full">
           <label className={labelClass} style={labelStyle}>Mobile Number</label>
           {/* For co-applicant, mobile number should be editable. For primary applicant, keep read-only */}
           <input
@@ -845,7 +845,7 @@ const LoginFormSection = forwardRef(function LoginFormSection({
             })}
           />
         </div>
-        <div className="flex flex-col gap-0.5">
+        <div className="flex flex-col h-full">
           <label className={labelClass} style={labelStyle}>Alternate Number</label>
           <input
             {...getInputProps("alternateNumber", fields.alternateNumber)}
@@ -853,7 +853,7 @@ const LoginFormSection = forwardRef(function LoginFormSection({
           />
         </div>
 
-        <div className="flex flex-col gap-0.5">
+        <div className="flex flex-col h-full">
           <label className={labelClass} style={labelStyle}>Qualification</label>
           <select
             {...getSelectProps("qualification", fields.qualification)}
@@ -864,13 +864,13 @@ const LoginFormSection = forwardRef(function LoginFormSection({
             ))}
           </select>
         </div>
-        <div className="flex flex-col gap-0.5">
+        <div className="flex flex-col h-full">
           <label className={labelClass} style={labelStyle}>Mother's Name</label>
           <input
             {...getInputProps("mothersName", fields.mothersName)}
           />
         </div>
-        <div className="flex flex-col gap-0.5">
+        <div className="flex flex-col h-full">
           <label className={labelClass} style={labelStyle}>Marital Status</label>
           <select
             {...getSelectProps("maritalStatus", fields.maritalStatus)}
@@ -883,13 +883,13 @@ const LoginFormSection = forwardRef(function LoginFormSection({
         </div>
         {fields.maritalStatus === "Married" && (
           <>
-            <div className="flex flex-col gap-0.5">
+            <div className="flex flex-col h-full">
               <label className={labelClass} style={labelStyle}>Spouse Name</label>
               <input
                 {...getInputProps("spousesName", fields.spousesName)}
               />
             </div>
-            <div className="flex flex-col gap-0.5">
+            <div className="flex flex-col h-full">
               <label className={labelClass} style={labelStyle}>Spouse's DOB</label>
               <input
                 type="date"
@@ -898,19 +898,19 @@ const LoginFormSection = forwardRef(function LoginFormSection({
             </div>
           </>
         )}
-        <div className="flex flex-col gap-0.5">
+        <div className="flex flex-col h-full">
           <label className={labelClass} style={labelStyle}>Current Address</label>
           <textarea
             {...getTextareaProps("currentAddress", fields.currentAddress)}
           />
         </div>
-        <div className="flex flex-col gap-0.5">
+        <div className="flex flex-col h-full">
           <label className={labelClass} style={labelStyle}>Current Address Landmark</label>
           <input
             {...getInputProps("currentAddressLandmark", fields.currentAddressLandmark)}
           />
         </div>
-        <div className="flex flex-col gap-0.5">
+        <div className="flex flex-col h-full">
           <label className={labelClass} style={labelStyle}>Current Address Type</label>
           <select
             {...getSelectProps("currentAddressType", fields.currentAddressType)}
@@ -921,7 +921,7 @@ const LoginFormSection = forwardRef(function LoginFormSection({
             ))}
           </select>
         </div>
-        <div className="flex flex-col gap-0.5">
+        <div className="flex flex-col h-full">
           <label className={labelClass} style={labelStyle}>Current Address Proof</label>
           <select
             {...getSelectProps("currentAddressProof", fields.currentAddressProof)}
@@ -932,7 +932,7 @@ const LoginFormSection = forwardRef(function LoginFormSection({
             ))}
           </select>
         </div>
-        <div className="flex flex-col gap-0.5">
+        <div className="flex flex-col h-full">
           <label className={labelClass} style={labelStyle}>No of Years Living in Current Addr.</label>
           <input
             type="number"
@@ -940,7 +940,7 @@ const LoginFormSection = forwardRef(function LoginFormSection({
             min="0"
           />
         </div>
-        <div className="flex flex-col gap-0.5">
+        <div className="flex flex-col h-full">
           <label className={labelClass} style={labelStyle}>No of Years Living in Current City</label>
           <input
             type="number"
@@ -948,44 +948,44 @@ const LoginFormSection = forwardRef(function LoginFormSection({
             min="0"
           />
         </div>
-        <div className="flex flex-col gap-0.5">
+        <div className="flex flex-col h-full">
           <label className={labelClass} style={labelStyle}>Permanent Address</label>
           <textarea
             {...getTextareaProps("permanentAddress", fields.permanentAddress)}
           />
         </div>
-        <div className="flex flex-col gap-0.5">
+        <div className="flex flex-col h-full">
           <label className={labelClass} style={labelStyle}>Permanent Address Landmark</label>
           <input
             {...getInputProps("permanentAddressLandmark", fields.permanentAddressLandmark)}
           />
         </div>
-        <div className="flex flex-col gap-0.5">
+        <div className="flex flex-col h-full">
           <label className={labelClass} style={labelStyle}>Company Name</label>
           <input
             {...getInputProps("companyName", fields.companyName)}
           />
         </div>
-        <div className="flex flex-col gap-0.5">
+        <div className="flex flex-col h-full">
           <label className={labelClass} style={labelStyle}>Your Designation</label>
           <input
             {...getInputProps("yourDesignation", fields.yourDesignation)}
           />
         </div>
-        <div className="flex flex-col gap-0.5">
+        <div className="flex flex-col h-full">
           <label className={labelClass} style={labelStyle}>Your Department</label>
           <input
             {...getInputProps("yourDepartment", fields.yourDepartment)}
           />
         </div>
-        <div className="flex flex-col gap-0.5">
+        <div className="flex flex-col h-full">
           <label className={labelClass} style={labelStyle}>DOJ in Current Company</label>
           <input
             type="date"
             {...getInputProps("dojCurrentCompany", fields.dojCurrentCompany)}
           />
         </div>
-        <div className="flex flex-col gap-0.5">
+        <div className="flex flex-col h-full">
           <label className={labelClass} style={labelStyle}>Current Work Experience (years)</label>
           <input
             type="number"
@@ -993,7 +993,7 @@ const LoginFormSection = forwardRef(function LoginFormSection({
             min="0"
           />
         </div>
-        <div className="flex flex-col gap-0.5">
+        <div className="flex flex-col h-full">
           <label className={labelClass} style={labelStyle}>Total Work Experience (years)</label>
           <input
             type="number"
@@ -1001,27 +1001,27 @@ const LoginFormSection = forwardRef(function LoginFormSection({
             min="0"
           />
         </div>
-        <div className="flex flex-col gap-0.5">
+        <div className="flex flex-col h-full">
           <label className={labelClass} style={labelStyle}>Personal Email</label>
           <input
             type="email"
             {...getInputProps("personalEmail", fields.personalEmail)}
           />
         </div>
-        <div className="flex flex-col gap-0.5">
+        <div className="flex flex-col h-full">
           <label className={labelClass} style={labelStyle}>Work Email</label>
           <input
             type="email"
             {...getInputProps("workEmail", fields.workEmail)}
           />
         </div>
-        <div className="flex flex-col gap-0.5">
+        <div className="flex flex-col h-full">
           <label className={labelClass} style={labelStyle}>Office Address</label>
           <textarea
             {...getTextareaProps("officeAddress", fields.officeAddress)}
           />
         </div>
-        <div className="flex flex-col gap-0.5">
+        <div className="flex flex-col h-full">
           <label className={labelClass} style={labelStyle}>Office Address Landmark</label>
           <input
             {...getInputProps("officeAddressLandmark", fields.officeAddressLandmark)}
@@ -1034,20 +1034,20 @@ const LoginFormSection = forwardRef(function LoginFormSection({
         <>
           {/* 1st Reference */}
           <div className="mt-8 mb-2 font-extrabold text-[#00AEEF] text-base">1st Reference</div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-x-4 gap-y-2">
-            <div className="flex flex-col gap-0.5">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-x-4 gap-y-4">
+            <div className="flex flex-col h-full">
               <label className={labelClass} style={labelStyle}>Reference Name</label>
               <input
                 {...getInputProps("ref1Name", fields.ref1Name)}
               />
             </div>
-            <div className="flex flex-col gap-0.5">
+            <div className="flex flex-col h-full">
               <label className={labelClass} style={labelStyle}>Reference Mobile Number</label>
               <input
                 {...getInputProps("ref1Mobile", fields.ref1Mobile)}
               />
             </div>
-            <div className="flex flex-col gap-0.5">
+            <div className="flex flex-col h-full">
               <label className={labelClass} style={labelStyle}>Reference Relation</label>
               <select
                 {...getSelectProps("ref1Relation", fields.ref1Relation)}
@@ -1058,7 +1058,7 @@ const LoginFormSection = forwardRef(function LoginFormSection({
                 ))}
               </select>
             </div>
-            <div className="flex flex-col gap-0.5">
+            <div className="flex flex-col h-full">
               <label className={labelClass} style={labelStyle}>Reference Address</label>
               <textarea
                 {...getTextareaProps("ref1Address", fields.ref1Address)}
@@ -1068,20 +1068,20 @@ const LoginFormSection = forwardRef(function LoginFormSection({
 
           {/* 2nd Reference */}
           <div className="mt-8 mb-2 font-extrabold text-[#00AEEF] text-base">2nd Reference</div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-x-4 gap-y-2">
-            <div className="flex flex-col gap-0.5">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-x-4 gap-y-4">
+            <div className="flex flex-col h-full">
               <label className={labelClass} style={labelStyle}>Reference Name</label>
               <input
                 {...getInputProps("ref2Name", fields.ref2Name)}
               />
             </div>
-            <div className="flex flex-col gap-0.5">
+            <div className="flex flex-col h-full">
               <label className={labelClass} style={labelStyle}>Reference Mobile Number</label>
               <input
                 {...getInputProps("ref2Mobile", fields.ref2Mobile)}
               />
             </div>
-            <div className="flex flex-col gap-0.5">
+            <div className="flex flex-col h-full">
               <label className={labelClass} style={labelStyle}>Reference Relation</label>
               <select
                 {...getSelectProps("ref2Relation", fields.ref2Relation)}
@@ -1092,7 +1092,7 @@ const LoginFormSection = forwardRef(function LoginFormSection({
                 ))}
               </select>
             </div>
-            <div className="flex flex-col gap-0.5">
+            <div className="flex flex-col h-full">
               <label className={labelClass} style={labelStyle}>Reference Address</label>
               <textarea
                 {...getTextareaProps("ref2Address", fields.ref2Address)}
@@ -1108,7 +1108,7 @@ const LoginFormSection = forwardRef(function LoginFormSection({
           <div className="bg-white rounded-lg max-w-full w-full max-h-[90vh] overflow-y-auto">
             {/* Header */}
             <div className="sticky top-0 bg-white border-b p-6 flex justify-between items-center">
-              <div className="flex flex-col gap-0.5">
+              <div className="flex flex-col h-full">
                 <h2 className="text-2xl font-bold text-[#00AEEF]">
                   Customer: {leadCustomerName || data?.customerName || data?.name || 'N/A'}
                 </h2>
@@ -1139,20 +1139,20 @@ const LoginFormSection = forwardRef(function LoginFormSection({
               <>
                 {/* 1st Reference */}
                 <div className="mt-8 mb-4 font-extrabold text-[#00AEEF] text-lg border-b pb-2">1st Reference</div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-x-4 gap-y-2">
-                  <div className="flex flex-col gap-0.5">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-x-4 gap-y-4">
+                  <div className="flex flex-col h-full">
                     <label className={labelClass} style={labelStyle}>Reference Name *</label>
                     <input
                       {...getInputProps("ref1Name", fields.ref1Name)}
                     />
                   </div>
-                  <div className="flex flex-col gap-0.5">
+                  <div className="flex flex-col h-full">
                     <label className={labelClass} style={labelStyle}>Reference Mobile Number *</label>
                     <input
                       {...getInputProps("ref1Mobile", fields.ref1Mobile)}
                     />
                   </div>
-                  <div className="flex flex-col gap-0.5">
+                  <div className="flex flex-col h-full">
                     <label className={labelClass} style={labelStyle}>Reference Relation *</label>
                     <select
                       {...getSelectProps("ref1Relation", fields.ref1Relation)}
@@ -1163,7 +1163,7 @@ const LoginFormSection = forwardRef(function LoginFormSection({
                       ))}
                     </select>
                   </div>
-                  <div className="flex flex-col gap-0.5">
+                  <div className="flex flex-col h-full">
                     <label className={labelClass} style={labelStyle}>Reference Address *</label>
                     <textarea
                       {...getTextareaProps("ref1Address", fields.ref1Address)}
@@ -1173,20 +1173,20 @@ const LoginFormSection = forwardRef(function LoginFormSection({
 
                 {/* 2nd Reference */}
                 <div className="mt-8 mb-4 font-extrabold text-[#00AEEF] text-lg border-b pb-2">2nd Reference</div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-x-4 gap-y-2">
-                  <div className="flex flex-col gap-0.5">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-x-4 gap-y-4">
+                  <div className="flex flex-col h-full">
                     <label className={labelClass} style={labelStyle}>Reference Name *</label>
                     <input
                       {...getInputProps("ref2Name", fields.ref2Name)}
                     />
                   </div>
-                  <div className="flex flex-col gap-0.5">
+                  <div className="flex flex-col h-full">
                     <label className={labelClass} style={labelStyle}>Reference Mobile Number *</label>
                     <input
                       {...getInputProps("ref2Mobile", fields.ref2Mobile)}
                     />
                   </div>
-                  <div className="flex flex-col gap-0.5">
+                  <div className="flex flex-col h-full">
                     <label className={labelClass} style={labelStyle}>Reference Relation *</label>
                     <select
                       {...getSelectProps("ref2Relation", fields.ref2Relation)}
@@ -1197,7 +1197,7 @@ const LoginFormSection = forwardRef(function LoginFormSection({
                       ))}
                     </select>
                   </div>
-                  <div className="flex flex-col gap-0.5">
+                  <div className="flex flex-col h-full">
                     <label className={labelClass} style={labelStyle}>Reference Address *</label>
                     <textarea
                       {...getTextareaProps("ref2Address", fields.ref2Address)}
@@ -1214,7 +1214,7 @@ const LoginFormSection = forwardRef(function LoginFormSection({
                   <button
                     type="button"
                     onClick={handleSaveForm}
-                    className="flex items-center text-xs gap-1.5 px-3 py-1.5 bg-blue-600 text-white font-semibold rounded-md shadow-md hover:bg-blue-700 transition duration-300 mb-2"
+                    className="flex items-center text-lg gap-2 px-8 py-3 bg-blue-600 text-white font-semibold rounded-md shadow-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-75 transition duration-300 mb-4"
                   >
                     Save Form
                   </button>
@@ -1227,7 +1227,7 @@ const LoginFormSection = forwardRef(function LoginFormSection({
                   <p className="text-green-700 font-medium">
                     ✓ All changes are saved automatically as you fill the form
                   </p>
-                  <p className="text-sm text-green-600 mt-1">
+                  <p className="text-xl text-green-600 mt-1">
                     You can close this window anytime and your progress will be saved
                   </p>
                 </>
@@ -1245,7 +1245,7 @@ const LoginFormSection = forwardRef(function LoginFormSection({
           <button
             type="button"
             onClick={handleSaveForm}
-            className="flex items-center text-xs gap-1.5 px-3 py-1.5 bg-blue-600 text-white font-semibold rounded-md hover:bg-blue-700 transition duration-300 mb-2"
+            className="flex items-center text-lg gap-2 px-8 py-3 bg-blue-600 text-white font-semibold rounded-md shadow-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-75 transition duration-300 mb-4"
           >
             Save Form
           </button>
