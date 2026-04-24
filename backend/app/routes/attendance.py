@@ -1225,15 +1225,18 @@ async def mark_attendance(
         # Get admin info for history
         admin = await users_db.get_user(user_id)
         admin_name = "Unknown Admin"
+        admin_designation = ""
         if admin:
             full_name = f"{admin.get('first_name', '')} {admin.get('last_name', '')}".strip()
+            # Prioritize full_name over generic 'name' field to prevent ID-like values
             admin_name = (
-                admin.get("name")
-                or full_name
+                full_name
+                or admin.get("name")
                 or admin.get("username")
                 or admin.get("email")
                 or "Unknown Admin"
             )
+            admin_designation = admin.get("designation", "") or ""
         
         # Add history entry for new attendance record
         await attendance_history_db.add_history_entry(
@@ -1245,6 +1248,7 @@ async def mark_attendance(
             created_by=user_id,
             created_by_name=admin_name,
             new_value=get_status_text(attendance_data.status),
+            details={"editor_designation": admin_designation},
             reason=attendance_data.reason
         )
         
@@ -2597,15 +2601,18 @@ async def edit_attendance(
         # Get admin info for history
         admin = await users_db.get_user(admin_id)
         admin_name = "Unknown Admin"
+        admin_designation = ""
         if admin:
             full_name = f"{admin.get('first_name', '')} {admin.get('last_name', '')}".strip()
+            # Prioritize full_name over generic 'name' field to prevent ID-like values
             admin_name = (
-                admin.get("name")
-                or full_name
+                full_name
+                or admin.get("name")
                 or admin.get("username")
                 or admin.get("email")
                 or "Unknown Admin"
             )
+            admin_designation = admin.get("designation", "") or ""
         
         # Validate time formats if provided
         if edit_data.check_in_time:
@@ -2658,7 +2665,7 @@ async def edit_attendance(
         
         # Add summary history entry
         if changes:
-            history_details = {"changes": changes}
+            history_details = {"changes": changes, "editor_designation": admin_designation}
             if update_reason:
                 history_details["reason"] = update_reason
                 

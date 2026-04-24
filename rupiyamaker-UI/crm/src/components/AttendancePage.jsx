@@ -2617,6 +2617,20 @@ const EmployeeDetailModal = ({ employee, selectedDate, isOpen, onClose, onUpdate
                   }
                   const oldInfo = hasValues ? histStatusLabel(record.old_value) : null
                   const newInfo = hasValues ? histStatusLabel(record.new_value) : null
+                  // Clean up action text: remove redundant "by [Name]" and changes list
+                  const actionType = record.action_type || ''
+                  const cleanAction = (() => {
+                    const raw = String(record.action || '')
+                    if (actionType === 'attendance_created') return 'Attendance marked'
+                    if (actionType === 'attendance_edited') return 'Attendance updated'
+                    if (actionType === 'comment_added') return 'Comment added'
+                    // Generic: strip "by [Name]: details" part
+                    const colonIdx = raw.indexOf(':')
+                    const byIdx = raw.toLowerCase().indexOf(' by ')
+                    if (byIdx > 0 && colonIdx > byIdx) return raw.slice(0, byIdx).trim()
+                    if (byIdx > 0) return raw.slice(0, byIdx).trim()
+                    return raw
+                  })()
                   return (
                     <div key={record._id || index} style={{ background: '#0d0d10', border: '1px solid rgba(255,255,255,0.07)', borderRadius: '10px', padding: '12px' }}>
                       {/* Top row: timestamp + editor badge */}
@@ -2628,8 +2642,8 @@ const EmployeeDetailModal = ({ employee, selectedDate, isOpen, onClose, onUpdate
                           {editorName}
                         </span>
                       </div>
-                      {/* Action text */}
-                      <p style={{ color: '#e4e4e7', fontSize: '12px', lineHeight: '1.5', margin: 0, marginBottom: (hasValues || record.reason) ? '8px' : 0 }}>{record.action}</p>
+                      {/* Action text (cleaned) */}
+                      <p style={{ color: '#e4e4e7', fontSize: '12px', lineHeight: '1.5', margin: 0, marginBottom: (hasValues || record.reason) ? '8px' : 0 }}>{cleanAction}</p>
                       {/* Status change badges */}
                       {hasValues && (
                         <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: record.reason ? '8px' : 0 }}>
@@ -3253,7 +3267,8 @@ export default function MonthlyAttendanceTable() {
           let finalData = ruledData;
           if (!attendanceViewAll && !attendanceViewJunior) {
             // User only has 'own' attendance permission — show only their own record
-            finalData = finalData.filter(emp => emp.id === user.user_id);
+            // Compare using mongoId (MongoDB _id) since emp.id may be a custom employee_id (e.g. RM001)
+            finalData = finalData.filter(emp => emp.mongoId === user.user_id || emp.id === user.user_id);
           }
           setAttendanceData(finalData)
 
@@ -3668,7 +3683,8 @@ export default function MonthlyAttendanceTable() {
           const attViewAll = canUserViewAll();
           const attViewJunior = canUserViewJunior();
           if (!attViewAll && !attViewJunior) {
-            formattedData = formattedData.filter(employee => employee.id === user.user_id)
+            // Compare using mongoId (MongoDB _id) since employee.id may be a custom employee_id (e.g. RM001)
+            formattedData = formattedData.filter(employee => employee.mongoId === user.user_id || employee.id === user.user_id)
           }
           
           setAttendanceData(formattedData)
