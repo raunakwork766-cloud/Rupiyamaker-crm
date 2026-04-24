@@ -2724,7 +2724,7 @@ const calculateMonthlyStats = (record, selectedYear, selectedMonth, daysInMonth,
   // Grace → monthly limit from attendance settings
   const elDays = record.earnedLeavesRemaining ?? 0            // EL: actual balance (from Leave Management)
   const plDays = parseFloat(record.plMonthly ?? 1.0)          // PL: per-month allotment (from attendance settings)
-  const graceMonthly = record.graceMonthlyLimit ?? 3          // Grace limit per month (from attendance settings)
+  const graceMonthly = record.graceMonthlyLimit ?? 3          // Grace limit per month (from attendance settings — grace_usage_limit)
   const graceRemainingMonthly = Math.min(record.graceRemaining ?? graceMonthly, graceMonthly)
 
   // Final attendance = Present + PL (monthly) + EL (remaining), only if Present > 0
@@ -2778,6 +2778,7 @@ export default function MonthlyAttendanceTable() {
     enable_adjacent_absconding_rule: true,
     minimum_working_days_for_sunday: 5,
     auto_grace_monthly_limit: 3,
+    grace_usage_limit: 3,
     default_earned_leave_monthly: 1.5,
     default_paid_leave_monthly: 1.0,
   })
@@ -3246,13 +3247,13 @@ export default function MonthlyAttendanceTable() {
               paidLeavesTotal: bal.paid_leaves_total ?? 0,
               paidLeavesUsed: bal.paid_leaves_used ?? 0,
               paidLeavesRemaining: bal.paid_leaves_remaining ?? 0,
-              graceTotal: bal.grace_leaves_total ?? settingsData.auto_grace_monthly_limit ?? 3,
+              graceTotal: settingsData.grace_usage_limit ?? settingsData.auto_grace_monthly_limit ?? bal.grace_leaves_total ?? 3,
               graceUsed: bal.grace_leaves_used ?? 0,
-              graceRemaining: bal.grace_leaves_remaining ?? settingsData.auto_grace_monthly_limit ?? 3,
+              graceRemaining: bal.grace_leaves_remaining ?? settingsData.grace_usage_limit ?? settingsData.auto_grace_monthly_limit ?? 3,
               // Settings-based monthly allotments kept for reference (used by auto-credit logic)
               elMonthly: settingsData.default_earned_leave_monthly ?? 1.5,
               plMonthly: settingsData.default_paid_leave_monthly ?? 1.0,
-              graceMonthlyLimit: settingsData.auto_grace_monthly_limit ?? 3,
+              graceMonthlyLimit: settingsData.grace_usage_limit ?? settingsData.auto_grace_monthly_limit ?? 3,
             }
           })
 
