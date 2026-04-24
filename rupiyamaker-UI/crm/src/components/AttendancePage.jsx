@@ -376,7 +376,12 @@ const getDisplayEditorName = (entry) => {
     if (looksLikeRawId(txt)) continue
     return txt
   }
-  return 'System'
+  // Context-aware fallback — never show raw 'System'
+  const actionStr = String(entry?.action_type || entry?.action || entry?.action_description || '').toLowerCase()
+  if (actionStr.includes('auto') || actionStr.includes('cron') || actionStr.includes('scheduler')) {
+    return 'CRM Auto'
+  }
+  return 'HR Admin'
 }
 
 const humanizeAttendanceField = (field) => {
@@ -1368,13 +1373,29 @@ const EditHistoryModal = ({ isOpen, onClose, employee, historyData, loading }) =
                     })}
 
                     {nonStatusChanges.length > 0 && (
-                      <div className="bg-indigo-900/15 border border-indigo-500/20 rounded-lg px-3 py-2 space-y-1">
-                        <span className="text-indigo-300 text-[10px] font-bold uppercase tracking-wide block mb-0.5">Change details</span>
-                        {nonStatusChanges.map((ch, idx) => (
-                          <p key={`${ch.field}-${idx}`} className="text-indigo-100 text-xs leading-relaxed">
-                            • {toSimpleChangeRemark(ch)}
-                          </p>
-                        ))}
+                      <div className="space-y-2">
+                        {/* Separate 'comments' field and render as remark block */}
+                        {nonStatusChanges.filter(ch => String(ch.field || '').toLowerCase() === 'comments').map((ch, idx) => {
+                          const val = ch.newVal && ch.newVal !== 'None' && ch.newVal !== 'empty' ? ch.newVal : null
+                          if (!val) return null
+                          return (
+                            <div key={`cmt-${idx}`} className="bg-sky-900/15 border border-sky-500/20 rounded-lg px-3 py-2">
+                              <span className="text-sky-300 text-[10px] font-bold uppercase tracking-wide block mb-0.5">System Remark</span>
+                              <span className="text-sky-100 text-xs leading-relaxed">{val}</span>
+                            </div>
+                          )
+                        })}
+                        {/* Other non-status, non-comments changes */}
+                        {nonStatusChanges.filter(ch => String(ch.field || '').toLowerCase() !== 'comments').length > 0 && (
+                          <div className="bg-indigo-900/15 border border-indigo-500/20 rounded-lg px-3 py-2 space-y-1">
+                            <span className="text-indigo-300 text-[10px] font-bold uppercase tracking-wide block mb-0.5">Change details</span>
+                            {nonStatusChanges.filter(ch => String(ch.field || '').toLowerCase() !== 'comments').map((ch, idx) => (
+                              <p key={`${ch.field}-${idx}`} className="text-indigo-100 text-xs leading-relaxed">
+                                • {toSimpleChangeRemark(ch)}
+                              </p>
+                            ))}
+                          </div>
+                        )}
                       </div>
                     )}
 
@@ -2415,6 +2436,37 @@ const EmployeeDetailModal = ({ employee, selectedDate, isOpen, onClose, onUpdate
                     </div>
                   </div>
 
+                  {/* System auto-remark (auto-absent reason, late comment, etc.) */}
+                  {(() => {
+                    const remarkText = attendanceDetail?.comments || attendanceDetail?.attendance_details?.comments
+                    if (!remarkText || remarkText === 'None' || remarkText === 'null') return null
+                    return (
+                      <div className="bg-indigo-950/30 border border-indigo-500/20 rounded-xl p-3 flex gap-2.5 items-start">
+                        <span className="text-indigo-400 text-base mt-0.5 shrink-0">🤖</span>
+                        <div>
+                          <p className="text-[10px] text-indigo-400 font-bold uppercase tracking-widest mb-1">System Remark</p>
+                          <p className="text-indigo-100 text-xs leading-relaxed">{remarkText}</p>
+                        </div>
+                      </div>
+                    )
+                  })()}
+
+                  {/* User-added comments */}
+                  {comments.length > 0 && (
+                    <div className="space-y-2">
+                      <p className="text-[10px] text-zinc-400 font-bold uppercase tracking-widest">Comments ({comments.length})</p>
+                      {comments.map((c, i) => (
+                        <div key={c._id || i} className="bg-white/[0.03] border border-white/[0.06] rounded-lg p-3 space-y-1">
+                          <div className="flex justify-between items-center gap-2">
+                            <span className="text-emerald-400 text-[11px] font-semibold">{c.user_name || c.username || 'HR'}</span>
+                            <span className="text-zinc-600 text-[10px] font-mono">{c.created_at ? formatDateTime(c.created_at) : ''}</span>
+                          </div>
+                          <p className="text-zinc-200 text-xs leading-relaxed">{c.content || c.comment || c.message}</p>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
                   {/* Check In / Check Out */}
                   <div className="grid grid-cols-2 gap-4">
                     {/* Check In */}
@@ -2548,29 +2600,54 @@ const EmployeeDetailModal = ({ employee, selectedDate, isOpen, onClose, onUpdate
               <History className="w-4 h-4 text-indigo-400" />
               <span className="text-zinc-300 font-bold text-xs tracking-widest uppercase">Activity History</span>
             </div>
-            <div className="flex-1 overflow-y-auto p-4 space-y-6" style={{ scrollbarWidth: 'thin', scrollbarColor: '#333 transparent' }}>
+            <div className="flex-1 overflow-y-auto p-4 space-y-3" style={{ scrollbarWidth: 'thin', scrollbarColor: '#333 transparent' }}>
               {history.length > 0 ? (
-                history.map((record, index) => (
-                  <div key={record._id || index} className="relative pl-4 border-l border-white/10 pb-2">
-                    <div className="absolute w-2 h-2 bg-indigo-500 rounded-full -left-[4.5px] top-1.5 ring-4 ring-black" />
-                    <div className="space-y-1.5">
-                      <p className="text-[10px] text-zinc-500 font-mono">{(record.changed_at || record.created_at) ? formatDateTime(record.changed_at || record.created_at) : ''}</p>
-                      <p className="text-sm text-zinc-200">{record.action}</p>
-                      {record.old_value !== undefined && record.old_value !== null && (
-                        <p className="text-zinc-500 text-xs">{record.old_value} → {record.new_value}</p>
+                history.map((record, index) => {
+                  const editorName = getDisplayEditorName(record)
+                  const isAuto = String(record.action_type || record.action || '').toLowerCase().includes('auto')
+                  const hasValues = record.old_value !== undefined && record.old_value !== null
+                  const histStatusLabel = (val) => {
+                    const n = parseFloat(val)
+                    if (n === 1 || val === 'P')    return { text: 'Present',     color: '#10b981' }
+                    if (n === 0.5 || val === 'HD') return { text: 'Half Day',    color: '#f59e0b' }
+                    if (n === 0 || val === 'LV')   return { text: 'Leave',       color: '#f97316' }
+                    if (n === -1 || val === 'A')   return { text: 'Absent',      color: '#71717a' }
+                    if (n === -2 || val === 'AB')  return { text: 'Absconding',  color: '#ef4444' }
+                    return { text: String(val ?? '—'), color: '#a1a1aa' }
+                  }
+                  const oldInfo = hasValues ? histStatusLabel(record.old_value) : null
+                  const newInfo = hasValues ? histStatusLabel(record.new_value) : null
+                  return (
+                    <div key={record._id || index} style={{ background: '#0d0d10', border: '1px solid rgba(255,255,255,0.07)', borderRadius: '10px', padding: '12px' }}>
+                      {/* Top row: timestamp + editor badge */}
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px', flexWrap: 'wrap', gap: '4px' }}>
+                        <span style={{ color: '#71717a', fontSize: '10px', fontFamily: 'monospace' }}>
+                          {(record.changed_at || record.created_at) ? formatDateTime(record.changed_at || record.created_at) : '—'}
+                        </span>
+                        <span style={{ fontSize: '11px', fontWeight: 600, padding: '2px 10px', borderRadius: '20px', background: isAuto ? 'rgba(99,102,241,0.15)' : 'rgba(16,185,129,0.15)', color: isAuto ? '#818cf8' : '#34d399', border: isAuto ? '1px solid rgba(99,102,241,0.3)' : '1px solid rgba(16,185,129,0.3)' }}>
+                          {editorName}
+                        </span>
+                      </div>
+                      {/* Action text */}
+                      <p style={{ color: '#e4e4e7', fontSize: '12px', lineHeight: '1.5', margin: 0, marginBottom: (hasValues || record.reason) ? '8px' : 0 }}>{record.action}</p>
+                      {/* Status change badges */}
+                      {hasValues && (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: record.reason ? '8px' : 0 }}>
+                          {oldInfo && <span style={{ color: oldInfo.color, background: oldInfo.color + '1a', border: `1px solid ${oldInfo.color}40`, fontSize: '10px', fontWeight: 700, padding: '2px 8px', borderRadius: '4px' }}>{oldInfo.text}</span>}
+                          <span style={{ color: '#52525b', fontSize: '13px' }}>→</span>
+                          {newInfo && <span style={{ color: newInfo.color, background: newInfo.color + '1a', border: `1px solid ${newInfo.color}40`, fontSize: '10px', fontWeight: 700, padding: '2px 8px', borderRadius: '4px' }}>{newInfo.text}</span>}
+                        </div>
                       )}
+                      {/* Reason */}
                       {record.reason && (
-                        <p className="text-xs text-zinc-400 bg-white/5 border border-white/10 rounded-lg px-3 py-2 mt-1 leading-relaxed">💬 {record.reason}</p>
+                        <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: '6px', padding: '7px 10px' }}>
+                          <p style={{ color: '#a1a1aa', fontSize: '9px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', margin: '0 0 3px' }}>Reason</p>
+                          <p style={{ color: '#d4d4d8', fontSize: '11px', lineHeight: '1.5', margin: 0 }}>{record.reason}</p>
+                        </div>
                       )}
-                      {(() => {
-                        const byName = getDisplayEditorName(record)
-                        return byName && byName !== 'System' ? (
-                          <p className="text-[10px] text-zinc-600 uppercase tracking-wider mt-1">By {byName}</p>
-                        ) : null
-                      })()}
                     </div>
-                  </div>
-                ))
+                  )
+                })
               ) : (
                 <div className="h-full flex flex-col items-center justify-center text-center space-y-3 opacity-50 py-12">
                   <History className="w-8 h-8 text-zinc-600" />
