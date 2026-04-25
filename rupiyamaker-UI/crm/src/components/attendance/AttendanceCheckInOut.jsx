@@ -153,6 +153,7 @@ const AttendanceCheckInOut = ({ userId, userInfo }) => {
   const [calYear, setCalYear] = useState(now0.getFullYear());
   const [calMonth, setCalMonth] = useState(now0.getMonth() + 1); // 1-based
   const [calData, setCalData] = useState({}); // date-string → record
+  const [calStats, setCalStats] = useState(null); // monthly summary stats from API
   const [calLoading, setCalLoading] = useState(false);
   const [selectedDay, setSelectedDay] = useState(null); // 'YYYY-MM-DD' or null
 
@@ -196,12 +197,14 @@ const AttendanceCheckInOut = ({ userId, userInfo }) => {
           headers: getAttendanceHeaders()
         }
       );
-      const days = r.data?.employees?.[0]?.days || [];
+      const emp = r.data?.employees?.[0] || {};
+      const days = emp.days || [];
       console.log('[Calendar] days count:', days.length, 'sample:', days[0]);
       // Build date-keyed map
       const map = {};
       days.forEach(d => { if (d.date) map[d.date] = d; });
       setCalData(map);
+      setCalStats(emp.stats || null);
     } catch (e) {
       if (e?.response?.status === 401) {
         handleSessionExpired();
@@ -454,11 +457,11 @@ const AttendanceCheckInOut = ({ userId, userInfo }) => {
       {/* ─── Calendar View ─── */}
       {(() => {
         const MONTH_NAMES = ['January','February','March','April','May','June','July','August','September','October','November','December'];
-        const DAY_LABELS = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+        const DAY_LABELS = ['SUN','MON','TUE','WED','THU','FRI','SAT'];
 
         const daysInMonth = new Date(calYear, calMonth, 0).getDate();
-        const firstWeekday = new Date(calYear, calMonth - 1, 1).getDay(); // 0=Sun
-        const todayStr = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' }); // YYYY-MM-DD
+        const firstWeekday = new Date(calYear, calMonth - 1, 1).getDay();
+        const todayStr = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
 
         const prevMonth = () => {
           if (calMonth === 1) { setCalYear(y => y - 1); setCalMonth(12); }
@@ -466,42 +469,62 @@ const AttendanceCheckInOut = ({ userId, userInfo }) => {
           setSelectedDay(null);
         };
         const nextMonth = () => {
-          const nowDate = new Date();
-          const nowY = nowDate.getFullYear(), nowM = nowDate.getMonth() + 1;
-          if (calYear > nowY || (calYear === nowY && calMonth >= nowM)) return; // no future
+          const nowD = new Date();
+          if (calYear === nowD.getFullYear() && calMonth >= nowD.getMonth() + 1) return;
           if (calMonth === 12) { setCalYear(y => y + 1); setCalMonth(1); }
           else setCalMonth(m => m + 1);
           setSelectedDay(null);
         };
 
-        const getDayStyle = (dateStr, isToday, isFuture) => {
-          const rec = calData[dateStr];
-          if (isFuture) return { background: '#f9fafb', color: '#d1d5db' };
-          if (!rec || rec.is_weekend) return { background: '#f3f4f6', color: '#9ca3af' };
-          const st = rec.status;
-          if (rec.is_holiday || st === 1.5) return { background: '#fef9c3', color: '#92400e' };
-          if (st === 2 || st === 2.0) return { background: '#dbeafe', color: '#1d4ed8' }; // Working/in
-          if (st === 1 || st === 1.0) return { background: '#dcfce7', color: '#15803d' };
-          if (st === 0.5) return { background: '#ffedd5', color: '#c2410c' };
-          if (st === 0 || st === 0.0) return { background: '#ede9fe', color: '#6d28d9' }; // Leave
-          if (st === -1 || st === -1.0) return { background: '#fee2e2', color: '#b91c1c' };
-          if (st === -2 || st === -2.0) return { background: '#fce7f3', color: '#9d174d' }; // Absconding
-          return { background: '#f3f4f6', color: '#6b7280' };
-        };
+        const nowD2 = new Date();
+        const isLastAllowed = calYear === nowD2.getFullYear() && calMonth === (nowD2.getMonth() + 1);
 
-        const getDayDot = (dateStr, isFuture) => {
-          const rec = calData[dateStr];
-          if (isFuture || !rec || rec.is_weekend) return null;
+        // ── Status badge helper ──────────────────────────────────────
+        // Maps backend status → { text, color (text), bg (circle bg), border }
+        const getStatusBadge = (rec, dateStr) => {
+          if (!rec) return null;
           const st = rec.status;
-          if (rec.is_holiday || st === 1.5) return '🎉';
-          if (st === 2 || st === 2.0) return '▶';
-          if (st === 1 || st === 1.0) return '✓';
-          if (st === 0.5) return '½';
-          if (st === 0 || st === 0.0) return 'L';
-          if (st === -1 || st === -1.0) return '✗';
-          if (st === -2 || st === -2.0) return '!!';
+          const isWknd = rec.is_weekend;
+          if (rec.is_holiday || st === 1.5)
+            return { text: '1', color: '#38bdf8', bg: '#0c4a6e', border: '#0ea5e9', label: 'Holiday' };
+          if (st === 2 || st === 2.0)
+            return { text: 'IN', color: '#22d3ee', bg: '#164e63', border: '#06b6d4', label: 'Punched In' };
+          if (st === 1 || st === 1.0) {
+            if (isWknd) return { text: '1', color: '#c4b5fd', bg: '#2e1065', border: '#7c3aed', label: 'Present (Off Day)' };
+            return { text: '1', color: '#4ade80', bg: '#14532d', border: '#16a34a', label: 'Full Day' };
+          }
+          if (st === 0.5)
+            return { text: '.5', color: '#fbbf24', bg: '#78350f', border: '#d97706', label: 'Half Day' };
+          if (st === 0 || st === 0.0)
+            return { text: '0', color: '#fb923c', bg: '#431407', border: '#ea580c', label: rec.leave_type ? rec.leave_type.replace(/_/g,' ') : 'Leave' };
+          if (st === -1 || st === -1.0)
+            return { text: '0', color: '#94a3b8', bg: '#0f172a', border: '#334155', label: 'Absent' };
+          if (st === -2 || st === -2.0)
+            return { text: '-1', color: '#f87171', bg: '#450a0a', border: '#dc2626', label: 'Absconding' };
           return null;
         };
+
+        // ── Summary calculation ──────────────────────────────────────
+        let presentCount = 0, paidLeaveCount = 0, earnedLeaveCount = 0;
+        if (calStats) {
+          // Use API-provided stats for accuracy
+          presentCount = (calStats.full_days || 0) + (calStats.half_days || 0) * 0.5;
+          // calStats.holidays is mapped from leave_days in the backend
+          paidLeaveCount = calStats.holidays || 0;
+        } else {
+          // Fallback: compute from calData
+          Object.values(calData).forEach(rec => {
+            const st = rec.status;
+            if (st === 1 || st === 1.0) presentCount += 1;
+            else if (st === 0.5) presentCount += 0.5;
+            else if (st === 0 || st === 0.0) {
+              const lt = (rec.leave_type || '').toLowerCase();
+              if (lt.includes('earned') || lt.includes(' el')) earnedLeaveCount += 1;
+              else paidLeaveCount += 1;
+            }
+          });
+        }
+        const finalAdjusted = presentCount + paidLeaveCount + earnedLeaveCount;
 
         const selRec = selectedDay ? calData[selectedDay] : null;
         const fmt12 = (t) => {
@@ -513,144 +536,194 @@ const AttendanceCheckInOut = ({ userId, userInfo }) => {
           } catch { return t; }
         };
 
-        // Check if next month is in future
-        const nowDate2 = new Date();
-        const isLastAllowed = calYear === nowDate2.getFullYear() && calMonth === (nowDate2.getMonth() + 1);
+        const STATUS_INDICATORS = [
+          { text: 'IN',  color: '#22d3ee', bg: '#164e63', border: '#06b6d4', label: 'Punched In' },
+          { text: '1',   color: '#4ade80', bg: '#14532d', border: '#16a34a', label: 'Full Day' },
+          { text: '.5',  color: '#fbbf24', bg: '#78350f', border: '#d97706', label: 'Half Day' },
+          { text: '0',   color: '#94a3b8', bg: '#0f172a', border: '#334155', label: 'Absent' },
+          { text: '-1',  color: '#f87171', bg: '#450a0a', border: '#dc2626', label: 'Absconding' },
+          { text: '0',   color: '#fb923c', bg: '#431407', border: '#ea580c', label: 'Leave' },
+          { text: '1',   color: '#38bdf8', bg: '#0c4a6e', border: '#0ea5e9', label: 'Holiday' },
+        ];
 
         return (
-          <div style={{ marginTop: 24, background: 'white', borderRadius: 16, padding: '16px 14px', boxShadow: '0 2px 12px rgba(0,0,0,0.07)' }}>
-            {/* Header */}
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
-              <button onClick={prevMonth} style={{ background: '#f3f4f6', border: 'none', borderRadius: 8, width: 32, height: 32, cursor: 'pointer', fontSize: 18, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>‹</button>
+          <div style={{ marginTop: 24, background: 'linear-gradient(160deg, #0d0f1e 0%, #111827 100%)', borderRadius: 20, padding: '18px 14px 20px', color: 'white', boxShadow: '0 8px 32px rgba(0,0,0,0.5)' }}>
+
+            {/* ── Month navigation ── */}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+              <button onClick={prevMonth} style={{ background: '#1e2040', border: 'none', borderRadius: 10, width: 36, height: 36, cursor: 'pointer', fontSize: 20, fontWeight: 700, color: '#94a3b8', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>‹</button>
               <div style={{ textAlign: 'center' }}>
-                <div style={{ fontWeight: 800, fontSize: 15 }}>{MONTH_NAMES[calMonth - 1]} {calYear}</div>
-                {calLoading && <div style={{ fontSize: 11, color: '#9ca3af' }}>Loading…</div>}
+                <div style={{ fontWeight: 800, fontSize: 16, letterSpacing: 1, color: '#f1f5f9' }}>{MONTH_NAMES[calMonth - 1].toUpperCase()} {calYear}</div>
+                {calLoading && <div style={{ fontSize: 10, color: '#475569', marginTop: 2 }}>Loading…</div>}
               </div>
-              <button onClick={nextMonth} disabled={isLastAllowed} style={{ background: isLastAllowed ? '#f9fafb' : '#f3f4f6', border: 'none', borderRadius: 8, width: 32, height: 32, cursor: isLastAllowed ? 'not-allowed' : 'pointer', fontSize: 18, fontWeight: 700, color: isLastAllowed ? '#d1d5db' : '#374151', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>›</button>
+              <button onClick={nextMonth} disabled={isLastAllowed} style={{ background: '#1e2040', border: 'none', borderRadius: 10, width: 36, height: 36, cursor: isLastAllowed ? 'not-allowed' : 'pointer', fontSize: 20, fontWeight: 700, color: isLastAllowed ? '#2d3748' : '#94a3b8', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>›</button>
             </div>
 
-            {/* Legend */}
-            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 10, fontSize: 11 }}>
-              {[
-                ['#dcfce7','#15803d','Present'],
-                ['#ffedd5','#c2410c','Half Day'],
-                ['#fee2e2','#b91c1c','Absent'],
-                ['#ede9fe','#6d28d9','Leave'],
-                ['#fef9c3','#92400e','Holiday'],
-                ['#f3f4f6','#9ca3af','Weekend'],
-              ].map(([bg, col, lbl]) => (
-                <span key={lbl} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                  <span style={{ width: 12, height: 12, borderRadius: 3, background: bg, border: `1px solid ${col}33`, display: 'inline-block' }} />
-                  <span style={{ color: '#6b7280' }}>{lbl}</span>
-                </span>
-              ))}
+            {/* ── Status indicators ── */}
+            <div style={{ marginBottom: 16, background: '#0a0c1a', borderRadius: 12, padding: '10px 12px', border: '1px solid #1e2040' }}>
+              <div style={{ fontSize: 9, letterSpacing: 2, color: '#475569', fontWeight: 700, marginBottom: 8, textTransform: 'uppercase' }}>Status Indicators</div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px 14px' }}>
+                {STATUS_INDICATORS.map(s => (
+                  <div key={s.label} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <div style={{ width: 26, height: 26, borderRadius: 13, background: s.bg, border: `1.5px solid ${s.border}`, display: 'flex', alignItems: 'center', justifyContent: 'center', color: s.color, fontSize: 10, fontWeight: 800, flexShrink: 0 }}>{s.text}</div>
+                    <span style={{ fontSize: 10, color: '#64748b', whiteSpace: 'nowrap' }}>{s.label}</span>
+                  </div>
+                ))}
+              </div>
             </div>
 
-            {/* Day of week headers */}
+            {/* ── Day-of-week headers ── */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 3, marginBottom: 4 }}>
               {DAY_LABELS.map(d => (
-                <div key={d} style={{ textAlign: 'center', fontSize: 11, fontWeight: 700, color: d === 'Sun' || d === 'Sat' ? '#ef4444' : '#6b7280', padding: '4px 0' }}>{d}</div>
+                <div key={d} style={{ textAlign: 'center', fontSize: 9, fontWeight: 800, letterSpacing: 0.5, color: d === 'SUN' ? '#a78bfa' : d === 'SAT' ? '#818cf8' : '#475569', padding: '4px 0' }}>{d}</div>
               ))}
             </div>
 
-            {/* Calendar grid */}
+            {/* ── Calendar grid ── */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 3 }}>
-              {/* Empty cells before first day */}
+              {/* Empty offset cells */}
               {Array.from({ length: firstWeekday }).map((_, i) => (
-                <div key={`e${i}`} className="cal-day empty" />
+                <div key={`e${i}`} style={{ height: 68, borderRadius: 10 }} />
               ))}
+
               {/* Day cells */}
               {Array.from({ length: daysInMonth }).map((_, i) => {
                 const dayNum = i + 1;
-                const mm = String(calMonth).padStart(2, '0');
-                const dd = String(dayNum).padStart(2, '0');
-                const dateStr = `${calYear}-${mm}-${dd}`;
+                const dateStr = `${calYear}-${String(calMonth).padStart(2,'0')}-${String(dayNum).padStart(2,'0')}`;
                 const isToday = dateStr === todayStr;
                 const isFuture = dateStr > todayStr;
-                const dayStyle = getDayStyle(dateStr, isToday, isFuture);
-                const dot = getDayDot(dateStr, isFuture);
+                const rec = calData[dateStr];
+                const badge = isFuture ? null : getStatusBadge(rec, dateStr);
                 const isSelected = selectedDay === dateStr;
+                const dayOfWeek = new Date(calYear, calMonth - 1, dayNum).getDay();
+                const isSun = dayOfWeek === 0;
+                const isSat = dayOfWeek === 6;
+                const dateColor = isSun ? '#a78bfa' : isSat ? '#818cf8' : '#cbd5e1';
+
                 return (
                   <div
                     key={dayNum}
-                    className={`cal-day${isFuture ? ' empty' : ''}`}
                     onClick={() => !isFuture && setSelectedDay(isSelected ? null : dateStr)}
                     style={{
-                      ...dayStyle,
-                      border: isToday ? '2px solid #6366f1' : isSelected ? '2px solid #374151' : '1px solid transparent',
-                      boxShadow: isSelected ? '0 0 0 2px #6366f133' : 'none',
-                      opacity: (calData[dateStr]?.is_weekend && !calData[dateStr]) ? 0.5 : 1,
+                      height: 68,
+                      borderRadius: 10,
+                      background: isSelected ? '#1e1b4b' : (isSun && !badge) ? '#160a2e' : '#151728',
+                      border: isToday ? '2px solid #6366f1' : isSelected ? '1.5px solid #818cf8' : '1px solid #1e2040',
+                      display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-start',
+                      padding: '6px 2px 4px',
+                      cursor: isFuture ? 'default' : 'pointer',
+                      opacity: isFuture ? 0.3 : 1,
+                      transition: 'border 0.15s, background 0.15s',
                     }}
                   >
-                    <span style={{ fontSize: 12, lineHeight: 1 }}>{dayNum}</span>
-                    {dot && <span style={{ fontSize: 9, marginTop: 1, lineHeight: 1 }}>{dot}</span>}
+                    <span style={{ fontSize: 10, color: isToday ? '#818cf8' : dateColor, fontWeight: isToday ? 900 : 700, marginBottom: 4, lineHeight: 1 }}>{dayNum}</span>
+                    {badge ? (
+                      <div style={{ width: 36, height: 36, borderRadius: 18, background: badge.bg, border: `1.5px solid ${badge.border}`, display: 'flex', alignItems: 'center', justifyContent: 'center', color: badge.color, fontSize: badge.text === 'IN' ? 9 : badge.text === '-1' ? 10 : 12, fontWeight: 900, flexShrink: 0 }}>
+                        {badge.text}
+                      </div>
+                    ) : (
+                      !isFuture && (
+                        <div style={{ width: 36, height: 36, borderRadius: 18, background: '#0d0f1e', border: '1px solid #1e2040', flexShrink: 0 }} />
+                      )
+                    )}
                   </div>
                 );
               })}
             </div>
 
-            {/* Selected day detail panel */}
+            {/* ── Selected day detail ── */}
             {selectedDay && (
-              <div style={{ marginTop: 14, background: '#f8fafc', borderRadius: 12, padding: '12px 14px', border: '1px solid #e2e8f0' }}>
-                <div style={{ fontWeight: 700, fontSize: 13, color: '#374151', marginBottom: 8 }}>
-                  📅 {new Date(selectedDay + 'T00:00:00').toLocaleDateString('en-IN', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' })}
+              <div style={{ marginTop: 14, background: '#0a0c1a', borderRadius: 14, padding: '14px 14px', border: '1px solid #1e2040' }}>
+                <div style={{ fontWeight: 800, fontSize: 13, color: '#e2e8f0', marginBottom: 10 }}>
+                  {new Date(selectedDay + 'T00:00:00').toLocaleDateString('en-IN', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' })}
                 </div>
                 {selRec ? (
-                  selRec.is_weekend ? (
-                    <div style={{ color: '#9ca3af', fontSize: 13, textAlign: 'center', padding: '8px 0' }}>
-                      🏖️ Weekend — Day Off
-                    </div>
+                  selRec.is_weekend && !(selRec.status === 1 || selRec.status === 1.0 || selRec.status === 2) ? (
+                    <div style={{ color: '#475569', fontSize: 13, textAlign: 'center', padding: '8px 0' }}>Weekend — Day Off</div>
                   ) : (
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-                    <div style={{ background: 'white', borderRadius: 8, padding: '8px 12px' }}>
-                      <div style={{ fontSize: 10, color: '#9ca3af', fontWeight: 700, textTransform: 'uppercase', marginBottom: 2 }}>Check In</div>
-                      <div style={{ fontWeight: 700, color: '#16a34a', fontSize: 13 }}>{fmt12(selRec.check_in_time)}</div>
-                    </div>
-                    <div style={{ background: 'white', borderRadius: 8, padding: '8px 12px' }}>
-                      <div style={{ fontSize: 10, color: '#9ca3af', fontWeight: 700, textTransform: 'uppercase', marginBottom: 2 }}>Check Out</div>
-                      <div style={{ fontWeight: 700, color: '#7c3aed', fontSize: 13 }}>{fmt12(selRec.check_out_time)}</div>
-                    </div>
-                    <div style={{ background: 'white', borderRadius: 8, padding: '8px 12px' }}>
-                      <div style={{ fontSize: 10, color: '#9ca3af', fontWeight: 700, textTransform: 'uppercase', marginBottom: 2 }}>Hours Worked</div>
-                      <div style={{ fontWeight: 700, color: '#374151', fontSize: 13 }}>{selRec.total_working_hours != null ? `${selRec.total_working_hours}h` : '—'}</div>
-                    </div>
-                    <div style={{ background: 'white', borderRadius: 8, padding: '8px 12px' }}>
-                      <div style={{ fontSize: 10, color: '#9ca3af', fontWeight: 700, textTransform: 'uppercase', marginBottom: 2 }}>Status</div>
-                      <div style={{ fontWeight: 700, fontSize: 13, color:
-                        (selRec.status === 1 || selRec.status === 1.0) ? '#16a34a' :
-                        selRec.status === 0.5 ? '#d97706' :
-                        (selRec.status === 0 || selRec.status === 0.0) ? '#7c3aed' :
-                        (selRec.status === 1.5) ? '#92400e' :
-                        '#dc2626'
-                      }}>
-                        {selRec.is_holiday || selRec.status === 1.5 ? '🎉 Holiday' :
-                         selRec.status === 2 ? '▶ Working' :
-                         selRec.status === 1 || selRec.status === 1.0 ? '✅ Full Day' :
-                         selRec.status === 0.5 ? '🌤 Half Day' :
-                         selRec.status === 0 || selRec.status === 0.0 ? `📋 ${selRec.leave_type ? selRec.leave_type.replace(/_/g,' ') : 'Leave'}` :
-                         selRec.status === -2 ? '🚨 Absconding' :
-                         '❌ Absent'}
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                      <div style={{ background: '#151728', borderRadius: 10, padding: '10px 12px', border: '1px solid #1e2040' }}>
+                        <div style={{ fontSize: 9, color: '#475569', fontWeight: 800, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 4 }}>Check In</div>
+                        <div style={{ fontWeight: 700, color: '#4ade80', fontSize: 14 }}>{fmt12(selRec.check_in_time)}</div>
                       </div>
+                      <div style={{ background: '#151728', borderRadius: 10, padding: '10px 12px', border: '1px solid #1e2040' }}>
+                        <div style={{ fontSize: 9, color: '#475569', fontWeight: 800, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 4 }}>Check Out</div>
+                        <div style={{ fontWeight: 700, color: '#a78bfa', fontSize: 14 }}>{fmt12(selRec.check_out_time)}</div>
+                      </div>
+                      <div style={{ background: '#151728', borderRadius: 10, padding: '10px 12px', border: '1px solid #1e2040' }}>
+                        <div style={{ fontSize: 9, color: '#475569', fontWeight: 800, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 4 }}>Hours Worked</div>
+                        <div style={{ fontWeight: 700, color: '#e2e8f0', fontSize: 14 }}>{selRec.total_working_hours != null ? `${selRec.total_working_hours}h` : '—'}</div>
+                      </div>
+                      <div style={{ background: '#151728', borderRadius: 10, padding: '10px 12px', border: '1px solid #1e2040' }}>
+                        <div style={{ fontSize: 9, color: '#475569', fontWeight: 800, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 4 }}>Status</div>
+                        <div style={{ fontWeight: 800, fontSize: 12, color:
+                          (selRec.is_holiday || selRec.status === 1.5) ? '#38bdf8' :
+                          selRec.status === 2 ? '#22d3ee' :
+                          (selRec.status === 1 || selRec.status === 1.0) ? '#4ade80' :
+                          selRec.status === 0.5 ? '#fbbf24' :
+                          (selRec.status === 0 || selRec.status === 0.0) ? '#fb923c' :
+                          selRec.status === -2 ? '#f87171' :
+                          '#94a3b8'
+                        }}>
+                          {(selRec.is_holiday || selRec.status === 1.5) ? 'Holiday' :
+                           selRec.status === 2 ? 'Punched In' :
+                           (selRec.status === 1 || selRec.status === 1.0) ? 'Full Day' :
+                           selRec.status === 0.5 ? 'Half Day' :
+                           (selRec.status === 0 || selRec.status === 0.0) ? (selRec.leave_type ? selRec.leave_type.replace(/_/g,' ') : 'Leave') :
+                           selRec.status === -2 ? 'Absconding' :
+                           'Absent'}
+                        </div>
+                      </div>
+                      {selRec.is_late && (
+                        <div style={{ background: '#1c1108', borderRadius: 10, padding: '8px 12px', gridColumn: '1/-1', border: '1px solid #78350f' }}>
+                          <span style={{ color: '#fbbf24', fontSize: 12, fontWeight: 700 }}>Late Arrival</span>
+                        </div>
+                      )}
+                      {selRec.leave_reason && (
+                        <div style={{ background: '#1a0a2e', borderRadius: 10, padding: '8px 12px', gridColumn: '1/-1', border: '1px solid #4c1d95' }}>
+                          <span style={{ color: '#c4b5fd', fontSize: 12, fontWeight: 700 }}>{selRec.leave_reason}</span>
+                        </div>
+                      )}
                     </div>
-                    {selRec.is_late && (
-                      <div style={{ background: '#fff7ed', borderRadius: 8, padding: '8px 12px', gridColumn: '1/-1' }}>
-                        <span style={{ color: '#ea580c', fontSize: 12, fontWeight: 600 }}>⏰ Late Arrival</span>
-                      </div>
-                    )}
-                    {selRec.leave_reason && (
-                      <div style={{ background: '#f5f3ff', borderRadius: 8, padding: '8px 12px', gridColumn: '1/-1' }}>
-                        <span style={{ color: '#6d28d9', fontSize: 12, fontWeight: 600 }}>📋 {selRec.leave_reason}</span>
-                      </div>
-                    )}
-                  </div>
                   )
                 ) : (
-                  <div style={{ color: '#9ca3af', fontSize: 13, textAlign: 'center', padding: '8px 0' }}>
-                    No attendance record for this date
-                  </div>
+                  <div style={{ color: '#475569', fontSize: 13, textAlign: 'center', padding: '8px 0' }}>No attendance record</div>
                 )}
               </div>
             )}
+
+            {/* ── Final Attendance Calculation ── */}
+            <div style={{ marginTop: 18, background: '#0a0c1a', borderRadius: 16, padding: '16px 14px', border: '1px solid #1e2040' }}>
+              <div style={{ fontSize: 10, letterSpacing: 2, color: '#475569', fontWeight: 800, textAlign: 'center', marginBottom: 14, textTransform: 'uppercase' }}>Final Attendance Calculation</div>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, marginBottom: 14, flexWrap: 'wrap' }}>
+                {/* PRESENT */}
+                <div style={{ background: '#0d1f14', borderRadius: 12, padding: '12px 14px', textAlign: 'center', minWidth: 72, border: '1px solid #14532d' }}>
+                  <div style={{ fontSize: 9, color: '#4ade80', fontWeight: 800, letterSpacing: 1, marginBottom: 4 }}>PRESENT</div>
+                  <div style={{ fontSize: 26, fontWeight: 900, color: '#4ade80', lineHeight: 1 }}>{presentCount}</div>
+                </div>
+                <span style={{ color: '#1e2040', fontSize: 20, fontWeight: 700 }}>+</span>
+                {/* PAID LEAVE */}
+                <div style={{ background: '#160d2e', borderRadius: 12, padding: '12px 14px', textAlign: 'center', minWidth: 72, border: '1px solid #4c1d95' }}>
+                  <div style={{ fontSize: 9, color: '#c4b5fd', fontWeight: 800, letterSpacing: 1, marginBottom: 4 }}>PAID L.</div>
+                  <div style={{ fontSize: 26, fontWeight: 900, color: '#a78bfa', lineHeight: 1 }}>{paidLeaveCount}</div>
+                </div>
+                <span style={{ color: '#1e2040', fontSize: 20, fontWeight: 700 }}>+</span>
+                {/* EARNED LEAVE */}
+                <div style={{ background: '#0d1520', borderRadius: 12, padding: '12px 14px', textAlign: 'center', minWidth: 72, border: '1px solid #1e3a5f' }}>
+                  <div style={{ fontSize: 9, color: '#94a3b8', fontWeight: 800, letterSpacing: 1, marginBottom: 4 }}>EARNED L.</div>
+                  <div style={{ fontSize: 26, fontWeight: 900, color: '#64748b', lineHeight: 1 }}>{earnedLeaveCount}</div>
+                </div>
+              </div>
+              {/* Final Adjusted */}
+              <div style={{ background: 'linear-gradient(135deg, #1c1802 0%, #2d2400 100%)', borderRadius: 14, padding: '14px 18px', border: '1px solid #ca8a04', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <div>
+                  <div style={{ color: '#fbbf24', fontSize: 13, fontWeight: 800, letterSpacing: 0.5 }}>FINAL ADJUSTED</div>
+                  <div style={{ color: '#78716c', fontSize: 11, marginTop: 2 }}>Total Attendance Payable</div>
+                </div>
+                <div style={{ fontSize: 42, fontWeight: 900, color: '#fbbf24', lineHeight: 1 }}>{finalAdjusted}</div>
+              </div>
+            </div>
+
           </div>
         );
       })()}
