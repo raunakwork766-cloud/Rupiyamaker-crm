@@ -105,23 +105,36 @@ const SuccessModal = ({ data, onClose }) => {
 };
 
 const AttendanceCheckInOut = ({ userId, userInfo }) => {
-  // 📱 If this component is rendered inside an attendance-only session
-  // (mobile employee shell), include the X-Attendance-Token header on every
-  // request so the backend's session-validation middleware can authorize the
-  // call against the scoped attendance token. For regular CRM users opening
-  // the attendance page from the sidebar, this header simply won't exist
-  // and normal CRM session validation applies.
+  // 📱 Determine the right auth headers based on login type:
+  //   attendance_only → X-Attendance-Token (scoped attendance session)
+  //   crm / anything else → Authorization: Bearer (CRM session token)
+  // This prevents a stale attendanceToken from blocking CRM users, and also
+  // ensures attendance-only users don't accidentally hit CRM endpoints.
   const getAttendanceHeaders = () => {
     if (typeof window === 'undefined') return {};
-    const tok = localStorage.getItem('attendanceToken');
-    if (tok) return { 'X-Attendance-Token': tok };
-    // Fallback: regular CRM session — token is stored inside userData JSON
+    const loginType = localStorage.getItem('loginType');
+    if (loginType === 'attendance_only') {
+      const tok = localStorage.getItem('attendanceToken');
+      if (tok) return { 'X-Attendance-Token': tok };
+    }
+    // CRM session (or fallback): Authorization Bearer token stored in userData
     try {
       const userData = localStorage.getItem('userData');
       const user = userData ? JSON.parse(userData) : null;
       if (user?.token) return { 'Authorization': `Bearer ${user.token}` };
     } catch (_) {}
     return {};
+  };
+
+  // When an attendance session token is invalid/expired, redirect to login.
+  const handleSessionExpired = () => {
+    const loginType = localStorage.getItem('loginType');
+    if (loginType === 'attendance_only') {
+      localStorage.removeItem('attendanceToken');
+      localStorage.removeItem('loginType');
+      localStorage.removeItem('isAuthenticated');
+      window.location.href = window.location.pathname + '?mode=attendance';
+    }
   };
 
   const [loading, setLoading] = useState(false);
@@ -163,7 +176,10 @@ const AttendanceCheckInOut = ({ userId, userInfo }) => {
         { headers: getAttendanceHeaders() }
       );
       if (r.data.success) setCurrentStatus(r.data);
-    } catch (e) { console.error(e); }
+    } catch (e) {
+      if (e?.response?.status === 401) handleSessionExpired();
+      else console.error(e);
+    }
   };
 
   // ─── Calendar fetch ──────────────────────────────────────────────
@@ -187,6 +203,10 @@ const AttendanceCheckInOut = ({ userId, userInfo }) => {
       days.forEach(d => { if (d.date) map[d.date] = d; });
       setCalData(map);
     } catch (e) {
+      if (e?.response?.status === 401) {
+        handleSessionExpired();
+        return;
+      }
       console.error('Calendar fetch error', e?.response?.status, e?.response?.data || e.message);
       // Fallback: use my-calendar endpoint (lighter, only own records)
       try {
