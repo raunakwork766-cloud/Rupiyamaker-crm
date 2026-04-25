@@ -2058,8 +2058,12 @@ async def get_employee_leave_balance(
         # Get or create leave balance for this period
         balance = await settings_db.get_leave_balance(employee_id, period)
 
+        # Always read grace limit from settings (grace_usage_limit = Manual Grace Limit)
+        att_settings = await settings_db.get_attendance_settings()
+        grace_limit = att_settings.get("grace_usage_limit") or att_settings.get("auto_grace_monthly_limit") or 3
+
         if not balance:
-            # Create default monthly balance
+            # Create default monthly balance using current settings
             default_balance = {
                 "employee_id": employee_id,
                 "employee_name": employee.get("name", ""),
@@ -2078,12 +2082,15 @@ async def get_employee_leave_balance(
                 "casual_leaves_total": 0,
                 "casual_leaves_used": 0,
                 "casual_leaves_remaining": 0,
-                "grace_leaves_total": 3,
+                "grace_leaves_total": grace_limit,
                 "grace_leaves_used": 0,
-                "grace_leaves_remaining": 3,
+                "grace_leaves_remaining": grace_limit,
             }
             await settings_db.create_leave_balance(default_balance)
             balance = default_balance
+
+        # Always override grace_leaves_total from settings so it stays in sync with grace_usage_limit
+        balance["grace_leaves_total"] = grace_limit
 
         # Ensure period is set on legacy records
         if "period" not in balance or not balance.get("period"):
@@ -2109,10 +2116,14 @@ async def reset_leave_balance_defaults(
     users_db: UsersDB = Depends(get_users_db),
     roles_db: RolesDB = Depends(get_roles_db)
 ):
-    """Reset EL to 0, PL to 1, Grace to 3 for ALL employees"""
+    """Reset EL to 0, PL to 1, Grace to settings grace_usage_limit for ALL employees"""
     await check_permission(user_id, "settings", "edit", users_db, roles_db)
     try:
         db = settings_db.db
+        # Read current grace limit from settings
+        att_settings = await settings_db.get_attendance_settings()
+        grace_limit = att_settings.get("grace_usage_limit") or att_settings.get("auto_grace_monthly_limit") or 3
+
         # Reset earned leaves: set total & remaining to 0 (keep used as-is)
         el_result = await db.leave_balances.update_many(
             {},
@@ -2129,12 +2140,12 @@ async def reset_leave_balance_defaults(
                 "paid_leaves_remaining": {"$max": [0, {"$subtract": [1, {"$ifNull": ["$paid_leaves_used", 0]}]}]},
             }}]
         )
-        # Reset grace leaves: set total & remaining to 3 (keep used as-is)
+        # Reset grace leaves: set total & remaining to grace_limit (from settings)
         gr_result = await db.leave_balances.update_many(
             {},
             [{"$set": {
-                "grace_leaves_total": 3,
-                "grace_leaves_remaining": {"$max": [0, {"$subtract": [3, {"$ifNull": ["$grace_leaves_used", 0]}]}]},
+                "grace_leaves_total": grace_limit,
+                "grace_leaves_remaining": {"$max": [0, {"$subtract": [grace_limit, {"$ifNull": ["$grace_leaves_used", 0]}]}]},
             }}]
         )
         return {
@@ -2142,7 +2153,7 @@ async def reset_leave_balance_defaults(
             "el_updated": el_result.modified_count,
             "pl_updated": pl_result.modified_count,
             "gr_updated": gr_result.modified_count,
-            "message": "All employees reset to EL=0, PL=1, Grace=3"
+            "message": f"All employees reset to EL=0, PL=1, Grace={grace_limit}"
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Reset failed: {str(e)}")
@@ -2201,7 +2212,7 @@ async def allocate_leave_to_employee(
                 "earned_leaves_total": 0, "earned_leaves_used": 0, "earned_leaves_remaining": 0,
                 "sick_leaves_total": 0, "sick_leaves_used": 0, "sick_leaves_remaining": 0,
                 "casual_leaves_total": 0, "casual_leaves_used": 0, "casual_leaves_remaining": 0,
-                "grace_leaves_total": 3, "grace_leaves_used": 0, "grace_leaves_remaining": 3,
+                "grace_leaves_total": grace_limit, "grace_leaves_used": 0, "grace_leaves_remaining": grace_limit,
             }
             await settings_db.create_leave_balance(default_balance)
             balance = default_balance

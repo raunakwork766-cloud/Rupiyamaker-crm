@@ -376,7 +376,12 @@ const getDisplayEditorName = (entry) => {
     if (looksLikeRawId(txt)) continue
     return txt
   }
-  return 'System'
+  // Context-aware fallback — never show raw 'System'
+  const actionStr = String(entry?.action_type || entry?.action || entry?.action_description || '').toLowerCase()
+  if (actionStr.includes('auto') || actionStr.includes('cron') || actionStr.includes('scheduler')) {
+    return 'CRM Auto'
+  }
+  return 'HR Admin'
 }
 
 const humanizeAttendanceField = (field) => {
@@ -649,6 +654,7 @@ const exportToPDF = async (attendanceData, selectedYear, selectedMonth, holidays
   attendanceData.forEach((record, rowIdx) => {
     const stats = calculateMonthlyStats(record, selectedYear, selectedMonth, daysInMonth, holidays)
     const joiningDateKey = normalizeDateKey(record.joining_date || record.date_of_joining)
+    const inactiveDateKeyExport = record.isActive === false ? normalizeDateKey(record.inactive_from_date) : null
     const row = sheet.getRow(3 + rowIdx)
     row.height = 18
 
@@ -677,10 +683,12 @@ const exportToPDF = async (attendanceData, selectedYear, selectedMonth, holidays
       const isSun = getDayName(selectedYear, selectedMonth, d) === 'Sun'
       const isHoliday = holidays.some(h => h.date === dateKey)
       const isBeforeJoining = joiningDateKey && dateKey < joiningDateKey
+      const isAfterInactiveExport = inactiveDateKeyExport && dateKey > inactiveDateKeyExport
+      const isBlackedOutExport = isBeforeJoining || isAfterInactiveExport
 
-      let rawStatus = isBeforeJoining ? null : record[`day${d}`]
+      let rawStatus = isBlackedOutExport ? null : record[`day${d}`]
       // If no status and it's a past working day → treat as Absent (same as UI)
-      if (!rawStatus && !isSun && !isHoliday && !isBeforeJoining && dateKey <= todayKey) rawStatus = 'A'
+      if (!rawStatus && !isSun && !isHoliday && !isBlackedOutExport && dateKey <= todayKey) rawStatus = 'A'
 
       const cell = row.getCell(3 + d)
 
@@ -690,8 +698,8 @@ const exportToPDF = async (attendanceData, selectedYear, selectedMonth, holidays
         cell.font = { bold: true, size: 9, color: { argb: 'FF' + s.font.toUpperCase() } }
         cell.fill = fill(s.fillHex)
       } else {
-        // Empty future/pre-joining day — use special bg if holiday/weekend
-        const bgHex = isBeforeJoining ? '0A0A0D' : (isHoliday ? '061A1C' : isSun ? '2E1065' : '0A0A0D')
+        // Empty future/pre-joining/post-inactive day — use special bg if holiday/weekend
+        const bgHex = isBlackedOutExport ? '0A0A0D' : (isHoliday ? '061A1C' : isSun ? '2E1065' : '0A0A0D')
         cell.value = ''
         cell.font = { size: 9, color: { argb: 'FF52525B' } }
         cell.fill = fill(bgHex)
@@ -1365,13 +1373,29 @@ const EditHistoryModal = ({ isOpen, onClose, employee, historyData, loading }) =
                     })}
 
                     {nonStatusChanges.length > 0 && (
-                      <div className="bg-indigo-900/15 border border-indigo-500/20 rounded-lg px-3 py-2 space-y-1">
-                        <span className="text-indigo-300 text-[10px] font-bold uppercase tracking-wide block mb-0.5">Change details</span>
-                        {nonStatusChanges.map((ch, idx) => (
-                          <p key={`${ch.field}-${idx}`} className="text-indigo-100 text-xs leading-relaxed">
-                            • {toSimpleChangeRemark(ch)}
-                          </p>
-                        ))}
+                      <div className="space-y-2">
+                        {/* Separate 'comments' field and render as remark block */}
+                        {nonStatusChanges.filter(ch => String(ch.field || '').toLowerCase() === 'comments').map((ch, idx) => {
+                          const val = ch.newVal && ch.newVal !== 'None' && ch.newVal !== 'empty' ? ch.newVal : null
+                          if (!val) return null
+                          return (
+                            <div key={`cmt-${idx}`} className="bg-sky-900/15 border border-sky-500/20 rounded-lg px-3 py-2">
+                              <span className="text-sky-300 text-[10px] font-bold uppercase tracking-wide block mb-0.5">System Remark</span>
+                              <span className="text-sky-100 text-xs leading-relaxed">{val}</span>
+                            </div>
+                          )
+                        })}
+                        {/* Other non-status, non-comments changes */}
+                        {nonStatusChanges.filter(ch => String(ch.field || '').toLowerCase() !== 'comments').length > 0 && (
+                          <div className="bg-indigo-900/15 border border-indigo-500/20 rounded-lg px-3 py-2 space-y-1">
+                            <span className="text-indigo-300 text-[10px] font-bold uppercase tracking-wide block mb-0.5">Change details</span>
+                            {nonStatusChanges.filter(ch => String(ch.field || '').toLowerCase() !== 'comments').map((ch, idx) => (
+                              <p key={`${ch.field}-${idx}`} className="text-indigo-100 text-xs leading-relaxed">
+                                • {toSimpleChangeRemark(ch)}
+                              </p>
+                            ))}
+                          </div>
+                        )}
                       </div>
                     )}
 
@@ -2412,6 +2436,37 @@ const EmployeeDetailModal = ({ employee, selectedDate, isOpen, onClose, onUpdate
                     </div>
                   </div>
 
+                  {/* System auto-remark (auto-absent reason, late comment, etc.) */}
+                  {(() => {
+                    const remarkText = attendanceDetail?.comments || attendanceDetail?.attendance_details?.comments
+                    if (!remarkText || remarkText === 'None' || remarkText === 'null') return null
+                    return (
+                      <div className="bg-indigo-950/30 border border-indigo-500/20 rounded-xl p-3 flex gap-2.5 items-start">
+                        <span className="text-indigo-400 text-base mt-0.5 shrink-0">🤖</span>
+                        <div>
+                          <p className="text-[10px] text-indigo-400 font-bold uppercase tracking-widest mb-1">System Remark</p>
+                          <p className="text-indigo-100 text-xs leading-relaxed">{remarkText}</p>
+                        </div>
+                      </div>
+                    )
+                  })()}
+
+                  {/* User-added comments */}
+                  {comments.length > 0 && (
+                    <div className="space-y-2">
+                      <p className="text-[10px] text-zinc-400 font-bold uppercase tracking-widest">Comments ({comments.length})</p>
+                      {comments.map((c, i) => (
+                        <div key={c._id || i} className="bg-white/[0.03] border border-white/[0.06] rounded-lg p-3 space-y-1">
+                          <div className="flex justify-between items-center gap-2">
+                            <span className="text-emerald-400 text-[11px] font-semibold">{c.user_name || c.username || 'HR'}</span>
+                            <span className="text-zinc-600 text-[10px] font-mono">{c.created_at ? formatDateTime(c.created_at) : ''}</span>
+                          </div>
+                          <p className="text-zinc-200 text-xs leading-relaxed">{c.content || c.comment || c.message}</p>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
                   {/* Check In / Check Out */}
                   <div className="grid grid-cols-2 gap-4">
                     {/* Check In */}
@@ -2545,29 +2600,68 @@ const EmployeeDetailModal = ({ employee, selectedDate, isOpen, onClose, onUpdate
               <History className="w-4 h-4 text-indigo-400" />
               <span className="text-zinc-300 font-bold text-xs tracking-widest uppercase">Activity History</span>
             </div>
-            <div className="flex-1 overflow-y-auto p-4 space-y-6" style={{ scrollbarWidth: 'thin', scrollbarColor: '#333 transparent' }}>
+            <div className="flex-1 overflow-y-auto p-4 space-y-3" style={{ scrollbarWidth: 'thin', scrollbarColor: '#333 transparent' }}>
               {history.length > 0 ? (
-                history.map((record, index) => (
-                  <div key={record._id || index} className="relative pl-4 border-l border-white/10 pb-2">
-                    <div className="absolute w-2 h-2 bg-indigo-500 rounded-full -left-[4.5px] top-1.5 ring-4 ring-black" />
-                    <div className="space-y-1.5">
-                      <p className="text-[10px] text-zinc-500 font-mono">{(record.changed_at || record.created_at) ? formatDateTime(record.changed_at || record.created_at) : ''}</p>
-                      <p className="text-sm text-zinc-200">{record.action}</p>
-                      {record.old_value !== undefined && record.old_value !== null && (
-                        <p className="text-zinc-500 text-xs">{record.old_value} → {record.new_value}</p>
+                history.map((record, index) => {
+                  const editorName = getDisplayEditorName(record)
+                  const isAuto = String(record.action_type || record.action || '').toLowerCase().includes('auto')
+                  const hasValues = record.old_value !== undefined && record.old_value !== null
+                  const histStatusLabel = (val) => {
+                    const n = parseFloat(val)
+                    if (n === 1 || val === 'P')    return { text: 'Present',     color: '#10b981' }
+                    if (n === 0.5 || val === 'HD') return { text: 'Half Day',    color: '#f59e0b' }
+                    if (n === 0 || val === 'LV')   return { text: 'Leave',       color: '#f97316' }
+                    if (n === -1 || val === 'A')   return { text: 'Absent',      color: '#71717a' }
+                    if (n === -2 || val === 'AB')  return { text: 'Absconding',  color: '#ef4444' }
+                    return { text: String(val ?? '—'), color: '#a1a1aa' }
+                  }
+                  const oldInfo = hasValues ? histStatusLabel(record.old_value) : null
+                  const newInfo = hasValues ? histStatusLabel(record.new_value) : null
+                  // Clean up action text: remove redundant "by [Name]" and changes list
+                  const actionType = record.action_type || ''
+                  const cleanAction = (() => {
+                    const raw = String(record.action || '')
+                    if (actionType === 'attendance_created') return 'Attendance marked'
+                    if (actionType === 'attendance_edited') return 'Attendance updated'
+                    if (actionType === 'comment_added') return 'Comment added'
+                    // Generic: strip "by [Name]: details" part
+                    const colonIdx = raw.indexOf(':')
+                    const byIdx = raw.toLowerCase().indexOf(' by ')
+                    if (byIdx > 0 && colonIdx > byIdx) return raw.slice(0, byIdx).trim()
+                    if (byIdx > 0) return raw.slice(0, byIdx).trim()
+                    return raw
+                  })()
+                  return (
+                    <div key={record._id || index} style={{ background: '#0d0d10', border: '1px solid rgba(255,255,255,0.07)', borderRadius: '10px', padding: '12px' }}>
+                      {/* Top row: timestamp + editor badge */}
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px', flexWrap: 'wrap', gap: '4px' }}>
+                        <span style={{ color: '#71717a', fontSize: '10px', fontFamily: 'monospace' }}>
+                          {(record.changed_at || record.created_at) ? formatDateTime(record.changed_at || record.created_at) : '—'}
+                        </span>
+                        <span style={{ fontSize: '11px', fontWeight: 600, padding: '2px 10px', borderRadius: '20px', background: isAuto ? 'rgba(99,102,241,0.15)' : 'rgba(16,185,129,0.15)', color: isAuto ? '#818cf8' : '#34d399', border: isAuto ? '1px solid rgba(99,102,241,0.3)' : '1px solid rgba(16,185,129,0.3)' }}>
+                          {editorName}
+                        </span>
+                      </div>
+                      {/* Action text (cleaned) */}
+                      <p style={{ color: '#e4e4e7', fontSize: '12px', lineHeight: '1.5', margin: 0, marginBottom: (hasValues || record.reason) ? '8px' : 0 }}>{cleanAction}</p>
+                      {/* Status change badges */}
+                      {hasValues && (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: record.reason ? '8px' : 0 }}>
+                          {oldInfo && <span style={{ color: oldInfo.color, background: oldInfo.color + '1a', border: `1px solid ${oldInfo.color}40`, fontSize: '10px', fontWeight: 700, padding: '2px 8px', borderRadius: '4px' }}>{oldInfo.text}</span>}
+                          <span style={{ color: '#52525b', fontSize: '13px' }}>→</span>
+                          {newInfo && <span style={{ color: newInfo.color, background: newInfo.color + '1a', border: `1px solid ${newInfo.color}40`, fontSize: '10px', fontWeight: 700, padding: '2px 8px', borderRadius: '4px' }}>{newInfo.text}</span>}
+                        </div>
                       )}
+                      {/* Reason */}
                       {record.reason && (
-                        <p className="text-xs text-zinc-400 bg-white/5 border border-white/10 rounded-lg px-3 py-2 mt-1 leading-relaxed">💬 {record.reason}</p>
+                        <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: '6px', padding: '7px 10px' }}>
+                          <p style={{ color: '#a1a1aa', fontSize: '9px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', margin: '0 0 3px' }}>Reason</p>
+                          <p style={{ color: '#d4d4d8', fontSize: '11px', lineHeight: '1.5', margin: 0 }}>{record.reason}</p>
+                        </div>
                       )}
-                      {(() => {
-                        const byName = getDisplayEditorName(record)
-                        return byName && byName !== 'System' ? (
-                          <p className="text-[10px] text-zinc-600 uppercase tracking-wider mt-1">By {byName}</p>
-                        ) : null
-                      })()}
                     </div>
-                  </div>
-                ))
+                  )
+                })
               ) : (
                 <div className="h-full flex flex-col items-center justify-center text-center space-y-3 opacity-50 py-12">
                   <History className="w-8 h-8 text-zinc-600" />
@@ -2630,7 +2724,7 @@ const calculateMonthlyStats = (record, selectedYear, selectedMonth, daysInMonth,
   // Grace → monthly limit from attendance settings
   const elDays = record.earnedLeavesRemaining ?? 0            // EL: actual balance (from Leave Management)
   const plDays = parseFloat(record.plMonthly ?? 1.0)          // PL: per-month allotment (from attendance settings)
-  const graceMonthly = record.graceMonthlyLimit ?? 3          // Grace limit per month (from attendance settings)
+  const graceMonthly = record.graceMonthlyLimit ?? 3          // Grace limit per month (from attendance settings — grace_usage_limit)
   const graceRemainingMonthly = Math.min(record.graceRemaining ?? graceMonthly, graceMonthly)
 
   // Final attendance = Present + PL (monthly) + EL (remaining), only if Present > 0
@@ -2684,6 +2778,7 @@ export default function MonthlyAttendanceTable() {
     enable_adjacent_absconding_rule: true,
     minimum_working_days_for_sunday: 5,
     auto_grace_monthly_limit: 3,
+    grace_usage_limit: 3,
     default_earned_leave_monthly: 1.5,
     default_paid_leave_monthly: 1.0,
   })
@@ -2942,8 +3037,8 @@ export default function MonthlyAttendanceTable() {
       const hrmsEmp = hrmsLookup.get(String(empId)) || hrmsLookup.get(String(employee.user_mongo_id || ''))
       const empSalary = salaryMap[empId] || salaryMap[String(empId)] || 0;
       
-      // Determine employee active status from HRMS employee status map
-      const empStatus = employeeStatusMap[empId] || employeeStatusMap[String(empId)];
+      // Determine employee active status from HRMS employee status map, with attendance API as fallback
+      const empStatus = employeeStatusMap[empId] || employeeStatusMap[String(empId)] || employee.employee_status;
       const isActiveEmp = empStatus
         ? (empStatus === 'active')
         : (!activeEmployeeIds || activeEmployeeIds.size === 0
@@ -2954,6 +3049,8 @@ export default function MonthlyAttendanceTable() {
       const resolvedName = hrmsName || employee.employee_name || hrmsEmp?.name || hrmsEmp?.username || String(empId)
       const resolvedDesignation = employee.designation || hrmsEmp?.designation || ''
       const resolvedJoiningDate = employee.joining_date || hrmsEmp?.joining_date || hrmsEmp?.date_of_joining || ''
+      // Inactive-from date: set by backend when employee is deactivated
+      const resolvedInactiveFrom = hrmsEmp?.inactive_from_date || employee.inactive_from_date || null
 
       const employeeRecord = {
         id: employee.employee_id,
@@ -2964,6 +3061,7 @@ export default function MonthlyAttendanceTable() {
         role: employee.role_name || "",
         designation: resolvedDesignation,
         joining_date: resolvedJoiningDate,
+        inactive_from_date: resolvedInactiveFrom,
         photo: employee.employee_photo,
         salary: empSalary,
         isActive: isActiveEmp
@@ -3030,6 +3128,7 @@ export default function MonthlyAttendanceTable() {
           role: emp.designation || "",
           designation: emp.designation || "",
           joining_date: emp.joining_date || emp.date_of_joining || "",
+          inactive_from_date: emp.inactive_from_date || null,
           photo: emp.profile_photo,
           salary: empSalary,
           isActive: isActiveEmp
@@ -3148,13 +3247,13 @@ export default function MonthlyAttendanceTable() {
               paidLeavesTotal: bal.paid_leaves_total ?? 0,
               paidLeavesUsed: bal.paid_leaves_used ?? 0,
               paidLeavesRemaining: bal.paid_leaves_remaining ?? 0,
-              graceTotal: bal.grace_leaves_total ?? settingsData.auto_grace_monthly_limit ?? 3,
+              graceTotal: settingsData.grace_usage_limit ?? settingsData.auto_grace_monthly_limit ?? bal.grace_leaves_total ?? 3,
               graceUsed: bal.grace_leaves_used ?? 0,
-              graceRemaining: bal.grace_leaves_remaining ?? settingsData.auto_grace_monthly_limit ?? 3,
+              graceRemaining: bal.grace_leaves_remaining ?? settingsData.grace_usage_limit ?? settingsData.auto_grace_monthly_limit ?? 3,
               // Settings-based monthly allotments kept for reference (used by auto-credit logic)
               elMonthly: settingsData.default_earned_leave_monthly ?? 1.5,
               plMonthly: settingsData.default_paid_leave_monthly ?? 1.0,
-              graceMonthlyLimit: settingsData.auto_grace_monthly_limit ?? 3,
+              graceMonthlyLimit: settingsData.grace_usage_limit ?? settingsData.auto_grace_monthly_limit ?? 3,
             }
           })
 
@@ -3169,7 +3268,8 @@ export default function MonthlyAttendanceTable() {
           let finalData = ruledData;
           if (!attendanceViewAll && !attendanceViewJunior) {
             // User only has 'own' attendance permission — show only their own record
-            finalData = finalData.filter(emp => emp.id === user.user_id);
+            // Compare using mongoId (MongoDB _id) since emp.id may be a custom employee_id (e.g. RM001)
+            finalData = finalData.filter(emp => emp.mongoId === user.user_id || emp.id === user.user_id);
           }
           setAttendanceData(finalData)
 
@@ -3584,7 +3684,8 @@ export default function MonthlyAttendanceTable() {
           const attViewAll = canUserViewAll();
           const attViewJunior = canUserViewJunior();
           if (!attViewAll && !attViewJunior) {
-            formattedData = formattedData.filter(employee => employee.id === user.user_id)
+            // Compare using mongoId (MongoDB _id) since employee.id may be a custom employee_id (e.g. RM001)
+            formattedData = formattedData.filter(employee => employee.mongoId === user.user_id || employee.id === user.user_id)
           }
           
           setAttendanceData(formattedData)
@@ -4115,6 +4216,7 @@ export default function MonthlyAttendanceTable() {
                 const stats = calculateMonthlyStats(record, selectedYear, selectedMonth, daysInMonth, holidays)
                 const isEvenRow = index % 2 === 0
                 const joiningDateKey = normalizeDateKey(record.joining_date || record.date_of_joining)
+                const inactiveDateKey = record.isActive === false ? normalizeDateKey(record.inactive_from_date) : null
                 
                 // Calculate salary
                 const monthlySalary = record.salary || 0
@@ -4149,30 +4251,33 @@ export default function MonthlyAttendanceTable() {
                       const isSundayDay = getDayName(selectedYear, selectedMonth, day) === 'Sun'
                       const isHolidayDay = holidays.some(h => h.date === dateKey)
                       const isBeforeJoining = joiningDateKey && dateKey < joiningDateKey
+                      // Black out days AFTER the employee became inactive (like pre-joining blackout)
+                      const isAfterInactive = inactiveDateKey && dateKey > inactiveDateKey
+                      const isBlackedOut = isBeforeJoining || isAfterInactive
                       
                       // Holiday takes priority over Sunday for background colour
                       // Sunday → solid purple, Holiday (incl. Sunday holiday) → cyan tint, Normal → black
-                      const cellBg = isBeforeJoining ? '#000000' : (isHolidayDay ? 'rgba(6,182,212,0.12)' : isSundayDay ? '#2e1065' : '#000000')
-                      const cellBorder = isHolidayDay ? '1px solid #06b6d4' : isSundayDay ? '1px solid #5b21b6' : '1px solid #1f1f22'
+                      const cellBg = isBlackedOut ? '#000000' : (isHolidayDay ? 'rgba(6,182,212,0.12)' : isSundayDay ? '#2e1065' : '#000000')
+                      const cellBorder = isBlackedOut ? '1px solid #111' : (isHolidayDay ? '1px solid #06b6d4' : isSundayDay ? '1px solid #5b21b6' : '1px solid #1f1f22')
 
                       // Compute todayKey fresh each render — avoids ANY stale-closure/hook issues
                       const _ist = getISTToday()
                       const todayKey = `${_ist.year}-${String(_ist.month).padStart(2,'0')}-${String(_ist.day).padStart(2,'0')}`
 
                       // Rule: blank cell on today or any past working date → show Absent ("0")
-                      // Sundays, holidays, and cells with an existing leave status are untouched.
+                      // Sundays, holidays, blacked-out cells, and cells with an existing leave status are untouched.
                       let cellStatus = record[`day${day}`]
-                      if (!cellStatus && !isBeforeJoining && !isSundayDay && !isHolidayDay && !leaveStatus && dateKey <= todayKey) {
+                      if (!cellStatus && !isBlackedOut && !isSundayDay && !isHolidayDay && !leaveStatus && dateKey <= todayKey) {
                         cellStatus = 'A'
                       }
 
                       return (
                         <td
                           key={day}
-                          style={{textAlign:'center',cursor:isBeforeJoining ? 'default' : 'pointer',border:isBeforeJoining ? '1px solid #111' : cellBorder,padding:'4px 2px',backgroundColor:isBeforeJoining ? '#000' : cellBg,verticalAlign:'middle',transition:'background 0.15s'}}
-                          onClick={() => !isBeforeJoining && handleDayClick(record, day)}
+                          style={{textAlign:'center',cursor:isBlackedOut ? 'default' : 'pointer',border:cellBorder,padding:'4px 2px',backgroundColor:cellBg,verticalAlign:'middle',transition:'background 0.15s'}}
+                          onClick={() => !isBlackedOut && handleDayClick(record, day)}
                         >
-                          {isBeforeJoining ? null : getStatusBadge(cellStatus, leaveStatus)}
+                          {isBlackedOut ? null : getStatusBadge(cellStatus, leaveStatus)}
                         </td>
                       )
                     })}

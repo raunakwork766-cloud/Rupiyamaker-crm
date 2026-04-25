@@ -134,7 +134,8 @@ export const hrmsService = {
 
             // Add status filter — default to active only; pass 'all' to get everyone (e.g. AllEmployees management page)
             if (status === 'all') {
-                // no is_active filter — return all employees including inactive
+                // Tell backend to include inactive employees (backend filters them out by default without this flag)
+                params.append('include_all', 'true');
             } else if (status === 'inactive') {
                 params.append('is_active', 'false');
             } else {
@@ -347,13 +348,14 @@ export const hrmsService = {
     },
 
     // Update employee status (active/inactive) using dedicated HRMS endpoint
-    updateEmployeeStatus: async (employeeId, status, remark) => {
+    updateEmployeeStatus: async (employeeId, status, remark, inactiveFromDate = null) => {
         const userId = getUserId();
         try {
-            const response = await api.patch(`/hrms/employees/${employeeId}/status?user_id=${userId}`, {
-                status,
-                remark
-            });
+            const body = { status, remark };
+            if (status === 'inactive' && inactiveFromDate) {
+                body.inactive_from_date = inactiveFromDate;
+            }
+            const response = await api.patch(`/hrms/employees/${employeeId}/status?user_id=${userId}`, body);
             return {
                 data: response,
                 success: true

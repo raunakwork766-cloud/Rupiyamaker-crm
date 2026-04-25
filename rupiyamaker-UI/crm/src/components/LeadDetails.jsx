@@ -433,10 +433,10 @@ export default function LeadDetails({ lead, user, onBack, onLeadUpdate, readOnly
     };
 
     return (
-        <div className={activeTab === 'obligations' ? (effectiveReadOnly ? 'flex flex-col bg-black text-white pt-2 px-2 pb-0' : 'h-screen overflow-hidden bg-black text-white flex flex-col pt-2 px-2 pb-0') : 'min-h-screen bg-black text-white p-6'}>
-            <div className={`w-full${activeTab === 'obligations' && !effectiveReadOnly ? ' flex flex-col flex-1 min-h-0' : activeTab === 'obligations' ? ' flex flex-col' : ''}`}>
+        <div className={activeTab === 'obligations' ? (effectiveReadOnly ? 'flex flex-col bg-black text-white pt-2 px-2 pb-0' : 'h-full w-full overflow-hidden bg-black text-white flex flex-col pt-2 px-2 pb-0') : 'flex h-full w-full bg-black text-white overflow-hidden'}>
+            <div className={activeTab === 'obligations' && !effectiveReadOnly ? 'w-full flex flex-col flex-1 min-h-0' : activeTab === 'obligations' ? 'w-full flex flex-col' : 'flex-1 flex flex-col min-w-0 overflow-hidden'}>
                 {/* Header */}
-                <div className={activeTab === 'obligations' ? 'py-1 px-1 mb-0' : ' rounded-lg p-6 mb-6'}>
+                <div className={activeTab === 'obligations' ? 'py-1 px-1 mb-0' : 'px-4 py-2 flex-shrink-0'}>
                     <div className="flex items-center justify-between">
                     <div className="flex items-center">
                         <div>
@@ -638,12 +638,12 @@ export default function LeadDetails({ lead, user, onBack, onLeadUpdate, readOnly
                 </div>
                 
                 {/* Tab Content Container */}
-                <div className={`w-full${activeTab !== 'obligations' ? ' px-2 sm:px-3 lg:px-4 py-3' : (effectiveReadOnly ? '' : ' flex-1 min-h-0')}`}>
+                <div className={`w-full${activeTab !== 'obligations' ? ' flex-1 overflow-y-auto px-2 sm:px-3 lg:px-4 py-3' : (effectiveReadOnly ? '' : ' flex-1 min-h-0')}`}>
                     <div className={`w-full${activeTab === 'obligations' && !effectiveReadOnly ? ' h-full' : ''}`}>
                         {activeTab === 'details' && (
-                            <div className="flex gap-4">
-                                {/* Left: Main sections */}
-                                <div className="flex-1 min-w-0 space-y-3">
+                            <div>
+                                {/* Main sections */}
+                                <div className="space-y-3">
                                 {/* About Section */}
                                 <div className="mb-3">
                                     <h3 className="text-xs font-bold text-[#03B0F5] mb-2 uppercase tracking-wide">About</h3>
@@ -793,23 +793,7 @@ export default function LeadDetails({ lead, user, onBack, onLeadUpdate, readOnly
                                 </>
                                 )}                                </div>
 
-                                {/* Right: Activity & Comments Sidebar */}
-                                <div className="w-72 xl:w-80 flex-shrink-0 hidden lg:block">
-                                    <div className="sticky top-2 bg-white rounded-xl border border-gray-200 shadow-md overflow-hidden flex flex-col" style={{ maxHeight: 'calc(100vh - 160px)' }}>
-                                        <div className="px-4 py-2.5 border-b border-gray-100 bg-gray-50 flex items-center gap-2">
-                                            <svg className="w-4 h-4 text-[#03B0F5]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" /></svg>
-                                            <h3 className="text-xs font-bold text-gray-700 uppercase tracking-wide">Activity & Comments</h3>
-                                        </div>
-                                        <div className="flex-1 overflow-y-auto">
-                                            <Remarks
-                                                leadId={lead._id}
-                                                userId={userId}
-                                                formatDate={formatDate}
-                                                canEdit={!effectiveReadOnly}
-                                            />
-                                        </div>
-                                    </div>
-                                </div>                            </div>
+                            </div>
                         )}
 
                         {activeTab === 'obligations' && (
@@ -901,6 +885,27 @@ export default function LeadDetails({ lead, user, onBack, onLeadUpdate, readOnly
                     </div>
                 </div>
             </div>
+
+            {/* Activity & Comments - Persistent Right Panel */}
+            {activeTab !== 'obligations' && (
+                <div className="w-80 flex-shrink-0 flex flex-col bg-white border-l border-gray-200 overflow-hidden">
+                    <div className="px-4 py-2.5 border-b border-gray-100 bg-gray-50 flex items-center justify-between flex-shrink-0">
+                        <div className="flex items-center gap-2">
+                            <svg className="w-4 h-4 text-[#03B0F5]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" /></svg>
+                            <h3 className="text-xs font-bold text-gray-700 uppercase tracking-wide">Activity & Comments</h3>
+                        </div>
+                        <span className="text-gray-400 text-lg leading-none select-none">···</span>
+                    </div>
+                    <div className="flex-1 min-h-0 overflow-hidden">
+                        <Remarks
+                            leadId={lead._id}
+                            userId={userId}
+                            formatDate={formatDate}
+                            canEdit={!effectiveReadOnly}
+                        />
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

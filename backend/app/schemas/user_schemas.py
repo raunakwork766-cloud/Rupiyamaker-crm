@@ -239,6 +239,7 @@ class PasswordResetRequest(BaseModel):
 class EmployeeStatusUpdate(BaseModel):
     status: str  # active or inactive
     remark: Optional[str] = None
+    inactive_from_date: Optional[str] = None  # YYYY-MM-DD, if provided use this date instead of today
     
 class OnboardingStatusUpdate(BaseModel):
     status: str  # pending, in_progress, completed

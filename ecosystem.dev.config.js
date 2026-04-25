@@ -29,7 +29,7 @@ module.exports = {
       name: 'rupiyame-frontend-dev',
       cwd: '/www/wwwroot/RupiyaMe/rupiyamaker-UI/crm',
       script: 'npm',
-      args: 'run dev -- --host 0.0.0.0 --port 4522',  // Different port for dev
+      args: 'run dev -- --host 0.0.0.0 --port 4525',  // Internal port; nginx proxies 4522→4525
       interpreter: 'none',
       instances: 1,
       exec_mode: 'fork',

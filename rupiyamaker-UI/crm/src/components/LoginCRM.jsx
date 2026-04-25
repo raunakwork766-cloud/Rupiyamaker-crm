@@ -7783,6 +7783,7 @@ const LoginCRM = ({ user, selectedLoanType: initialLoanType, department = "login
 
             {/* Lead Details Modal - Lazy loaded for better performance */}
             {showLeadDetails && selectedLead && (
+                <div className="fixed inset-0 z-[9999] bg-black overflow-hidden">
                 <Suspense fallback={
                     <div className="flex items-center justify-center min-h-screen bg-black">
                         <div className="text-center">
@@ -7812,6 +7813,7 @@ const LoginCRM = ({ user, selectedLoanType: initialLoanType, department = "login
                         }}
                     />
                 </Suspense>
+                </div>
             )}
 
             </div>

@@ -269,7 +269,7 @@ export default function ImportantQuestionsSection({ leadData, onUpdate, currentU
 
     if (isLoading) {
         return (
-            <div className="bg-gray-800 p-6 rounded-lg border border-gray-700">
+            <div className="bg-gray-800 p-3 rounded-lg border border-gray-700">
                 <div className="flex items-center justify-center py-8">
                     <Loader2 className="w-6 h-6 animate-spin text-blue-400 mr-2" />
                     <span className="text-gray-300">Loading important questions...</span>
@@ -279,9 +279,9 @@ export default function ImportantQuestionsSection({ leadData, onUpdate, currentU
     }
 
     return (
-        <div className="p-4">
+        <div className="p-2">
             {/* Progress and Send Button Section */}
-            <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center justify-between mb-2">
                 <div className="flex items-center">
                     {questions.length > 0 && (
                         <span className="text-sm bg-blue-100 text-[#03b0f5] px-2 py-1 rounded">
@@ -293,7 +293,7 @@ export default function ImportantQuestionsSection({ leadData, onUpdate, currentU
                     <button
                         onClick={handleSendToLoginDepartment}
                         disabled={isSending}
-                        className="bg-purple-600 hover:bg-purple-700 disabled:bg-purple-800 disabled:cursor-not-allowed text-white px-4 py-2 rounded-lg flex items-center font-medium transition-colors"
+                        className="bg-purple-600 hover:bg-purple-700 disabled:bg-purple-800 disabled:cursor-not-allowed text-white px-3 py-1.5 rounded-md flex items-center text-xs font-medium transition-colors"
                     >
                         {isSending ? (
                             <>
@@ -320,12 +320,12 @@ export default function ImportantQuestionsSection({ leadData, onUpdate, currentU
             )}
 
             {questions.length === 0 ? (
-                <div className="text-center py-8">
-                    <AlertCircle className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-                    <p className="text-gray-500">No important questions configured yet.</p>
+                <div className="text-center py-4">
+                    <AlertCircle className="w-8 h-8 text-gray-400 mx-auto mb-2" />
+                    <p className="text-gray-500 text-xs">No important questions configured yet.</p>
                 </div>
             ) : (
-                <div className="space-y-4">
+                <div className="space-y-1.5">
                     {/* Progress Bar */}
                     <div className="w-full bg-gray-200 rounded-full h-2">
                         <div
@@ -335,7 +335,7 @@ export default function ImportantQuestionsSection({ leadData, onUpdate, currentU
                     </div>
 
                     {/* Questions List - Direct display, no nested dropdowns */}
-                    <div className="space-y-3">
+                    <div className="space-y-1.5">
                         {questions.map((question) => (
                             <div
                                 key={question.id}
@@ -344,17 +344,17 @@ export default function ImportantQuestionsSection({ leadData, onUpdate, currentU
                                         : 'bg-gray-100 border-gray-300'
                                     }`}
                             >
-                                <label className="flex items-start cursor-pointer gap-3">
+                                <label className="flex items-start cursor-pointer gap-2">
                                     <input
                                         type="checkbox"
                                         checked={!!questionResponses[question.id]}
                                         onChange={(e) => canEdit && handleQuestionResponse(question.id, e.target.checked)}
                                         disabled={!canEdit}
-                                        className="mt-0.5 w-4 h-4 text-[#03b0f5] bg-white border-gray-400 rounded focus:ring-[#03b0f5] focus:ring-2 accent-[#03b0f5] flex-shrink-0"
+                                        className="mt-0.5 w-3.5 h-3.5 text-[#03b0f5] bg-white border-gray-400 rounded focus:ring-[#03b0f5] accent-[#03b0f5] flex-shrink-0"
                                     />
                                     <div className="flex-1 min-w-0">
-                                        <div className="flex items-start gap-2">
-                                            <span className="text-black font-medium leading-5 whitespace-pre-wrap" style={{ whiteSpace: 'pre-wrap' }}>
+                                        <div className="flex items-start gap-1.5">
+                                            <span className="text-black text-xs font-medium leading-5 whitespace-pre-wrap" style={{ whiteSpace: 'pre-wrap' }}>
                                                 {question.question}
                                             </span>
                                             {question.mandatory && (

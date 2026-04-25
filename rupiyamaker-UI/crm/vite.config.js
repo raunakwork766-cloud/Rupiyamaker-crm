@@ -23,6 +23,7 @@ console.log('🔧 Vite Config:', {
 export default defineConfig({
   server: {
     port: devPort,
+    strictPort: true,
     host: '0.0.0.0',
     https: isDevEnvironment ? {
       key: fs.readFileSync(path.resolve(__dirname, 'dev-key.pem')),
@@ -30,10 +31,10 @@ export default defineConfig({
     } : false,
     allowedHosts: ['rupiyamaker.com', 'localhost', '156.67.111.95'],
     hmr: isDevEnvironment ? {
-      protocol: 'wss',
+      protocol: 'ws',
       host: '156.67.111.95',
-      port: devPort,
-      clientPort: devPort
+      port: 4522,
+      clientPort: 4522
     } : {
       protocol: 'wss',
       host: 'rupiyamaker.com',

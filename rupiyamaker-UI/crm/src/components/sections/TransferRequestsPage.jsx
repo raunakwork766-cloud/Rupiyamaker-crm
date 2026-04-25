@@ -1259,7 +1259,7 @@ const TransferRequestsPage = ({ user, navPush, navBack, trpNavStateRef }) => {
 
       {/* Full-screen LeadDetails view when a row is clicked */}
       {viewFullLead && (
-        <div className="fixed inset-0 z-[9999] bg-black overflow-auto">
+        <div className="fixed inset-0 z-[9999] bg-black overflow-hidden">
           {viewFullLeadLoading ? (
             <div className="flex items-center justify-center h-screen flex-col gap-4">
               <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-cyan-400"></div>

@@ -133,8 +133,8 @@ export default function HowToProcessSection({ process, onSave, lead, canEdit = t
   });
   
   // Label styling (matching LoginFormSection)
-  const labelClass = "block font-bold mb-2 uppercase";
-  const labelStyle = { color: "black", fontWeight: 650, fontSize: "15px" };
+  const labelClass = "block font-semibold uppercase tracking-wide";
+  const labelStyle = { color: "#374151", fontWeight: 600, fontSize: "10px" };
   
   // Ref for the auto-expanding textarea
   const howToProcessTextareaRef = useRef(null);
@@ -597,9 +597,9 @@ export default function HowToProcessSection({ process, onSave, lead, canEdit = t
       
       
       {/* Form Container */}
-      <div className="bg-white border-3 border-[#00bcd4] rounded-b-xl p-8">
+      <div className="bg-white border border-[#00bcd4] rounded-b-xl p-3">
         {/* First Row: Processing Bank, Loan Type, Case Type */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mb-8 items-start">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-x-3 gap-y-2 mb-3 items-start">
           {/* Processing Bank */}
           <div className="flex flex-col gap-2">
             <label className={labelClass} style={labelStyle}>LOGIN BANK</label>
@@ -622,18 +622,18 @@ export default function HowToProcessSection({ process, onSave, lead, canEdit = t
                 </svg>
               </div>
               {showBankDropdown && canEdit && (
-                <div className="absolute w-full bg-white border border-gray-300 rounded-md shadow-lg max-h-60 overflow-y-auto z-50 mt-1">
-                  <div className="p-3 border-b border-gray-200">
+                <div className="absolute w-full bg-white border border-gray-300 rounded-md shadow-lg max-h-40 overflow-y-auto z-50 mt-1">
+                  <div className="p-1.5 border-b border-gray-200">
                     <input
                       type="text"
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm text-black focus:outline-none focus:border-[#00bcd4]"
+                      className="w-full py-1 px-2 border border-gray-300 rounded-md text-xs text-black focus:outline-none focus:border-[#00bcd4]"
                       placeholder="Search banks..."
                       value={bankSearchTerm}
                       onChange={(e) => setBankSearchTerm(e.target.value)}
                       onClick={(e) => e.stopPropagation()}
                     />
                   </div>
-                  <div className="max-h-48 overflow-y-auto">
+                  <div className="max-h-36 overflow-y-auto">
                     {getFilteredBanks().length > 0 ? (
                       getFilteredBanks().map((bank, index) => (
                         <div
@@ -652,7 +652,7 @@ export default function HowToProcessSection({ process, onSave, lead, canEdit = t
                         </div>
                       ))
                     ) : (
-                      <div className="px-4 py-2 text-sm text-gray-500">No banks found</div>
+                      <div className="px-2 py-1.5 text-xs text-gray-500">No banks found</div>
                     )}
                   </div>
                 </div>
@@ -682,18 +682,18 @@ export default function HowToProcessSection({ process, onSave, lead, canEdit = t
                 </svg>
               </div>
               {showLoanTypeDropdown && canEdit && (
-                <div className="absolute w-full bg-white border border-gray-300 rounded-md shadow-lg max-h-60 overflow-y-auto z-50 mt-1">
-                  <div className="p-3 border-b border-gray-200">
+                <div className="absolute w-full bg-white border border-gray-300 rounded-md shadow-lg max-h-40 overflow-y-auto z-50 mt-1">
+                  <div className="p-1.5 border-b border-gray-200">
                     <input
                       type="text"
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm text-black focus:outline-none focus:border-[#00bcd4]"
+                      className="w-full py-1 px-2 border border-gray-300 rounded-md text-xs text-black focus:outline-none focus:border-[#00bcd4]"
                       placeholder="Search loan types..."
                       value={loanTypeSearchTerm}
                       onChange={(e) => setLoanTypeSearchTerm(e.target.value)}
                       onClick={(e) => e.stopPropagation()}
                     />
                   </div>
-                  <div className="max-h-48 overflow-y-auto">
+                  <div className="max-h-36 overflow-y-auto">
                     {getFilteredLoanTypes().length > 0 ? (
                       getFilteredLoanTypes().map((loanType) => (
                         <div
@@ -741,19 +741,19 @@ export default function HowToProcessSection({ process, onSave, lead, canEdit = t
                 </svg>
               </div>
               {showCaseTypeDropdown && canEdit && (
-                <div className="absolute w-full bg-white border border-gray-300 rounded-md shadow-lg max-h-60 overflow-y-auto z-50 mt-1">
-                  <div className="p-3 border-b border-gray-200">
+                <div className="absolute w-full bg-white border border-gray-300 rounded-md shadow-lg max-h-40 overflow-y-auto z-50 mt-1">
+                  <div className="p-1.5 border-b border-gray-200">
                     <input
                       type="text"
                       autoFocus
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm text-black focus:outline-none focus:border-[#00bcd4]"
+                      className="w-full py-1 px-2 border border-gray-300 rounded-md text-xs text-black focus:outline-none focus:border-[#00bcd4]"
                       placeholder="Search case types..."
                       value={caseTypeSearchTerm}
                       onChange={(e) => setCaseTypeSearchTerm(e.target.value)}
                       onClick={(e) => e.stopPropagation()}
                     />
                   </div>
-                  <div className="max-h-48 overflow-y-auto">
+                  <div className="max-h-36 overflow-y-auto">
                     {['FRESH ONLY', 'BT ONLY', 'BT+TOP UP', 'INTERNAL TOP UP']
                       .filter(ct => ct.toLowerCase().includes(caseTypeSearchTerm.toLowerCase()))
                       .map((ct) => (
@@ -784,7 +784,7 @@ export default function HowToProcessSection({ process, onSave, lead, canEdit = t
         </div>
 
         {/* Second Row: Loan Amount, Tenure Months, Tenure Years */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mb-8 items-start">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-x-3 gap-y-2 mb-3 items-start">
           {/* Loan Amount Required */}
           <div className="flex flex-col gap-2">
             <label className={labelClass} style={labelStyle}>LOAN AMOUNT REQUIRED</label>

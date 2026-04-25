@@ -347,12 +347,8 @@ class UsersDB:
     async def invalidate_sessions_by_role(self, role_id: str) -> int:
         """Force logout all users with a specific role by setting session_invalidated_at"""
         now = get_ist_now()
-        # role_id can be stored as a string or ObjectId — query both to avoid misses
-        filter_conditions = [{"role_id": role_id}]
-        if ObjectId.is_valid(role_id):
-            filter_conditions.append({"role_id": ObjectId(role_id)})
         result = await self.collection.update_many(
-            {"$or": filter_conditions},
+            {"role_id": role_id},
             {"$set": {"session_invalidated_at": now}}
         )
         return result.modified_count
@@ -468,7 +464,7 @@ class UsersDB:
         
         return updates_count
         
-    async def update_employee_status(self, employee_id: str, status: str, remark: str = None) -> bool:
+    async def update_employee_status(self, employee_id: str, status: str, remark: str = None, inactive_from_date: str = None) -> bool:
         """Update the status of an employee (active/inactive) with minimal cascade logic"""
         if not ObjectId.is_valid(employee_id):
             return False
@@ -485,8 +481,14 @@ class UsersDB:
         # Don't automatically change login_enabled or otp_required - let admin control those
         if status == "inactive":
             update_fields["is_active"] = False  # This is crucial for session monitoring!
+            # Use provided date if given, otherwise default to today (IST)
+            if inactive_from_date:
+                update_fields["inactive_from_date"] = inactive_from_date
+            else:
+                update_fields["inactive_from_date"] = get_ist_now().date().isoformat()
         elif status == "active":
             update_fields["is_active"] = True  # Reactivate the user
+            update_fields["inactive_from_date"] = None  # Clear deactivation date on reactivation
             
         result = await self.collection.update_one(
             {"_id": ObjectId(employee_id)},
