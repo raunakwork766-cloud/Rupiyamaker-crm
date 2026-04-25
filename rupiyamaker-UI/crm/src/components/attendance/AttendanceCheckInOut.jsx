@@ -263,7 +263,7 @@ const AttendanceCheckInOut = ({ userId, userInfo }) => {
       {/* Clock */}
       <div style={{ background: 'linear-gradient(135deg, #1e1b4b, #312e81)', color: 'white', borderRadius: 16, padding: '22px 20px', textAlign: 'center', marginBottom: 20 }}>
         <div style={{ fontSize: 44, fontWeight: 700, letterSpacing: 3 }}>
-          {currentTime.toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata', hour12: false })}
+          {currentTime.toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata', hour12: true })}
         </div>
         <div style={{ fontSize: 14, opacity: 0.75, marginTop: 4 }}>
           {currentTime.toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata', weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' })}
