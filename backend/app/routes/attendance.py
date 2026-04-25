@@ -3288,6 +3288,66 @@ async def get_user_attendance_history(
             detail=f"Failed to get user history: {str(e)}"
         )
 
+
+@router.get("/my-calendar/{user_id}")
+async def get_my_attendance_calendar(
+    user_id: str,
+    year: Optional[int] = Query(None, description="Year (default: current)"),
+    month: Optional[int] = Query(None, description="Month (default: current)"),
+    attendance_db: AttendanceDB = Depends(get_attendance_db),
+    users_db: UsersDB = Depends(get_users_db)
+):
+    """Get the authenticated user's own monthly attendance records for calendar view"""
+    try:
+        user = await users_db.get_user(user_id)
+        if not user:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+
+        now = get_ist_now()
+        year = year or now.year
+        month = month or now.month
+
+        start_date = date(year, month, 1)
+        if month == 12:
+            end_date = date(year + 1, 1, 1) - timedelta(days=1)
+        else:
+            end_date = date(year, month + 1, 1) - timedelta(days=1)
+
+        records_cursor = attendance_db.collection.find({
+            "user_id": user_id,
+            "date": {
+                "$gte": start_date.isoformat(),
+                "$lte": end_date.isoformat()
+            }
+        }, {"_id": 0, "date": 1, "status": 1, "check_in_time": 1, "check_out_time": 1,
+            "total_working_hours": 1, "is_late": 1, "comments": 1, "is_holiday": 1})
+
+        records = await attendance_db._async_to_list(records_cursor)
+
+        # Build a date-keyed map for easy frontend lookup (serialize dates to strings)
+        day_map = {}
+        for r in records:
+            d = r.get("date")
+            if d:
+                day_map[str(d)] = {k: str(v) if hasattr(v, 'isoformat') else v for k, v in r.items()}
+
+        return {
+            "success": True,
+            "year": year,
+            "month": month,
+            "day_map": day_map
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Error getting user calendar: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to get calendar: {str(e)}"
+        )
+
+
 # Holiday Management APIs
 @router.get("/settings")
 async def get_attendance_settings(
@@ -3968,26 +4028,32 @@ async def check_out_attendance(
         now = get_ist_now()
         check_out_time = now.strftime("%H:%M:%S")
         
+        # Load settings for minimum hours thresholds
+        settings_db_co = SettingsDB()
+        settings_co = await settings_db_co.get_attendance_settings()
+        min_full_day_hours = float(settings_co.get("full_day_working_hours") or settings_co.get("minimum_working_hours_full_day") or 8.0)
+        min_half_day_hours = float(settings_co.get("half_day_minimum_working_hours") or settings_co.get("minimum_working_hours_half_day") or 4.0)
+        check_out_start_str = settings_co.get("check_out_start_time", "17:00")
+        
         # Calculate working hours
         check_in_dt = datetime.strptime(f"{today} {existing['check_in_time']}", "%Y-%m-%d %H:%M:%S")
         check_out_dt = datetime.strptime(f"{today} {check_out_time}", "%Y-%m-%d %H:%M:%S")
         working_duration = check_out_dt - check_in_dt
         working_hours = working_duration.total_seconds() / 3600
         
-        # Determine final status
-        early_threshold = datetime.strptime("17:30", "%H:%M").time()
+        # Determine final status using settings-driven thresholds
+        early_threshold = datetime.strptime(check_out_start_str, "%H:%M").time()
         is_early = now.time() < early_threshold
         is_late = existing.get("is_late", False)
         
-        # Final status logic
-        if is_late or working_hours < 4:
-            final_status = 0.5  # Half day
-        elif is_early and working_hours < 8:
-            final_status = 0.5  # Half day
-        elif working_hours >= 8:
+        # Final status logic: use admin-configured minimum hours
+        if working_hours >= min_full_day_hours and not is_late and not is_early:
             final_status = 1.0  # Full day
-        else:
+        elif working_hours >= min_half_day_hours:
             final_status = 0.5  # Half day
+        else:
+            # Below half-day minimum → mark absent (0 = no pay, -1 = absent)
+            final_status = 0.0  # Zero / absent for insufficient hours
         
         # Update attendance record – preserve check-in reason
         existing_comments = existing.get("comments", "")
@@ -4010,10 +4076,13 @@ async def check_out_attendance(
         
         return {
             "success": True,
-            "message": "Check-out successful",
+            "message": f"Check-out successful — {get_status_text(final_status)} ({round(working_hours, 2)}h worked)",
             "check_out_time": check_out_time,
             "total_working_hours": round(working_hours, 2),
-            "status": get_status_text(final_status)
+            "status": get_status_text(final_status),
+            "status_code": final_status,
+            "min_full_day_hours": min_full_day_hours,
+            "min_half_day_hours": min_half_day_hours
         }
         
     except HTTPException:

@@ -127,6 +127,14 @@ const AttendanceCheckInOut = ({ userId, userInfo }) => {
   const [successModal, setSuccessModal] = useState(null);
   const [errorMsg, setErrorMsg] = useState('');
 
+  // ─── Calendar state ────────────────────────────────────────────
+  const now0 = new Date();
+  const [calYear, setCalYear] = useState(now0.getFullYear());
+  const [calMonth, setCalMonth] = useState(now0.getMonth() + 1); // 1-based
+  const [calData, setCalData] = useState({}); // date-string → record
+  const [calLoading, setCalLoading] = useState(false);
+  const [selectedDay, setSelectedDay] = useState(null); // 'YYYY-MM-DD' or null
+
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
   const streamRef = useRef(null);
@@ -149,6 +157,22 @@ const AttendanceCheckInOut = ({ userId, userInfo }) => {
       if (r.data.success) setCurrentStatus(r.data);
     } catch (e) { console.error(e); }
   };
+
+  // ─── Calendar fetch ──────────────────────────────────────────────
+  const fetchCalendar = async (yr, mo) => {
+    if (!userId) return;
+    setCalLoading(true);
+    try {
+      const r = await axios.get(
+        `${API_BASE}/attendance/my-calendar/${userId}`,
+        { params: { year: yr, month: mo }, headers: getAttendanceHeaders() }
+      );
+      if (r.data.success) setCalData(r.data.day_map || {});
+    } catch (e) { console.error('Calendar fetch error', e); }
+    finally { setCalLoading(false); }
+  };
+
+  useEffect(() => { if (userId) fetchCalendar(calYear, calMonth); }, [userId, calYear, calMonth]);
 
   const startCamera = async () => {
     try {
@@ -225,6 +249,7 @@ const AttendanceCheckInOut = ({ userId, userInfo }) => {
       if (r.data.success) {
         closeDialog();
         await loadCurrentStatus();
+        fetchCalendar(calYear, calMonth); // refresh calendar
 
         let modalType = 'checked_out';
         if (attendanceType === 'check-in') {
@@ -258,6 +283,10 @@ const AttendanceCheckInOut = ({ userId, userInfo }) => {
         .att-btn { transition: all 0.2s; cursor: pointer; border: none; border-radius: 12px; font-size: 15px; font-weight: 600; padding: 14px 20px; display: flex; align-items: center; justify-content: center; gap: 8px; }
         .att-btn:hover:not(:disabled) { filter: brightness(1.1); transform: translateY(-2px); box-shadow: 0 4px 16px rgba(0,0,0,0.15); }
         .att-btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none !important; }
+        .cal-day { border-radius: 8px; aspect-ratio: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; cursor: pointer; transition: all 0.15s; font-size: 13px; font-weight: 600; position: relative; }
+        .cal-day:hover { transform: scale(1.1); z-index: 1; box-shadow: 0 2px 8px rgba(0,0,0,0.15); }
+        .cal-day.empty { cursor: default; }
+        .cal-day.empty:hover { transform: none; box-shadow: none; }
       `}</style>
 
       {/* Clock */}
@@ -373,6 +402,173 @@ const AttendanceCheckInOut = ({ userId, userInfo }) => {
 
       {/* Success Modal */}
       <SuccessModal data={successModal} onClose={() => setSuccessModal(null)} />
+
+      {/* ─── Calendar View ─── */}
+      {(() => {
+        const MONTH_NAMES = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+        const DAY_LABELS = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+
+        const daysInMonth = new Date(calYear, calMonth, 0).getDate();
+        const firstWeekday = new Date(calYear, calMonth - 1, 1).getDay(); // 0=Sun
+        const todayStr = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' }); // YYYY-MM-DD
+
+        const prevMonth = () => {
+          if (calMonth === 1) { setCalYear(y => y - 1); setCalMonth(12); }
+          else setCalMonth(m => m - 1);
+          setSelectedDay(null);
+        };
+        const nextMonth = () => {
+          const nowDate = new Date();
+          const nowY = nowDate.getFullYear(), nowM = nowDate.getMonth() + 1;
+          if (calYear > nowY || (calYear === nowY && calMonth >= nowM)) return; // no future
+          if (calMonth === 12) { setCalYear(y => y + 1); setCalMonth(1); }
+          else setCalMonth(m => m + 1);
+          setSelectedDay(null);
+        };
+
+        const getDayStyle = (dateStr, isToday, isFuture) => {
+          const rec = calData[dateStr];
+          if (isFuture) return { background: '#f9fafb', color: '#d1d5db' };
+          if (!rec) return { background: '#f3f4f6', color: '#6b7280' };
+          const st = rec.status;
+          if (rec.is_holiday) return { background: '#fef9c3', color: '#92400e' };
+          if (st === 1 || st === 1.0) return { background: '#dcfce7', color: '#15803d' };
+          if (st === 0.5) return { background: '#ffedd5', color: '#c2410c' };
+          if (st === 0 || st === -1) return { background: '#fee2e2', color: '#b91c1c' };
+          return { background: '#f3f4f6', color: '#6b7280' };
+        };
+
+        const getDayDot = (dateStr, isFuture) => {
+          const rec = calData[dateStr];
+          if (isFuture || !rec) return null;
+          const st = rec.status;
+          if (rec.is_holiday) return '🎉';
+          if (st === 1 || st === 1.0) return '✓';
+          if (st === 0.5) return '½';
+          if (st === 0 || st === -1) return '✗';
+          return null;
+        };
+
+        const selRec = selectedDay ? calData[selectedDay] : null;
+        const fmt12 = (t) => {
+          if (!t) return '—';
+          try {
+            const [h, m] = t.split(':');
+            const d = new Date(); d.setHours(+h, +m);
+            return d.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true });
+          } catch { return t; }
+        };
+
+        // Check if next month is in future
+        const nowDate2 = new Date();
+        const isLastAllowed = calYear === nowDate2.getFullYear() && calMonth === (nowDate2.getMonth() + 1);
+
+        return (
+          <div style={{ marginTop: 24, background: 'white', borderRadius: 16, padding: '16px 14px', boxShadow: '0 2px 12px rgba(0,0,0,0.07)' }}>
+            {/* Header */}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+              <button onClick={prevMonth} style={{ background: '#f3f4f6', border: 'none', borderRadius: 8, width: 32, height: 32, cursor: 'pointer', fontSize: 18, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>‹</button>
+              <div style={{ textAlign: 'center' }}>
+                <div style={{ fontWeight: 800, fontSize: 15 }}>{MONTH_NAMES[calMonth - 1]} {calYear}</div>
+                {calLoading && <div style={{ fontSize: 11, color: '#9ca3af' }}>Loading…</div>}
+              </div>
+              <button onClick={nextMonth} disabled={isLastAllowed} style={{ background: isLastAllowed ? '#f9fafb' : '#f3f4f6', border: 'none', borderRadius: 8, width: 32, height: 32, cursor: isLastAllowed ? 'not-allowed' : 'pointer', fontSize: 18, fontWeight: 700, color: isLastAllowed ? '#d1d5db' : '#374151', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>›</button>
+            </div>
+
+            {/* Legend */}
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 10, fontSize: 11 }}>
+              {[['#dcfce7','#15803d','Present'],['#ffedd5','#c2410c','Half Day'],['#fee2e2','#b91c1c','Absent'],['#f3f4f6','#6b7280','No Record']].map(([bg, col, lbl]) => (
+                <span key={lbl} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                  <span style={{ width: 12, height: 12, borderRadius: 3, background: bg, border: `1px solid ${col}33`, display: 'inline-block' }} />
+                  <span style={{ color: '#6b7280' }}>{lbl}</span>
+                </span>
+              ))}
+            </div>
+
+            {/* Day of week headers */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 3, marginBottom: 4 }}>
+              {DAY_LABELS.map(d => (
+                <div key={d} style={{ textAlign: 'center', fontSize: 11, fontWeight: 700, color: d === 'Sun' || d === 'Sat' ? '#ef4444' : '#6b7280', padding: '4px 0' }}>{d}</div>
+              ))}
+            </div>
+
+            {/* Calendar grid */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 3 }}>
+              {/* Empty cells before first day */}
+              {Array.from({ length: firstWeekday }).map((_, i) => (
+                <div key={`e${i}`} className="cal-day empty" />
+              ))}
+              {/* Day cells */}
+              {Array.from({ length: daysInMonth }).map((_, i) => {
+                const dayNum = i + 1;
+                const mm = String(calMonth).padStart(2, '0');
+                const dd = String(dayNum).padStart(2, '0');
+                const dateStr = `${calYear}-${mm}-${dd}`;
+                const isToday = dateStr === todayStr;
+                const isFuture = dateStr > todayStr;
+                const dayStyle = getDayStyle(dateStr, isToday, isFuture);
+                const dot = getDayDot(dateStr, isFuture);
+                const isSelected = selectedDay === dateStr;
+                return (
+                  <div
+                    key={dayNum}
+                    className={`cal-day${isFuture ? ' empty' : ''}`}
+                    onClick={() => !isFuture && setSelectedDay(isSelected ? null : dateStr)}
+                    style={{
+                      ...dayStyle,
+                      border: isToday ? '2px solid #6366f1' : isSelected ? '2px solid #374151' : '1px solid transparent',
+                      boxShadow: isSelected ? '0 0 0 2px #6366f133' : 'none',
+                    }}
+                  >
+                    <span style={{ fontSize: 12, lineHeight: 1 }}>{dayNum}</span>
+                    {dot && <span style={{ fontSize: 9, marginTop: 1, lineHeight: 1 }}>{dot}</span>}
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Selected day detail panel */}
+            {selectedDay && (
+              <div style={{ marginTop: 14, background: '#f8fafc', borderRadius: 12, padding: '12px 14px', border: '1px solid #e2e8f0' }}>
+                <div style={{ fontWeight: 700, fontSize: 13, color: '#374151', marginBottom: 8 }}>
+                  📅 {new Date(selectedDay + 'T00:00:00').toLocaleDateString('en-IN', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' })}
+                </div>
+                {selRec ? (
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                    <div style={{ background: 'white', borderRadius: 8, padding: '8px 12px' }}>
+                      <div style={{ fontSize: 10, color: '#9ca3af', fontWeight: 700, textTransform: 'uppercase', marginBottom: 2 }}>Check In</div>
+                      <div style={{ fontWeight: 700, color: '#16a34a', fontSize: 13 }}>{fmt12(selRec.check_in_time)}</div>
+                    </div>
+                    <div style={{ background: 'white', borderRadius: 8, padding: '8px 12px' }}>
+                      <div style={{ fontSize: 10, color: '#9ca3af', fontWeight: 700, textTransform: 'uppercase', marginBottom: 2 }}>Check Out</div>
+                      <div style={{ fontWeight: 700, color: '#7c3aed', fontSize: 13 }}>{fmt12(selRec.check_out_time)}</div>
+                    </div>
+                    <div style={{ background: 'white', borderRadius: 8, padding: '8px 12px' }}>
+                      <div style={{ fontSize: 10, color: '#9ca3af', fontWeight: 700, textTransform: 'uppercase', marginBottom: 2 }}>Hours Worked</div>
+                      <div style={{ fontWeight: 700, color: '#374151', fontSize: 13 }}>{selRec.total_working_hours != null ? `${selRec.total_working_hours}h` : '—'}</div>
+                    </div>
+                    <div style={{ background: 'white', borderRadius: 8, padding: '8px 12px' }}>
+                      <div style={{ fontSize: 10, color: '#9ca3af', fontWeight: 700, textTransform: 'uppercase', marginBottom: 2 }}>Status</div>
+                      <div style={{ fontWeight: 700, fontSize: 13, color: selRec.status === 1 ? '#16a34a' : selRec.status === 0.5 ? '#d97706' : '#dc2626' }}>
+                        {selRec.is_holiday ? '🎉 Holiday' : selRec.status === 1 ? '✅ Full Day' : selRec.status === 0.5 ? '🌤 Half Day' : '❌ Absent'}
+                      </div>
+                    </div>
+                    {selRec.is_late && (
+                      <div style={{ background: '#fff7ed', borderRadius: 8, padding: '8px 12px', gridColumn: '1/-1' }}>
+                        <span style={{ color: '#ea580c', fontSize: 12, fontWeight: 600 }}>⏰ Late Arrival</span>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div style={{ color: '#9ca3af', fontSize: 13, textAlign: 'center', padding: '8px 0' }}>
+                    No attendance record for this date
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        );
+      })()}
     </div>
   );
 };
