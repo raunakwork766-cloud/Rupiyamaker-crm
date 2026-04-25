@@ -635,12 +635,18 @@ function App() {
     // Clear profile photo using utility function
     clearProfilePhotoFromStorage()
     
+    // Check if this was an attendance-only session BEFORE clearing localStorage
+    const wasAttendanceSession = localStorage.getItem('loginType') === 'attendance_only';
+    
     // Clear ALL localStorage to prevent quota exceeded on next login
     localStorage.clear()
     
     setUser(null)
     setIsAuthenticated(false)
-    navigate('/login')
+    // Attendance sessions must return to the attendance link so ?mode=attendance
+    // is present when Login re-mounts — otherwise isAttendanceMode becomes false
+    // and OTP is triggered for the next login attempt.
+    navigate(wasAttendanceSession ? '/login?mode=attendance' : '/login')
   }
 
   // GLOBAL: Check for global notification triggers
