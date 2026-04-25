@@ -163,11 +163,20 @@ const AttendanceCheckInOut = ({ userId, userInfo }) => {
     if (!userId) return;
     setCalLoading(true);
     try {
+      // Use the same /attendance/calendar endpoint the main attendance page uses,
+      // filtered to this employee only — gives full data: leaves, holidays, Sunday rule, etc.
       const r = await axios.get(
-        `${API_BASE}/attendance/my-calendar/${userId}`,
-        { params: { year: yr, month: mo }, headers: getAttendanceHeaders() }
+        `${API_BASE}/attendance/calendar`,
+        {
+          params: { user_id: userId, employee_id: userId, year: yr, month: mo },
+          headers: getAttendanceHeaders()
+        }
       );
-      if (r.data.success) setCalData(r.data.day_map || {});
+      const days = r.data?.employees?.[0]?.days || [];
+      // Build date-keyed map
+      const map = {};
+      days.forEach(d => { if (d.date) map[d.date] = d; });
+      setCalData(map);
     } catch (e) { console.error('Calendar fetch error', e); }
     finally { setCalLoading(false); }
   };
@@ -429,23 +438,29 @@ const AttendanceCheckInOut = ({ userId, userInfo }) => {
         const getDayStyle = (dateStr, isToday, isFuture) => {
           const rec = calData[dateStr];
           if (isFuture) return { background: '#f9fafb', color: '#d1d5db' };
-          if (!rec) return { background: '#f3f4f6', color: '#6b7280' };
+          if (!rec || rec.is_weekend) return { background: '#f3f4f6', color: '#9ca3af' };
           const st = rec.status;
-          if (rec.is_holiday) return { background: '#fef9c3', color: '#92400e' };
+          if (rec.is_holiday || st === 1.5) return { background: '#fef9c3', color: '#92400e' };
+          if (st === 2 || st === 2.0) return { background: '#dbeafe', color: '#1d4ed8' }; // Working/in
           if (st === 1 || st === 1.0) return { background: '#dcfce7', color: '#15803d' };
           if (st === 0.5) return { background: '#ffedd5', color: '#c2410c' };
-          if (st === 0 || st === -1) return { background: '#fee2e2', color: '#b91c1c' };
+          if (st === 0 || st === 0.0) return { background: '#ede9fe', color: '#6d28d9' }; // Leave
+          if (st === -1 || st === -1.0) return { background: '#fee2e2', color: '#b91c1c' };
+          if (st === -2 || st === -2.0) return { background: '#fce7f3', color: '#9d174d' }; // Absconding
           return { background: '#f3f4f6', color: '#6b7280' };
         };
 
         const getDayDot = (dateStr, isFuture) => {
           const rec = calData[dateStr];
-          if (isFuture || !rec) return null;
+          if (isFuture || !rec || rec.is_weekend) return null;
           const st = rec.status;
-          if (rec.is_holiday) return '🎉';
+          if (rec.is_holiday || st === 1.5) return '🎉';
+          if (st === 2 || st === 2.0) return '▶';
           if (st === 1 || st === 1.0) return '✓';
           if (st === 0.5) return '½';
-          if (st === 0 || st === -1) return '✗';
+          if (st === 0 || st === 0.0) return 'L';
+          if (st === -1 || st === -1.0) return '✗';
+          if (st === -2 || st === -2.0) return '!!';
           return null;
         };
 
@@ -477,7 +492,14 @@ const AttendanceCheckInOut = ({ userId, userInfo }) => {
 
             {/* Legend */}
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 10, fontSize: 11 }}>
-              {[['#dcfce7','#15803d','Present'],['#ffedd5','#c2410c','Half Day'],['#fee2e2','#b91c1c','Absent'],['#f3f4f6','#6b7280','No Record']].map(([bg, col, lbl]) => (
+              {[
+                ['#dcfce7','#15803d','Present'],
+                ['#ffedd5','#c2410c','Half Day'],
+                ['#fee2e2','#b91c1c','Absent'],
+                ['#ede9fe','#6d28d9','Leave'],
+                ['#fef9c3','#92400e','Holiday'],
+                ['#f3f4f6','#9ca3af','Weekend'],
+              ].map(([bg, col, lbl]) => (
                 <span key={lbl} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
                   <span style={{ width: 12, height: 12, borderRadius: 3, background: bg, border: `1px solid ${col}33`, display: 'inline-block' }} />
                   <span style={{ color: '#6b7280' }}>{lbl}</span>
@@ -518,6 +540,7 @@ const AttendanceCheckInOut = ({ userId, userInfo }) => {
                       ...dayStyle,
                       border: isToday ? '2px solid #6366f1' : isSelected ? '2px solid #374151' : '1px solid transparent',
                       boxShadow: isSelected ? '0 0 0 2px #6366f133' : 'none',
+                      opacity: (calData[dateStr]?.is_weekend && !calData[dateStr]) ? 0.5 : 1,
                     }}
                   >
                     <span style={{ fontSize: 12, lineHeight: 1 }}>{dayNum}</span>
@@ -534,6 +557,11 @@ const AttendanceCheckInOut = ({ userId, userInfo }) => {
                   📅 {new Date(selectedDay + 'T00:00:00').toLocaleDateString('en-IN', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' })}
                 </div>
                 {selRec ? (
+                  selRec.is_weekend ? (
+                    <div style={{ color: '#9ca3af', fontSize: 13, textAlign: 'center', padding: '8px 0' }}>
+                      🏖️ Weekend — Day Off
+                    </div>
+                  ) : (
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
                     <div style={{ background: 'white', borderRadius: 8, padding: '8px 12px' }}>
                       <div style={{ fontSize: 10, color: '#9ca3af', fontWeight: 700, textTransform: 'uppercase', marginBottom: 2 }}>Check In</div>
@@ -549,8 +577,20 @@ const AttendanceCheckInOut = ({ userId, userInfo }) => {
                     </div>
                     <div style={{ background: 'white', borderRadius: 8, padding: '8px 12px' }}>
                       <div style={{ fontSize: 10, color: '#9ca3af', fontWeight: 700, textTransform: 'uppercase', marginBottom: 2 }}>Status</div>
-                      <div style={{ fontWeight: 700, fontSize: 13, color: selRec.status === 1 ? '#16a34a' : selRec.status === 0.5 ? '#d97706' : '#dc2626' }}>
-                        {selRec.is_holiday ? '🎉 Holiday' : selRec.status === 1 ? '✅ Full Day' : selRec.status === 0.5 ? '🌤 Half Day' : '❌ Absent'}
+                      <div style={{ fontWeight: 700, fontSize: 13, color:
+                        (selRec.status === 1 || selRec.status === 1.0) ? '#16a34a' :
+                        selRec.status === 0.5 ? '#d97706' :
+                        (selRec.status === 0 || selRec.status === 0.0) ? '#7c3aed' :
+                        (selRec.status === 1.5) ? '#92400e' :
+                        '#dc2626'
+                      }}>
+                        {selRec.is_holiday || selRec.status === 1.5 ? '🎉 Holiday' :
+                         selRec.status === 2 ? '▶ Working' :
+                         selRec.status === 1 || selRec.status === 1.0 ? '✅ Full Day' :
+                         selRec.status === 0.5 ? '🌤 Half Day' :
+                         selRec.status === 0 || selRec.status === 0.0 ? `📋 ${selRec.leave_type ? selRec.leave_type.replace(/_/g,' ') : 'Leave'}` :
+                         selRec.status === -2 ? '🚨 Absconding' :
+                         '❌ Absent'}
                       </div>
                     </div>
                     {selRec.is_late && (
@@ -558,7 +598,13 @@ const AttendanceCheckInOut = ({ userId, userInfo }) => {
                         <span style={{ color: '#ea580c', fontSize: 12, fontWeight: 600 }}>⏰ Late Arrival</span>
                       </div>
                     )}
+                    {selRec.leave_reason && (
+                      <div style={{ background: '#f5f3ff', borderRadius: 8, padding: '8px 12px', gridColumn: '1/-1' }}>
+                        <span style={{ color: '#6d28d9', fontSize: 12, fontWeight: 600 }}>📋 {selRec.leave_reason}</span>
+                      </div>
+                    )}
                   </div>
+                  )
                 ) : (
                   <div style={{ color: '#9ca3af', fontSize: 13, textAlign: 'center', padding: '8px 0' }}>
                     No attendance record for this date
