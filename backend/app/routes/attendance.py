@@ -4052,8 +4052,8 @@ async def check_out_attendance(
         elif working_hours >= min_half_day_hours:
             final_status = 0.5  # Half day
         else:
-            # Below half-day minimum → mark absent (0 = no pay, -1 = absent)
-            final_status = 0.0  # Zero / absent for insufficient hours
+            # Below half-day minimum → mark absent
+            final_status = -1  # Absent for insufficient hours
         
         # Update attendance record – preserve check-in reason
         existing_comments = existing.get("comments", "")
