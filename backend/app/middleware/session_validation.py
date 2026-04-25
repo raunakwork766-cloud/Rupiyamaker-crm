@@ -47,6 +47,8 @@ ATTENDANCE_ALLOWED_PREFIXES = [
     "/attendance/check-in",
     "/attendance/check-out",
     "/attendance/status/current",
+    "/attendance/calendar",
+    "/attendance/my-calendar",
 ]
 
 class SessionValidationMiddleware(BaseHTTPMiddleware):

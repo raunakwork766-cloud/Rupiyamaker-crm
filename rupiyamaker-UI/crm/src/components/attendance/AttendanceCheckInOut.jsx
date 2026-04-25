@@ -112,8 +112,16 @@ const AttendanceCheckInOut = ({ userId, userInfo }) => {
   // the attendance page from the sidebar, this header simply won't exist
   // and normal CRM session validation applies.
   const getAttendanceHeaders = () => {
-    const tok = (typeof window !== 'undefined') && localStorage.getItem('attendanceToken');
-    return tok ? { 'X-Attendance-Token': tok } : {};
+    if (typeof window === 'undefined') return {};
+    const tok = localStorage.getItem('attendanceToken');
+    if (tok) return { 'X-Attendance-Token': tok };
+    // Fallback: regular CRM session — token is stored inside userData JSON
+    try {
+      const userData = localStorage.getItem('userData');
+      const user = userData ? JSON.parse(userData) : null;
+      if (user?.token) return { 'Authorization': `Bearer ${user.token}` };
+    } catch (_) {}
+    return {};
   };
 
   const [loading, setLoading] = useState(false);
