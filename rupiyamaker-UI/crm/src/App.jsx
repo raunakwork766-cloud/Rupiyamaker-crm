@@ -638,6 +638,12 @@ function App() {
     // Check if this was an attendance-only session BEFORE clearing localStorage
     const wasAttendanceSession = localStorage.getItem('loginType') === 'attendance_only';
     
+    // Preserve attendance mode in sessionStorage so Login.jsx detects it after
+    // localStorage.clear() and the SPA navigate (no full page reload)
+    if (wasAttendanceSession) {
+      sessionStorage.setItem('attendanceLoginPending', 'true');
+    }
+    
     // Clear ALL localStorage to prevent quota exceeded on next login
     localStorage.clear()
     

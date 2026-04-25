@@ -130,6 +130,9 @@ const AttendanceCheckInOut = ({ userId, userInfo }) => {
   const handleSessionExpired = () => {
     const loginType = localStorage.getItem('loginType');
     if (loginType === 'attendance_only') {
+      // Preserve the attendance mode flag in sessionStorage so Login.jsx detects
+      // attendance mode even if the redirect URL doesn't have ?mode=attendance
+      sessionStorage.setItem('attendanceLoginPending', 'true');
       localStorage.removeItem('attendanceToken');
       localStorage.removeItem('loginType');
       localStorage.removeItem('isAuthenticated');

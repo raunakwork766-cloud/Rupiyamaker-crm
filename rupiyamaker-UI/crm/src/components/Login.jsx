@@ -17,9 +17,13 @@ const Login = ({ onLogin }) => {
     const [showPassword, setShowPassword] = useState(false);
     // 📱 Capture attendance mode from URL at component mount time — NOT inside handleSubmit,
     // because SPA routing may have changed window.location.search by the time the user submits.
+    // Also check sessionStorage for cases where handleSessionExpired/handleLogout preserved the flag.
     const [isAttendanceMode] = useState(() => {
-        try { return new URLSearchParams(window.location.search).get('mode') === 'attendance'; }
-        catch (_) { return false; }
+        try {
+            const urlMode = new URLSearchParams(window.location.search).get('mode') === 'attendance';
+            const sessionMode = sessionStorage.getItem('attendanceLoginPending') === 'true';
+            return urlMode || sessionMode;
+        } catch (_) { return false; }
     });
 
     // 🔔 Show displaced-session / forced-logout message from sessionStorage
@@ -187,6 +191,8 @@ const Login = ({ onLogin }) => {
                 //     them straight to the attendance page)
                 //   - The token is stored under a SEPARATE key (attendanceToken)
                 if (data.login_type === 'attendance_only') {
+                    // Clear the attendance login pending flag — login was successful
+                    sessionStorage.removeItem('attendanceLoginPending');
                     // Reset only attendance-scoped keys (preserve any CRM session data
                     // that might exist on a shared device — we don't want to overwrite it).
                     const attendanceKeys = [
@@ -603,7 +609,21 @@ const Login = ({ onLogin }) => {
                                 <p className="otp-subtitle">Generate an OTP to continue with login</p>
                             </div>
                             
-                            {!otpGenerated ? (
+                            {/* 📱 Attendance escape — shown when OTP is triggered but user is an employee marking attendance */}
+                    <div style={{ marginBottom: 10, textAlign: 'center' }}>
+                        <button
+                            type="button"
+                            onClick={() => {
+                                // Set sessionStorage flag then reload with attendance mode
+                                sessionStorage.setItem('attendanceLoginPending', 'true');
+                                window.location.href = window.location.pathname + '?mode=attendance';
+                            }}
+                            style={{ background: 'none', border: 'none', color: '#60a5fa', fontSize: 12, cursor: 'pointer', textDecoration: 'underline', padding: 0 }}
+                        >
+                            Marking attendance? Login without OTP →
+                        </button>
+                    </div>
+                    {!otpGenerated ? (
                                 <button
                                     type="button"
                                     onClick={generateOTP}
