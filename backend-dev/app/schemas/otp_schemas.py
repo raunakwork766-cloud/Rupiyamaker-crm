@@ -53,6 +53,9 @@ class UserLoginWithOTP(BaseModel):
     username_or_email: str
     password: str
     otp_code: Optional[str] = None  # OTP code if required
+    # NEW: "crm" (default, full access + OTP) or "attendance_only"
+    # (skips OTP, gets a separate scoped session for attendance routes only)
+    login_type: Optional[str] = "crm"
 
 # OTP Required Update Schema
 class OTPRequiredUpdate(BaseModel):

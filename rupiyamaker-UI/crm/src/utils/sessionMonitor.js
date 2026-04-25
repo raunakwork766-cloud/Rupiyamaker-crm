@@ -96,6 +96,14 @@ class SessionMonitor {
       return;
     }
 
+    // 📱 Skip CRM session checks for attendance-only sessions.
+    // Attendance sessions use a separate token (attendance_session_token) and
+    // are not tracked in active_session_token, so verify-session would always
+    // think they're "displaced". The backend middleware enforces scope instead.
+    if (typeof window !== 'undefined' && localStorage.getItem('loginType') === 'attendance_only') {
+      return;
+    }
+
     // Prevent duplicate checks within debounce window
     const now = Date.now();
     if (now - this.lastCheckTime < this.minTimeBetweenChecks) {

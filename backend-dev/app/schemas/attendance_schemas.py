@@ -1,6 +1,6 @@
 from pydantic import BaseModel, Field, validator
 from typing import Optional, List, Dict, Any, Union
-from datetime import date, datetime
+from datetime import date, datetime, timezone, timedelta
 from enum import Enum
 
 class AttendanceStatus(str, Enum):
@@ -426,9 +426,14 @@ def determine_attendance_status(check_in_time: str, check_out_time: str, setting
 def format_datetime_ist(dt: datetime) -> str:
     """Format datetime to IST format like '08 August 2004, 13:16'"""
     try:
-        # Convert to IST (assuming input is UTC)
-        from datetime import timedelta
-        ist_dt = dt + timedelta(hours=5, minutes=30)
+        # Convert to IST correctly:
+        # - timezone-aware datetimes (UTC from MongoDB, IST from get_ist_now()) → astimezone(IST)
+        # - naive datetimes (stored check_in_time strings already in IST) → use as-is
+        IST = timezone(timedelta(hours=5, minutes=30))
+        if dt.tzinfo is not None:
+            ist_dt = dt.astimezone(IST)
+        else:
+            ist_dt = dt  # already IST (naive string from DB)
         
         months = [
             "January", "February", "March", "April", "May", "June",
@@ -438,7 +443,7 @@ def format_datetime_ist(dt: datetime) -> str:
         day = ist_dt.day
         month = months[ist_dt.month - 1]
         year = ist_dt.year
-        time_str = ist_dt.strftime("%H:%M")
+        time_str = ist_dt.strftime("%I:%M %p")  # 12-hour with AM/PM
         
         return f"{day:02d} {month} {year}, {time_str}"
     except:

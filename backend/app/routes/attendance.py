@@ -1,6 +1,6 @@
 from fastapi import APIRouter, HTTPException, Depends, status, Query
 from typing import Dict, List, Any, Optional
-from datetime import datetime, date, timedelta
+from datetime import datetime, date, timedelta, timezone, timezone
 import calendar
 import base64
 import os
@@ -177,9 +177,14 @@ def save_attendance_photo(photo_data: str, user_id: str, date_str: str, photo_ty
 def format_datetime_ist(dt: datetime) -> str:
     """Format datetime to IST format: '08 August 2004, 13:16'"""
     try:
-        # Convert to IST (assuming input is UTC)
-        from datetime import timedelta
-        ist_dt = dt + timedelta(hours=5, minutes=30)
+        # Convert to IST correctly:
+        # - timezone-aware datetimes (UTC from MongoDB, IST from get_ist_now()) → astimezone(IST)
+        # - naive datetimes (already IST, e.g. parsed from check_in_time strings) → use as-is
+        IST = timezone(timedelta(hours=5, minutes=30))
+        if dt.tzinfo is not None:
+            ist_dt = dt.astimezone(IST)
+        else:
+            ist_dt = dt  # already IST (naive string from DB)
         
         months = [
             "January", "February", "March", "April", "May", "June",
@@ -189,7 +194,7 @@ def format_datetime_ist(dt: datetime) -> str:
         day = ist_dt.day
         month = months[ist_dt.month - 1]
         year = ist_dt.year
-        time_str = ist_dt.strftime("%H:%M")
+        time_str = ist_dt.strftime("%I:%M %p")  # 12-hour with AM/PM
         
         return f"{day:02d} {month} {year}, {time_str}"
     except:

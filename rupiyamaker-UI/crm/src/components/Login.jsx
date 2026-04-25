@@ -15,6 +15,12 @@ const Login = ({ onLogin }) => {
     const [otpGenerated, setOtpGenerated] = useState(false);
     const [userId, setUserId] = useState(null);
     const [showPassword, setShowPassword] = useState(false);
+    // 📱 Capture attendance mode from URL at component mount time — NOT inside handleSubmit,
+    // because SPA routing may have changed window.location.search by the time the user submits.
+    const [isAttendanceMode] = useState(() => {
+        try { return new URLSearchParams(window.location.search).get('mode') === 'attendance'; }
+        catch (_) { return false; }
+    });
 
     // 🔔 Show displaced-session / forced-logout message from sessionStorage
     useEffect(() => {
@@ -121,6 +127,8 @@ const Login = ({ onLogin }) => {
         setLoading(true);
         setError('');
 
+        // 📱 isAttendanceMode captured at mount time (state) — see useState above.
+
         try {
             const response = await fetch('/api/users/login', {
                 method: 'POST',
@@ -130,7 +138,8 @@ const Login = ({ onLogin }) => {
                 body: JSON.stringify({
                     username_or_email: identifier,
                     password: password,
-                    otp_code: otpRequired ? formData.otpCode : undefined
+                    otp_code: otpRequired ? formData.otpCode : undefined,
+                    login_type: isAttendanceMode ? 'attendance_only' : 'crm'
                 })
             });
 
@@ -171,6 +180,58 @@ const Login = ({ onLogin }) => {
             const data = await response.json();
 
             if (response.ok) {
+                // 📱 ATTENDANCE-ONLY LOGIN — minimal storage, no CRM data, no OTP
+                // We isolate this from the regular CRM session so:
+                //   - The user's existing desktop CRM session is NOT displaced
+                //   - No CRM permissions/data are populated (App.jsx will route
+                //     them straight to the attendance page)
+                //   - The token is stored under a SEPARATE key (attendanceToken)
+                if (data.login_type === 'attendance_only') {
+                    // Reset only attendance-scoped keys (preserve any CRM session data
+                    // that might exist on a shared device — we don't want to overwrite it).
+                    const attendanceKeys = [
+                        'attendanceToken', 'attendanceUserId', 'attendanceUserData',
+                        'loginType', 'isAuthenticated', 'userId', 'user_id', 'userData', 'user'
+                    ];
+                    attendanceKeys.forEach(k => localStorage.removeItem(k));
+
+                    const uid = data.user._id || data.user.id;
+                    localStorage.setItem('loginType', 'attendance_only');
+                    localStorage.setItem('attendanceToken', data.session_token);
+                    localStorage.setItem('attendanceUserId', uid);
+                    // Also set userId/isAuthenticated so the existing AppAuthGuard treats
+                    // this as an authenticated session — App.jsx checks loginType to decide
+                    // whether to render the CRM or just the attendance page.
+                    localStorage.setItem('userId', uid);
+                    localStorage.setItem('user_id', uid);
+                    localStorage.setItem('isAuthenticated', 'true');
+
+                    const minimalUser = {
+                        _id: uid, id: uid, user_id: uid,
+                        first_name: data.user.first_name,
+                        last_name: data.user.last_name,
+                        username: data.user.username,
+                        email: data.user.email,
+                        profile_photo: data.user.profile_photo,
+                        employee_id: data.user.employee_id,
+                    };
+                    const minimalStr = JSON.stringify(minimalUser);
+                    localStorage.setItem('userData', minimalStr);
+                    localStorage.setItem('user', minimalStr);
+                    localStorage.setItem('attendanceUserData', minimalStr);
+
+                    setLogoutBanner('');
+                    onLogin(minimalUser);
+                    return;
+                }
+
+                // Regular CRM login — clean any stale attendance keys so a previous
+                // attendance-only session doesn't bleed into a fresh CRM session.
+                ['attendanceToken', 'attendanceUserId', 'attendanceUserData'].forEach(
+                    k => localStorage.removeItem(k)
+                );
+                localStorage.setItem('loginType', 'crm');
+
                 // Reset only auth/session keys. Avoid full clear to prevent transient
                 // app-wide state loss and permission hydration races on first render.
                 const authKeysToReset = [
@@ -353,7 +414,14 @@ const Login = ({ onLogin }) => {
                 setLogoutBanner(''); // Clear any displaced-session banner on success
                 onLogin(userData);
             } else if (response.status === 428) {
-                // OTP required
+                // OTP required — but attendance-only sessions must NEVER require OTP.
+                // If 428 arrives in attendance mode it means login_type wasn't sent correctly;
+                // show a clear error instead of the OTP form.
+                if (isAttendanceMode) {
+                    setError('Attendance login failed. Please refresh the page and try again.');
+                    setLoading(false);
+                    return;
+                }
                 setOtpRequired(true);
                 
                 // Handle different response formats

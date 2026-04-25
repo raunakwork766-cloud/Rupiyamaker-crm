@@ -11,6 +11,7 @@ import PublicLeadForm from "./components/PublicLeadForm"
 import PublicLoginForm from "./components/PublicLoginForm"
 import PublicAppViewer from "./components/PublicAppViewer"
 import OptimizedAppRoutes from './routes/OptimizedAppRoutes'
+import AttendanceCheckInOut from './components/attendance/AttendanceCheckInOut'
 import PopNotificationModal from './components/PopNotificationModal'
 import PopWarningModal from './components/PopWarningModal'
 import PopTaskTicketModal from './components/PopTaskTicketModal'
@@ -80,6 +81,38 @@ const AppAuthGuard = ({ loading, isAuthenticated, onLogin, children }) => {
     return <Login onLogin={onLogin} />;
   }
   return children;
+};
+
+/**
+ * AttendanceOnlyShell — when the user logged in via /login?mode=attendance,
+ * we render ONLY the camera check-in/out screen. No Sidebar, no Navbar, no
+ * CRM routes. Even if the user enables Desktop View on their phone or types
+ * a CRM URL, they get this screen — and the backend additionally enforces
+ * that the attendance token cannot hit any CRM endpoint.
+ */
+const AttendanceOnlyShell = ({ user, onLogout }) => {
+  const userId = user?._id || user?.id || localStorage.getItem('attendanceUserId') || localStorage.getItem('userId');
+  const displayName = `${user?.first_name || ''} ${user?.last_name || ''}`.trim() || user?.username || 'Employee';
+  return (
+    <div style={{ minHeight: '100vh', background: '#0b1220', color: 'white' }}>
+      <div style={{
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        padding: '14px 18px', background: '#111827', borderBottom: '1px solid #1f2937'
+      }}>
+        <div style={{ fontWeight: 700 }}>📱 Attendance — {displayName}</div>
+        <button
+          onClick={onLogout}
+          style={{
+            background: '#ef4444', color: 'white', border: 'none',
+            padding: '8px 14px', borderRadius: 8, fontWeight: 600, cursor: 'pointer'
+          }}
+        >Logout</button>
+      </div>
+      <div style={{ padding: 16 }}>
+        <AttendanceCheckInOut userId={userId} userInfo={user} />
+      </div>
+    </div>
+  );
 };
 
 function App() {
@@ -1119,6 +1152,16 @@ function App() {
           {/* Protected routes (requires authentication) */}
           <Route path="/*" element={
             <AppAuthGuard loading={loading} isAuthenticated={isAuthenticated} onLogin={handleLogin}>
+              {/* 📱 ATTENDANCE-ONLY SESSION SHORT-CIRCUIT
+                  If the user logged in via /login?mode=attendance, render ONLY the
+                  attendance shell — no Sidebar/Navbar/CRM routes. Phone "desktop view"
+                  bypass cannot reach CRM because:
+                    1. This guard renders only AttendanceOnlyShell client-side, AND
+                    2. Backend middleware blocks the attendance token on any non-
+                       attendance API path (defense in depth). */}
+              {localStorage.getItem('loginType') === 'attendance_only' ? (
+                <AttendanceOnlyShell user={user} onLogout={handleLogout} />
+              ) : (
               <div className="flex h-screen bg-black text-white">
                 {/* Sidebar - Hidden on mobile view, visible on desktop view */}
                 {!isMobileView && (
@@ -1149,6 +1192,7 @@ function App() {
                 {/* Global Pop Notification Modal - REMOVED: Using new announcement modal in NotificationManagementPage */}
                 {/* <PopNotificationModal user={user} /> */}
               </div>
+              )}
             </AppAuthGuard>
           } />
         </Routes>

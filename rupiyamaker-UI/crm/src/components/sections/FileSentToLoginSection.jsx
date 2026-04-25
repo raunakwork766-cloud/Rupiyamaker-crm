@@ -426,7 +426,14 @@ const FileSentToLoginSection = ({ lead, onClose, onUpdate }) => {
       });
 
       if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
+        let errorDetail = `HTTP error! status: ${response.status}`;
+        try {
+          const errorData = await response.json();
+          errorDetail = errorData.detail || errorDetail;
+        } catch (_) { /* ignore parse error */ }
+        const err = new Error(errorDetail);
+        err.status = response.status;
+        throw err;
       }
 
       const data = await response.json();
@@ -549,7 +556,14 @@ const FileSentToLoginSection = ({ lead, onClose, onUpdate }) => {
     } catch (error) {
       console.error('Error sending lead to Login CRM:', error);
       setStatus('error');
-      setMessage(`Failed to send lead to Login CRM: ${error.message}`);
+      const msg = (error.message || '').toLowerCase();
+      if (error.status === 403 && (msg.includes('session') || msg.includes('invalidat') || msg.includes('login disabled') || msg.includes('displaced'))) {
+        setMessage('Your session has expired. Please refresh the page (Ctrl+Shift+R) and login again.');
+      } else if (error.status === 403) {
+        setMessage('Access denied (403). You may not have permission for this action. Please contact your administrator.');
+      } else {
+        setMessage(`Failed to send lead to Login CRM: ${error.message}`);
+      }
     } finally {
       setLoading(false);
     }

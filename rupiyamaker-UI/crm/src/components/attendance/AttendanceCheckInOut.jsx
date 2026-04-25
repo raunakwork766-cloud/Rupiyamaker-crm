@@ -105,6 +105,17 @@ const SuccessModal = ({ data, onClose }) => {
 };
 
 const AttendanceCheckInOut = ({ userId, userInfo }) => {
+  // 📱 If this component is rendered inside an attendance-only session
+  // (mobile employee shell), include the X-Attendance-Token header on every
+  // request so the backend's session-validation middleware can authorize the
+  // call against the scoped attendance token. For regular CRM users opening
+  // the attendance page from the sidebar, this header simply won't exist
+  // and normal CRM session validation applies.
+  const getAttendanceHeaders = () => {
+    const tok = (typeof window !== 'undefined') && localStorage.getItem('attendanceToken');
+    return tok ? { 'X-Attendance-Token': tok } : {};
+  };
+
   const [loading, setLoading] = useState(false);
   const [currentStatus, setCurrentStatus] = useState(null);
   const [currentTime, setCurrentTime] = useState(new Date());
@@ -131,7 +142,10 @@ const AttendanceCheckInOut = ({ userId, userInfo }) => {
 
   const loadCurrentStatus = async () => {
     try {
-      const r = await axios.get(`${API_BASE}/attendance/status/current/${userId}`);
+      const r = await axios.get(
+        `${API_BASE}/attendance/status/current/${userId}`,
+        { headers: getAttendanceHeaders() }
+      );
       if (r.data.success) setCurrentStatus(r.data);
     } catch (e) { console.error(e); }
   };
@@ -205,7 +219,7 @@ const AttendanceCheckInOut = ({ userId, userInfo }) => {
       const r = await axios.post(
         `${API_BASE}/attendance/${endpoint}`,
         { photo_data: photoData, geolocation: location, comments, face_descriptor: null },
-        { params: { user_id: userId } }
+        { params: { user_id: userId }, headers: getAttendanceHeaders() }
       );
 
       if (r.data.success) {

@@ -1,6 +1,6 @@
 from fastapi import APIRouter, HTTPException, Depends, status, Query
 from typing import Dict, List, Any, Optional
-from datetime import datetime, date, timedelta
+from datetime import datetime, date, timedelta, timezone, timezone
 import calendar
 import base64
 import os
@@ -177,9 +177,14 @@ def save_attendance_photo(photo_data: str, user_id: str, date_str: str, photo_ty
 def format_datetime_ist(dt: datetime) -> str:
     """Format datetime to IST format: '08 August 2004, 13:16'"""
     try:
-        # Convert to IST (assuming input is UTC)
-        from datetime import timedelta
-        ist_dt = dt + timedelta(hours=5, minutes=30)
+        # Convert to IST correctly:
+        # - timezone-aware datetimes (UTC from MongoDB, IST from get_ist_now()) → astimezone(IST)
+        # - naive datetimes (already IST, e.g. parsed from check_in_time strings) → use as-is
+        IST = timezone(timedelta(hours=5, minutes=30))
+        if dt.tzinfo is not None:
+            ist_dt = dt.astimezone(IST)
+        else:
+            ist_dt = dt  # already IST (naive string from DB)
         
         months = [
             "January", "February", "March", "April", "May", "June",
@@ -189,7 +194,7 @@ def format_datetime_ist(dt: datetime) -> str:
         day = ist_dt.day
         month = months[ist_dt.month - 1]
         year = ist_dt.year
-        time_str = ist_dt.strftime("%H:%M")
+        time_str = ist_dt.strftime("%I:%M %p")  # 12-hour with AM/PM
         
         return f"{day:02d} {month} {year}, {time_str}"
     except:
@@ -899,6 +904,8 @@ async def get_attendance_calendar(
                 "role_name": employee.get("role_name"),
                 "designation": employee.get("designation"),
                 "joining_date": str(employee.get("joining_date", "")) if employee.get("joining_date") else None,
+                "inactive_from_date": employee.get("inactive_from_date"),
+                "employee_status": employee.get("employee_status", "active"),
                 "days": days,
                 "stats": {
                     "total_days": total_days,
@@ -1223,15 +1230,18 @@ async def mark_attendance(
         # Get admin info for history
         admin = await users_db.get_user(user_id)
         admin_name = "Unknown Admin"
+        admin_designation = ""
         if admin:
             full_name = f"{admin.get('first_name', '')} {admin.get('last_name', '')}".strip()
+            # Prioritize full_name over generic 'name' field to prevent ID-like values
             admin_name = (
-                admin.get("name")
-                or full_name
+                full_name
+                or admin.get("name")
                 or admin.get("username")
                 or admin.get("email")
                 or "Unknown Admin"
             )
+            admin_designation = admin.get("designation", "") or ""
         
         # Add history entry for new attendance record
         await attendance_history_db.add_history_entry(
@@ -1243,6 +1253,7 @@ async def mark_attendance(
             created_by=user_id,
             created_by_name=admin_name,
             new_value=get_status_text(attendance_data.status),
+            details={"editor_designation": admin_designation},
             reason=attendance_data.reason
         )
         
@@ -2595,15 +2606,18 @@ async def edit_attendance(
         # Get admin info for history
         admin = await users_db.get_user(admin_id)
         admin_name = "Unknown Admin"
+        admin_designation = ""
         if admin:
             full_name = f"{admin.get('first_name', '')} {admin.get('last_name', '')}".strip()
+            # Prioritize full_name over generic 'name' field to prevent ID-like values
             admin_name = (
-                admin.get("name")
-                or full_name
+                full_name
+                or admin.get("name")
                 or admin.get("username")
                 or admin.get("email")
                 or "Unknown Admin"
             )
+            admin_designation = admin.get("designation", "") or ""
         
         # Validate time formats if provided
         if edit_data.check_in_time:
@@ -2656,7 +2670,7 @@ async def edit_attendance(
         
         # Add summary history entry
         if changes:
-            history_details = {"changes": changes}
+            history_details = {"changes": changes, "editor_designation": admin_designation}
             if update_reason:
                 history_details["reason"] = update_reason
                 

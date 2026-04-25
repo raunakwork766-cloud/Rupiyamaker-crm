@@ -495,7 +495,49 @@ async def login(
     # Clear the session_invalidated_at timestamp after successful check
     # This allows them to login fresh without the flag blocking them
     # NOTE: last_login is only updated AFTER full auth (including OTP) below.
-    
+
+    # 📱 ATTENDANCE-ONLY LOGIN BRANCH
+    # When the client requests login_type="attendance_only" (mobile employees marking
+    # daily attendance from their phone), we:
+    #   - SKIP OTP entirely (no daily admin approval required)
+    #   - DO NOT touch active_session_token (so an existing desktop CRM session keeps working)
+    #   - DO NOT update last_login (prevents the desktop session from being treated as stale)
+    #   - Issue a SEPARATE attendance_session_token stored on the user document
+    # The middleware + attendance routes enforce that this token can ONLY hit
+    # /attendance/check-in, /attendance/check-out and /attendance/status/current.
+    if (login_data.login_type or "crm") == "attendance_only":
+        attendance_session_token = str(uuid4())
+        update_doc = {
+            "attendance_session_token": attendance_session_token,
+            "attendance_session_issued_at": get_ist_now(),
+        }
+        # Clear any pending session-invalidated flag specific to attendance flow
+        # but DO NOT clear the CRM session's invalidation flag.
+        await users_db.collection.update_one(
+            {"_id": user["_id"]},
+            {"$set": update_doc}
+        )
+
+        user_dict = convert_object_id(user)
+        login_user_fields = [
+            '_id', 'first_name', 'last_name', 'username', 'email', 'phone',
+            'role_id', 'department_id', 'team_id', 'employee_id',
+            'is_active', 'login_enabled', 'is_employee', 'employee_status',
+            'profile_photo', 'designation',
+        ]
+        user_dict = {k: user_dict.get(k) for k in login_user_fields if k in user_dict}
+
+        return {
+            "user": user_dict,
+            "role": None,
+            "department": None,
+            "designation": None,
+            "permissions": [],          # Empty — attendance UI doesn't need CRM perms
+            "otp_verified": False,
+            "session_token": attendance_session_token,
+            "login_type": "attendance_only",
+        }
+
     # Check if OTP is required for this user based on role routing config
     # If the user's role has OTP approval routing configured, OTP is required
     otp_required = False
@@ -613,7 +655,8 @@ async def login(
         "designation": designation if designation else None,
         "permissions": role_permissions,
         "otp_verified": otp_required,  # Indicates if OTP was required and verified
-        "session_token": new_session_token  # 🔑 Unique token for this login session
+        "session_token": new_session_token,  # 🔑 Unique token for this login session
+        "login_type": "crm",
     }
 
 @router.post("/verify-session", response_model=Dict)

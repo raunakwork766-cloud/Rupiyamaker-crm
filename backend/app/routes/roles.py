@@ -369,13 +369,11 @@ async def update_role(
             detail="Failed to update role"
         )
     
-    # If permissions were updated, invalidate sessions for all users with this role
-    if "permissions" in update_data:
-        try:
-            await users_db.invalidate_sessions_by_role(role_id)
-        except Exception as e:
-            print(f"WARNING: Failed to invalidate sessions for role {role_id}: {e}")
-            # Don't fail the update if session invalidation fails
+    # NOTE: We intentionally do NOT call invalidate_sessions_by_role here.
+    # Permissions are fetched fresh from the database on EVERY request (no server-side
+    # permission caching), so updated permissions take effect immediately on the next
+    # API call without requiring users to re-login. Forcing re-login on every permission
+    # change causes spurious 403 errors mid-workflow (e.g. "Send to Login" button).
     
     return {"message": "Role updated successfully"}
 
