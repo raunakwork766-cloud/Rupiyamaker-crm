@@ -181,11 +181,22 @@ const AttendanceCheckInOut = ({ userId, userInfo }) => {
         }
       );
       const days = r.data?.employees?.[0]?.days || [];
+      console.log('[Calendar] days count:', days.length, 'sample:', days[0]);
       // Build date-keyed map
       const map = {};
       days.forEach(d => { if (d.date) map[d.date] = d; });
       setCalData(map);
-    } catch (e) { console.error('Calendar fetch error', e); }
+    } catch (e) {
+      console.error('Calendar fetch error', e?.response?.status, e?.response?.data || e.message);
+      // Fallback: use my-calendar endpoint (lighter, only own records)
+      try {
+        const r2 = await axios.get(
+          `${API_BASE}/attendance/my-calendar/${userId}`,
+          { params: { year: yr, month: mo }, headers: getAttendanceHeaders() }
+        );
+        if (r2.data.success) setCalData(r2.data.day_map || {});
+      } catch (e2) { console.error('Fallback calendar error', e2.message); }
+    }
     finally { setCalLoading(false); }
   };
 

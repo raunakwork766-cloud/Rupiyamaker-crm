@@ -307,8 +307,10 @@ class AttendanceCalendarDay(BaseModel):
     is_weekend: bool = Field(False, description="Whether the date is a weekend")
     check_in_time: Optional[str] = Field(None, description="Check-in time HH:MM:SS")
     check_out_time: Optional[str] = Field(None, description="Check-out time HH:MM:SS")
+    total_working_hours: Optional[float] = Field(None, description="Total working hours")
     comments: Optional[str] = Field(None, description="Comments")
     photo_path: Optional[str] = Field(None, description="Path to attendance photo")
+    is_late: Optional[bool] = Field(None, description="Whether check-in was late")
     # Leave integration fields
     leave_id: Optional[str] = Field(None, description="Leave application ID if on leave")
     leave_type: Optional[str] = Field(None, description="Type of leave if applicable")

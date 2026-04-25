@@ -747,6 +747,8 @@ async def get_attendance_calendar(
                     "is_manually_edited": attendance_record.get("edited_by") is not None or attendance_record.get("marked_by") is not None if attendance_record else False,
                     "check_in_time": attendance_record.get("check_in_time") if attendance_record else None,
                     "check_out_time": attendance_record.get("check_out_time") if attendance_record else None,
+                    "total_working_hours": attendance_record.get("total_working_hours") if attendance_record else None,
+                    "is_late": attendance_record.get("is_late", False) if attendance_record else False,
                     "comments": comments,
                     "photo_path": photo_path,
                     "leave_id": leave_id,
