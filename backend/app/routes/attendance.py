@@ -2445,7 +2445,8 @@ async def check_out_attendance(
         # Get timing settings from database
         check_out_start_time = settings.get("check_out_start_time", "17:00")  # Default 5:00 PM
         check_out_end_time = settings.get("check_out_end_time", "20:00")    # Default 8:00 PM
-        minimum_hours = settings.get("minimum_working_hours", 8.0)
+        minimum_hours = float(settings.get("minimum_working_hours") or settings.get("full_day_working_hours") or 8.0)
+        half_day_hours = float(settings.get("half_day_minimum_working_hours") or settings.get("minimum_working_hours_half_day") or minimum_hours / 2)
         
         # Get current status from check-in (might be 1, 0.5, or -2)
         current_status = existing.get("status", 1)
@@ -2482,10 +2483,10 @@ async def check_out_attendance(
                 # Normal check-out time window
                 if working_hours >= minimum_hours:
                     final_status = max(current_status, 1) if current_status != -2 else -2
-                elif working_hours >= minimum_hours / 2:
+                elif working_hours >= half_day_hours:
                     final_status = 0.5
                 else:
-                    final_status = 0.5
+                    final_status = -1  # Absent: insufficient working hours
                 status_reason = "Normal check-out"
                 
             # Don't upgrade status if check-in was already penalized

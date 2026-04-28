@@ -2150,20 +2150,7 @@ const AllEmployees = () => {
                                                         </td>
                                                         <td className="text-md font-semibold py-2 px-4 whitespace-nowrap text-white">
                                                             <div className="flex items-center gap-2">
-                                                            {canResetPassword() && (
-                                                                <button
-                                                                    onClick={(e) => {
-                                                                        e.preventDefault();
-                                                                        e.stopPropagation();
-                                                                        handlePasswordManagement(employee);
-                                                                    }}
-                                                                    className="rounded-full p-2 transition-all duration-200 flex items-center justify-center text-yellow-500 hover:text-yellow-700 hover:bg-yellow-50"
-                                                                    style={{ backgroundColor: 'rgba(234, 179, 8, 0.1)', border: '1px solid rgba(234, 179, 8, 0.3)' }}
-                                                                    title="Reset Password"
-                                                                >
-                                                                    <KeyOutlined style={{ fontSize: '16px' }} />
-                                                                </button>
-                                                            )}
+
                                                             {(() => {
                                                                 const SUPER_ADMIN_ROLE_ID = "685292be8d7cdc3a71c4829b";
                                                                 const isSuperAdmin = employee.role_id === SUPER_ADMIN_ROLE_ID;

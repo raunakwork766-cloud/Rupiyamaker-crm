@@ -1,8 +1,12 @@
-from fastapi import APIRouter, HTTPException, Depends, status as http_status, Query
+from fastapi import APIRouter, HTTPException, Depends, status as http_status, Query, Body
 from typing import Dict, Optional, Any, List
 from datetime import datetime, timedelta
 from app.utils.timezone import get_ist_now
 from bson import ObjectId
+import httpx
+import random
+import string
+from urllib.parse import quote
 
 from app.database.Leads import LeadsDB
 from app.database.Users import UsersDB
@@ -86,6 +90,90 @@ async def create_share_link(
     
     # Return the ShareLinkResponse directly
     return share_link_result
+
+@router.get("/shorten-url")
+async def shorten_url(url: str = Query(..., description="URL to shorten")):
+    """Shorten a URL using TinyURL API (proxy to avoid CORS issues)"""
+    try:
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            response = await client.get(
+                f"https://tinyurl.com/api-create.php?url={quote(url, safe='')}"
+            )
+            if response.status_code == 200:
+                short_url = response.text.strip()
+                if short_url.startswith("http"):
+                    return {"short_url": short_url, "original_url": url}
+    except Exception:
+        pass
+    # Fallback: return original URL if shortening fails
+    return {"short_url": url, "original_url": url}
+
+
+# ---------------------------------------------------------------------------
+# Custom short-form links  (no IP / port / domain exposed)
+# Short URL pattern: https://rupiyamaker.com/f/{code}
+# ---------------------------------------------------------------------------
+
+def _random_code(length: int = 7) -> str:
+    """Generate a URL-safe random alphanumeric code."""
+    chars = string.ascii_letters + string.digits
+    return ''.join(random.choices(chars, k=length))
+
+
+@router.post("/create-form-short")
+async def create_form_short_link(
+    lead_id: str = Body(...),
+    form_type: str = Body(...),   # "applicant" or "coApplicant"
+    mobile: str = Body("guest"),
+):
+    """Create a short random code for a public form link.
+    Returns: { code, short_url }
+    """
+    from app.database import get_database_instances
+    async_db = get_database_instances().get("async_db") or get_database_instances().get("leads")
+
+    # Use the raw async Motor db (not the wrapper class)
+    from app.database import async_db as motor_db
+    col = motor_db["form_short_links"]
+
+    # Generate unique code
+    for _ in range(10):
+        code = _random_code(7)
+        existing = await col.find_one({"code": code})
+        if not existing:
+            break
+    else:
+        raise HTTPException(status_code=500, detail="Could not generate unique code")
+
+    doc = {
+        "code": code,
+        "lead_id": lead_id,
+        "form_type": form_type,
+        "mobile": mobile,
+        "created_at": get_ist_now(),
+    }
+    await col.insert_one(doc)
+
+    short_url = f"https://rupiyamaker.com/f/{code}"
+    return {"code": code, "short_url": short_url}
+
+
+@router.get("/resolve-form/{code}")
+async def resolve_form_short_link(code: str):
+    """Resolve a short code back to form parameters."""
+    from app.database import async_db as motor_db
+    col = motor_db["form_short_links"]
+
+    doc = await col.find_one({"code": code})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Short link not found or expired")
+
+    return {
+        "lead_id": doc.get("lead_id"),
+        "form_type": doc.get("form_type"),
+        "mobile": doc.get("mobile", "guest"),
+    }
+
 
 @router.get("/public/form/{share_token}")
 async def get_public_lead_form(

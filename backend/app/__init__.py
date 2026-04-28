@@ -213,11 +213,18 @@ try:
     class AsyncMotorPerformanceMiddleware(BaseHTTPMiddleware):
         async def dispatch(self, request, call_next):
             start_time = time.perf_counter()
-            response = await call_next(request)
-            process_time = (time.perf_counter() - start_time) * 1000
-            response.headers["X-Process-Time"] = f"{process_time:.2f}ms"
-            response.headers["X-Database"] = "AsyncMotor"
-            return response
+            try:
+                response = await call_next(request)
+                process_time = (time.perf_counter() - start_time) * 1000
+                response.headers["X-Process-Time"] = f"{process_time:.2f}ms"
+                response.headers["X-Database"] = "AsyncMotor"
+                return response
+            except RuntimeError as e:
+                if "No response returned" in str(e):
+                    # Starlette BaseHTTPMiddleware known issue: handler raised before returning response
+                    from starlette.responses import Response
+                    return Response(status_code=500, content=b"Internal Server Error")
+                raise
     
     app.add_middleware(AsyncMotorPerformanceMiddleware)
     logging.info("✓ Async Motor performance monitoring middleware activated")

@@ -35,6 +35,32 @@ export default function PublicLoginForm() {
   const applicantFormRef = useRef(null);
   const coApplicantFormRef = useRef(null);
 
+  // localStorage helpers for auto-save
+  const getStorageKey = (lid, type) => `pf_${lid}_${type}`;
+  const loadFromStorage = (lid, type) => {
+    try {
+      const raw = localStorage.getItem(getStorageKey(lid, type));
+      return raw ? JSON.parse(raw) : null;
+    } catch { return null; }
+  };
+  const saveToStorage = (lid, type, data) => {
+    try { localStorage.setItem(getStorageKey(lid, type), JSON.stringify(data)); } catch {}
+  };
+  const clearStorage = (lid) => {
+    try {
+      localStorage.removeItem(getStorageKey(lid, 'app'));
+      localStorage.removeItem(getStorageKey(lid, 'coa'));
+    } catch {}
+  };
+
+  // Handle field change from LoginFormSection - save to localStorage immediately
+  const handleApplicantFieldChange = (data) => {
+    if (leadData?._id) saveToStorage(leadData._id, 'app', data);
+  };
+  const handleCoApplicantFieldChange = (data) => {
+    if (leadData?._id) saveToStorage(leadData._id, 'coa', data);
+  };
+
   useEffect(() => {
     if ((mobileNumber && mobileNumber !== 'guest') || leadId) {
       loadLeadData();
@@ -62,12 +88,17 @@ export default function PublicLoginForm() {
         // Set lead data first
         setLeadData(data);
         
-        // Also initialize our form data state with the loaded data
-        if (data?.dynamic_fields?.applicant_form) {
-          setApplicantFormData(data.dynamic_fields.applicant_form);
+        // Load from localStorage and prefer it over backend (customer's latest input)
+        const lid = data._id;
+        const localApp = loadFromStorage(lid, 'app');
+        const localCoa = loadFromStorage(lid, 'coa');
+        
+        // Initialize form data: prefer localStorage > backend
+        if (data?.dynamic_fields?.applicant_form || localApp) {
+          setApplicantFormData(localApp || data.dynamic_fields.applicant_form);
         }
-        if (data?.dynamic_fields?.co_applicant_form) {
-          setCoApplicantFormData(data.dynamic_fields.co_applicant_form);
+        if (data?.dynamic_fields?.co_applicant_form || localCoa) {
+          setCoApplicantFormData(localCoa || data.dynamic_fields.co_applicant_form);
         }
         
         // Check if form_share is explicitly false AND there are submitted timestamps
@@ -150,6 +181,34 @@ export default function PublicLoginForm() {
     fetchBankOptions();
   }, []);
 
+  // Auto-save to backend every 20 seconds while form is open
+  useEffect(() => {
+    if (!leadData?._id) return;
+    const lid = leadData._id;
+    const doAutoSave = () => {
+      if (applicantFormRef.current && (activeTab === 'applicant' || restrictTo === 'applicant')) {
+        const data = applicantFormRef.current.getCurrentFormData();
+        if (data && Object.keys(data).length > 0) {
+          saveToStorage(lid, 'app', data);
+          silentlySaveFormData(data, false);
+        }
+      }
+      if (coApplicantFormRef.current && (activeTab === 'co-applicant' || restrictTo === 'coApplicant')) {
+        const data = coApplicantFormRef.current.getCurrentFormData();
+        if (data && Object.keys(data).length > 0) {
+          saveToStorage(lid, 'coa', data);
+          silentlySaveFormData(data, true);
+        }
+      }
+    };
+    const interval = setInterval(doAutoSave, 20000);
+    window.addEventListener('beforeunload', doAutoSave);
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('beforeunload', doAutoSave);
+    };
+  }, [leadData?._id, activeTab, restrictTo]);
+
   const handleSave = async (formData, isCoApplicantForm = false, isFinalSubmission = false) => {
     try {
       const leadId = leadData?._id;
@@ -204,6 +263,7 @@ export default function PublicLoginForm() {
           
           // Only mark form as submitted if this was a final submission
           if (isFinalSubmission) {
+            clearStorage(leadData._id);
             setIsFormSubmitted(true);
             setSuccessMessage("Form submitted successfully!");
             
@@ -490,6 +550,7 @@ export default function PublicLoginForm() {
               isCoApplicant={false}
               isPublic={true}
               leadData={leadData} // Pass the full lead data including form_share status
+              onFieldChange={handleApplicantFieldChange}
             />
           </div>
         )}
@@ -519,6 +580,7 @@ export default function PublicLoginForm() {
               isCoApplicant={true}
               isPublic={true}
               leadData={leadData} // Pass the full lead data including form_share status
+              onFieldChange={handleCoApplicantFieldChange}
             />
           </div>
         )}

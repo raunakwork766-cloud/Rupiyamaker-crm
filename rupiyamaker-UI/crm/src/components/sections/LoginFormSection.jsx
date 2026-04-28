@@ -5,10 +5,35 @@ import * as XLSX from 'xlsx';
 // API base URL - Use proxy in development
 const API_BASE_URL = '/api'; // Always use proxy
 
-const QUALIFICATIONS = ["10", "12", "Graduate", "Master", "Phd"];
+const QUAL_CATALOG = [
+  { level: 'School Level', entries: ['10th Pass', '12th Pass'] },
+  { level: 'Diploma Level', entries: ['ITI', 'Polytechnic Diploma', 'Diploma in Engineering', 'Diploma in Pharmacy (D.Pharm)', 'Diploma in Computer Applications', 'Diploma in Hotel Management', 'Diploma in Fashion Designing', 'Diploma in Nursing', 'Diploma in Agriculture', 'Diploma in Architecture', 'Diploma in Education (D.Ed)', 'Diploma in Physiotherapy', 'Diploma in Lab Technology'] },
+  { level: "Bachelor's Degree", entries: ['BA', 'BA (Hons)', 'B.Com', 'B.Com (Hons)', 'B.Sc', 'B.Sc (Hons)', 'BBA', 'BCA', 'BMS', 'BSW', 'BFA', 'BJMC', 'BHM', 'BTTM', 'B.Des', 'B.Voc', 'B.Lib', 'B.Tech', 'BE', 'B.Arch', 'B.Plan', 'MBBS', 'BDS', 'BAMS', 'BHMS', 'BUMS', 'BPT', 'B.Pharm', 'B.Sc Nursing', 'BVSc', 'LLB (3 Year)', 'BA LLB', 'BBA LLB', 'B.Com LLB', 'B.Ed', 'B.El.Ed', 'CA', 'CS', 'CMA'] },
+  { level: "Master's Degree", entries: ['MA', 'M.Com', 'M.Sc', 'MBA', 'PGDM', 'MCA', 'M.Tech', 'ME', 'M.Pharm', 'MS', 'LLM', 'M.Ed', 'MSW', 'M.Des', 'M.Lib', 'M.Plan'] },
+  { level: 'Doctorate Level', entries: ['PhD', 'MPhil', 'D.Litt', 'DM', 'MCh'] }
+];
+const getQualLevel = (qual) => {
+  if (!qual) return '';
+  const group = QUAL_CATALOG.find(g => g.entries.includes(qual));
+  return group ? group.level : '';
+};
 const MARITAL_STATUS = ["Single", "Married"];
 const ADDRESS_TYPES = ["Owned", "Rented", "Company provided"];
-const ADDRESS_PROOFS = ["Aadhar", "Utility Bill", "Rent Agreement", "Passport"];
+const ADDRESS_PROOFS = [
+  "Aadhaar Card",
+  "Voter ID Card",
+  "Driving License",
+  "Passport",
+  "Electricity Bill",
+  "Water Bill",
+  "Gas Bill",
+  "Postpaid Mobile Bill",
+  "WiFi / Broadband Bill",
+  "Bank Statement",
+  "Rent Agreement",
+  "Property Documents (Registry / Sale Deed)",
+  "Credit Card Statement"
+];
 const REFERENCE_RELATIONS = ["Friend", "Relative", "Colleague", "Other"];
 
 const LoginFormSection = forwardRef(function LoginFormSection({
@@ -23,7 +48,8 @@ const LoginFormSection = forwardRef(function LoginFormSection({
   isReadOnlyMobile = false,
   isPublic = false,
   leadData = null, // Add leadData prop to access form_share and other lead info
-  canEdit = true // Add canEdit prop for permission-based editing
+  canEdit = true, // Add canEdit prop for permission-based editing
+  onFieldChange = null // Optional callback for auto-save (public form)
 }, ref) {
   // Add state for save status indicator
   const [saveStatus, setSaveStatus] = useState('');
@@ -38,6 +64,12 @@ const LoginFormSection = forwardRef(function LoginFormSection({
   
   // Create ref for dropdown
   const bankDropdownRef = useRef(null);
+  const [availableBanks, setAvailableBanks] = useState([]);
+
+  // Qualification searchable dropdown states
+  const [qualOpen, setQualOpen] = useState(false);
+  const [qualSearch, setQualSearch] = useState('');
+  const qualRef = useRef(null);
 
   const [fields, setFields] = useState({
     // For co-applicants, only pre-fill reference name if it exists in their own data
@@ -89,6 +121,19 @@ const LoginFormSection = forwardRef(function LoginFormSection({
   });
 
   const [showSharePopup, setShowSharePopup] = useState(false);
+
+  // Custom DOB picker states
+  const [activeDobField, setActiveDobField] = useState(null);
+  const [dobTempDay, setDobTempDay] = useState('');
+  const [dobTempMonth, setDobTempMonth] = useState('');
+  const [dobTempYear, setDobTempYear] = useState('');
+  const dobPickerRef = useRef(null);
+
+  // Custom Year+Month picker states
+  const [activeYearField, setActiveYearField] = useState(null);
+  const [yearTempYears, setYearTempYears] = useState('');
+  const [yearTempMonths, setYearTempMonths] = useState('');
+  const yearPickerRef = useRef(null);
 
   // Sync fields with data prop changes
   useEffect(() => {
@@ -173,6 +218,54 @@ const LoginFormSection = forwardRef(function LoginFormSection({
     };
   }, []);
 
+  // Close DOB / Year-Month pickers on outside click
+  useEffect(() => {
+    const handleOutside = (e) => {
+      if (activeDobField && dobPickerRef.current && !dobPickerRef.current.contains(e.target)) {
+        setActiveDobField(null);
+      }
+      if (activeYearField && yearPickerRef.current && !yearPickerRef.current.contains(e.target)) {
+        setActiveYearField(null);
+      }
+    };
+    document.addEventListener('mousedown', handleOutside);
+    return () => document.removeEventListener('mousedown', handleOutside);
+  }, [activeDobField, activeYearField]);
+
+  // Fetch bank names from settings on mount
+  useEffect(() => {
+    const fetchBanks = async () => {
+      try {
+        const userId = localStorage.getItem('userId');
+        const response = await fetch(`/api/settings/bank-names${userId ? `?user_id=${userId}` : ''}`, {
+          headers: {
+            'Authorization': `Bearer ${localStorage.getItem('token')}`,
+            'Content-Type': 'application/json'
+          }
+        });
+        if (response.ok) {
+          const data = await response.json();
+          const names = data.filter(b => b.is_active).map(b => b.name);
+          if (names.length > 0) setAvailableBanks(names);
+        }
+      } catch (e) {
+        console.warn('Could not load bank names from settings', e);
+      }
+    };
+    fetchBanks();
+  }, []);
+
+  // Close qualification dropdown on outside click
+  useEffect(() => {
+    const handleOutsideQual = (e) => {
+      if (qualRef.current && !qualRef.current.contains(e.target)) {
+        setQualOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleOutsideQual);
+    return () => document.removeEventListener('mousedown', handleOutsideQual);
+  }, []);
+
 
 
   // Auto-resize textareas on component mount and data changes
@@ -204,7 +297,9 @@ const LoginFormSection = forwardRef(function LoginFormSection({
       ? value 
       : value.toUpperCase();
 
-    setFields(prev => ({ ...prev, [field]: processedValue }));
+    const updatedFields = { ...fields, [field]: processedValue };
+    setFields(updatedFields);
+    if (onFieldChange) onFieldChange(updatedFields);
   };
 
   const handleSaveForm = () => {
@@ -246,12 +341,13 @@ const LoginFormSection = forwardRef(function LoginFormSection({
       setFields(prev => ({ ...prev, [field]: value }));
     }
     
-    // For public forms, just update local state (no auto-save)
-    // For internal forms with tab switching, save immediately
-    if (!isPublic && isFormSwitch && leadId) {
-      // Only save on form switch - let parent component handle regular field saves
-      // This prevents duplicate saves with parent's debounced auto-save
-      handleSaveForm();
+    // Auto-save on every field blur for internal (non-public) forms
+    if (!isPublic) {
+      if (isFormSwitch && leadId) {
+        handleSaveForm();
+      } else if (!isFormSwitch && onSave) {
+        onSave(updatedData);
+      }
     }
   };
 
@@ -427,33 +523,37 @@ const LoginFormSection = forwardRef(function LoginFormSection({
 
           const responseText = await updateResponse.text();
 
-          if (updateResponse.ok) {
-            const formType = isCoApplicant ? 'Co-Applicant' : 'Applicant';
-            alert(`${formType} form sharing enabled! Generating share link...`);
-          } else {
-            alert(`Warning: Failed to enable form sharing (${updateResponse.status}). Link will still be generated.`);
-          }
+          // Form sharing silently enabled
         } else {
-          alert('Warning: Missing authentication credentials. Link will still be generated.');
+          // Missing credentials — link will still be generated
         }
       } else {
       }
 
-      // Generate shareable link for specific form only
-      // Create independent URLs that restrict access to only the shared form type
-      const baseUrl = `${window.location.origin}/public/login-form/${mobileNumber || 'guest'}`;
+      // Create a clean short link — rupiyamaker.com/f/{code} (no IP, no port)
       let formUrl;
-      
-      if (isCoApplicant) {
-        // Co-applicant form link - only shows co-applicant form, no tab switching
-        formUrl = leadId 
-          ? `${baseUrl}?leadId=${leadId}&coApplicant=true&restrictTo=coApplicant` 
-          : `${baseUrl}?coApplicant=true&restrictTo=coApplicant`;
-      } else {
-        // Applicant form link - only shows applicant form, no tab switching
-        formUrl = leadId 
-          ? `${baseUrl}?leadId=${leadId}&restrictTo=applicant` 
-          : `${baseUrl}?restrictTo=applicant`;
+      try {
+        const shortRes = await fetch(`${API_BASE_URL}/share-links/create-form-short`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            lead_id: leadId || '',
+            form_type: isCoApplicant ? 'coApplicant' : 'applicant',
+            mobile: mobileNumber || 'guest',
+          }),
+        });
+        if (shortRes.ok) {
+          const shortData = await shortRes.json();
+          formUrl = shortData.short_url; // https://rupiyamaker.com/f/{code}
+        }
+      } catch (_) { /* fallback below */ }
+
+      // Fallback: plain URL (IP-free, using current origin)
+      if (!formUrl) {
+        const base = `${window.location.origin}/public/login-form/${mobileNumber || 'guest'}`;
+        formUrl = isCoApplicant
+          ? (leadId ? `${base}?leadId=${leadId}&coApplicant=true&restrictTo=coApplicant` : `${base}?coApplicant=true&restrictTo=coApplicant`)
+          : (leadId ? `${base}?leadId=${leadId}&restrictTo=applicant` : `${base}?restrictTo=applicant`);
       }
 
       if (navigator.share) {
@@ -474,11 +574,8 @@ const LoginFormSection = forwardRef(function LoginFormSection({
         // Fallback: copy to clipboard
         navigator.clipboard.writeText(formUrl).then(() => {
           const formType = isCoApplicant ? 'Co-Applicant' : 'Applicant';
-          const description = isCoApplicant 
-            ? 'This link provides access ONLY to the Co-Applicant form. Users cannot switch to the Applicant form.' 
-            : 'This link provides access ONLY to the Applicant form. Users cannot switch to the Co-Applicant form.';
-          alert(`${formType} Form link copied to clipboard!\n\n${description}\n\nShare this link: ${formUrl}`);
-        }).catch(err => {
+          alert(`${formType} Form link copied!\n\n${formUrl}`);
+        }).catch(() => {
           // Fallback for older browsers
           const textArea = document.createElement('textarea');
           textArea.value = formUrl;
@@ -487,30 +584,17 @@ const LoginFormSection = forwardRef(function LoginFormSection({
           document.execCommand('copy');
           document.body.removeChild(textArea);
           const formType = isCoApplicant ? 'Co-Applicant' : 'Applicant';
-          const description = isCoApplicant 
-            ? 'This link provides access ONLY to the Co-Applicant form. Users cannot switch to the Applicant form.' 
-            : 'This link provides access ONLY to the Applicant form. Users cannot switch to the Co-Applicant form.';
-          alert(`${formType} Form link copied to clipboard!\n\n${description}\n\nShare this link: ${formUrl}`);
+          alert(`${formType} Form link copied!\n\n${formUrl}`);
         });
       }
     } catch (error) {
       alert('Error: ' + error.message);
 
-      // Still generate the link even if the API call fails
-      const baseUrl = `${window.location.origin}/public/login-form/${mobileNumber || 'guest'}`;
-      let formUrl;
-      
-      if (isCoApplicant) {
-        // Co-applicant form link - only shows co-applicant form, no tab switching
-        formUrl = leadId 
-          ? `${baseUrl}?leadId=${leadId}&coApplicant=true&restrictTo=coApplicant` 
-          : `${baseUrl}?coApplicant=true&restrictTo=coApplicant`;
-      } else {
-        // Applicant form link - only shows applicant form, no tab switching
-        formUrl = leadId 
-          ? `${baseUrl}?leadId=${leadId}&restrictTo=applicant` 
-          : `${baseUrl}?restrictTo=applicant`;
-      }
+      // Catch-block fallback: build plain URL (no IP, no port)
+      const base = `${window.location.origin}/public/login-form/${mobileNumber || 'guest'}`;
+      const formUrl = isCoApplicant
+        ? (leadId ? `${base}?leadId=${leadId}&coApplicant=true&restrictTo=coApplicant` : `${base}?coApplicant=true&restrictTo=coApplicant`)
+        : (leadId ? `${base}?leadId=${leadId}&restrictTo=applicant` : `${base}?restrictTo=applicant`);
 
       // Fallback: copy to clipboard
       navigator.clipboard.writeText(formUrl).then(() => {
@@ -588,10 +672,187 @@ const LoginFormSection = forwardRef(function LoginFormSection({
     return true; // Show for both primary and co-applicant
   };
 
+  // ── Custom picker helpers ──────────────────────────────────────────────────
+  const parseDateValue = (val) => {
+    if (!val) return { day: '', month: '', year: '' };
+    const dmy = String(val).match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+    if (dmy) return { day: dmy[1], month: dmy[2], year: dmy[3] };
+    const ymd = String(val).match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (ymd) return { day: ymd[3], month: ymd[2], year: ymd[1] };
+    return { day: '', month: '', year: '' };
+  };
+  const formatDateDisplay = (d, m, y) => {
+    if (!d && !m && !y) return '';
+    return `${d ? String(d).padStart(2,'0') : 'DD'}/${m ? String(m).padStart(2,'0') : 'MM'}/${y || 'YYYY'}`;
+  };
+  const parseYearsMonths = (val) => {
+    if (!val) return { years: '', months: '' };
+    const s = String(val);
+    const full = s.match(/(\d+)\s*[Yy]ear[s]?\s*(\d+)\s*[Mm]onth[s]?/);
+    if (full) return { years: full[1], months: full[2] };
+    const yearOnly = s.match(/^(\d+(?:\.\d+)?)\s*[Yy]ear[s]?/);
+    if (yearOnly) { const n=parseFloat(yearOnly[1]); const y=Math.floor(n); const m=Math.round((n-y)*12); return { years: y>0?String(y):'', months: m>0?String(m):'' }; }
+    const monthOnly = s.match(/^(\d+)\s*[Mm]onth[s]?/);
+    if (monthOnly) return { years: '', months: monthOnly[1] };
+    const num = parseFloat(s);
+    if (!isNaN(num) && num > 0) { const y=Math.floor(num); const m=Math.round((num-y)*12); return { years: y>0?String(y):'', months: m>0?String(m):'' }; }
+    return { years: s, months: '' };
+  };
+  const formatYearsMonths = (years, months) => {
+    const y = parseInt(years) || 0;
+    const m = parseInt(months) || 0;
+    if (y === 0 && m === 0) return '';
+    const parts = [];
+    if (y > 0) parts.push(`${y} Year${y !== 1 ? 's' : ''}`);
+    if (m > 0) parts.push(`${m} Month${m !== 1 ? 's' : ''}`);
+    return parts.join(' ');
+  };
+  const openDobPicker = (fieldName) => {
+    if (!canEdit) return;
+    const p = parseDateValue(fields[fieldName]);
+    setDobTempDay(p.day); setDobTempMonth(p.month); setDobTempYear(p.year);
+    setActiveDobField(fieldName); setActiveYearField(null);
+  };
+  const applyDob = () => {
+    const formatted = formatDateDisplay(dobTempDay, dobTempMonth, dobTempYear);
+    // Auto-calculate currentWorkExperience when DOJ Current Company is set
+    if (activeDobField === 'dojCurrentCompany' && dobTempDay && dobTempMonth && dobTempYear) {
+      const doj = new Date(parseInt(dobTempYear), parseInt(dobTempMonth) - 1, parseInt(dobTempDay));
+      const now = new Date();
+      if (!isNaN(doj.getTime()) && doj <= now) {
+        let diffYears = now.getFullYear() - doj.getFullYear();
+        let diffMonths = now.getMonth() - doj.getMonth();
+        if (now.getDate() < doj.getDate()) diffMonths--;
+        if (diffMonths < 0) { diffYears--; diffMonths += 12; }
+        const expFormatted = formatYearsMonths(String(diffYears), String(diffMonths));
+        const updatedFields = { ...fields, dojCurrentCompany: formatted, currentWorkExperience: expFormatted };
+        setFields(updatedFields);
+        if (!isPublic && onSave) onSave(updatedFields);
+        setActiveDobField(null);
+        return;
+      }
+    }
+    handleChange(activeDobField, formatted);
+    handleBlur(activeDobField, formatted);
+    setActiveDobField(null);
+  };
+  const openYearPicker = (fieldName) => {
+    if (!canEdit) return;
+    const p = parseYearsMonths(fields[fieldName]);
+    setYearTempYears(p.years); setYearTempMonths(p.months);
+    setActiveYearField(fieldName); setActiveDobField(null);
+  };
+  const saveYearMonth = () => {
+    const formatted = formatYearsMonths(yearTempYears, yearTempMonths);
+    handleChange(activeYearField, formatted);
+    handleBlur(activeYearField, formatted);
+    setActiveYearField(null);
+  };
+
+  // Render a DOB picker field
+  const renderDobPicker = (fieldName, label) => (
+    <div className="flex flex-col h-full" ref={activeDobField === fieldName ? dobPickerRef : null}>
+      <label className={labelClass} style={labelStyle}>{label}</label>
+      <div className="relative">
+        <div
+          className={`${canEdit ? inputClass : inputReadOnlyClass} cursor-pointer flex items-center justify-between`}
+          style={inputStyle}
+          onClick={() => activeDobField === fieldName ? setActiveDobField(null) : openDobPicker(fieldName)}
+        >
+          <span className={fields[fieldName] ? '' : 'text-gray-400 font-normal'}>
+            {fields[fieldName] || 'DD / MM / YYYY'}
+          </span>
+          <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-gray-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+          </svg>
+        </div>
+        {activeDobField === fieldName && (
+          <div className="absolute top-full left-0 z-50 bg-white border-2 border-cyan-400 rounded-xl p-4 shadow-2xl mt-1 w-full min-w-[240px]">
+            <div className="grid grid-cols-3 gap-2 mb-3">
+              <div>
+                <label className="text-[10px] font-bold text-gray-500 uppercase block mb-1">Day</label>
+                <input type="number" min="1" max="31" value={dobTempDay}
+                  onChange={e => setDobTempDay(e.target.value.replace(/[^0-9]/g,'').slice(0,2))}
+                  className="w-full border border-gray-300 rounded px-2 py-1.5 text-black font-bold text-sm outline-none focus:border-cyan-400" placeholder="DD" />
+              </div>
+              <div>
+                <label className="text-[10px] font-bold text-gray-500 uppercase block mb-1">Month</label>
+                <select value={dobTempMonth} onChange={e => setDobTempMonth(e.target.value)}
+                  className="w-full border border-gray-300 rounded px-1 py-1.5 text-black font-bold text-sm outline-none focus:border-cyan-400">
+                  <option value="">MM</option>
+                  {['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'].map((m,i) => (
+                    <option key={i+1} value={String(i+1).padStart(2,'0')}>{m}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="text-[10px] font-bold text-gray-500 uppercase block mb-1">Year</label>
+                <input type="number" min="1900" max="2030" value={dobTempYear}
+                  onChange={e => setDobTempYear(e.target.value.slice(0,4))}
+                  className="w-full border border-gray-300 rounded px-2 py-1.5 text-black font-bold text-sm outline-none focus:border-cyan-400" placeholder="YYYY" />
+              </div>
+            </div>
+            <div className="flex gap-2">
+              <button type="button" onClick={applyDob} className="flex-1 bg-cyan-500 text-white text-xs font-bold py-1.5 rounded hover:bg-cyan-600 transition-colors">Apply</button>
+              <button type="button" onClick={() => setActiveDobField(null)} className="flex-1 bg-gray-100 text-gray-700 text-xs font-bold py-1.5 rounded hover:bg-gray-200 transition-colors">Cancel</button>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+
+  // Render a Year+Month picker field
+  const renderYearPicker = (fieldName, label) => (
+    <div className="flex flex-col h-full" ref={activeYearField === fieldName ? yearPickerRef : null}>
+      <label className={labelClass} style={labelStyle}>{label}</label>
+      <div className="relative">
+        <div
+          className={`${canEdit ? inputClass : inputReadOnlyClass} cursor-pointer`}
+          style={inputStyle}
+          onClick={() => activeYearField === fieldName ? setActiveYearField(null) : openYearPicker(fieldName)}
+        >
+          {fields[fieldName] || <span className="text-gray-400 font-normal text-sm">Click to set...</span>}
+        </div>
+        {activeYearField === fieldName && (
+          <div className="absolute top-full left-0 z-50 bg-white border-2 border-cyan-400 rounded-xl p-4 shadow-2xl mt-1 w-full">
+            <div className="grid grid-cols-2 gap-3 mb-3">
+              <div>
+                <label className="text-[10px] font-bold text-gray-500 uppercase block mb-1">Years</label>
+                <input type="number" min="0" max="50" value={yearTempYears}
+                  onChange={e => {
+                    const y = e.target.value.replace(/[^0-9]/g,'');
+                    setYearTempYears(y);
+                    const fmt = formatYearsMonths(y, yearTempMonths);
+                    if (fmt) handleChange(fieldName, fmt);
+                  }}
+                  className="w-full border border-gray-300 rounded px-2 py-1.5 text-black font-bold text-sm outline-none focus:border-cyan-400" placeholder="0" />
+              </div>
+              <div>
+                <label className="text-[10px] font-bold text-gray-500 uppercase block mb-1">Months</label>
+                <input type="number" min="0" max="11" value={yearTempMonths}
+                  onChange={e => {
+                    const m = e.target.value.replace(/[^0-9]/g,'');
+                    setYearTempMonths(m);
+                    const fmt = formatYearsMonths(yearTempYears, m);
+                    if (fmt) handleChange(fieldName, fmt);
+                  }}
+                  className="w-full border border-gray-300 rounded px-2 py-1.5 text-black font-bold text-sm outline-none focus:border-cyan-400" placeholder="0" />
+              </div>
+            </div>
+            <button type="button" onClick={saveYearMonth}
+              className="w-full bg-cyan-500 text-white text-xs font-bold py-1.5 rounded hover:bg-cyan-600 transition-colors">
+              Done
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+
   // Style classes to match About/HowToProcess sections
   const labelClass = "block font-bold mb-2 uppercase";
-  const labelStyle = { color: "black", fontWeight: 650, fontSize: "15px" };
-  const inputClass =
+  const labelStyle = { color: "black", fontWeight: 650, fontSize: "15px" };  const inputClass =
     "w-full px-2 py-2 border border-black rounded text-green-600 font-bold focus:outline-none focus:ring-2 focus:ring-cyan-400 h-10";
   const inputStyle = { fontSize: "15px" };
   const inputReadOnlyClass =
@@ -623,7 +884,7 @@ const LoginFormSection = forwardRef(function LoginFormSection({
 
       {/* Share and Export Buttons at the top - show separate share buttons for applicant and co-applicant */}
       {!isPublic && canEdit && (
-        <div className="flex justify-between items-center mb-6">
+        <div className="flex justify-start items-center mb-6">
           <button
             type="button"
             onClick={handleShare}
@@ -632,34 +893,10 @@ const LoginFormSection = forwardRef(function LoginFormSection({
             <Share2 className="w-5 h-5" />
             {isCoApplicant ? 'Share Co-Applicant Form' : 'Share Applicant Form'}
           </button>
-          
-          {/* Export button only for primary applicant */}
-          {!isCoApplicant && (
-            <button
-              type="button"
-              onClick={handleExportToExcel}
-              className="flex items-center text-xl gap-2 px-8 py-3 bg-blue-600 text-white font-semibold rounded-md shadow-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-75 transition duration-300"
-            >
-              <Download className="w-5 h-5" />
-              Export to Excel
-            </button>
-          )}
         </div>
       )}
 
-      {/* Export Button for Co-Applicant and not on public form */}
-      {isCoApplicant && !isPublic && canEdit && (
-        <div className="flex justify-end items-center mb-6">
-          <button
-            type="button"
-            onClick={handleExportToExcel}
-            className="flex items-center text-xl gap-2 px-8 py-3 bg-blue-600 text-white font-semibold rounded-md shadow-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-75 transition duration-300"
-          >
-            <Download className="w-5 h-5" />
-            Export to Excel
-          </button>
-        </div>
-      )}
+
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-x-4 gap-y-6 items-start">
         {/* Show reference name for both primary applicant and co-applicant, but not on public form */}
@@ -755,6 +992,7 @@ const LoginFormSection = forwardRef(function LoginFormSection({
                           className="px-3 py-2 cursor-pointer text-red-600 hover:bg-red-50 border-b border-gray-100 font-medium"
                           onClick={() => {
                             handleChange("salaryAccountBank", "");
+                            handleBlur("salaryAccountBank", "");
                             setBankSearch("");
                             setShowBankDropdown(false);
                           }}
@@ -764,11 +1002,11 @@ const LoginFormSection = forwardRef(function LoginFormSection({
                       )}
 
                       {(() => {
-                        const availableBanks = bankOptions && bankOptions.length > 0 
-                          ? bankOptions 
-                          : ["HDFC Bank", "ICICI Bank", "SBI Bank", "Axis Bank"];
+                        const bankList = availableBanks.length > 0
+                          ? availableBanks
+                          : (bankOptions && bankOptions.length > 0 ? bankOptions : ["HDFC Bank", "ICICI Bank", "SBI Bank", "Axis Bank"]);
                         
-                        const filteredBanks = availableBanks.filter(bank =>
+                        const filteredBanks = bankList.filter(bank =>
                           bank.toLowerCase().includes((bankSearch || '').toLowerCase())
                         );
                         
@@ -788,6 +1026,7 @@ const LoginFormSection = forwardRef(function LoginFormSection({
                             }`}
                             onClick={() => {
                               handleChange("salaryAccountBank", bank);
+                              handleBlur("salaryAccountBank", bank);
                               setBankSearch(bank);
                               setShowBankDropdown(false);
                             }}
@@ -854,15 +1093,70 @@ const LoginFormSection = forwardRef(function LoginFormSection({
         </div>
 
         <div className="flex flex-col h-full">
-          <label className={labelClass} style={labelStyle}>Qualification</label>
-          <select
-            {...getSelectProps("qualification", fields.qualification)}
-          >
-            <option value="">Select</option>
-            {QUALIFICATIONS.map(q => (
-              <option key={q} value={q}>{q}</option>
-            ))}
-          </select>
+          <label className={labelClass} style={labelStyle}>Highest Qualification</label>
+          <div className="relative" ref={qualRef}>
+            <div
+              className={`w-full px-3 py-2 border rounded-lg cursor-pointer flex items-center justify-between ${
+                (isPublic || !canEdit)
+                  ? 'bg-gray-100 text-gray-400 border-gray-300 cursor-not-allowed'
+                  : 'bg-white border-black hover:border-cyan-400'
+              } ${qualOpen ? 'border-cyan-400' : ''}`}
+              style={{ fontSize: '15px', fontWeight: 'bold', color: fields.qualification ? '#16a34a' : '#6b7280' }}
+              onClick={() => { if (!isPublic && canEdit) { setQualOpen(v => !v); setQualSearch(''); } }}
+            >
+              <span className="flex-1">
+                {fields.qualification
+                  ? <>{fields.qualification}{getQualLevel(fields.qualification) && <span style={{ fontWeight: 'normal', fontSize: '12px', color: '#6b7280', marginLeft: '6px' }}>({getQualLevel(fields.qualification)})</span>}</>
+                  : 'Select Highest Qualification'}
+              </span>
+              <svg className={`w-5 h-5 transition-transform ${qualOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+              </svg>
+            </div>
+            {qualOpen && !isPublic && canEdit && (
+              <div className="absolute z-50 w-full mt-1 bg-white border border-gray-300 rounded-lg shadow-lg">
+                <div className="p-2 border-b border-gray-200">
+                  <input
+                    type="text"
+                    className="w-full px-3 py-1.5 border border-gray-300 rounded text-black text-sm focus:outline-none focus:border-cyan-400"
+                    placeholder="Search qualification..."
+                    value={qualSearch}
+                    onChange={e => setQualSearch(e.target.value)}
+                    autoFocus
+                  />
+                </div>
+                <div className="max-h-60 overflow-y-auto">
+                  {fields.qualification && (
+                    <div
+                      className="px-3 py-2 cursor-pointer text-red-600 hover:bg-red-50 border-b border-gray-100 text-sm font-medium"
+                      onClick={() => { handleChange('qualification', ''); handleBlur('qualification', ''); setQualOpen(false); }}
+                    >✕ Clear</div>
+                  )}
+                  {QUAL_CATALOG
+                    .map(g => ({ ...g, entries: g.entries.filter(e => e.toLowerCase().includes(qualSearch.toLowerCase())) }))
+                    .filter(g => g.entries.length > 0)
+                    .map(g => (
+                      <div key={g.level}>
+                        <div className="px-3 py-1 text-xs font-bold text-gray-400 uppercase tracking-wide bg-gray-50 sticky top-0">{g.level}</div>
+                        {g.entries.map(entry => (
+                          <div
+                            key={entry}
+                            className={`px-4 py-2 cursor-pointer text-sm text-black hover:bg-indigo-50 hover:text-indigo-700 ${
+                              fields.qualification === entry ? 'bg-sky-50 text-sky-700 font-medium' : ''
+                            }`}
+                            onClick={() => { handleChange('qualification', entry); handleBlur('qualification', entry); setQualOpen(false); setQualSearch(''); }}
+                          >{entry}</div>
+                        ))}
+                      </div>
+                    ))
+                  }
+                  {QUAL_CATALOG.every(g => g.entries.every(e => !e.toLowerCase().includes(qualSearch.toLowerCase()))) && qualSearch && (
+                    <div className="px-3 py-2 text-gray-500 text-sm text-center">No results for "{qualSearch}"</div>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
         </div>
         <div className="flex flex-col h-full">
           <label className={labelClass} style={labelStyle}>Mother's Name</label>
@@ -889,13 +1183,7 @@ const LoginFormSection = forwardRef(function LoginFormSection({
                 {...getInputProps("spousesName", fields.spousesName)}
               />
             </div>
-            <div className="flex flex-col h-full">
-              <label className={labelClass} style={labelStyle}>Spouse's DOB</label>
-              <input
-                type="date"
-                {...getInputProps("spousesDob", fields.spousesDob)}
-              />
-            </div>
+            {renderDobPicker('spousesDob', "Spouse's DOB")}
           </>
         )}
         <div className="flex flex-col h-full">
@@ -932,22 +1220,8 @@ const LoginFormSection = forwardRef(function LoginFormSection({
             ))}
           </select>
         </div>
-        <div className="flex flex-col h-full">
-          <label className={labelClass} style={labelStyle}>No of Years Living in Current Addr.</label>
-          <input
-            type="number"
-            {...getInputProps("yearsAtCurrentAddress", fields.yearsAtCurrentAddress)}
-            min="0"
-          />
-        </div>
-        <div className="flex flex-col h-full">
-          <label className={labelClass} style={labelStyle}>No of Years Living in Current City</label>
-          <input
-            type="number"
-            {...getInputProps("yearsInCurrentCity", fields.yearsInCurrentCity)}
-            min="0"
-          />
-        </div>
+        {renderYearPicker('yearsAtCurrentAddress', "No of Years Living in Current Addr.")}
+        {renderYearPicker('yearsInCurrentCity', "No of Years Living in Current City")}
         <div className="flex flex-col h-full">
           <label className={labelClass} style={labelStyle}>Permanent Address</label>
           <textarea
@@ -978,29 +1252,9 @@ const LoginFormSection = forwardRef(function LoginFormSection({
             {...getInputProps("yourDepartment", fields.yourDepartment)}
           />
         </div>
-        <div className="flex flex-col h-full">
-          <label className={labelClass} style={labelStyle}>DOJ in Current Company</label>
-          <input
-            type="date"
-            {...getInputProps("dojCurrentCompany", fields.dojCurrentCompany)}
-          />
-        </div>
-        <div className="flex flex-col h-full">
-          <label className={labelClass} style={labelStyle}>Current Work Experience (years)</label>
-          <input
-            type="number"
-            {...getInputProps("currentWorkExperience", fields.currentWorkExperience)}
-            min="0"
-          />
-        </div>
-        <div className="flex flex-col h-full">
-          <label className={labelClass} style={labelStyle}>Total Work Experience (years)</label>
-          <input
-            type="number"
-            {...getInputProps("totalWorkExperience", fields.totalWorkExperience)}
-            min="0"
-          />
-        </div>
+        {renderDobPicker('dojCurrentCompany', "DOJ in Current Company")}
+        {renderYearPicker('currentWorkExperience', "Current Work Experience")}
+        {renderYearPicker('totalWorkExperience', "Total Work Experience")}
         <div className="flex flex-col h-full">
           <label className={labelClass} style={labelStyle}>Personal Email</label>
           <input

@@ -543,6 +543,7 @@ export default function AboutSection({ lead, onSave, canEdit = true }) {
         setShowProductDropdown(false);
         setShowCampaignDropdown(false);
         setShowDataCodeDropdown(false);
+        setShowCreatedByDropdown(false);
         setProductSearchTerm('');
         setCampaignSearchTerm('');
         setDataCodeSearchTerm('');
@@ -1823,39 +1824,29 @@ export default function AboutSection({ lead, onSave, canEdit = true }) {
               <div className="flex flex-col gap-1">
                 <label className={labelClass} style={labelStyle}>LEAD DATE & TIME</label>
                 {isUserSuperAdmin ? (
-                  <div className="relative">
-                    <input
-                      type="datetime-local"
-                      className="absolute inset-0 opacity-0 w-full h-full cursor-pointer"
-                      id="createdDate_hidden_picker"
-                      value={fields.createdDate ? (() => {
-                        const date = new Date(fields.createdDate);
-                        if (isNaN(date.getTime())) return '';
-                        const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;
-                        return new Date(date.getTime() + IST_OFFSET_MS).toISOString().slice(0, 16);
-                      })() : ''}
-                      onChange={e => {
-                        if (!e.target.value) return;
-                        const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;
-                        const utcISO = new Date(new Date(e.target.value + ':00.000Z').getTime() - IST_OFFSET_MS).toISOString();
-                        handleChange('createdDate', utcISO);
-                      }}
-                      onBlur={e => {
-                        if (!e.target.value) return;
-                        const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;
-                        const utcISO = new Date(new Date(e.target.value + ':00.000Z').getTime() - IST_OFFSET_MS).toISOString();
-                        handleBlur('createdDate', utcISO);
-                      }}
-                    />
-                    <input
-                      type="text"
-                      className="w-full p-2 border border-[#00bcd4] rounded-md bg-white text-green-600 text-md font-bold cursor-pointer"
-                      value={formatAMPM(fields.createdDate)}
-                      readOnly={true}
-                      onClick={() => document.getElementById('createdDate_hidden_picker')?.showPicker()}
-                      title="Super Admin can edit lead creation date & time (IST)"
-                    />
-                  </div>
+                  <input
+                    type="datetime-local"
+                    className="w-full p-2 border border-[#00bcd4] rounded-md bg-white text-green-600 text-md font-bold cursor-pointer"
+                    value={fields.createdDate ? (() => {
+                      const date = new Date(fields.createdDate);
+                      if (isNaN(date.getTime())) return '';
+                      const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;
+                      return new Date(date.getTime() + IST_OFFSET_MS).toISOString().slice(0, 16);
+                    })() : ''}
+                    onChange={e => {
+                      if (!e.target.value) return;
+                      const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;
+                      const utcISO = new Date(new Date(e.target.value + ':00.000Z').getTime() - IST_OFFSET_MS).toISOString();
+                      handleChange('createdDate', utcISO);
+                    }}
+                    onBlur={e => {
+                      if (!e.target.value) return;
+                      const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;
+                      const utcISO = new Date(new Date(e.target.value + ':00.000Z').getTime() - IST_OFFSET_MS).toISOString();
+                      handleBlur('createdDate', utcISO);
+                    }}
+                    title="Super Admin can edit lead creation date & time (IST)"
+                  />
                 ) : (
                   <input
                     className="w-full p-2 border border-[#00bcd4] rounded-md bg-gray-100 text-green-600 text-md font-bold cursor-not-allowed"
@@ -1881,28 +1872,30 @@ export default function AboutSection({ lead, onSave, canEdit = true }) {
             <label className={labelClass} style={labelStyle}>CREATED BY</label>
             {isUserSuperAdmin ? (
               <div className="relative dropdown-container">
-                <input
-                  type="text"
-                  className="w-full p-2 border border-[#00bcd4] rounded-md bg-white text-green-600 text-md font-bold"
-                  value={createdBySearch !== '' ? createdBySearch : (() => {
-                    if (lead?.created_by_name) return typeof lead.created_by_name === 'object' ? (lead.created_by_name.name || '') : lead.created_by_name;
-                    if (lead?.created_by) return typeof lead.created_by === 'object' ? (lead.created_by.name || '') : lead.created_by;
-                    return '';
+                <div className="w-full flex items-center gap-1 border border-[#00bcd4] rounded-md bg-white px-2 py-1 min-h-[40px] flex-wrap cursor-text" onClick={() => document.getElementById('createdByInput')?.focus()}>
+                  <input
+                    id="createdByInput"
+                    type="text"
+                    className="flex-1 min-w-[80px] bg-transparent text-green-600 text-md font-bold outline-none py-1"
+                    value={createdBySearch !== '' ? createdBySearch : (() => {
+                      const n = lead?.creator_name || lead?.created_by_name;
+                      if (n) return typeof n === 'object' ? (n.name || '') : n;
+                      if (lead?.created_by) return typeof lead.created_by === 'object' ? (lead.created_by.name || '') : '';
+                      return '';
+                    })()}
+                    placeholder="Search user..."
+                    onChange={e => { setCreatedBySearch(e.target.value); setShowCreatedByDropdown(true); }}
+                    onFocus={() => setShowCreatedByDropdown(true)}
+                  />
+                  {!createdBySearch && (() => {
+                    const tn = lead?.department_name
+                      ? (typeof lead.department_name === 'object' ? lead.department_name.name : lead.department_name)
+                      : (lead?.team_name ? (typeof lead.team_name === 'object' ? lead.team_name.name : lead.team_name) : null);
+                    return tn && tn !== 'N/A' ? (
+                      <span className="px-2 py-0.5 bg-[#03B0F5] text-white text-xs font-bold rounded-full flex-shrink-0">{tn}</span>
+                    ) : null;
                   })()}
-                  placeholder="Search user..."
-                  onChange={e => { setCreatedBySearch(e.target.value); setShowCreatedByDropdown(true); }}
-                  onFocus={() => setShowCreatedByDropdown(true)}
-                />
-                {!createdBySearch && (() => {
-                  const tn = lead?.department_name
-                    ? (typeof lead.department_name === 'object' ? lead.department_name.name : lead.department_name)
-                    : (lead?.team_name ? (typeof lead.team_name === 'object' ? lead.team_name.name : lead.team_name) : null);
-                  return tn && tn !== 'N/A' ? (
-                    <div className="flex items-center gap-1 mt-1">
-                      <span className="px-2 py-0.5 bg-[#03B0F5] text-white text-xs font-bold rounded-full">{tn}</span>
-                    </div>
-                  ) : null;
-                })()}
+                </div>
                 {showCreatedByDropdown && (
                   <div className="absolute z-50 w-full bg-white border border-gray-200 rounded-md shadow-lg max-h-48 overflow-y-auto mt-1">
                     {allUsers
@@ -1938,8 +1931,9 @@ export default function AboutSection({ lead, onSave, canEdit = true }) {
               <div className="w-full p-2 border border-[#00bcd4] rounded-md bg-gray-100 min-h-[40px] flex items-center gap-2 flex-wrap">
                 <span className="text-green-600 text-md font-bold">
                   {(() => {
-                    if (lead?.created_by_name) return typeof lead.created_by_name === 'object' ? (lead.created_by_name.name || lead.created_by_name.first_name || 'Unknown') : lead.created_by_name;
-                    if (lead?.created_by) return typeof lead.created_by === 'object' ? (lead.created_by.name || lead.created_by.first_name || 'Unknown') : lead.created_by;
+                    const n = lead?.creator_name || lead?.created_by_name;
+                    if (n) return typeof n === 'object' ? (n.name || n.first_name || 'Unknown') : n;
+                    if (lead?.created_by) return typeof lead.created_by === 'object' ? (lead.created_by.name || lead.created_by.first_name || 'Unknown') : '';
                     return 'N/A';
                   })()}
                 </span>

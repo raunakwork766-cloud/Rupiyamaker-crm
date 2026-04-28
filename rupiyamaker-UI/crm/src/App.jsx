@@ -9,6 +9,7 @@ import TopNavbar from './components/Navbar'
 import Sidebar from './components/Sidebar'
 import PublicLeadForm from "./components/PublicLeadForm"
 import PublicLoginForm from "./components/PublicLoginForm"
+import PublicFormShortLink from "./components/PublicFormShortLink"
 import PublicAppViewer from "./components/PublicAppViewer"
 import OptimizedAppRoutes from './routes/OptimizedAppRoutes'
 import AttendanceCheckInOut from './components/attendance/AttendanceCheckInOut'
@@ -1154,6 +1155,9 @@ function App() {
           {/* Public route for lead form - no authentication required */}
           <Route path="/public/lead-form/:shareToken" element={<PublicLeadForm />} />
           
+          {/* Short form links — /f/{code} resolves to public login form */}
+          <Route path="/f/:code" element={<PublicFormShortLink />} />
+
           {/* Public route for login form - no authentication required */}
           <Route path="/login-form/:mobileNumber" element={<PublicLoginForm />} />
           <Route path="/public/login-form/:mobileNumber" element={<PublicLoginForm />} />

@@ -104,12 +104,15 @@ export const apiCall = async (endpoint, options = {}) => {
         ).toLowerCase();
 
         const isSessionInvalidation = [
-            'session invalid',
+            'session invalid',        // covers "session invalidated", "session invalid"
+            'invalidated',            // covers "your session has been invalidated"
             'session expired',
             'session is no longer valid',
+            'please login again',     // covers "please login again"
             'displaced',
             'another device',
             'login disabled',
+            'login access disabled',  // covers "login access disabled - session terminated"
             'inactive session',
             'token expired',
             'token invalid',

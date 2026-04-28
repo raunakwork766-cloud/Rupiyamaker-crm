@@ -2740,16 +2740,14 @@ const LeadCRM = memo(function LeadCRM({ user, selectedLoanType: initialLoanType,
                 {
                     label: "LEADS ACTIVITY",
                     content: (
-                        <div className="p-4 bg-white rounded-xl shadow text-[1rem] text-[#03b0f5] border-l-4 border-cyan-400/40">
-                            <div className="font-bold text-cyan-400 mb-2">
+                        <div className="bg-white rounded-xl shadow w-full">
                                 <LazySection height="400px">
                                     <LeadActivity
                                         leadId={String(lead._id || lead.id)}
-                                        userId={String(lead.assigned_to || localStorage.getItem('userId') || localStorage.getItem('user_id'))}
+                                        userId={String(localStorage.getItem('userId') || localStorage.getItem('user_id') || lead.assigned_to)}
                                         leadData={lead}
                                     />
                                 </LazySection>
-                            </div>
                         </div>
                     ),
                 },

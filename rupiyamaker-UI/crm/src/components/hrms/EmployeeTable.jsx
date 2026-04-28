@@ -17,8 +17,7 @@ import {
     UserOutlined,
     CheckCircleOutlined,
     CloseCircleOutlined,
-    ExclamationCircleOutlined,
-    KeyOutlined
+    ExclamationCircleOutlined
 } from '@ant-design/icons';
 import { hasPermission, getUserPermissions } from '../../utils/permissions';
 import { formatDate } from '../../utils/dateUtils'; // You may need to create this utility
@@ -113,14 +112,7 @@ const EmployeeTable = ({
                         >
                             {record.login_enabled ? 'Disable Login' : 'Enable Login'}
                         </Menu.Item>
-                        <Menu.Divider />
-                        <Menu.Item
-                            key="password"
-                            icon={<KeyOutlined />}
-                            onClick={() => onPasswordManagement && onPasswordManagement(record)}
-                        >
-                            Manage Password
-                        </Menu.Item>
+
                     </>
                 )}
             </Menu>

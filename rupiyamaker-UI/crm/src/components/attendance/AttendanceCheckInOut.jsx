@@ -159,6 +159,9 @@ const AttendanceCheckInOut = ({ userId, userInfo }) => {
   const [calStats, setCalStats] = useState(null); // monthly summary stats from API
   const [calLoading, setCalLoading] = useState(false);
   const [selectedDay, setSelectedDay] = useState(null); // 'YYYY-MM-DD' or null
+  const [joiningDate, setJoiningDate] = useState(null); // 'YYYY-MM-DD' — blank calendar before this
+  const [dayDetail, setDayDetail] = useState(null); // attendance detail for selected day (incl. photos)
+  const [dayDetailLoading, setDayDetailLoading] = useState(false);
 
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
@@ -203,6 +206,13 @@ const AttendanceCheckInOut = ({ userId, userInfo }) => {
       const emp = r.data?.employees?.[0] || {};
       const days = emp.days || [];
       console.log('[Calendar] days count:', days.length, 'sample:', days[0]);
+      // Extract joining date for blanking pre-joining cells
+      const rawJoining = emp.joining_date || emp.date_of_joining || null;
+      if (rawJoining) {
+        // Normalize to YYYY-MM-DD
+        const jd = String(rawJoining).split('T')[0];
+        if (/^\d{4}-\d{2}-\d{2}$/.test(jd)) setJoiningDate(jd);
+      }
       // Build date-keyed map
       const map = {};
       days.forEach(d => { if (d.date) map[d.date] = d; });
@@ -226,7 +236,35 @@ const AttendanceCheckInOut = ({ userId, userInfo }) => {
     finally { setCalLoading(false); }
   };
 
+  // ─── Day detail fetch (photos, geolocation) ──────────────────────
+  const fetchDayDetail = async (dateStr) => {
+    if (!userId || !dateStr) return;
+    setDayDetailLoading(true);
+    setDayDetail(null);
+    try {
+      const r = await axios.get(
+        `${API_BASE}/attendance/detail/${userId}/${dateStr}`,
+        { params: { user_id: userId }, headers: getAttendanceHeaders() }
+      );
+      // Response: { success, type, attendance: {...}, attendance_details: {...} }
+      const det = r.data?.attendance || r.data?.attendance_details || null;
+      setDayDetail(det);
+    } catch (e) {
+      if (e?.response?.status === 401) handleSessionExpired();
+      else if (e?.response?.status !== 404) console.error('Day detail error', e.message);
+      setDayDetail(null);
+    } finally {
+      setDayDetailLoading(false);
+    }
+  };
+
   useEffect(() => { if (userId) fetchCalendar(calYear, calMonth); }, [userId, calYear, calMonth]);
+
+  // Fetch detail (with photos) whenever a day is selected
+  useEffect(() => {
+    if (selectedDay) fetchDayDetail(selectedDay);
+    else setDayDetail(null);
+  }, [selectedDay]);
 
   const startCamera = async () => {
     try {
@@ -470,6 +508,7 @@ const AttendanceCheckInOut = ({ userId, userInfo }) => {
           if (calMonth === 1) { setCalYear(y => y - 1); setCalMonth(12); }
           else setCalMonth(m => m - 1);
           setSelectedDay(null);
+          setDayDetail(null);
         };
         const nextMonth = () => {
           const nowD = new Date();
@@ -477,6 +516,7 @@ const AttendanceCheckInOut = ({ userId, userInfo }) => {
           if (calMonth === 12) { setCalYear(y => y + 1); setCalMonth(1); }
           else setCalMonth(m => m + 1);
           setSelectedDay(null);
+          setDayDetail(null);
         };
 
         const nowD2 = new Date();
@@ -511,7 +551,8 @@ const AttendanceCheckInOut = ({ userId, userInfo }) => {
         let presentCount = 0, paidLeaveCount = 0, earnedLeaveCount = 0;
         if (calStats) {
           // Use API-provided stats for accuracy
-          presentCount = (calStats.full_days || 0) + (calStats.half_days || 0) * 0.5;
+          // Absconding days (status -2) subtract from present, matching the main CRM attendance page logic
+          presentCount = (calStats.full_days || 0) + (calStats.half_days || 0) * 0.5 - (calStats.absconding || 0);
           // calStats.holidays is mapped from leave_days in the backend
           paidLeaveCount = calStats.holidays || 0;
         } else {
@@ -520,6 +561,7 @@ const AttendanceCheckInOut = ({ userId, userInfo }) => {
             const st = rec.status;
             if (st === 1 || st === 1.0) presentCount += 1;
             else if (st === 0.5) presentCount += 0.5;
+            else if (st === -2 || st === -2.0) presentCount -= 1;  // Absconding subtracts from present
             else if (st === 0 || st === 0.0) {
               const lt = (rec.leave_type || '').toLowerCase();
               if (lt.includes('earned') || lt.includes(' el')) earnedLeaveCount += 1;
@@ -595,8 +637,9 @@ const AttendanceCheckInOut = ({ userId, userInfo }) => {
                 const dateStr = `${calYear}-${String(calMonth).padStart(2,'0')}-${String(dayNum).padStart(2,'0')}`;
                 const isToday = dateStr === todayStr;
                 const isFuture = dateStr > todayStr;
+                const isBeforeJoining = joiningDate ? dateStr < joiningDate : false;
                 const rec = calData[dateStr];
-                const badge = isFuture ? null : getStatusBadge(rec, dateStr);
+                const badge = (isFuture || isBeforeJoining) ? null : getStatusBadge(rec, dateStr);
                 const isSelected = selectedDay === dateStr;
                 const dayOfWeek = new Date(calYear, calMonth - 1, dayNum).getDay();
                 const isSun = dayOfWeek === 0;
@@ -606,7 +649,7 @@ const AttendanceCheckInOut = ({ userId, userInfo }) => {
                 return (
                   <div
                     key={dayNum}
-                    onClick={() => !isFuture && setSelectedDay(isSelected ? null : dateStr)}
+                    onClick={() => !isFuture && !isBeforeJoining && setSelectedDay(isSelected ? null : dateStr)}
                     style={{
                       height: 68,
                       borderRadius: 10,
@@ -614,8 +657,8 @@ const AttendanceCheckInOut = ({ userId, userInfo }) => {
                       border: isToday ? '2px solid #6366f1' : isSelected ? '1.5px solid #818cf8' : '1px solid #1e2040',
                       display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-start',
                       padding: '6px 2px 4px',
-                      cursor: isFuture ? 'default' : 'pointer',
-                      opacity: isFuture ? 0.3 : 1,
+                      cursor: (isFuture || isBeforeJoining) ? 'default' : 'pointer',
+                      opacity: isFuture ? 0.3 : isBeforeJoining ? 0.15 : 1,
                       transition: 'border 0.15s, background 0.15s',
                     }}
                   >
@@ -625,7 +668,7 @@ const AttendanceCheckInOut = ({ userId, userInfo }) => {
                         {badge.text}
                       </div>
                     ) : (
-                      !isFuture && (
+                      !isFuture && !isBeforeJoining && (
                         <div style={{ width: 36, height: 36, borderRadius: 18, background: '#0d0f1e', border: '1px solid #1e2040', flexShrink: 0 }} />
                       )
                     )}
@@ -644,47 +687,99 @@ const AttendanceCheckInOut = ({ userId, userInfo }) => {
                   selRec.is_weekend && !(selRec.status === 1 || selRec.status === 1.0 || selRec.status === 2) ? (
                     <div style={{ color: '#475569', fontSize: 13, textAlign: 'center', padding: '8px 0' }}>Weekend — Day Off</div>
                   ) : (
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-                      <div style={{ background: '#151728', borderRadius: 10, padding: '10px 12px', border: '1px solid #1e2040' }}>
-                        <div style={{ fontSize: 9, color: '#475569', fontWeight: 800, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 4 }}>Check In</div>
-                        <div style={{ fontWeight: 700, color: '#4ade80', fontSize: 14 }}>{fmt12(selRec.check_in_time)}</div>
-                      </div>
-                      <div style={{ background: '#151728', borderRadius: 10, padding: '10px 12px', border: '1px solid #1e2040' }}>
-                        <div style={{ fontSize: 9, color: '#475569', fontWeight: 800, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 4 }}>Check Out</div>
-                        <div style={{ fontWeight: 700, color: '#a78bfa', fontSize: 14 }}>{fmt12(selRec.check_out_time)}</div>
-                      </div>
-                      <div style={{ background: '#151728', borderRadius: 10, padding: '10px 12px', border: '1px solid #1e2040' }}>
-                        <div style={{ fontSize: 9, color: '#475569', fontWeight: 800, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 4 }}>Hours Worked</div>
-                        <div style={{ fontWeight: 700, color: '#e2e8f0', fontSize: 14 }}>{selRec.total_working_hours != null ? `${selRec.total_working_hours}h` : '—'}</div>
-                      </div>
-                      <div style={{ background: '#151728', borderRadius: 10, padding: '10px 12px', border: '1px solid #1e2040' }}>
-                        <div style={{ fontSize: 9, color: '#475569', fontWeight: 800, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 4 }}>Status</div>
-                        <div style={{ fontWeight: 800, fontSize: 12, color:
-                          (selRec.is_holiday || selRec.status === 1.5) ? '#38bdf8' :
-                          selRec.status === 2 ? '#22d3ee' :
-                          (selRec.status === 1 || selRec.status === 1.0) ? '#4ade80' :
-                          selRec.status === 0.5 ? '#fbbf24' :
-                          (selRec.status === 0 || selRec.status === 0.0) ? '#fb923c' :
-                          selRec.status === -2 ? '#f87171' :
-                          '#94a3b8'
-                        }}>
-                          {(selRec.is_holiday || selRec.status === 1.5) ? 'Holiday' :
-                           selRec.status === 2 ? 'Punched In' :
-                           (selRec.status === 1 || selRec.status === 1.0) ? 'Full Day' :
-                           selRec.status === 0.5 ? 'Half Day' :
-                           (selRec.status === 0 || selRec.status === 0.0) ? (selRec.leave_type ? selRec.leave_type.replace(/_/g,' ') : 'Leave') :
-                           selRec.status === -2 ? 'Absconding' :
-                           'Absent'}
+                    <div>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 12 }}>
+                        <div style={{ background: '#151728', borderRadius: 10, padding: '10px 12px', border: '1px solid #1e2040' }}>
+                          <div style={{ fontSize: 9, color: '#475569', fontWeight: 800, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 4 }}>Check In</div>
+                          <div style={{ fontWeight: 700, color: '#4ade80', fontSize: 14 }}>{fmt12(selRec.check_in_time)}</div>
                         </div>
-                      </div>
-                      {selRec.is_late && (
-                        <div style={{ background: '#1c1108', borderRadius: 10, padding: '8px 12px', gridColumn: '1/-1', border: '1px solid #78350f' }}>
-                          <span style={{ color: '#fbbf24', fontSize: 12, fontWeight: 700 }}>Late Arrival</span>
+                        <div style={{ background: '#151728', borderRadius: 10, padding: '10px 12px', border: '1px solid #1e2040' }}>
+                          <div style={{ fontSize: 9, color: '#475569', fontWeight: 800, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 4 }}>Check Out</div>
+                          <div style={{ fontWeight: 700, color: '#a78bfa', fontSize: 14 }}>{fmt12(selRec.check_out_time)}</div>
                         </div>
-                      )}
-                      {selRec.leave_reason && (
-                        <div style={{ background: '#1a0a2e', borderRadius: 10, padding: '8px 12px', gridColumn: '1/-1', border: '1px solid #4c1d95' }}>
-                          <span style={{ color: '#c4b5fd', fontSize: 12, fontWeight: 700 }}>{selRec.leave_reason}</span>
+                        <div style={{ background: '#151728', borderRadius: 10, padding: '10px 12px', border: '1px solid #1e2040' }}>
+                          <div style={{ fontSize: 9, color: '#475569', fontWeight: 800, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 4 }}>Hours Worked</div>
+                          <div style={{ fontWeight: 700, color: '#e2e8f0', fontSize: 14 }}>{selRec.total_working_hours != null ? `${selRec.total_working_hours}h` : '—'}</div>
+                        </div>
+                        <div style={{ background: '#151728', borderRadius: 10, padding: '10px 12px', border: '1px solid #1e2040' }}>
+                          <div style={{ fontSize: 9, color: '#475569', fontWeight: 800, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 4 }}>Status</div>
+                          <div style={{ fontWeight: 800, fontSize: 12, color:
+                            (selRec.is_holiday || selRec.status === 1.5) ? '#38bdf8' :
+                            selRec.status === 2 ? '#22d3ee' :
+                            (selRec.status === 1 || selRec.status === 1.0) ? '#4ade80' :
+                            selRec.status === 0.5 ? '#fbbf24' :
+                            (selRec.status === 0 || selRec.status === 0.0) ? '#fb923c' :
+                            selRec.status === -2 ? '#f87171' :
+                            '#94a3b8'
+                          }}>
+                            {(selRec.is_holiday || selRec.status === 1.5) ? 'Holiday' :
+                             selRec.status === 2 ? 'Punched In' :
+                             (selRec.status === 1 || selRec.status === 1.0) ? 'Full Day' :
+                             selRec.status === 0.5 ? 'Half Day' :
+                             (selRec.status === 0 || selRec.status === 0.0) ? (selRec.leave_type ? selRec.leave_type.replace(/_/g,' ') : 'Leave') :
+                             selRec.status === -2 ? 'Absconding' :
+                             'Absent'}
+                          </div>
+                        </div>
+                        {selRec.is_late && (
+                          <div style={{ background: '#1c1108', borderRadius: 10, padding: '8px 12px', gridColumn: '1/-1', border: '1px solid #78350f' }}>
+                            <span style={{ color: '#fbbf24', fontSize: 12, fontWeight: 700 }}>Late Arrival</span>
+                          </div>
+                        )}
+                        {selRec.leave_reason && (
+                          <div style={{ background: '#1a0a2e', borderRadius: 10, padding: '8px 12px', gridColumn: '1/-1', border: '1px solid #4c1d95' }}>
+                            <span style={{ color: '#c4b5fd', fontSize: 12, fontWeight: 700 }}>{selRec.leave_reason}</span>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* ── Photos section ── */}
+                      {dayDetailLoading ? (
+                        <div style={{ textAlign: 'center', padding: '12px 0', color: '#475569', fontSize: 12 }}>Loading photos…</div>
+                      ) : (
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                          {/* Check-in photo */}
+                          {(() => {
+                            const ciPhoto = dayDetail?.check_in_photo_path || dayDetail?.check_in_photo || dayDetail?.photo_path || '';
+                            return (
+                              <div style={{ background: '#151728', borderRadius: 10, border: '1px solid #1e2040', overflow: 'hidden' }}>
+                                <div style={{ fontSize: 9, color: '#4ade80', fontWeight: 800, textTransform: 'uppercase', letterSpacing: 1, padding: '8px 10px 4px' }}>Check-In Photo</div>
+                                {ciPhoto ? (
+                                  <img
+                                    src={`${API_BASE}/${ciPhoto}`}
+                                    alt="Check-in"
+                                    style={{ width: '100%', aspectRatio: '1', objectFit: 'cover', display: 'block' }}
+                                    onError={e => { e.currentTarget.style.display = 'none'; const ph = e.currentTarget.parentElement?.querySelector('.photo-placeholder-in'); if (ph) ph.style.display = 'flex'; }}
+                                  />
+                                ) : null}
+                                <div className="photo-placeholder-in" style={{ display: ciPhoto ? 'none' : 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', aspectRatio: '1', color: '#2d3748', fontSize: 11, gap: 4 }}>
+                                  <span style={{ fontSize: 24 }}>📷</span>
+                                  <span>No photo</span>
+                                </div>
+                              </div>
+                            );
+                          })()}
+                          {/* Check-out photo */}
+                          {(() => {
+                            const coPhoto = dayDetail?.check_out_photo_path || dayDetail?.check_out_photo || '';
+                            return (
+                              <div style={{ background: '#151728', borderRadius: 10, border: '1px solid #1e2040', overflow: 'hidden' }}>
+                                <div style={{ fontSize: 9, color: '#a78bfa', fontWeight: 800, textTransform: 'uppercase', letterSpacing: 1, padding: '8px 10px 4px' }}>Check-Out Photo</div>
+                                {coPhoto ? (
+                                  <img
+                                    src={`${API_BASE}/${coPhoto}`}
+                                    alt="Check-out"
+                                    style={{ width: '100%', aspectRatio: '1', objectFit: 'cover', display: 'block' }}
+                                    onError={e => { e.currentTarget.style.display = 'none'; const ph = e.currentTarget.parentElement?.querySelector('.photo-placeholder-out'); if (ph) ph.style.display = 'flex'; }}
+                                  />
+                                ) : null}
+                                <div className="photo-placeholder-out" style={{ display: coPhoto ? 'none' : 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', aspectRatio: '1', color: '#2d3748', fontSize: 11, gap: 4 }}>
+                                  <span style={{ fontSize: 24 }}>📷</span>
+                                  <span>No photo</span>
+                                </div>
+                              </div>
+                            );
+                          })()}
                         </div>
                       )}
                     </div>

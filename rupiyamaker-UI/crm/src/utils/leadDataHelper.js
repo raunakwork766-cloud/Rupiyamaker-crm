@@ -340,6 +340,7 @@ export const getFinalLeadData = (parseINR, hookState = null) => {
                 (leadInfo.status || '').toUpperCase(),
     campaign_name: leadInfo.campaignName || '',
     data_code: leadInfo.dataCode || '',
+    pincode_city: String(leadInfo.pincodeCity || (leadInfo.pincode || leadInfo.city ? `${leadInfo.pincode || ''} ${leadInfo.city || ''}`.trim() : '')),
     // Add processing_bank field
     processing_bank: leadInfo.processingBank || finalObligation.processingBank || (Array.isArray(finalObligation.companyType) && finalObligation.companyType.length > 0 ? finalObligation.companyType[finalObligation.companyType.length - 1] : '') || finalObligation.decideBankForCase || '',
     // Assignment structure
@@ -354,8 +355,9 @@ export const getFinalLeadData = (parseINR, hookState = null) => {
     dynamic_fields: {
       // Address information - ENSURE THESE ARE POPULATED
       address: {
-        pincode: String(leadInfo.pincode || ''), // Ensure string
-        city: String(leadInfo.city || '') // Ensure string
+        pincode: String(leadInfo.pincode || (leadInfo.pincodeCity || '').match(/^\d+/)?.[0] || ''), // Ensure string
+        city: String(leadInfo.city || (leadInfo.pincodeCity || '').replace(/^\d+\s*/, '') || ''), // Ensure string
+        pincode_city: String(leadInfo.pincodeCity || (leadInfo.pincode || leadInfo.city ? `${leadInfo.pincode || ''} ${leadInfo.city || ''}`.trim() : '')), // Combined field
       },
       
       // Personal details (company info)

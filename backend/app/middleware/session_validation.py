@@ -49,6 +49,8 @@ ATTENDANCE_ALLOWED_PREFIXES = [
     "/attendance/status/current",
     "/attendance/calendar",
     "/attendance/my-calendar",
+    "/attendance/detail",
+    "/attendance/details",
 ]
 
 class SessionValidationMiddleware(BaseHTTPMiddleware):
@@ -194,9 +196,9 @@ class SessionValidationMiddleware(BaseHTTPMiddleware):
                     # Check if user's login is still enabled
                     if not user.get("login_enabled", True):
                         logger.warning(f"🚫 Session validation FAILED: User {user_id} - login disabled")
-                        raise HTTPException(
+                        return JSONResponse(
+                            {"detail": "Login access disabled - session terminated"},
                             status_code=status.HTTP_403_FORBIDDEN,
-                            detail="Login access disabled - session terminated"
                         )
                     
                     # Check if session was invalidated after last login
@@ -206,16 +208,13 @@ class SessionValidationMiddleware(BaseHTTPMiddleware):
                     if session_invalidated_at:
                         if not last_login or session_invalidated_at > last_login:
                             logger.warning(f"🚫 Session validation FAILED: User {user_id} - session invalidated at {session_invalidated_at}, last login {last_login}")
-                            raise HTTPException(
+                            return JSONResponse(
+                                {"detail": "Your session has been invalidated - please login again"},
                                 status_code=status.HTTP_403_FORBIDDEN,
-                                detail="Your session has been invalidated - please login again"
                             )
                     
                     logger.info(f"✅ Session validation PASSED: User {user_id}")
         
-        except HTTPException:
-            # Re-raise HTTPException (these are intentional)
-            raise
         except Exception as e:
             # Log but don't block on unexpected errors
             logger.error(f"⚠️ Session validation error: {str(e)}", exc_info=True)

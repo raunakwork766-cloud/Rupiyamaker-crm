@@ -224,6 +224,9 @@ class ComprehensiveDynamicFields(BaseModel):
     check_eligibility: Optional[CheckEligibilitySchema] = None
     process: Optional[ProcessSchema] = None
     eligibility_details: Optional[EligibilityDetailsSchema] = None
+    applicant_form: Optional[Dict[str, Any]] = None       # Primary applicant form data
+    co_applicant_form: Optional[Dict[str, Any]] = None    # Co-applicant form data
+    obligation_data: Optional[Dict[str, Any]] = None      # Obligation section data
 
 # ========= Lead Schemas =========
 
@@ -327,6 +330,8 @@ class PublicLeadFormUpdate(BaseModel):
 
 class LeadCreate(LeadBase):
     created_by: str
+    override_created_by_id: Optional[str] = None   # Super admin: override who created the lead
+    override_created_at: Optional[str] = None       # Super admin: override lead date/time (ISO string)
 
 class LeadUpdate(BaseModel):
     first_name: Optional[str] = None

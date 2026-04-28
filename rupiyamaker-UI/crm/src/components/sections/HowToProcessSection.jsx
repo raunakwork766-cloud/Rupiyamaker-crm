@@ -41,6 +41,11 @@ export default function HowToProcessSection({ process, onSave, lead, canEdit = t
 
   // Focus state for required tenure field
   const [isTenureFocused, setIsTenureFocused] = useState(false);
+
+  // Tenure mode: 'months' or 'years'
+  const [tenureMode, setTenureMode] = useState('months');
+  // Raw years input value when in years mode
+  const [tenureYearsInput, setTenureYearsInput] = useState('');
   
   // Ref for tenure input field
   const tenureInputRef = useRef(null);
@@ -128,7 +133,7 @@ export default function HowToProcessSection({ process, onSave, lead, canEdit = t
     howToProcess: (() => { const v = safetyProcess.how_to_process || lead?.dynamic_fields?.process?.how_to_process || ""; return (v === 'None' || v === 'none') ? '' : v; })(),
     loanType: safetyProcess.loan_type || lead?.dynamic_fields?.process?.loan_type || "",
     requiredTenure: safetyProcess.required_tenure ? `${safetyProcess.required_tenure} months` : (lead?.dynamic_fields?.process?.required_tenure ? `${lead.dynamic_fields.process.required_tenure} months` : ""),
-    caseType: safetyProcess.case_type || lead?.dynamic_fields?.process?.case_type || "",
+    caseType: (() => { const v = safetyProcess.case_type || lead?.dynamic_fields?.process?.case_type || ""; return (v === 'Normal' || v === 'normal') ? '' : v; })(),
     year: safetyProcess.required_tenure ? formatYearFromTenure(safetyProcess.required_tenure) : (lead?.dynamic_fields?.process?.required_tenure ? formatYearFromTenure(lead.dynamic_fields.process.required_tenure) : ""),
   });
   
@@ -198,7 +203,7 @@ export default function HowToProcessSection({ process, onSave, lead, canEdit = t
       howToProcess: (() => { const v = currentProcess.how_to_process || lead?.process_data?.how_to_process || lead?.dynamic_fields?.process?.how_to_process || ""; return (v === 'None' || v === 'none') ? '' : v; })(),
       loanType: currentProcess.loan_type || lead?.process_data?.loan_type || lead?.dynamic_fields?.process?.loan_type || "",
       requiredTenure: tenure ? `${tenure} months` : "",
-      caseType: currentProcess.case_type || lead?.process_data?.case_type || lead?.dynamic_fields?.process?.case_type || "",
+      caseType: (() => { const v = currentProcess.case_type || lead?.process_data?.case_type || lead?.dynamic_fields?.process?.case_type || ""; return (v === 'Normal' || v === 'normal') ? '' : v; })(),
       year: tenure ? formatYearFromTenure(tenure) : "",
     });
     
@@ -592,6 +597,52 @@ export default function HowToProcessSection({ process, onSave, lead, canEdit = t
     }
   };
 
+  // Switch between months and years mode
+  const handleTenureModeSwitch = () => {
+    if (tenureMode === 'months') {
+      // Convert current months value to years for the years input
+      const numericMonths = parseInt(fields.requiredTenure?.replace(/[^\d]/g, '') || '0');
+      if (numericMonths > 0) {
+        const years = numericMonths / 12;
+        setTenureYearsInput(Number.isInteger(years) ? years.toString() : parseFloat(years.toFixed(2)).toString());
+      } else {
+        setTenureYearsInput('');
+      }
+      setTenureMode('years');
+    } else {
+      setTenureMode('months');
+    }
+  };
+
+  // Handle years input change
+  const handleYearsInputChange = (e) => {
+    if (!canEdit) return;
+    // Allow digits and one decimal point
+    const val = e.target.value.replace(/[^\d.]/g, '').replace(/(\..*)\./g, '$1');
+    setTenureYearsInput(val);
+    const yearsNum = parseFloat(val) || 0;
+    const months = Math.round(yearsNum * 12);
+    if (months > 0) {
+      setFields(prev => ({
+        ...prev,
+        requiredTenure: `${months} months`,
+        year: formatYearFromTenure(months)
+      }));
+    } else {
+      setFields(prev => ({ ...prev, requiredTenure: '', year: '' }));
+    }
+  };
+
+  // Handle years input blur — save to backend
+  const handleYearsInputBlur = () => {
+    if (!canEdit) return;
+    const yearsNum = parseFloat(tenureYearsInput) || 0;
+    const months = Math.round(yearsNum * 12);
+    if (months > 0) {
+      handleBlur('requiredTenure', months.toString());
+    }
+  };
+
   return (
     <div className="max-w-9xl mx-auto">
       
@@ -754,7 +805,7 @@ export default function HowToProcessSection({ process, onSave, lead, canEdit = t
                     />
                   </div>
                   <div className="max-h-48 overflow-y-auto">
-                    {['FRESH ONLY', 'BT ONLY', 'BT+TOP UP', 'INTERNAL TOP UP']
+                    {['FRESH ONLY', 'BT ONLY', 'BT+TOP UP', 'INTERNAL TOP UP ONLY']
                       .filter(ct => ct.toLowerCase().includes(caseTypeSearchTerm.toLowerCase()))
                       .map((ct) => (
                         <div
@@ -773,7 +824,7 @@ export default function HowToProcessSection({ process, onSave, lead, canEdit = t
                         </div>
                       ))
                     }
-                    {['FRESH ONLY', 'BT ONLY', 'BT+TOP UP', 'INTERNAL TOP UP'].filter(ct => ct.toLowerCase().includes(caseTypeSearchTerm.toLowerCase())).length === 0 && (
+                    {['FRESH ONLY', 'BT ONLY', 'BT+TOP UP', 'INTERNAL TOP UP ONLY'].filter(ct => ct.toLowerCase().includes(caseTypeSearchTerm.toLowerCase())).length === 0 && (
                       <div className="px-4 py-2 text-sm text-gray-500">No case types found</div>
                     )}
                   </div>
@@ -783,11 +834,11 @@ export default function HowToProcessSection({ process, onSave, lead, canEdit = t
           </div>
         </div>
 
-        {/* Second Row: Loan Amount, Tenure Months, Tenure Years */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mb-8 items-start">
-          {/* Loan Amount Required */}
+        {/* Second Row: Loan Amount Applied, Tenure (Combined) */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-8 items-start">
+          {/* Loan Amount Applied */}
           <div className="flex flex-col gap-2">
-            <label className={labelClass} style={labelStyle}>LOAN AMOUNT REQUIRED</label>
+            <label className={labelClass} style={labelStyle}>LOAN AMOUNT APPLIED</label>
             <div className="relative">
               <span className="absolute left-4 top-1/2 transform -translate-y-1/2 text-[#00bcd4] font-semibold z-10">₹</span>
               <input
@@ -820,45 +871,82 @@ export default function HowToProcessSection({ process, onSave, lead, canEdit = t
             </div>
           </div>
 
-          {/* Required Tenure Months */}
+          {/* Required Tenure — Combined field with mode toggle */}
           <div className="flex flex-col gap-2">
-            <label className={labelClass} style={labelStyle}>REQUIRED TENURE MONTHS</label>
-            <input
-              ref={tenureInputRef}
-              type="text"
-              className={`w-full p-3 border-2 border-[#00bcd4] rounded-md bg-white text-green-600 text-md font-bold transition-all duration-300 focus:border-[#0097a7] focus:shadow-[0_0_0_3px_rgba(0,188,212,0.1)] ${
-                !canEdit ? 'bg-gray-100 cursor-not-allowed' : ''
-              }`}
-              value={getTenureDisplayValue()}
-              onChange={e => {
-                if (!canEdit) return;
-                const numericValue = e.target.value.replace(/[^\d]/g, '');
-                handleChange("requiredTenure", numericValue);
-              }}
-              onFocus={handleTenureFocus}
-              onBlur={handleTenureBlur}
-              onKeyDown={e => {
-                // Allow only numeric keys, backspace, delete, arrow keys, tab
-                const allowedKeys = ['Backspace', 'Delete', 'ArrowLeft', 'ArrowRight', 'Tab'];
-                if (!allowedKeys.includes(e.key) && !/[0-9]/.test(e.key)) {
-                  e.preventDefault();
-                }
-              }}
-              readOnly={!canEdit}
-              placeholder="Enter months"
-            />
-          </div>
-
-          {/* Required Tenure Year */}
-          <div className="flex flex-col gap-2">
-            <label className={labelClass} style={labelStyle}>REQUIRED TENURE YEAR</label>
-            <input
-              type="text"
-              className="w-full p-3 border-2 border-[#00bcd4] rounded-md bg-[#f0f9ff] text-green-600 text-md font-bold italic cursor-not-allowed"
-              value={fields.year || "Auto-calculated from months..."}
-              readOnly
-              placeholder="Auto-calculated from months..."
-            />
+            <div className="flex items-center justify-between">
+              <label className={labelClass} style={labelStyle}>REQUIRED TENURE</label>
+              {canEdit && (
+                <button
+                  type="button"
+                  onClick={handleTenureModeSwitch}
+                  className="text-xs font-bold text-white bg-[#00bcd4] hover:bg-[#0097a7] px-3 py-1 rounded-full transition-colors duration-200 ml-2 whitespace-nowrap"
+                >
+                  {tenureMode === 'months' ? '↔ Switch to Years' : '↔ Switch to Months'}
+                </button>
+              )}
+            </div>
+            <div className="relative">
+              {tenureMode === 'months' ? (
+                <>
+                  <input
+                    ref={tenureInputRef}
+                    type="text"
+                    className={`w-full p-3 pr-36 border-2 border-[#00bcd4] rounded-md bg-white text-green-600 text-md font-bold transition-all duration-300 focus:border-[#0097a7] focus:shadow-[0_0_0_3px_rgba(0,188,212,0.1)] ${
+                      !canEdit ? 'bg-gray-100 cursor-not-allowed' : ''
+                    }`}
+                    value={getTenureDisplayValue()}
+                    onChange={e => {
+                      if (!canEdit) return;
+                      const numericValue = e.target.value.replace(/[^\d]/g, '');
+                      handleChange('requiredTenure', numericValue);
+                    }}
+                    onFocus={handleTenureFocus}
+                    onBlur={handleTenureBlur}
+                    onKeyDown={e => {
+                      const allowedKeys = ['Backspace', 'Delete', 'ArrowLeft', 'ArrowRight', 'Tab'];
+                      if (!allowedKeys.includes(e.key) && !/[0-9]/.test(e.key)) {
+                        e.preventDefault();
+                      }
+                    }}
+                    readOnly={!canEdit}
+                    placeholder="Enter months"
+                  />
+                  {fields.year && (
+                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-gray-400 font-semibold pointer-events-none">
+                      ≈ {fields.year}
+                    </span>
+                  )}
+                </>
+              ) : (
+                <>
+                  <input
+                    type="text"
+                    className={`w-full p-3 pr-36 border-2 border-[#00bcd4] rounded-md bg-white text-green-600 text-md font-bold transition-all duration-300 focus:border-[#0097a7] focus:shadow-[0_0_0_3px_rgba(0,188,212,0.1)] ${
+                      !canEdit ? 'bg-gray-100 cursor-not-allowed' : ''
+                    }`}
+                    value={tenureYearsInput}
+                    onChange={handleYearsInputChange}
+                    onBlur={handleYearsInputBlur}
+                    onKeyDown={e => {
+                      const allowedKeys = ['Backspace', 'Delete', 'ArrowLeft', 'ArrowRight', 'Tab', '.'];
+                      if (!allowedKeys.includes(e.key) && !/[0-9]/.test(e.key)) {
+                        e.preventDefault();
+                      }
+                    }}
+                    readOnly={!canEdit}
+                    placeholder="Enter years"
+                  />
+                  {tenureYearsInput && (() => {
+                    const months = Math.round(parseFloat(tenureYearsInput) * 12) || 0;
+                    return months > 0 ? (
+                      <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-gray-400 font-semibold pointer-events-none">
+                        ≈ {months} months
+                      </span>
+                    ) : null;
+                  })()}
+                </>
+              )}
+            </div>
           </div>
         </div>
 

@@ -813,7 +813,7 @@ function useCreateLeadLogic() {
 
   // State
   const [currentDateTime, setCurrentDateTime] = useState(
-    getISTTimestamp().replace("T", " ")
+    () => getISTTimestamp().replace("T", " ")
   );
   const [productType, setProductType] = useState("");
   const [mobileNumber, setMobileNumber] = useState("");
@@ -831,6 +831,7 @@ function useCreateLeadLogic() {
   const [alternateNumber, setAlternateNumber] = useState("");
   const [pincode, setPincode] = useState("");
   const [city, setCity] = useState("");
+  const [pincodeCity, setPincodeCity] = useState("");
   const [companyName, setCompanyName] = useState("");
   const [companyType, setCompanyType] = useState("");
   const [salary, setSalary] = useState("");
@@ -903,6 +904,21 @@ function useCreateLeadLogic() {
   const [showCompanySuggestions, setShowCompanySuggestions] = useState(false);
   const [isCompanyLoading, setIsCompanyLoading] = useState(false);
 
+  // Super admin override fields for Create Lead form
+  const [superAdminCreatedByUser, setSuperAdminCreatedByUser] = useState(null);   // selected user object or null
+  const [superAdminCreatedBySearch, setSuperAdminCreatedBySearch] = useState("");
+  const [showSuperAdminCreatedByDropdown, setShowSuperAdminCreatedByDropdown] = useState(false);
+  const superAdminCreatedByDropdownRef = useRef(null);
+  const [superAdminLeadDateTime, setSuperAdminLeadDateTime] = useState(() => {
+    // Default to current IST time in datetime-local format (YYYY-MM-DDTHH:MM)
+    try {
+      const now = new Date();
+      const ist = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Kolkata' }));
+      const pad = n => String(n).padStart(2, '0');
+      return `${ist.getFullYear()}-${pad(ist.getMonth()+1)}-${pad(ist.getDate())}T${pad(ist.getHours())}:${pad(ist.getMinutes())}`;
+    } catch (_) { return ''; }
+  });
+
   const leadFormRef = useRef(null);
 
   useEffect(() => {
@@ -956,6 +972,13 @@ function useCreateLeadLogic() {
     foirPercent,
     obligations,
   ]);
+
+  // Update currentDateTime to reflect actual current time when lead form is shown
+  useEffect(() => {
+    if (showLeadForm) {
+      setCurrentDateTime(getISTTimestamp().replace("T", " "));
+    }
+  }, [showLeadForm]);
 
   // Obligations Table Handlers
   const handleObligationChange = (idx, field, value) => {
@@ -2357,18 +2380,19 @@ const handleMobileNumberChange = (e) => {
 
 
       if (!response.ok) {
-        const errorData = await response.json();
-
+        let errorData;
+        const rawText = await response.text();
+        try { errorData = JSON.parse(rawText); } catch (_) { errorData = null; }
 
         // Handle validation errors specifically
-        if (errorData.detail && Array.isArray(errorData.detail)) {
+        if (errorData?.detail && Array.isArray(errorData.detail)) {
           const errorMessages = errorData.detail.map(err =>
             `${err.loc.join('.')}: ${err.msg} (received: ${err.input})`
           ).join('\n');
           throw new Error(`Validation errors:\n${errorMessages}`);
         }
 
-        throw new Error(errorData.message || errorData.detail || `HTTP error! status: ${response.status}`);
+        throw new Error(errorData?.message || errorData?.detail || rawText || `HTTP error! status: ${response.status}`);
       }
 
       const data = await response.json();
@@ -2489,8 +2513,9 @@ const handleMobileNumberChange = (e) => {
         mobileNumber,
         customerName,
         alternateNumber,
-        pincode,
-        city,
+        pincodeCity,
+        pincode: pincode || (pincodeCity || '').match(/^\d+/)?.[0] || '',
+        city: city || (pincodeCity || '').replace(/^\d+\s*/, '') || '',
         companyName,
         companyType,
         companyCategory,
@@ -2722,7 +2747,7 @@ const handleMobileNumberChange = (e) => {
       if (!leadData.dynamic_fields.process) {
         leadData.dynamic_fields.process = {
           how_to_process: "None",
-          case_type: "Normal",
+          case_type: "",
           year: getISTDateYMD().split('-')[0]
         };
       }
@@ -2748,6 +2773,17 @@ const handleMobileNumberChange = (e) => {
           outstanding: parseInt(obl.outstanding) || 0,
           emi: parseInt(obl.emi) || 0
         }));
+      }
+
+      // --- Step 9b: Super Admin Override Fields ---
+      // If current user is super admin, add override fields to leadData
+      if (checkUserIsSuperAdmin()) {
+        if (superAdminCreatedByUser?.id) {
+          leadData.override_created_by_id = superAdminCreatedByUser.id;
+        }
+        if (superAdminLeadDateTime) {
+          leadData.override_created_at = superAdminLeadDateTime;
+        }
       }
 
       // --- Step 10: Log Final Data ---
@@ -2811,6 +2847,7 @@ const handleMobileNumberChange = (e) => {
           alternateNumber: '',
           pincode: '',
           city: '',
+          pincodeCity: '',
           companyName: '',
           companyType: '',
           campaignName: '',
@@ -2855,6 +2892,7 @@ const handleMobileNumberChange = (e) => {
         setAlternateNumber(initialState.alternateNumber);
         setPincode(initialState.pincode);
         setCity(initialState.city);
+        setPincodeCity(initialState.pincodeCity);
         setCompanyName(initialState.companyName);
         setCompanyType(initialState.companyType);
         setCampaignName(initialState.campaignName);
@@ -2972,7 +3010,7 @@ const handleMobileNumberChange = (e) => {
     showAssignPopup, setShowAssignPopup,
     status, setStatus, customerName, setCustomerName,
     alternateNumber, setAlternateNumber, handleAlternateNumberChange,
-    pincode, setPincode, city, setCity,
+    pincode, setPincode, city, setCity, pincodeCity, setPincodeCity,
     companyName, setCompanyName, companyType, setCompanyType,
     salary, handleSalaryChange, partnerSalary, handlePartnerSalaryChange, yearlyBonus, handleYearlyBonusChange,
     bonusDivision, handleBonusDivisionChange, loanRequired, setLoanRequired,
@@ -3031,7 +3069,13 @@ const handleMobileNumberChange = (e) => {
     backgroundDataLoaded, bankListLoaded, companyDataLoaded, assignableUsersLoaded,
     // Permission state
     hasReassignmentPopupPermission,
-    hasDuplicateLeadPermission
+    hasDuplicateLeadPermission,
+    // Super admin override fields
+    superAdminLeadDateTime, setSuperAdminLeadDateTime,
+    superAdminCreatedByUser, setSuperAdminCreatedByUser,
+    superAdminCreatedBySearch, setSuperAdminCreatedBySearch,
+    showSuperAdminCreatedByDropdown, setShowSuperAdminCreatedByDropdown,
+    superAdminCreatedByDropdownRef
   };
 }
 
@@ -4528,6 +4572,54 @@ function CreateLead() {
                                  checkUserHasAssignPermissionGlobal() || 
                                  checkReassignmentPermissions(userPermissions);
 
+  // Permission check: can user see the Data Code field?
+  // Permission is stored under leads.pl_&_odd_leads → view_data_code (configured in RoleSettings)
+  const canViewDataCode = (() => {
+    try {
+      if (checkUserIsSuperAdmin()) return true;
+      let perms = null;
+      try { perms = userPermissions ? JSON.parse(userPermissions) : null; } catch (_) { return false; }
+      if (!perms) return false;
+      // Check leads.pl_&_odd_leads permission for view_data_code action
+      const plOddPerm =
+        perms['leads.pl_&_odd_leads'] ||
+        perms['leads.pl_odd_leads'] ||
+        perms['leads_pl_&_odd_leads'] ||
+        perms['leads_pl_odd_leads'];
+      if (_permHasAction(plOddPerm, 'view_data_code')) return true;
+      // Fallback: check raw user.role.permissions array
+      try {
+        const user = JSON.parse(localStorage.getItem('user') || '{}');
+        if (user.role?.permissions && Array.isArray(user.role.permissions)) {
+          const plOddPermission = user.role.permissions.find(p =>
+            p.page === 'leads.pl_&_odd_leads' ||
+            p.page === 'leads.pl_odd_leads' ||
+            p.page === 'leads_pl_&_odd_leads' ||
+            p.page === 'leads_pl_odd_leads'
+          );
+          if (plOddPermission && Array.isArray(plOddPermission.actions)) {
+            return plOddPermission.actions.includes('view_data_code');
+          }
+        }
+      } catch (_) {}
+      return false;
+    } catch (_) { return false; }
+  })();
+
+  // Get current user display name for "Created By" field
+  const currentUserDisplayName = (() => {
+    try {
+      const name = localStorage.getItem('userName') || localStorage.getItem('userFullName');
+      if (name) return name;
+      const raw = localStorage.getItem('user') || localStorage.getItem('userData');
+      if (raw) {
+        const u = JSON.parse(raw);
+        return u.name || `${u.first_name || ''} ${u.last_name || ''}`.trim() || u.username || '';
+      }
+    } catch (_) {}
+    return '';
+  })();
+
   // Use the lead logic hook
   const {
     // Basic info
@@ -4540,7 +4632,7 @@ function CreateLead() {
     showAssignPopup, setShowAssignPopup,
     status, setStatus, customerName, setCustomerName,
     alternateNumber, setAlternateNumber, handleAlternateNumberChange,
-    pincode, setPincode, city, setCity,
+    pincode, setPincode, city, setCity, pincodeCity, setPincodeCity,
     companyName, setCompanyName, companyType, setCompanyType,
     salary, setSalary, partnerSalary, setPartnerSalary, yearlyBonus, setYearlyBonus,
     bonusDivision, setBonusDivision, loanRequired, setLoanRequired,
@@ -4602,7 +4694,13 @@ function CreateLead() {
     backgroundDataLoaded, bankListLoaded, companyDataLoaded, assignableUsersLoaded,
     // Permission state
     hasReassignmentPopupPermission,
-    hasDuplicateLeadPermission
+    hasDuplicateLeadPermission,
+    // Super admin override fields
+    superAdminLeadDateTime, setSuperAdminLeadDateTime,
+    superAdminCreatedByUser, setSuperAdminCreatedByUser,
+    superAdminCreatedBySearch, setSuperAdminCreatedBySearch,
+    showSuperAdminCreatedByDropdown, setShowSuperAdminCreatedByDropdown,
+    superAdminCreatedByDropdownRef
   } = useCreateLeadLogic();
 
   const dataCodeDropdownRef = useRef(null);
@@ -4611,6 +4709,8 @@ function CreateLead() {
   const [assignDropdownSearch, setAssignDropdownSearch] = useState("");
   const [showSourceDropdown, setShowSourceDropdown] = useState(false);
   const [sourceSearch, setSourceSearch] = useState("");
+  const [showDataCodeDropdown, setShowDataCodeDropdown] = useState(false);
+  const [dataCodeSearch, setDataCodeSearch] = useState("");
 
   const isAssignedLeadReadOnly = Boolean(
     showLeadForm && (
@@ -5867,7 +5967,7 @@ function CreateLead() {
                     </div>
                   </div>
 
-                  {/* Row 2: Alternate Number, Pincode, City */}
+                  {/* Row 2: Alternate Number, Pincode & City (combined), Data Code (permission) */}
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mb-8">
                     <div className="flex flex-col gap-2">
                       <label className="block font-bold mb-2 uppercase" style={{ color: "black", fontWeight: 650, fontSize: "15px" }}>ALTERNATE NUMBER</label>
@@ -5884,26 +5984,97 @@ function CreateLead() {
                       )}
                     </div>
                     <div className="flex flex-col gap-2">
-                      <label className="block font-bold mb-2 uppercase" style={{ color: "black", fontWeight: 650, fontSize: "15px" }}>PINCODE</label>
-                      <input
-                        type="text"
-                        className="w-full p-3 border-2 border-[#00bcd4] rounded-md bg-white text-green-600 text-md font-bold transition-all duration-300 focus:border-[#0097a7] focus:shadow-[0_0_0_3px_rgba(0,188,212,0.1)]"
-                        placeholder="Enter pincode"
-                        value={pincode}
-                        onChange={e => setPincode(e.target.value.replace(/\D/g, '').slice(0, 6))}
-                        maxLength="6"
-                      />
+                      <label className="block font-bold mb-2 uppercase" style={{ color: "black", fontWeight: 650, fontSize: "15px" }}>PINCODE & CITY</label>
+                      <div className="relative w-full">
+                        <input
+                          type="text"
+                          className="w-full p-3 pr-12 border-2 border-[#00bcd4] rounded-md bg-white text-green-600 text-md font-bold transition-all duration-300 focus:border-[#0097a7] focus:shadow-[0_0_0_3px_rgba(0,188,212,0.1)]"
+                          placeholder="Pincode & City (e.g. 400001 Mumbai)"
+                          value={pincodeCity}
+                          onChange={e => setPincodeCity(e.target.value)}
+                        />
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const location = pincodeCity || '';
+                            if (location.trim()) window.open(`https://www.google.com/maps/search/${encodeURIComponent(location)}`, '_blank');
+                          }}
+                          className="absolute right-2 top-1/2 transform -translate-y-1/2 p-1.5 bg-[#00bcd4] text-white rounded-md hover:bg-[#0097a7] transition-colors"
+                          title="Search on Google Maps"
+                        >
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
+                        </button>
+                      </div>
                     </div>
-                    <div className="flex flex-col gap-2">
-                      <label className="block font-bold mb-2 uppercase" style={{ color: "black", fontWeight: 650, fontSize: "15px" }}>CITY</label>
-                      <input
-                        type="text"
-                        className="w-full p-3 border-2 border-[#00bcd4] rounded-md bg-white text-green-600 text-md font-bold transition-all duration-300 focus:border-[#0097a7] focus:shadow-[0_0_0_3px_rgba(0,188,212,0.1)]"
-                        placeholder="Enter city"
-                        value={city}
-                        onChange={e => setCity(e.target.value)}
-                      />
-                    </div>
+                    {canViewDataCode && (
+                      <div className="flex flex-col gap-2">
+                        <label className="block font-bold mb-2 uppercase" style={{ color: "black", fontWeight: 650, fontSize: "15px" }}>DATA CODE</label>
+                        <div ref={dataCodeDropdownRef} className="relative w-full">
+                          <div
+                            className="w-full p-3 border-2 border-[#00bcd4] rounded-md bg-white text-green-600 text-md font-bold min-h-[52px] flex flex-wrap gap-2 items-center cursor-pointer transition-all duration-300 hover:border-[#0097a7]"
+                            onClick={() => setShowDataCodeDropdown(prev => !prev)}
+                          >
+                            {selectedDataCodes.length === 0 && !dataCode && (
+                              <span className="text-gray-400 font-normal text-sm">Select Data Code</span>
+                            )}
+                            {selectedDataCodes.length > 0 ? (
+                              selectedDataCodes.map(code => (
+                                <div key={code} className="flex items-center gap-1 bg-[#03B0F5] text-white px-2 py-1 rounded-md text-xs font-bold">
+                                  <span>{code}</span>
+                                  <button type="button" className="text-white hover:text-red-200 ml-1 text-sm" onClick={e => { e.stopPropagation(); setSelectedDataCodes(prev => prev.filter(c => c !== code)); }}>&times;</button>
+                                </div>
+                              ))
+                            ) : dataCode ? (
+                              <span className="text-green-600 font-bold">{dataCode}</span>
+                            ) : null}
+                            <div className="ml-auto flex-shrink-0">
+                              <svg className={`w-5 h-5 text-green-600 transition-transform duration-200 ${showDataCodeDropdown ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
+                            </div>
+                          </div>
+                          {showDataCodeDropdown && (
+                            <div className="absolute z-[500] top-full left-0 right-0 mt-1 bg-white border-2 border-[#00bcd4] rounded-lg shadow-xl overflow-hidden">
+                              <div className="p-2 border-b border-gray-100">
+                                <input
+                                  autoFocus
+                                  type="text"
+                                  className="w-full px-3 py-2 text-sm border border-gray-200 rounded-md focus:outline-none focus:border-[#03B0F5] text-black"
+                                  placeholder="Search data code..."
+                                  value={dataCodeSearch}
+                                  onChange={e => setDataCodeSearch(e.target.value)}
+                                  onClick={e => e.stopPropagation()}
+                                />
+                              </div>
+                              <div className="max-h-52 overflow-y-auto">
+                                {[{ name: '' }, ...dataCodes]
+                                  .filter(dc => dc.name === '' || (dc.name || '').toLowerCase().includes(dataCodeSearch.toLowerCase()))
+                                  .map(dc => (
+                                    <div
+                                      key={dc.name || '__empty__'}
+                                      onClick={() => {
+                                        if (!dc.name) { setDataCode(''); setSelectedDataCodes([]); }
+                                        else if (selectedDataCodes.includes(dc.name)) {
+                                          setSelectedDataCodes(prev => prev.filter(c => c !== dc.name));
+                                        } else {
+                                          setSelectedDataCodes(prev => [...prev, dc.name]);
+                                          setDataCode(dc.name);
+                                        }
+                                        setShowDataCodeDropdown(false);
+                                        setDataCodeSearch('');
+                                      }}
+                                      className={`px-3 py-2.5 cursor-pointer text-sm transition-colors ${
+                                        selectedDataCodes.includes(dc.name) ? 'bg-[#03B0F5] text-white font-bold' : 'hover:bg-[#e0f7fa] text-black'
+                                      } ${!dc.name ? 'text-gray-400 italic' : 'font-medium'}`}
+                                    >
+                                      {dc.name || 'Clear Selection'}
+                                    </div>
+                                  ))
+                                }
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
                   </div>
 
                   {/* Row 3: Assigned Lead */}
@@ -6022,6 +6193,7 @@ function CreateLead() {
                         setPincodeError('');
                         setPincode('');
                         setCity('');
+                        setPincodeCity('');
                       }}
                     >
                       Cancel
