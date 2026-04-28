@@ -346,6 +346,8 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
   const [isAutoSaving, setIsAutoSaving] = useState(false);
   const autoSaveTimeoutRef = useRef(null);
   const lastAutoSaveTimeRef = useRef(0); // Rate-limit: track last successful save timestamp
+  // Ref to expose processObligationData (defined inside useEffect) to component-level functions
+  const processObligationDataRef = useRef(null);
   // Ref for persistenceCheck interval so it always reads current field values without stale closure
   const persistenceFieldsRef = useRef({ salary: '', companyName: '', partnerSalary: '', yearlyBonus: '', loanRequired: '', cibilScore: '' });
   
@@ -462,6 +464,8 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
   const [ceMonthlyEmiCanPay, setCeMonthlyEmiCanPay] = useState(0);
   const [ceTenureMonths, setCeTenureMonths] = useState('');
   const [ceTenureYears, setCeTenureYears] = useState('');
+  const [ceTenureMode, setCeTenureMode] = useState('months');
+  const [ceTenureYearsInput, setCeTenureYearsInput] = useState('');
   const [ceRoi, setCeRoi] = useState('');
   const [ceMultiplier, setCeMultiplier] = useState('0');
 
@@ -2309,6 +2313,9 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
       }
     };
     
+    // 🔑 Store processObligationData in ref so component-level functions (handleSaveObligations) can call it
+    processObligationDataRef.current = processObligationData;
+
     fetchObligationData();
     
     // Ensure initial load flag is reset even if no data is loaded, but be more careful with file_sent_to_login scenarios
@@ -3161,7 +3168,7 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
           multiplierEligibility: eligibility?.multiplierEligibility ?? '',
           multiplier_eligibility: eligibility?.multiplierEligibility ?? ''
         },
-        obligations: obligations.map((obl, index) => {
+        obligations: obligationsToSave.map((obl, index) => {
           // Make sure bank name is properly captured from the row
           
           return {
@@ -3403,7 +3410,8 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
         setJustSavedEligibility(true); // Mark that we just saved to prevent overwrite on reload
       }
       
-      setHasUserInteraction(false); // Reset user interaction flag after saving
+      // NOTE: Do NOT reset hasUserInteraction here — if the user made more changes during the save,
+      // we must not block the next auto-save cycle.
       
       console.log('🔄 Refreshing table data after save to ensure UI reflects latest state...');
       
@@ -3454,7 +3462,11 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
               
               if (refreshedData && Object.keys(refreshedData).length > 0) {
                 console.log('✅ Successfully reloaded data from API after save - processing...');
-                await processObligationData(refreshedData);
+                if (processObligationDataRef.current) {
+                  await processObligationDataRef.current(refreshedData);
+                } else {
+                  console.warn('⚠️ processObligationDataRef not set, skipping reload processing');
+                }
                 
                 // Log the state after processing
                 console.log('🔄 State after processing fresh API data:', {
@@ -3497,7 +3509,11 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
         const localData = loadSavedObligationData();
         if (localData) {
           console.log('🔄 Reloading from localStorage after save...');
-          await processObligationData(localData);
+          if (processObligationDataRef.current) {
+            await processObligationDataRef.current(localData);
+          } else {
+            console.warn('⚠️ processObligationDataRef not set, skipping localStorage reload processing');
+          }
           
           // Refresh obligation table data after processing
           refreshObligationTableData();
@@ -3613,9 +3629,9 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
       return;
     }
 
-    // Rate-limit: skip if last save was less than 5 seconds ago to prevent flooding
+    // Rate-limit: skip if last save was less than 1.5 seconds ago to prevent flooding
     const now = Date.now();
-    if (now - lastAutoSaveTimeRef.current < 5000) {
+    if (now - lastAutoSaveTimeRef.current < 1500) {
       console.log('⏭️ Skipping autosave: rate-limited (last save was', now - lastAutoSaveTimeRef.current, 'ms ago)');
       return;
     }
@@ -4595,6 +4611,45 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
         input.setSelectionRange(newPosition, newPosition);
       }
     }, 0);
+  };
+
+  const handleCeTenureModeSwitch = () => {
+    if (ceTenureMode === 'months') {
+      const rawMonths = parseInt(String(ceTenureMonths).replace(/[^0-9]/g, '') || '0');
+      if (rawMonths > 0) {
+        const yrs = rawMonths / 12;
+        setCeTenureYearsInput(Number.isInteger(yrs) ? yrs.toString() : parseFloat(yrs.toFixed(2)).toString());
+      } else {
+        setCeTenureYearsInput('');
+      }
+      setCeTenureMode('years');
+    } else {
+      setCeTenureMode('months');
+    }
+  };
+
+  const handleCeTenureYearsDecimalChange = (e) => {
+    const val = e.target.value.replace(/[^\d.]/g, '').replace(/(\..*)\./, '$1');
+    setCeTenureYearsInput(val);
+    const yearsNum = parseFloat(val) || 0;
+    const months = Math.round(yearsNum * 12);
+    setHasUserInteraction(true);
+    setHasUnsavedChanges(true);
+    if (months > 0) {
+      setCeTenureMonths(formatTenure(months.toString()));
+      const totalYears = Math.floor(months / 12);
+      const remainingMonths = months % 12;
+      if (remainingMonths === 0) {
+        setCeTenureYears(`${totalYears} Years`);
+      } else if (remainingMonths === 1) {
+        setCeTenureYears(`${totalYears} Years 1 Month`);
+      } else {
+        setCeTenureYears(`${totalYears} Years ${remainingMonths} Months`);
+      }
+    } else {
+      setCeTenureMonths('');
+      setCeTenureYears('');
+    }
   };
 
   const handleCeRoiChange = (e) => {
@@ -6793,100 +6848,36 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
                       disabled={!canEdit}
                       onChange={(e) => {
                         if (!canEdit) return;
-                        
                         const value = e.target.value.toUpperCase();
-                        console.log(`📝 Company input changed to: "${value}"`);
-                        
-                        // Only process changes if not in the middle of a dropdown selection
-                        if (!isSelectingFromDropdown) {
-                          setCompanyName(value);
-                          markAsChanged();
-                          
-                          // Only trigger search if user is actually typing (has inputType)
-                          if (e.nativeEvent && e.nativeEvent.inputType) {
-                            handleCompanySearchChange(value);
-                            if (!companyDropdownOpen && value.length >= 1) {
-                              setCompanyDropdownOpen(true);
-                              setIsSelectingFromDropdown(false); // Reset flag when dropdown opens from typing
-                            }
-                          }
-                          
-                          // Notify parent component of changes immediately for unsaved changes detection
-                          if (handleChangeFunc) {
-                            handleChangeFunc('company_name', value);
-                          }
-                        } else {
-                          console.log(`🚫 Ignoring input change during dropdown selection`);
+                        setCompanyName(value);
+                        markAsChanged();
+                        if (handleChangeFunc) {
+                          handleChangeFunc('company_name', value);
                         }
                       }}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter' && companyName.trim().length >= 1) {
-                          e.preventDefault();
-                          if (companySuggestions.length > 0) {
-                            // Select the first suggestion
-                            handleCompanySelect(companySuggestions[0]);
-                          } else {
-                            // Add the typed text as new company
-                            handleCompanySelect(companyName.trim());
-                          }
-                        } else if (e.key === 'Escape') {
-                          setCompanyDropdownOpen(false);
-                        }
-                      }}
-                      onFocus={() => {
-                        if (companyName.length >= 1) {
-                          setCompanyDropdownOpen(true);
-                          setIsSelectingFromDropdown(false); // Reset flag when dropdown opens from focus
-                        }
-                      }}
-                      onBlur={(e) => {
-                        const currentValue = e.target.value.trim();
-                        console.log(`🔍 Company input blur. Current value: "${currentValue}"`);
-                        
-                        // Delay to allow for dropdown selection
-                        setTimeout(() => {
-                          setCompanyDropdownOpen(false);
-                          
-                          // Only auto-select if user manually typed something and we're not in the middle of a dropdown selection
-                          if (currentValue && currentValue.length >= 1 && !isSelectingFromDropdown) {
-                            // Check if this is a new value or just confirming existing selection
-                            if (currentValue !== companyName.trim()) {
-                              console.log(`🎯 Auto-selecting manually typed company: "${currentValue}"`);
-                              handleCompanySelect(currentValue);
-                            } else {
-                              console.log(`✅ Company value already set: "${currentValue}"`);
-                            }
-                          } else if (isSelectingFromDropdown) {
-                            console.log(`🚫 Skipping auto-select due to dropdown selection in progress`);
-                          }
-                        }, 200);
-                      }}
+                      onBlur={handleObligationFieldBlur}
                       data-dropdown-trigger="true"
                     />
                     <button
                       type="button"
-                      onClick={() => canEdit && setShowCategoryPopup(true)}
+                      onClick={() => window.open('https://www.zaubacorp.com', '_blank')}
                       className="bg-blue-600/20 text-blue-400 px-3 flex items-center justify-center hover:bg-blue-600 hover:text-white transition-colors border-l border-slate-700/50 shrink-0 self-stretch"
-                      title="Search Company & Select Category"
+                      title="Search on Zauba Corp"
                     >
-                      {isCompanyLoading ? (
-                        <div className="animate-spin rounded-full h-4 w-4 border-t-2 border-b-2 border-blue-400"></div>
-                      ) : (
-                        <svg
-                          xmlns="http://www.w3.org/2000/svg"
-                          className="h-4 w-4"
-                          fill="none"
-                          viewBox="0 0 24 24"
-                          stroke="currentColor"
-                        >
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth={2}
-                            d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
-                          />
-                        </svg>
-                      )}
+                      <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        className="h-4 w-4"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        stroke="currentColor"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+                        />
+                      </svg>
                     </button>
                   </div>
                 </div>
@@ -7024,84 +7015,7 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
             </div>
           )}
           
-          {/* Company Name Dropdown Portal */}
-          {companyDropdownOpen && (
-            <div 
-              className="fixed inset-0 z-[9999]" 
-              style={{ zIndex: 9999 }}
-            >
-              {/* Backdrop */}
-              <div 
-                className="absolute inset-0" 
-                onClick={() => setCompanyDropdownOpen(false)}
-              />
-              
-              {/* Dropdown Content */}
-              <div 
-                className="absolute bg-gray-800 border border-gray-600 rounded-lg shadow-lg"
-                style={{
-                  left: companyDropdownRef.current ? companyDropdownRef.current.getBoundingClientRect().left : 0,
-                  top: companyDropdownRef.current ? companyDropdownRef.current.getBoundingClientRect().bottom + 5 : 0,
-                  width: companyDropdownRef.current ? companyDropdownRef.current.getBoundingClientRect().width : 300,
-                  minWidth: '300px'
-                }}
-                data-dropdown-container="true"
-              >
-                {/* Options List - Directly show options without search input */}
-                <div className="max-h-60 overflow-y-auto" data-dropdown-scroll="true">
-                  {companySuggestions.length > 0 ? (
-                    companySuggestions.map((company, index) => {
-                      // Ensure company is a string and handle object cases
-                      const companyString = company && typeof company === 'object' ? 
-                        (company.name || company.label || company.company_name || String(company)) : 
-                        String(company || '');
-                      
-                      const companyDisplay = companyString || 'Unknown Company';
-                      const firstLetter = companyDisplay.length > 0 ? companyDisplay.charAt(0).toUpperCase() : 'C';
-                      
-                      return (
-                        <div
-                          key={`company-${index}`}
-                          className="px-4 py-3 text-lg text-white cursor-pointer hover:bg-gray-700 border-b border-gray-700 last:border-b-0 transition-colors"
-                          onClick={() => canEdit && handleCompanySelect(company)}
-                        >
-                          <div className="flex items-center">
-                            <div className="w-8 h-8 rounded-full bg-blue-500 text-white flex items-center justify-center mr-3 text-sm font-bold">
-                              {firstLetter}
-                            </div>
-                            <span className="font-medium">{companyDisplay}</span>
-                          </div>
-                        </div>
-                      );
-                    })
-                  ) : companyName.length >= 2 && !isCompanyLoading ? (
-                    <div className="px-4 py-3 text-lg text-gray-400 italic">
-                      No companies match "{companyName}"
-                    </div>
-                  ) : companyName.length < 2 ? (
-                    <div className="px-4 py-3 text-lg text-gray-400 italic">
-                      Type at least 2 characters to search...
-                    </div>
-                  ) : null}
-                  
-                  {/* Add custom option if company name exists and is not in suggestions */}
-                  {companyName.length >= 2 && !companySuggestions.includes(companyName) && (
-                    <div
-                      className="px-4 py-3 text-lg text-sky-400 cursor-pointer hover:bg-gray-700 border-t border-gray-600 font-medium transition-colors"
-                      onClick={() => canEdit && handleCompanySelect(companyName)}
-                    >
-                      <div className="flex items-center">
-                        <div className="w-8 h-8 rounded-full bg-sky-500 text-white flex items-center justify-center mr-3 text-sm font-bold">
-                          +
-                        </div>
-                        <span>Add "{companyName}"</span>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
-          )}
+
           
           {/* Enhanced Obligations Table */}
           <div className="mb-6 bg-black rounded-lg border-2 border-gray-600 shadow-lg relative">
@@ -7551,29 +7465,58 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
           <hr className="border-slate-800/60"/>
 
           <div className="grid grid-cols-2 gap-3">
-            {/* Tenure (Months) - Editable white bg */}
-            <div className="flex flex-col justify-end">
-              <label className="text-[10px] font-bold text-white uppercase tracking-wide mb-1.5">Tenure (Months)</label>
-              <input
-                type="text"
-                value={ceTenureMonths}
-                onChange={canEdit ? handleCeTenureMonthsChange : undefined}
-                disabled={!canEdit}
-                placeholder="Months"
-                className="w-full bg-white text-black placeholder-slate-400 rounded-lg p-2.5 font-black text-sm outline-none focus:ring-2 focus:ring-blue-500 transition-shadow border-none shadow-sm"
-              />
-            </div>
-            {/* Tenure (Years) - Editable white bg */}
-            <div className="flex flex-col justify-end">
-              <label className="text-[10px] font-bold text-white uppercase tracking-wide mb-1.5">Tenure (Years)</label>
-              <input
-                type="text"
-                value={ceTenureYears}
-                onChange={canEdit ? handleCeTenureYearsChange : undefined}
-                disabled={!canEdit}
-                placeholder="Years"
-                className="w-full bg-white text-black placeholder-slate-400 rounded-lg p-2.5 font-black text-sm outline-none focus:ring-2 focus:ring-blue-500 transition-shadow border-none shadow-sm"
-              />
+            {/* Tenure (Combined - Months/Years toggle) - full row */}
+            <div className="flex flex-col justify-end col-span-2">
+              <div className="flex items-center justify-between mb-1.5">
+                <label className="text-[10px] font-bold text-white uppercase tracking-wide">Tenure</label>
+                {canEdit && (
+                  <button
+                    type="button"
+                    onClick={handleCeTenureModeSwitch}
+                    className="text-[9px] font-bold text-white bg-blue-600 hover:bg-blue-700 px-2 py-0.5 rounded-full transition-colors whitespace-nowrap"
+                  >
+                    {ceTenureMode === 'months' ? '↔ Years' : '↔ Months'}
+                  </button>
+                )}
+              </div>
+              <div className="relative">
+                {ceTenureMode === 'months' ? (
+                  <>
+                    <input
+                      type="text"
+                      value={ceTenureMonths}
+                      onChange={canEdit ? handleCeTenureMonthsChange : undefined}
+                      disabled={!canEdit}
+                      placeholder="Months"
+                      className="w-full bg-white text-black placeholder-slate-400 rounded-lg p-2.5 pr-24 font-black text-sm outline-none focus:ring-2 focus:ring-blue-500 transition-shadow border-none shadow-sm"
+                    />
+                    {ceTenureYears && (
+                      <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-slate-400 font-semibold pointer-events-none truncate max-w-[90px]">
+                        ≈ {ceTenureYears}
+                      </span>
+                    )}
+                  </>
+                ) : (
+                  <>
+                    <input
+                      type="text"
+                      value={ceTenureYearsInput}
+                      onChange={canEdit ? handleCeTenureYearsDecimalChange : undefined}
+                      disabled={!canEdit}
+                      placeholder="Years"
+                      className="w-full bg-white text-black placeholder-slate-400 rounded-lg p-2.5 pr-24 font-black text-sm outline-none focus:ring-2 focus:ring-blue-500 transition-shadow border-none shadow-sm"
+                    />
+                    {ceTenureYearsInput && (() => {
+                      const m = Math.round(parseFloat(ceTenureYearsInput) * 12) || 0;
+                      return m > 0 ? (
+                        <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-slate-400 font-semibold pointer-events-none">
+                          ≈ {m} Mo
+                        </span>
+                      ) : null;
+                    })()}
+                  </>
+                )}
+              </div>
             </div>
             {/* ROI % - Editable white bg */}
             <div className="flex flex-col justify-end">

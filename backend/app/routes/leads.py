@@ -181,12 +181,43 @@ async def create_lead(
         # If mobile_number is in the dict, map it to phone
         lead_dict["phone"] = lead_dict["mobile_number"]
     
+    # Check if requesting user is super admin (for override fields)
+    from app.utils.permissions import PermissionManager
+    requester_is_super_admin = await PermissionManager.is_admin(user_id, users_db, roles_db)
+
     # Ensure created_by is set to the current user_id (who is creating this lead)
-    lead_dict["created_by"] = user_id
-    lead_dict["created_by_name"] = user_name.strip()
-    lead_dict["created_by_role"] = user_role_name
+    # Super admin can override created_by to attribute the lead to a different user
+    if requester_is_super_admin and lead.override_created_by_id:
+        override_user = await users_db.get_user(lead.override_created_by_id)
+        if override_user:
+            override_name = f"{override_user.get('first_name', '')} {override_user.get('last_name', '')}".strip()
+            override_role_name = "Unknown Role"
+            if override_user.get('role_id'):
+                override_role = await roles_db.get_role(override_user.get('role_id'))
+                if override_role:
+                    override_role_name = override_role.get('name', 'Unknown Role')
+            lead_dict["created_by"] = lead.override_created_by_id
+            lead_dict["created_by_name"] = override_name or user_name.strip()
+            lead_dict["created_by_role"] = override_role_name
+        else:
+            lead_dict["created_by"] = user_id
+            lead_dict["created_by_name"] = user_name.strip()
+            lead_dict["created_by_role"] = user_role_name
+    else:
+        lead_dict["created_by"] = user_id
+        lead_dict["created_by_name"] = user_name.strip()
+        lead_dict["created_by_role"] = user_role_name
     lead_dict["department_name"] = department_name
-    
+
+    # Super admin can override the lead creation date/time
+    if requester_is_super_admin and lead.override_created_at:
+        try:
+            from dateutil import parser as dt_parser
+            parsed_dt = dt_parser.parse(lead.override_created_at)
+            lead_dict["created_at"] = parsed_dt
+        except Exception:
+            pass  # If parse fails, DB layer will set current time
+
     # If no assigned_to is specified, automatically assign to the creator
     if not lead_dict.get("assigned_to"):
         lead_dict["assigned_to"] = user_id
@@ -4974,8 +5005,8 @@ async def update_lead_obligations(
             detail=f"Lead with ID {lead_id} not found"
         )
     
-    # Check permission
-    await check_permission(user_id, "leads.create_lead", "show", users_db, roles_db)
+    # Check permission — any user who can view/work with leads should be able to save obligations
+    await check_permission(user_id, ["leads", "leads.create_lead", "leads.pl_odd_leads", "leads.pl_&_odd_leads"], "show", users_db, roles_db)
     
     # Get existing dynamic_fields or initialize empty dict
     dynamic_fields = lead.get("dynamic_fields", {})

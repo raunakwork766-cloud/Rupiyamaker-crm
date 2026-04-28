@@ -1068,6 +1068,10 @@ async def update_login_lead_obligations(
     OBLIGATION_KEYS = {
         "salary", "cibilScore", "loanRequired", "companyName", "processingBank",
         "partnerSalary", "yearlyBonus", "bonusDivision", "selectedBanks", "obligations",
+        "companyType", "companyCategory", "totalBtPos", "totalObligation",
+        "ceFoirPercent", "ceCustomFoirPercent", "ceCompanyCategory",
+        "ceMonthlyEmiCanPay", "ceTenureMonths", "ceTenureYears", "ceRoi",
+        "ceMultiplier", "loanEligibilityStatus", "eligibility",
     }
 
     # Build canonical obligation_data from incoming payload

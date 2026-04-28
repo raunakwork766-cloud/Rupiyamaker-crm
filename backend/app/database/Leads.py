@@ -280,7 +280,15 @@ class LeadsDB:
         # Record creation activity with names instead of IDs
         try:
             created_by_name = await self._get_user_name(lead_data["created_by"])
-            assigned_to_name = await self._get_user_name(lead_data.get("assigned_to")) if lead_data.get("assigned_to") else None
+            # assigned_to can be a list of IDs or a single ID string
+            raw_assigned = lead_data.get("assigned_to")
+            if isinstance(raw_assigned, list):
+                names = await self._get_multiple_user_names([str(uid) for uid in raw_assigned if uid])
+                assigned_to_name = ", ".join(n for n in names if n and n != "Unknown User") or None
+            else:
+                assigned_to_name = await self._get_user_name(raw_assigned) if raw_assigned else None
+                if assigned_to_name == "Unknown User":
+                    assigned_to_name = None
             department_name = await self._get_department_name(lead_data.get("department_id")) if lead_data.get("department_id") else None
             reporting_user_names = await self._get_multiple_user_names(lead_data.get("assign_report_to", []))
             
@@ -528,7 +536,8 @@ class LeadsDB:
         if current_lead.get("dynamic_fields"):
             logger.info(f"📋 CURRENT dynamic_fields in DB: {list(current_lead['dynamic_fields'].keys())}")
             if "obligation_data" in current_lead["dynamic_fields"]:
-                logger.info(f"✅ obligation_data EXISTS in current lead ({len(current_lead['dynamic_fields']['obligation_data'])} fields)")
+                obl_data = current_lead['dynamic_fields']['obligation_data']
+                logger.info(f"✅ obligation_data EXISTS in current lead ({len(obl_data) if obl_data is not None else 'None'} fields)")
         
         # Add updated timestamp
         update_data["updated_at"] = get_ist_now()
@@ -569,14 +578,15 @@ class LeadsDB:
             
             # CRITICAL: Verify obligation_data is preserved
             if "obligation_data" in update_data["dynamic_fields"]:
-                logger.info(f"✅ obligation_data IS in update ({len(update_data['dynamic_fields']['obligation_data'])} fields)")
+                _obl = update_data['dynamic_fields']['obligation_data']
+                logger.info(f"✅ obligation_data IS in update ({len(_obl) if _obl is not None else 'None'} fields)")
             elif "obligation_data" in current_lead.get("dynamic_fields", {}):
                 # Routes layer should have merged this, but double-check as safety net
                 logger.warning(f"⚠️ obligation_data NOT in update but EXISTS in DB - RESTORING with DEEP COPY")
                 update_data["dynamic_fields"]["obligation_data"] = copy.deepcopy(current_lead["dynamic_fields"]["obligation_data"])
             
             # EXTRA SAFETY NET: Preserve ALL important nested fields with DEEP COPY
-            important_fields = ["obligation_data", "eligibility_details", "identity_details", "financial_details", "process"]
+            important_fields = ["obligation_data", "eligibility_details", "identity_details", "financial_details", "process", "applicant_form", "co_applicant_form"]
             for field in important_fields:
                 current_value = current_lead.get("dynamic_fields", {}).get(field)
                 if current_value is not None and field not in update_data["dynamic_fields"]:
@@ -586,7 +596,8 @@ class LeadsDB:
         
         logger.info(f"✅ FINAL dynamic_fields keys going to DB: {list(update_data['dynamic_fields'].keys())}")
         if "obligation_data" in update_data["dynamic_fields"]:
-            logger.info(f"✅✅ obligation_data CONFIRMED in final update ({len(update_data['dynamic_fields']['obligation_data'])} fields)")
+            _obl_final = update_data['dynamic_fields']['obligation_data']
+            logger.info(f"✅✅ obligation_data CONFIRMED in final update ({len(_obl_final) if _obl_final is not None else 'None'} fields)")
         
         # Special handling for login form fields
         login_form_fields = [
@@ -1036,6 +1047,27 @@ class LeadsDB:
                 
                 # Format field name for better readability
                 field_display_name = field_name.replace('_', ' ').title()
+                # Override with exact UI labels for known top-level fields
+                _top_level_labels = {
+                    'status': 'Status', 'sub_status': 'Sub Status',
+                    'assigned_to': 'Assigned To', 'assigned_lead': 'Assigned Lead',
+                    'customer_name': 'Customer Name', 'mobile_number': 'Mobile Number',
+                    'alternate_number': 'Alternate Number', 'pincode': 'Pincode',
+                    'city': 'City', 'state': 'State', 'email': 'Email',
+                    'source_name': 'Source Name', 'data_code': 'Data Code',
+                    'campaign_name': 'Campaign Name', 'product_name': 'Product Name',
+                    'loan_type': 'Loan Type', 'loan_type_name': 'Loan Type',
+                    'company_name': 'Company Name', 'salary': 'Salary',
+                    'totalObligation': 'Total Obligation', 'totalBtPos': 'Total BT POS',
+                    'cibilScore': 'CIBIL Score', 'partnerSalary': "Partner's Salary",
+                    'yearlyBonus': 'Bonus', 'companyName': 'Company Name',
+                    'companyType': 'Company Type', 'companyCategory': 'Company Category',
+                    'loanRequired': 'Loan Required', 'processingBank': 'Login Bank',
+                    'how_to_process': 'How to Process',
+                    'important_questions': 'Important Questions',
+                }
+                if field_name in _top_level_labels:
+                    field_display_name = _top_level_labels[field_name]
                 
                 # Handle nested dynamic_fields changes
                 if field_name == "dynamic_fields" and isinstance(change_data, dict):
@@ -1043,7 +1075,7 @@ class LeadsDB:
                     processed_obligation_fields = set()
                     
                     # Fields to skip - these are internal/redundant or tracked elsewhere
-                    skip_fields = {"financial_details", "eligibility_details", "identity_details"}
+                    skip_fields = {"eligibility_details", "identity_details"}
                     
                     # Create separate activity for each nested field in dynamic_fields
                     for nested_field, nested_change in change_data.items():
@@ -1056,6 +1088,25 @@ class LeadsDB:
                             continue
                         
                         nested_display_name = nested_field.replace('_', ' ').title()
+                        # Override with exact UI display names for sections
+                        _section_display_names = {
+                            'personal_details': 'Personal Details',
+                            'financial_details': 'Financial Details',
+                            'employment_details': 'Employment Details',
+                            'residence_details': 'Residence Details',
+                            'business_details': 'Business Details',
+                            'check_eligibility': 'Check Eligibility',
+                            'obligations': 'Obligations',
+                            'obligation_data': 'Obligation Data',
+                            'eligibility_details': 'Eligibility Details',
+                            'process': 'Process',
+                            'coapplicant_personal_details': 'Co-Applicant Personal Details',
+                            'coapplicant_employment_details': 'Co-Applicant Employment Details',
+                            'coapplicant_residence_details': 'Co-Applicant Residence Details',
+                            'coapplicant_business_details': 'Co-Applicant Business Details',
+                        }
+                        if nested_field in _section_display_names:
+                            nested_display_name = _section_display_names[nested_field]
                         
                         # ⚡ ACTIVITY DEDUPLICATION: Skip if field already has activity
                         if nested_field in fields_with_activity_created:
@@ -1226,25 +1277,43 @@ class LeadsDB:
                         
                         # Special handling for applicant/co-applicant section objects
                         elif nested_field in ["personal_details", "employment_details", "residence_details", 
-                                             "business_details", "coapplicant_personal_details", 
+                                             "business_details", "financial_details",
+                                             "coapplicant_personal_details", 
                                              "coapplicant_employment_details", "coapplicant_residence_details",
                                              "coapplicant_business_details"] and isinstance(new_val, dict):
                             # Format section updates nicely - show what fields changed
                             section_changes = []
                             
-                            # Common field labels for readability
+                            # Common field labels for readability — must match what UI shows
                             field_labels = {
-                                # Personal Details
+                                # Personal Details (from CRM lead create form)
                                 'first_name': 'First Name', 'middle_name': 'Middle Name', 'last_name': 'Last Name',
                                 'gender': 'Gender', 'date_of_birth': 'Date of Birth', 'marital_status': 'Marital Status',
-                                'education': 'Education', 'father_name': 'Father Name', 'mother_name': 'Mother Name',
+                                'education': 'Education', 'father_name': "Father's Name", 'mother_name': "Mother's Name",
                                 'email': 'Email', 'mobile': 'Mobile', 'alternate_mobile': 'Alternate Mobile',
+                                'nationality': 'Nationality',
                                 
-                                # Employment Details
-                                'employment_type': 'Employment Type', 'company_name': 'Company Name',
+                                # Personal Details — Employment fields (stored in personal_details section)
+                                'occupation': 'Occupation',
+                                'employment_type': 'Employment Type', 'years_of_experience': 'Years of Experience',
+                                'company_name': 'Company Name', 'company_type': 'Company Type',
+                                'company_category': 'Company Category',
+                                
+                                # Employment Details (legacy section name)
                                 'designation': 'Designation', 'years_in_job': 'Years in Job',
-                                'monthly_income': 'Monthly Income', 'annual_income': 'Annual Income',
                                 'salary_mode': 'Salary Mode', 'office_address': 'Office Address',
+                                
+                                # Financial Details (salary, CIBIL, bank info)
+                                'monthly_income': 'Salary', 'salary': 'Salary',
+                                'annual_income': 'Annual Income',
+                                'partner_salary': "Partner's Salary",
+                                'yearly_bonus': 'Bonus', 'bonus_division': 'Bonus Division',
+                                'foir_percent': 'FOIR %',
+                                'bank_name': 'Bank Name',
+                                'account_number': 'Account Number', 'ifsc_code': 'IFSC Code',
+                                'cibil_score': 'CIBIL Score',
+                                'loan_required': 'Loan Required', 'loan_amount': 'Loan Amount',
+                                'total_bt_pos': 'Total BT POS',
                                 
                                 # Business Details
                                 'business_name': 'Business Name', 'business_type': 'Business Type',
@@ -1255,7 +1324,15 @@ class LeadsDB:
                                 # Residence Details
                                 'residence_type': 'Residence Type', 'address': 'Address',
                                 'pincode': 'Pincode', 'city': 'City', 'state': 'State',
-                                'years_at_residence': 'Years at Residence'
+                                'years_at_residence': 'Years at Residence',
+                                
+                                # Login Form fields (camelCase variants)
+                                'salaryAccountBank': 'Salary A/C Bank Name',
+                                'salaryAccountBankNumber': 'Salary A/C Bank Number',
+                                'ifscCode': 'IFSC Code', 'companyName': 'Company Name',
+                                'yourDesignation': 'Designation', 'yourDepartment': 'Department',
+                                'customerName': 'Customer Name', 'mobileNumber': 'Mobile Number',
+                                'alternateNumber': 'Alternate Number',
                             }
                             
                             old_section = old_val if isinstance(old_val, dict) else {}
@@ -1264,6 +1341,11 @@ class LeadsDB:
                             # Find what changed in this section
                             all_keys = set(list(old_section.keys()) + list(new_section.keys()))
                             for field_key in all_keys:
+                                # Skip fields not in the known UI field_labels mapping
+                                # (avoids showing internal/legacy/alias fields like workplace, employer, organization etc.)
+                                if field_key not in field_labels:
+                                    continue
+                                
                                 old_field = old_section.get(field_key)
                                 new_field = new_section.get(field_key)
                                 
@@ -1276,16 +1358,23 @@ class LeadsDB:
                                     old_display = old_field if old_normalized else "Not Set"
                                     new_display = new_field if new_normalized else "Removed"
                                     
-                                    # Add currency formatting for income/amount fields
-                                    if 'income' in field_key or 'turnover' in field_key or 'profit' in field_key:
+                                    # Add currency formatting for income/amount/salary fields
+                                    currency_fields = {'income', 'salary', 'turnover', 'profit', 'bonus',
+                                                       'loan_required', 'loan_amount', 'monthly_income',
+                                                       'annual_income', 'partner_salary', 'yearly_bonus'}
+                                    is_currency = (
+                                        field_key in currency_fields or
+                                        any(k in field_key for k in ['income', 'turnover', 'profit', 'salary', 'bonus', 'loan'])
+                                    )
+                                    if is_currency:
                                         if new_normalized:
                                             try:
-                                                new_display = f"₹{int(new_field):,}"
+                                                new_display = f"₹{int(float(str(new_field).replace(',', ''))):,}"
                                             except (ValueError, TypeError):
                                                 pass
                                         if old_normalized:
                                             try:
-                                                old_display = f"₹{int(old_field):,}"
+                                                old_display = f"₹{int(float(str(old_field).replace(',', ''))):,}"
                                             except (ValueError, TypeError):
                                                 pass
                                     
@@ -1337,15 +1426,18 @@ class LeadsDB:
                 elif field_name == "process_data" and isinstance(change_data, dict):
                     # Create separate activity for each nested field in process_data
                     for process_field, process_change in change_data.items():
-                        # Map snake_case field names to readable labels
+                        # Map snake_case field names to UI display labels
                         field_labels = {
-                            "processing_bank": "Processing Bank",
+                            "processing_bank": "Login Bank",
                             "how_to_process": "How to Process",
                             "loan_type": "Loan Type",
                             "case_type": "Case Type",
-                            "required_loan_amount": "Required Loan Amount",
+                            "loan_amount_required": "Loan Amount Applied",
+                            "required_loan_amount": "Loan Amount Applied",
+                            "required_tenure": "Required Tenure",
+                            "purpose_of_loan": "Purpose of Loan",
                             "processing_fees": "Processing Fees",
-                            "loan_tenure": "Loan Tenure",
+                            "loan_tenure": "Required Tenure",
                             "rate_of_interest": "Rate of Interest",
                             "other_charges": "Other Charges",
                             "remarks": "Remarks"
@@ -1807,9 +1899,10 @@ class LeadsDB:
         """Get activity timeline for a lead"""
         if not ObjectId.is_valid(lead_id):
             return []
-            
+
+        # Query both string and ObjectId forms of lead_id for backward compatibility
         cursor = self.activity_collection.find(
-            {"lead_id": lead_id}
+            {"lead_id": {"$in": [lead_id, ObjectId(lead_id)]}}
         ).sort("created_at", -1).skip(skip).limit(limit)
         return await cursor.to_list(None)
     
