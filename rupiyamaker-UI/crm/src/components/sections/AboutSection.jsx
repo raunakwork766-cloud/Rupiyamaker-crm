@@ -219,6 +219,9 @@ export default function AboutSection({ lead, onSave, canEdit = true }) {
   const [departments, setDepartments] = useState([]); // for super admin Team Name dropdown
   const [createdBySearch, setCreatedBySearch] = useState('');
   const [showCreatedByDropdown, setShowCreatedByDropdown] = useState(false);
+  const [createdByUserId, setCreatedByUserId] = useState(null); // track selected user id for created_by update
+  const [selectedCreatedByDisplayName, setSelectedCreatedByDisplayName] = useState(null); // display name after selection
+  const [selectedCreatedDate, setSelectedCreatedDate] = useState(null); // local state for super admin date edit (avoids useEffect overwrite)
   const [teamNameSearch, setTeamNameSearch] = useState('');
   const [showTeamNameDropdown, setShowTeamNameDropdown] = useState(false);
   
@@ -1273,15 +1276,23 @@ export default function AboutSection({ lead, onSave, canEdit = true }) {
         mobileNumber: 'mobile_number',
         alternateNumber: 'alternative_phone',
         pincode_city: 'pincode_city',
-        createdDate: 'created_at',
+        createdDate: 'override_created_at',
         createdByName: 'created_by_name',
         teamName: 'department_name',
+        createdById: 'override_created_by_id',
       };
 
       const apiField = apiFieldMap[field] || field;
 
+      // Handle createdByName field - send both name and user id for super admin
+      if (field === 'createdByName') {
+        updatePayload = { created_by_name: value };
+        if (createdByUserId) {
+          updatePayload.override_created_by_id = createdByUserId;
+        }
+      }
       // Handle customerName field - split into first_name and last_name
-      if (field === 'customerName') {
+      else if (field === 'customerName') {
         const nameParts = value.trim().split(/\s+/);
         const firstName = nameParts[0] || '';
         const lastName = nameParts.slice(1).join(' ') || '';
@@ -1349,6 +1360,73 @@ export default function AboutSection({ lead, onSave, canEdit = true }) {
       
     } catch (error) {
       console.error(`❌ AboutSection: Error saving ${field}:`, error);
+      setSaveStatus('❌ Save failed');
+      setTimeout(() => setSaveStatus(''), 5000);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  // Dedicated handler for Created By dropdown selection (avoids async setState race condition)
+  const handleCreatedBySelect = async (userId, userName, userDepartment) => {
+    setSelectedCreatedByDisplayName(userName);
+    setCreatedBySearch('');
+    setShowCreatedByDropdown(false);
+    setCreatedByUserId(userId);
+    // Build payload directly with the userId we have right now (no async state read)
+    const updatePayload = { created_by_name: userName, override_created_by_id: userId };
+    setIsSaving(true);
+    setSaveStatus('💾 Saving...');
+    try {
+      setFields(prev => ({ ...prev, createdByName: userName }));
+      let savedViaParent = false;
+      if (onSave && typeof onSave === 'function') {
+        try {
+          const result = onSave(updatePayload);
+          if (result instanceof Promise) await result;
+          savedViaParent = true;
+        } catch (e) { console.warn('Parent onSave failed for createdBy:', e); }
+      }
+      if (!savedViaParent && lead?._id) {
+        await saveToAPI('createdByName', userName, updatePayload);
+      }
+      setSaveStatus('✅ Saved successfully!');
+      setTimeout(() => setSaveStatus(''), 3000);
+      if (userDepartment) {
+        setTimeout(() => handleBlur('teamName', userDepartment), 100);
+      }
+    } catch (error) {
+      console.error('Error saving createdBy:', error);
+      setSaveStatus('❌ Save failed');
+      setTimeout(() => setSaveStatus(''), 5000);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  // Dedicated handler for Lead Date & Time change (avoids useEffect overwrite and stale comparison issues)
+  const handleCreatedDateChange = async (utcISO) => {
+    setSelectedCreatedDate(utcISO);
+    const updatePayload = { override_created_at: utcISO };
+    setIsSaving(true);
+    setSaveStatus('💾 Saving...');
+    try {
+      setFields(prev => ({ ...prev, createdDate: utcISO }));
+      let savedViaParent = false;
+      if (onSave && typeof onSave === 'function') {
+        try {
+          const result = onSave(updatePayload);
+          if (result instanceof Promise) await result;
+          savedViaParent = true;
+        } catch (e) { console.warn('Parent onSave failed for createdDate:', e); }
+      }
+      if (!savedViaParent && lead?._id) {
+        await saveToAPI('createdDate', utcISO, updatePayload);
+      }
+      setSaveStatus('✅ Saved successfully!');
+      setTimeout(() => setSaveStatus(''), 3000);
+    } catch (error) {
+      console.error('Error saving createdDate:', error);
       setSaveStatus('❌ Save failed');
       setTimeout(() => setSaveStatus(''), 5000);
     } finally {
@@ -1827,23 +1905,25 @@ export default function AboutSection({ lead, onSave, canEdit = true }) {
                   <input
                     type="datetime-local"
                     className="w-full p-2 border border-[#00bcd4] rounded-md bg-white text-green-600 text-md font-bold cursor-pointer"
-                    value={fields.createdDate ? (() => {
-                      const date = new Date(fields.createdDate);
+                    value={(() => {
+                      const dateStr = selectedCreatedDate || fields.createdDate;
+                      if (!dateStr) return '';
+                      const date = new Date(dateStr);
                       if (isNaN(date.getTime())) return '';
                       const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;
                       return new Date(date.getTime() + IST_OFFSET_MS).toISOString().slice(0, 16);
-                    })() : ''}
+                    })()}
                     onChange={e => {
                       if (!e.target.value) return;
                       const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;
                       const utcISO = new Date(new Date(e.target.value + ':00.000Z').getTime() - IST_OFFSET_MS).toISOString();
-                      handleChange('createdDate', utcISO);
+                      setSelectedCreatedDate(utcISO);
                     }}
                     onBlur={e => {
                       if (!e.target.value) return;
                       const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;
                       const utcISO = new Date(new Date(e.target.value + ':00.000Z').getTime() - IST_OFFSET_MS).toISOString();
-                      handleBlur('createdDate', utcISO);
+                      handleCreatedDateChange(utcISO);
                     }}
                     title="Super Admin can edit lead creation date & time (IST)"
                   />
@@ -1878,6 +1958,7 @@ export default function AboutSection({ lead, onSave, canEdit = true }) {
                     type="text"
                     className="flex-1 min-w-[80px] bg-transparent text-green-600 text-md font-bold outline-none py-1"
                     value={createdBySearch !== '' ? createdBySearch : (() => {
+                      if (selectedCreatedByDisplayName) return selectedCreatedByDisplayName;
                       const n = lead?.creator_name || lead?.created_by_name;
                       if (n) return typeof n === 'object' ? (n.name || '') : n;
                       if (lead?.created_by) return typeof lead.created_by === 'object' ? (lead.created_by.name || '') : '';
@@ -1907,12 +1988,7 @@ export default function AboutSection({ lead, onSave, canEdit = true }) {
                           className="px-3 py-2 hover:bg-blue-50 cursor-pointer text-sm text-gray-800"
                           onMouseDown={e => {
                             e.preventDefault();
-                            handleBlur('createdByName', u.name);
-                            if (u.department) {
-                              handleBlur('teamName', u.department);
-                            }
-                            setCreatedBySearch('');
-                            setShowCreatedByDropdown(false);
+                            handleCreatedBySelect(u.id, u.name, u.department);
                           }}
                         >
                           <div className="font-bold">{u.name}</div>

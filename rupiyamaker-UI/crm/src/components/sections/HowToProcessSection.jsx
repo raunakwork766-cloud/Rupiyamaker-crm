@@ -46,6 +46,8 @@ export default function HowToProcessSection({ process, onSave, lead, canEdit = t
   const [tenureMode, setTenureMode] = useState('months');
   // Raw years input value when in years mode
   const [tenureYearsInput, setTenureYearsInput] = useState('');
+  // Focus state for years input
+  const [isTenureYearsFocused, setIsTenureYearsFocused] = useState(false);
   
   // Ref for tenure input field
   const tenureInputRef = useRef(null);
@@ -597,9 +599,14 @@ export default function HowToProcessSection({ process, onSave, lead, canEdit = t
     }
   };
 
+  // Helper: get display value for years input (shows "2 years" when not focused)
+  const getYearsDisplayValue = () => {
+    if (isTenureYearsFocused) return tenureYearsInput;
+    return tenureYearsInput ? `${tenureYearsInput} years` : '';
+  };
+
   // Switch between months and years mode
-  const handleTenureModeSwitch = () => {
-    if (tenureMode === 'months') {
+  const handleTenureModeSwitch = () => {    if (tenureMode === 'months') {
       // Convert current months value to years for the years input
       const numericMonths = parseInt(fields.requiredTenure?.replace(/[^\d]/g, '') || '0');
       if (numericMonths > 0) {
@@ -617,10 +624,10 @@ export default function HowToProcessSection({ process, onSave, lead, canEdit = t
   // Handle years input change
   const handleYearsInputChange = (e) => {
     if (!canEdit) return;
-    // Allow digits and one decimal point
-    const val = e.target.value.replace(/[^\d.]/g, '').replace(/(\..*)\./g, '$1');
-    setTenureYearsInput(val);
-    const yearsNum = parseFloat(val) || 0;
+    // Strip the " years" suffix if present, then allow digits and one decimal point
+    const raw = e.target.value.replace(/[^\d.]/g, '').replace(/(\..*)\./g, '$1');
+    setTenureYearsInput(raw);
+    const yearsNum = parseFloat(raw) || 0;
     const months = Math.round(yearsNum * 12);
     if (months > 0) {
       setFields(prev => ({
@@ -635,6 +642,7 @@ export default function HowToProcessSection({ process, onSave, lead, canEdit = t
 
   // Handle years input blur — save to backend
   const handleYearsInputBlur = () => {
+    setIsTenureYearsFocused(false);
     if (!canEdit) return;
     const yearsNum = parseFloat(tenureYearsInput) || 0;
     const months = Math.round(yearsNum * 12);
@@ -924,8 +932,9 @@ export default function HowToProcessSection({ process, onSave, lead, canEdit = t
                     className={`w-full p-3 pr-36 border-2 border-[#00bcd4] rounded-md bg-white text-green-600 text-md font-bold transition-all duration-300 focus:border-[#0097a7] focus:shadow-[0_0_0_3px_rgba(0,188,212,0.1)] ${
                       !canEdit ? 'bg-gray-100 cursor-not-allowed' : ''
                     }`}
-                    value={tenureYearsInput}
+                    value={getYearsDisplayValue()}
                     onChange={handleYearsInputChange}
+                    onFocus={() => setIsTenureYearsFocused(true)}
                     onBlur={handleYearsInputBlur}
                     onKeyDown={e => {
                       const allowedKeys = ['Backspace', 'Delete', 'ArrowLeft', 'ArrowRight', 'Tab', '.'];

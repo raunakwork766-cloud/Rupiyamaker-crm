@@ -76,11 +76,45 @@ const getUserName = () => {
     }
 };
 
+// --- Helper: detect a meaningfully empty JSON body so we can drop spammy no-op writes ---
+const isEmptyJsonBody = (body) => {
+    if (body == null || body === '') return true;
+    if (typeof body !== 'string') return false;
+    try {
+        const parsed = JSON.parse(body);
+        if (parsed == null) return true;
+        if (Array.isArray(parsed)) return parsed.length === 0;
+        if (typeof parsed !== 'object') return false;
+        const keys = Object.keys(parsed);
+        if (keys.length === 0) return true;
+        // All values are null/undefined/empty-string/empty-array/empty-object => effectively empty
+        return keys.every(k => {
+            const v = parsed[k];
+            if (v == null || v === '') return true;
+            if (Array.isArray(v)) return v.length === 0;
+            if (typeof v === 'object') return Object.keys(v).length === 0;
+            return false;
+        });
+    } catch {
+        return false;
+    }
+};
+
 // Generic API call function - exported for special cases like file uploads
 export const apiCall = async (endpoint, options = {}) => {
     const url = `${API_BASE_URL}${endpoint}`;
     const user = getUserData();
-    
+
+    // 🛡️ Guard: silently drop write requests with an empty/no-op body to avoid log flooding
+    // and unnecessary backend load. Returns a fake success so callers stay happy.
+    const method = (options.method || 'GET').toUpperCase();
+    if ((method === 'PUT' || method === 'PATCH') && isEmptyJsonBody(options.body)) {
+        if (typeof console !== 'undefined' && console.debug) {
+            console.debug(`[apiCall] Skipped empty ${method} ${endpoint}`);
+        }
+        return { skipped: true, reason: 'empty_body', message: 'No changes to update' };
+    }
+
     const defaultOptions = {
         headers: {
             'Content-Type': 'application/json',

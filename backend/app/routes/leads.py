@@ -2114,37 +2114,30 @@ async def update_lead(
     import logging
     logger = logging.getLogger(__name__)
     
-    # Add detailed logging at the very start
-    logger.info(f"========== UPDATE LEAD REQUEST START ==========")
-    logger.info(f"Lead ID: {lead_id}")
-    logger.info(f"User ID: {user_id}")
-    logger.info(f"lead_update object: {lead_update}")
-    logger.info(f"lead_update.__dict__: {lead_update.__dict__}")
-    logger.info(f"lead_update.__fields_set__: {lead_update.__fields_set__}")
-    
+    # Detailed request tracing kept at DEBUG so production logs stay clean.
+    logger.debug(f"========== UPDATE LEAD REQUEST START ==========")
+    logger.debug(f"Lead ID: {lead_id}")
+    logger.debug(f"User ID: {user_id}")
+    logger.debug(f"lead_update object: {lead_update}")
+    logger.debug(f"lead_update.__fields_set__: {lead_update.__fields_set__}")
+
     try:
-        logger.info(f"Lead update request for ID: {lead_id}")
-        logger.info(f"Update data type: {type(lead_update)}")
+        logger.debug(f"Lead update request for ID: {lead_id}")
         if hasattr(lead_update, 'dict'):
             update_dict = lead_update.dict(exclude_unset=True)
-            logger.info(f"Lead update data: {update_dict}")
-            
-            # DEBUG: Check for pincode_city specifically
-            if 'pincode_city' in update_dict:
-                logger.info(f"✅ PINCODE_CITY FIELD DETECTED: {update_dict['pincode_city']}")
-            else:
-                logger.info(f"⚠️ pincode_city NOT in update_dict. Keys: {list(update_dict.keys())}")
+            logger.debug(f"Lead update data: {update_dict}")
             
             # CRITICAL: Reject completely empty updates to avoid 422/500 errors
             # Check both: empty dict and dict with only None values
+            # Logged at DEBUG (not WARNING) to prevent log flooding from buggy clients.
             if not update_dict:
-                logger.warning(f"⚠️ Completely empty update received for lead {lead_id}, returning success without changes")
+                logger.debug(f"Empty update received for lead {lead_id}, returning success without changes")
                 return {"message": "No changes to update"}
-            
+
             # Also check if all values are None (which would result in empty update after filtering)
             non_none_values = {k: v for k, v in update_dict.items() if v is not None}
             if len(non_none_values) == 0:
-                logger.warning(f"⚠️ Update with all None values received for lead {lead_id}, returning success without changes")
+                logger.debug(f"All-None update received for lead {lead_id}, returning success without changes")
                 return {"message": "No changes to update"}
         else:
             logger.info(f"Lead update data: {vars(lead_update)}")
@@ -2367,6 +2360,34 @@ async def update_lead(
     
     # Final safety check: ensure we have something to update after all processing
     final_update_data = {k: v for k, v in update_dict.items() if v is not None}
+    
+    # Super admin: handle override_created_by_id on existing leads
+    if "override_created_by_id" in final_update_data:
+        from app.utils.permissions import PermissionManager as PM_update
+        requester_is_super_admin_update = await PM_update.is_admin(user_id, users_db, roles_db)
+        if requester_is_super_admin_update:
+            override_user = await users_db.get_user(final_update_data["override_created_by_id"])
+            if override_user:
+                override_name = f"{override_user.get('first_name', '')} {override_user.get('last_name', '')}".strip()
+                final_update_data["created_by"] = final_update_data["override_created_by_id"]
+                final_update_data["created_by_name"] = override_name or "Unknown User"
+        del final_update_data["override_created_by_id"]
+    
+    # Super admin: handle override_created_at on existing leads
+    if "override_created_at" in final_update_data:
+        from app.utils.permissions import PermissionManager as PM_created_at
+        requester_is_super_admin_ca = await PM_created_at.is_admin(user_id, users_db, roles_db)
+        if requester_is_super_admin_ca:
+            try:
+                from dateutil import parser as dt_parser
+                parsed_dt = dt_parser.parse(final_update_data["override_created_at"])
+                final_update_data["created_at"] = parsed_dt
+                final_update_data["_force_override_created_at"] = True  # Signal DB layer to allow
+                logger.info(f"✅ Super admin override_created_at approved: {parsed_dt}")
+            except Exception as e:
+                logger.warning(f"⚠️ Failed to parse override_created_at: {e}")
+        del final_update_data["override_created_at"]
+    
     if not final_update_data:
         logger.warning(f"⚠️ After processing, no data to update for lead {lead_id}, returning success")
         return {"message": "No changes to update"}

@@ -370,6 +370,9 @@ class LeadUpdate(BaseModel):
     parent_status: Optional[str] = None  # Parent status for status card grouping
     login_department_sent_date: Optional[str] = None  # Date when sent to login department
     login_department_sent_by: Optional[str] = None  # User who sent to login department
+    created_by_name: Optional[str] = None  # Super admin: update displayed creator name
+    department_name: Optional[str] = None  # Super admin: update department/team name
+    override_created_by_id: Optional[str] = None  # Super admin: change created_by user ID on existing lead
     
     class Config:
         extra = 'ignore'  # Ignore extra fields that aren't defined

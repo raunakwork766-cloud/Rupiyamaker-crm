@@ -606,17 +606,29 @@ function useCreateLeadLogic() {
     }, 200);
   }, []);
   
-  // Check user's reassignment popup permission on component mount
+  // Check user's reassignment popup permission on component mount + re-check when localStorage changes
   useEffect(() => {
-    console.log('🔐 Checking user REASSIGNMENT POPUP permission on component mount...');
-    const hasPermission = checkUserHasReassignmentPopupPermission();
-    setHasReassignmentPopupPermission(hasPermission);
-    
-    if (!hasPermission) {
-      console.warn('⚠️ User does NOT have permission to view reassignment popup');
-    } else {
-      console.log('✅ User has permission to view reassignment popup');
-    }
+    const checkPerm = () => {
+      console.log('🔐 Checking user REASSIGNMENT POPUP permission...');
+      const hasPermission = checkUserHasReassignmentPopupPermission();
+      setHasReassignmentPopupPermission(hasPermission);
+      if (!hasPermission) {
+        console.warn('⚠️ User does NOT have permission to view reassignment popup');
+      } else {
+        console.log('✅ User has permission to view reassignment popup');
+      }
+    };
+    checkPerm();
+    // Re-check whenever permissions are refreshed in localStorage
+    const onStorage = (e) => {
+      if (e.key === 'userPermissions') checkPerm();
+    };
+    window.addEventListener('storage', onStorage);
+    window.addEventListener('permissionsUpdated', checkPerm);
+    return () => {
+      window.removeEventListener('storage', onStorage);
+      window.removeEventListener('permissionsUpdated', checkPerm);
+    };
   }, []);
 
   // Check user's duplicate lead permission on component mount
@@ -3534,33 +3546,33 @@ const checkUserHasReassignmentPopupPermission = () => {
             const actions = Array.isArray(createLeadPermission.actions) ? 
               createLeadPermission.actions : [createLeadPermission.actions];
             
-            const hasReassignmentPopup = actions.includes('reassignment_popup');
+            const hasPerm = actions.includes('duplicate_lead') || actions.includes('reassignment_popup');
             console.log('🔍 Nested leads.create_lead permission check:', {
               page: createLeadPermission.page,
               actions: actions,
-              hasReassignmentPopup: hasReassignmentPopup
+              hasPerm: hasPerm
             });
             
-            if (hasReassignmentPopup) {
-              console.log('✅ User has REASSIGNMENT_POPUP permission (nested format)');
+            if (hasPerm) {
+              console.log('✅ User has DUPLICATE_LEAD permission (nested format)');
               return true;
             }
           }
           
-          // Check for general leads permission with "reassignment_popup" action (backward compatibility)
+          // Check for general leads permission with "duplicate_lead" action (backward compatibility)
           const leadsPermission = user.role.permissions.find(p => p.page === 'leads');
           if (leadsPermission && leadsPermission.actions) {
             const actions = Array.isArray(leadsPermission.actions) ? 
               leadsPermission.actions : [leadsPermission.actions];
             
-            const hasReassignmentPopup = actions.includes('reassignment_popup');
+            const hasPerm = actions.includes('duplicate_lead') || actions.includes('reassignment_popup');
             console.log('🔍 General leads permission check:', {
               leadsActions: actions,
-              hasReassignmentPopup: hasReassignmentPopup
+              hasPerm: hasPerm
             });
             
-            if (hasReassignmentPopup) {
-              console.log('✅ User has REASSIGNMENT_POPUP permission (unified format)');
+            if (hasPerm) {
+              console.log('✅ User has DUPLICATE_LEAD permission (unified format)');
               return true;
             }
           }
@@ -3584,18 +3596,32 @@ const checkUserHasReassignmentPopupPermission = () => {
           return true;
         }
         
-        // Check for reassignment_popup in leads permissions
+        // Check leads permissions (array format)
         if (permissions.leads && Array.isArray(permissions.leads)) {
-          if (permissions.leads.includes('reassignment_popup')) {
-            console.log('✅ User has REASSIGNMENT_POPUP in leads array');
+          if (permissions.leads.includes('duplicate_lead') || permissions.leads.includes('reassignment_popup')) {
+            console.log('✅ User has DUPLICATE_LEAD in leads array');
+            return true;
+          }
+        }
+        // Check leads permissions (object format - stored by Login.jsx)
+        if (permissions.leads && typeof permissions.leads === 'object' && !Array.isArray(permissions.leads)) {
+          if (permissions.leads.duplicate_lead === true || permissions.leads.reassignment_popup === true) {
+            console.log('✅ User has DUPLICATE_LEAD in leads object');
             return true;
           }
         }
         
-        // Check for nested format
+        // Check nested leads.create_lead (array format)
         if (permissions['leads.create_lead'] && Array.isArray(permissions['leads.create_lead'])) {
-          if (permissions['leads.create_lead'].includes('reassignment_popup')) {
-            console.log('✅ User has REASSIGNMENT_POPUP in leads.create_lead array');
+          if (permissions['leads.create_lead'].includes('duplicate_lead') || permissions['leads.create_lead'].includes('reassignment_popup')) {
+            console.log('✅ User has DUPLICATE_LEAD in leads.create_lead array');
+            return true;
+          }
+        }
+        // Check nested leads.create_lead (object format - stored by Login.jsx)
+        if (permissions['leads.create_lead'] && typeof permissions['leads.create_lead'] === 'object' && !Array.isArray(permissions['leads.create_lead'])) {
+          if (permissions['leads.create_lead'].duplicate_lead === true || permissions['leads.create_lead'].reassignment_popup === true) {
+            console.log('✅ User has DUPLICATE_LEAD in leads.create_lead object');
             return true;
           }
         }
@@ -5226,7 +5252,7 @@ function CreateLead() {
                 const actualDR = existingLeadData?.days_remaining || 0;
                 const isLocked = actualDR > 0;
                 const mgr = existingLeadData?.is_manager_permission_required;
-                const canRequest = hasReassignmentPopupPermission && !isLocked;
+                const canRequest = !isLocked;
                 const fmtDate = (d) => d ? new Date(d).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'Asia/Kolkata' }) : '—';
                 const fmtAge = (d) => { if (!d) return '—'; const days = Math.floor((Date.now() - new Date(d).getTime()) / 86400000); return days === 0 ? 'Today' : `${days}d ago`; };
                 const refD = existingLeadData?.file_sent_to_login && existingLeadData?.login_department_sent_date ? new Date(existingLeadData.login_department_sent_date) : new Date(existingLeadData?.created_date || Date.now());
@@ -5397,11 +5423,6 @@ function CreateLead() {
                                                 {actualDR} day{actualDR !== 1 ? 's' : ''} remaining
                                               </span>
                                             </div>
-                                          ) : !hasReassignmentPopupPermission ? (
-                                            <button disabled className="w-full bg-red-500/10 text-red-400 border border-red-500/20 cursor-not-allowed font-semibold px-4 py-2 rounded-lg flex items-center justify-center gap-2 text-xs">
-                                              <svg className="w-4 h-4 shrink-0" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M10 1.944A11.954 11.954 0 012.166 5C2.056 5.649 2 6.319 2 7c0 5.225 3.34 9.67 8 11.317C14.66 16.67 18 12.225 18 7c0-.682-.057-1.35-.166-2.001A11.954 11.954 0 0110 1.944zM11 14a1 1 0 11-2 0 1 1 0 012 0zm0-7a1 1 0 10-2 0v3a1 1 0 102 0V7z" clipRule="evenodd" /></svg>
-                                              No Permission
-                                            </button>
                                           ) : mgr ? (
                                             <button
                                               onClick={() => handleOpenReviewModal(existingLeadData)}
@@ -5997,7 +6018,11 @@ function CreateLead() {
                           type="button"
                           onClick={() => {
                             const location = pincodeCity || '';
-                            if (location.trim()) window.open(`https://www.google.com/maps/search/${encodeURIComponent(location)}`, '_blank');
+                            if (location.trim()) {
+                              window.open(`https://www.google.com/maps/search/${encodeURIComponent(location)}`, '_blank');
+                            } else {
+                              window.open('https://www.google.com/maps', '_blank');
+                            }
                           }}
                           className="absolute right-2 top-1/2 transform -translate-y-1/2 p-1.5 bg-[#00bcd4] text-white rounded-md hover:bg-[#0097a7] transition-colors"
                           title="Search on Google Maps"

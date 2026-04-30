@@ -127,12 +127,14 @@ const LoginFormSection = forwardRef(function LoginFormSection({
   const [dobTempDay, setDobTempDay] = useState('');
   const [dobTempMonth, setDobTempMonth] = useState('');
   const [dobTempYear, setDobTempYear] = useState('');
+  const [dobDateError, setDobDateError] = useState('');
   const dobPickerRef = useRef(null);
 
   // Custom Year+Month picker states
   const [activeYearField, setActiveYearField] = useState(null);
   const [yearTempYears, setYearTempYears] = useState('');
   const [yearTempMonths, setYearTempMonths] = useState('');
+  const [yearPickerError, setYearPickerError] = useState('');
   const yearPickerRef = useRef(null);
 
   // Sync fields with data prop changes
@@ -675,15 +677,24 @@ const LoginFormSection = forwardRef(function LoginFormSection({
   // ── Custom picker helpers ──────────────────────────────────────────────────
   const parseDateValue = (val) => {
     if (!val) return { day: '', month: '', year: '' };
+    // "DD Mon YYYY" format e.g. "15 Sep 1990"
+    const dmy_named = String(val).match(/^(\d{1,2})\s+([A-Za-z]{3})\s+(\d{4})$/);
+    if (dmy_named) {
+      const MONTH_ABBR = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+      const mIdx = MONTH_ABBR.findIndex(n => n.toLowerCase() === dmy_named[2].toLowerCase());
+      return { day: dmy_named[1], month: mIdx >= 0 ? String(mIdx + 1).padStart(2,'0') : '', year: dmy_named[3] };
+    }
     const dmy = String(val).match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
     if (dmy) return { day: dmy[1], month: dmy[2], year: dmy[3] };
     const ymd = String(val).match(/^(\d{4})-(\d{2})-(\d{2})$/);
     if (ymd) return { day: ymd[3], month: ymd[2], year: ymd[1] };
     return { day: '', month: '', year: '' };
   };
+  const MONTH_NAMES = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
   const formatDateDisplay = (d, m, y) => {
     if (!d && !m && !y) return '';
-    return `${d ? String(d).padStart(2,'0') : 'DD'}/${m ? String(m).padStart(2,'0') : 'MM'}/${y || 'YYYY'}`;
+    const monthName = m ? (MONTH_NAMES[parseInt(m, 10) - 1] || String(m).padStart(2,'0')) : 'MM';
+    return `${d ? String(d).padStart(2,'0') : 'DD'} ${monthName} ${y || 'YYYY'}`;
   };
   const parseYearsMonths = (val) => {
     if (!val) return { years: '', months: '' };
@@ -711,9 +722,15 @@ const LoginFormSection = forwardRef(function LoginFormSection({
     if (!canEdit) return;
     const p = parseDateValue(fields[fieldName]);
     setDobTempDay(p.day); setDobTempMonth(p.month); setDobTempYear(p.year);
+    setDobDateError('');
     setActiveDobField(fieldName); setActiveYearField(null);
   };
   const applyDob = () => {
+    if (!dobTempDay || !dobTempMonth || !dobTempYear) {
+      setDobDateError('You are required to fill all three fields.');
+      return;
+    }
+    setDobDateError('');
     const formatted = formatDateDisplay(dobTempDay, dobTempMonth, dobTempYear);
     // Auto-calculate currentWorkExperience when DOJ Current Company is set
     if (activeDobField === 'dojCurrentCompany' && dobTempDay && dobTempMonth && dobTempYear) {
@@ -740,9 +757,15 @@ const LoginFormSection = forwardRef(function LoginFormSection({
     if (!canEdit) return;
     const p = parseYearsMonths(fields[fieldName]);
     setYearTempYears(p.years); setYearTempMonths(p.months);
+    setYearPickerError('');
     setActiveYearField(fieldName); setActiveDobField(null);
   };
   const saveYearMonth = () => {
+    if (yearTempYears === '' || yearTempMonths === '') {
+      setYearPickerError('Please fill both Years and Months fields.');
+      return;
+    }
+    setYearPickerError('');
     const formatted = formatYearsMonths(yearTempYears, yearTempMonths);
     handleChange(activeYearField, formatted);
     handleBlur(activeYearField, formatted);
@@ -771,7 +794,7 @@ const LoginFormSection = forwardRef(function LoginFormSection({
             <div className="grid grid-cols-3 gap-2 mb-3">
               <div>
                 <label className="text-[10px] font-bold text-gray-500 uppercase block mb-1">Day</label>
-                <input type="number" min="1" max="31" value={dobTempDay}
+                <input type="text" inputMode="numeric" value={dobTempDay}
                   onChange={e => setDobTempDay(e.target.value.replace(/[^0-9]/g,'').slice(0,2))}
                   className="w-full border border-gray-300 rounded px-2 py-1.5 text-black font-bold text-sm outline-none focus:border-cyan-400" placeholder="DD" />
               </div>
@@ -787,11 +810,14 @@ const LoginFormSection = forwardRef(function LoginFormSection({
               </div>
               <div>
                 <label className="text-[10px] font-bold text-gray-500 uppercase block mb-1">Year</label>
-                <input type="number" min="1900" max="2030" value={dobTempYear}
-                  onChange={e => setDobTempYear(e.target.value.slice(0,4))}
+                <input type="text" inputMode="numeric" value={dobTempYear}
+                  onChange={e => setDobTempYear(e.target.value.replace(/[^0-9]/g,'').slice(0,4))}
                   className="w-full border border-gray-300 rounded px-2 py-1.5 text-black font-bold text-sm outline-none focus:border-cyan-400" placeholder="YYYY" />
               </div>
             </div>
+            {dobDateError && (
+              <p className="text-red-500 text-[11px] font-semibold mb-2">{dobDateError}</p>
+            )}
             <div className="flex gap-2">
               <button type="button" onClick={applyDob} className="flex-1 bg-cyan-500 text-white text-xs font-bold py-1.5 rounded hover:bg-cyan-600 transition-colors">Apply</button>
               <button type="button" onClick={() => setActiveDobField(null)} className="flex-1 bg-gray-100 text-gray-700 text-xs font-bold py-1.5 rounded hover:bg-gray-200 transition-colors">Cancel</button>
@@ -819,27 +845,26 @@ const LoginFormSection = forwardRef(function LoginFormSection({
             <div className="grid grid-cols-2 gap-3 mb-3">
               <div>
                 <label className="text-[10px] font-bold text-gray-500 uppercase block mb-1">Years</label>
-                <input type="number" min="0" max="50" value={yearTempYears}
+                <input type="text" inputMode="numeric" value={yearTempYears}
                   onChange={e => {
                     const y = e.target.value.replace(/[^0-9]/g,'');
                     setYearTempYears(y);
-                    const fmt = formatYearsMonths(y, yearTempMonths);
-                    if (fmt) handleChange(fieldName, fmt);
                   }}
                   className="w-full border border-gray-300 rounded px-2 py-1.5 text-black font-bold text-sm outline-none focus:border-cyan-400" placeholder="0" />
               </div>
               <div>
                 <label className="text-[10px] font-bold text-gray-500 uppercase block mb-1">Months</label>
-                <input type="number" min="0" max="11" value={yearTempMonths}
+                <input type="text" inputMode="numeric" value={yearTempMonths}
                   onChange={e => {
                     const m = e.target.value.replace(/[^0-9]/g,'');
                     setYearTempMonths(m);
-                    const fmt = formatYearsMonths(yearTempYears, m);
-                    if (fmt) handleChange(fieldName, fmt);
                   }}
                   className="w-full border border-gray-300 rounded px-2 py-1.5 text-black font-bold text-sm outline-none focus:border-cyan-400" placeholder="0" />
               </div>
             </div>
+            {yearPickerError && (
+              <p className="text-red-500 text-[11px] font-semibold mb-2">{yearPickerError}</p>
+            )}
             <button type="button" onClick={saveYearMonth}
               className="w-full bg-cyan-500 text-white text-xs font-bold py-1.5 rounded hover:bg-cyan-600 transition-colors">
               Done

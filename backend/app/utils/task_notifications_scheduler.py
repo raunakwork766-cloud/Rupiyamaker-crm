@@ -139,14 +139,14 @@ class TaskNotificationsScheduler:
                         continue
                     user_id = str(user.get("_id") or "")
                     
-                    # Get today's tasks for this user
-                    today_tasks = self.tasks_db.get_tasks_due_on_date(user_id, today)
-                    
+                    # Get today's tasks for this user (async DB call — must be awaited)
+                    today_tasks = await self.tasks_db.get_tasks_due_on_date(user_id, today)
+
                     if today_tasks:
                         logger.info(f"Found {len(today_tasks)} tasks due today for user {user_id}")
-                        
-                        # Create daily summary notification
-                        self.notifications_db.create_daily_tasks_summary_notification(user_id, today_tasks)
+
+                        # Create daily summary notification (async — must be awaited)
+                        await self.notifications_db.create_daily_tasks_summary_notification(user_id, today_tasks)
                         logger.info(f"Created daily summary notification for user {user_id}")
                 
                 # Update the last summary date

@@ -536,8 +536,7 @@ class LeadsDB:
         if current_lead.get("dynamic_fields"):
             logger.info(f"📋 CURRENT dynamic_fields in DB: {list(current_lead['dynamic_fields'].keys())}")
             if "obligation_data" in current_lead["dynamic_fields"]:
-                obl_data = current_lead['dynamic_fields']['obligation_data']
-                logger.info(f"✅ obligation_data EXISTS in current lead ({len(obl_data) if obl_data is not None else 'None'} fields)")
+                logger.info(f"✅ obligation_data EXISTS in current lead ({len(current_lead['dynamic_fields']['obligation_data'])} fields)")
         
         # Add updated timestamp
         update_data["updated_at"] = get_ist_now()
@@ -578,8 +577,7 @@ class LeadsDB:
             
             # CRITICAL: Verify obligation_data is preserved
             if "obligation_data" in update_data["dynamic_fields"]:
-                _obl = update_data['dynamic_fields']['obligation_data']
-                logger.info(f"✅ obligation_data IS in update ({len(_obl) if _obl is not None else 'None'} fields)")
+                logger.info(f"✅ obligation_data IS in update ({len(update_data['dynamic_fields']['obligation_data'])} fields)")
             elif "obligation_data" in current_lead.get("dynamic_fields", {}):
                 # Routes layer should have merged this, but double-check as safety net
                 logger.warning(f"⚠️ obligation_data NOT in update but EXISTS in DB - RESTORING with DEEP COPY")
@@ -596,8 +594,7 @@ class LeadsDB:
         
         logger.info(f"✅ FINAL dynamic_fields keys going to DB: {list(update_data['dynamic_fields'].keys())}")
         if "obligation_data" in update_data["dynamic_fields"]:
-            _obl_final = update_data['dynamic_fields']['obligation_data']
-            logger.info(f"✅✅ obligation_data CONFIRMED in final update ({len(_obl_final) if _obl_final is not None else 'None'} fields)")
+            logger.info(f"✅✅ obligation_data CONFIRMED in final update ({len(update_data['dynamic_fields']['obligation_data'])} fields)")
         
         # Special handling for login form fields
         login_form_fields = [

@@ -1271,7 +1271,7 @@ const TransferRequestsPage = ({ user, navPush, navBack, trpNavStateRef }) => {
                 lead={viewFullLead}
                 user={null}
                 readOnly={true}
-                allowedTabs={['details']}
+                allowedTabs={['details', 'obligations']}
                 saveContext="reassignment"
                 onBack={() => { navBack?.(); setViewFullLead(null); setViewFullLeadLoading(false); }}
               />

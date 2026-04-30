@@ -60,11 +60,31 @@ export const saveLeadDataToAPIDebounced = debounce(async (leadId, userId, endpoi
   }
 }, 1000); // 1000ms debounce
 
+// Helper: a payload is "meaningfully empty" if it has no keys, or every value is null/''/[]/{}
+const isMeaningfullyEmpty = (obj) => {
+  if (!obj || typeof obj !== 'object') return true;
+  const keys = Object.keys(obj);
+  if (keys.length === 0) return true;
+  return keys.every(k => {
+    const v = obj[k];
+    if (v == null || v === '') return true;
+    if (Array.isArray(v)) return v.length === 0;
+    if (typeof v === 'object') return Object.keys(v).length === 0;
+    return false;
+  });
+};
+
 // Update lead data in main endpoint
 export const updateLeadDataDebounced = debounce(async (leadId, userId, data, token) => {
   if (!leadId) {
     console.warn('No lead ID available, cannot update lead');
     return;
+  }
+
+  // 🛡️ Guard: skip empty payloads so we don't spam the backend with no-op PUTs
+  if (isMeaningfullyEmpty(data)) {
+    console.debug('updateLeadDataDebounced: empty payload, skipping');
+    return { skipped: true, reason: 'empty_payload' };
   }
 
   try {
