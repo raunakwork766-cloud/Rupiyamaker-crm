@@ -353,6 +353,14 @@ except Exception as e:
     import traceback
     traceback.print_exc()
 
+try:
+    from app.routes import speed_dial as speed_dial_route
+    print("✓ Speed Dial router imported successfully")
+except Exception as e:
+    print(f"✗ Error importing Speed Dial router: {e}")
+    import traceback
+    traceback.print_exc()
+
 # Include routers
 app.include_router(users.router)
 app.include_router(roles.router)
@@ -424,6 +432,14 @@ except Exception as e:
     print(f"✗ Error registering FAQ router: {e}")
     import traceback
     traceback.print_exc()
+    import traceback
+    traceback.print_exc()
+
+try:
+    app.include_router(speed_dial_route.router)
+    print("✓ Speed Dial router registered successfully")
+except Exception as e:
+    print(f"✗ Error registering Speed Dial router: {e}")
     import traceback
     traceback.print_exc()
 

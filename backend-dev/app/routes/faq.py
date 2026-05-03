@@ -85,8 +85,10 @@ async def _require_super_admin(
     # Super admin roles typically have wildcard ("*") in global permissions
     perms = await PermissionManager.get_user_permissions(user_id, users_db, roles_db)
     is_super = any(
-        (p.get("module") in ("global", "Global") and "*" in p.get("actions", []))
-        or p.get("module") == "*"
+        p.get("page") == "*" and (
+            p.get("actions") == "*" or
+            (isinstance(p.get("actions"), list) and "*" in p.get("actions", []))
+        )
         for p in perms
     )
     if not is_super:

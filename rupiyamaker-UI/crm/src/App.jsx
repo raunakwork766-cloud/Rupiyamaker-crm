@@ -21,6 +21,7 @@ import 'react-toastify/dist/ReactToastify.css'
 import sessionMonitor, { setSessionLogoutCallback } from './utils/sessionMonitor'
 import { clearProfilePhotoFromStorage } from './utils/profilePhotoUtils'
 import { API_BASE_URL } from './config/api'
+import SpeedDialPage from './components/SpeedDialPage'
 
 /**
  * computeStartPath — Priority-based redirect: finds the FIRST page a user
@@ -1164,6 +1165,16 @@ function App() {
           
           {/* Public route for app viewer - no authentication required */}
           <Route path="/public/app/:shareToken" element={<PublicAppViewer />} />
+
+          {/* Speed Dial — standalone full page (no Sidebar/Navbar), auth-gated inside component */}
+          <Route
+            path="/speed-dial"
+            element={
+              <AppAuthGuard loading={loading} isAuthenticated={isAuthenticated} onLogin={handleLogin}>
+                <SpeedDialPage />
+              </AppAuthGuard>
+            }
+          />
 
           {/* Protected routes (requires authentication) */}
           <Route path="/*" element={
