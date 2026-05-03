@@ -888,7 +888,9 @@ export default function AboutSection({ lead, onSave, canEdit = true }) {
   const fetchLoanTypes = async () => {
     try {
       const userId = localStorage.getItem('userId');
-      const response = await fetch(`${API_BASE_URL}/loan-types?user_id=${userId}`, {
+      // NOTE: trailing slash required — FastAPI redirects /loan-types → /loan-types/
+      // and the redirect drops the /api prefix when behind reverse proxy
+      const response = await fetch(`${API_BASE_URL}/loan-types/?user_id=${userId}`, {
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('token')}`,
           'Content-Type': 'application/json'

@@ -959,6 +959,7 @@ async def get_login_lead_obligations(
 
     dynamic_fields = login_lead.get("dynamic_fields") or {}
     dynamic_details = login_lead.get("dynamic_details") or {}
+    process_data = login_lead.get("process_data") or {}
 
     # ── Canonical location (new saves go here) ──
     canonical = dynamic_fields.get("obligation_data") or {}
@@ -985,7 +986,9 @@ async def get_login_lead_obligations(
                             fin_df.get("cibil_score"), fin_dd.get("cibil_score"),
                             dynamic_fields.get("cibil_score"), login_lead.get("cibil_score"))
 
-    loan_required   = first(canonical.get("loanRequired"),
+    loan_required   = first(# process_data is canonical — always takes highest priority
+                            process_data.get("loan_amount_required"),
+                            canonical.get("loanRequired"),
                             fin_dd.get("loan_required"), fin_dd.get("loan_amount"),
                             fin_df.get("loan_required"), fin_df.get("loan_amount"),
                             fin_df.get("required_loan"), fin_df.get("loan_amt"),
@@ -1038,7 +1041,20 @@ async def get_login_lead_obligations(
         # Preserve for eligibility section
         "check_eligibility":  dynamic_fields.get("check_eligibility") or {},
         "eligibility_details": dynamic_fields.get("eligibility_details") or {},
+        # Cross-section pass-through so the frontend's fallback chain works
+        "process_data": process_data,
     }
+
+    # process_data.required_tenure is canonical — always override check_eligibility.tenure_months
+    try:
+        ce = result["check_eligibility"] if isinstance(result["check_eligibility"], dict) else {}
+        if process_data.get("required_tenure"):
+            ce["tenure_months"] = process_data.get("required_tenure")
+        elif not ce.get("tenure_months"):
+            pass  # leave empty
+        result["check_eligibility"] = ce
+    except Exception:
+        pass
 
     logger.info(f"✅ GET obligations {login_lead_id}: salary={salary}, cibil={cibil_score}, "
                 f"loan={loan_required}, obligations={len(obligations_list)}")
@@ -1601,6 +1617,73 @@ async def download_login_lead_attachment(
             _logging.error(f"PDF decrypt error for login attachment {attachment_id}: {_e}")
 
     return FileResponse(path=abs_file_path, filename=_fname, media_type="application/octet-stream")
+
+
+@router.get("/login-leads/{login_lead_id}/attachments/{attachment_id}/view")
+async def view_login_lead_attachment(
+    login_lead_id: str,
+    attachment_id: str,
+    user_id: str = Query(..., description="ID of the user making the request"),
+    login_leads_db=Depends(get_login_leads_db),
+    users_db: UsersDB = Depends(get_users_db),
+    roles_db: RolesDB = Depends(get_roles_db),
+):
+    """View/preview an attachment file from a login lead (inline display)"""
+    import os, io, mimetypes, logging as _logging
+
+    lead = await login_leads_db.get_login_lead(login_lead_id)
+    if not lead:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Login lead not found")
+
+    await check_permission(user_id, ["leads", "login"], "show", users_db, roles_db)
+
+    document = await login_leads_db.get_document(attachment_id)
+    if not document:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Attachment not found")
+
+    abs_file_path = document.get("absolute_file_path")
+    if not abs_file_path:
+        file_path = document.get("file_path", "")
+        abs_file_path = file_path if os.path.isabs(file_path) else os.path.join(os.getcwd(), file_path)
+
+    if not os.path.exists(abs_file_path):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="File not found on disk")
+
+    _fname = document.get("filename", "attachment")
+    _mtype = document.get("file_type") or mimetypes.guess_type(_fname)[0] or "application/octet-stream"
+
+    # Auto-decrypt password-protected PDFs before serving
+    stored_password = document.get("password")
+    _is_pdf = _fname.lower().endswith(".pdf") or abs_file_path.lower().endswith(".pdf")
+    if stored_password and _is_pdf:
+        try:
+            from pypdf import PdfReader, PdfWriter
+            with open(abs_file_path, "rb") as f:
+                pdf_bytes = f.read()
+            reader = PdfReader(io.BytesIO(pdf_bytes))
+            if reader.is_encrypted:
+                decrypt_result = reader.decrypt(stored_password)
+                if decrypt_result.value > 0:
+                    writer = PdfWriter()
+                    for page in reader.pages:
+                        writer.add_page(page)
+                    output = io.BytesIO()
+                    writer.write(output)
+                    output.seek(0)
+                    return StreamingResponse(
+                        output,
+                        media_type="application/pdf",
+                        headers={"Content-Disposition": f'inline; filename="{_fname}"'}
+                    )
+        except Exception as _e:
+            _logging.error(f"PDF decrypt error for login attachment {attachment_id}: {_e}")
+
+    return FileResponse(
+        path=abs_file_path,
+        filename=_fname,
+        media_type=_mtype,
+        headers={"Content-Disposition": f'inline; filename="{_fname}"'}
+    )
 
 
 @router.get("/login-leads/{login_lead_id}/extra-document-fields", response_model=List[Dict[str, Any]])
@@ -2168,14 +2251,36 @@ async def get_login_department_leads(
         from app.database.Departments import DepartmentsDB
         departments_db = DepartmentsDB()
         
+        # ⚡ BATCH PRE-FETCH: collect all unique user_ids and department_ids up front
+        # to avoid N+1 DB roundtrips inside the per-lead loop.
+        _user_ids_set = set()
+        _dept_ids_set = set()
+        for _lead in leads:
+            _cb = _lead.get("created_by")
+            if _cb:
+                _user_ids_set.add(str(_cb))
+            _at = _lead.get("assigned_to") or []
+            if isinstance(_at, str):
+                _at = [_at]
+            for _aid in _at:
+                if _aid:
+                    _user_ids_set.add(str(_aid))
+            _dept = _lead.get("department_id")
+            if _dept:
+                _dept_ids_set.add(str(_dept))
+        
+        users_map = await users_db.get_users_batch(list(_user_ids_set)) if _user_ids_set else {}
+        departments_map = await departments_db.get_departments_batch(list(_dept_ids_set)) if _dept_ids_set else {}
+        
         # ⚡ STEP 7: Fast result processing with minimal data transformation
         formatted_leads = []
         for lead in leads:
             lead_dict = convert_object_id(lead)
             
-            # Get creator details efficiently
-            if lead_dict.get("created_by"):
-                creator = await users_db.get_user(lead_dict["created_by"])
+            # Get creator details from batch map
+            cb_id = lead_dict.get("created_by")
+            if cb_id:
+                creator = users_map.get(str(cb_id))
                 if creator:
                     lead_dict["creator_name"] = f"{creator.get('first_name', '')} {creator.get('last_name', '')}".strip()
             
@@ -2184,10 +2289,10 @@ async def get_login_department_leads(
             if not lead_dict.get("login_date"):
                 lead_dict["login_date"] = lead_dict.get("login_created_at") or lead_dict.get("login_department_sent_date") or lead_dict.get("created_at", "")
             
-            # Add team/department name efficiently
+            # Add team/department name from batch map
             department_id = lead_dict.get("department_id")
             if department_id:
-                department = await departments_db.get_department(department_id)
+                department = departments_map.get(str(department_id))
                 lead_dict["team_name"] = department.get("name", "") if department else "Unknown"
             else:
                 lead_dict["team_name"] = "Not Assigned"
@@ -2226,14 +2331,14 @@ async def get_login_department_leads(
             # Add operations info
             lead_dict["amount_approved"] = lead_dict.get("operations_amount_approved", "")
             
-            # Get assigned users details efficiently
+            # Get assigned users details from batch map
             assigned_users = []
             assigned_to = lead_dict.get("assigned_to", [])
             if isinstance(assigned_to, str):
                 assigned_to = [assigned_to]
             
             for assigned_id in assigned_to:
-                user = await users_db.get_user(assigned_id)
+                user = users_map.get(str(assigned_id))
                 if user:
                     assigned_users.append({
                         "user_id": assigned_id,

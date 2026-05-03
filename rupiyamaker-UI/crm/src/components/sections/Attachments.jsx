@@ -1253,7 +1253,7 @@ export default function Attachments({ leadId, userId }) {
         }
         
         // Reload uploaded documents
-        loadUploadedDocuments();
+        await loadUploadedDocuments();
         return { success: true };
       } else {
         const errData = await response.json();
@@ -1312,7 +1312,7 @@ export default function Attachments({ leadId, userId }) {
       if (response.ok) {
         showNotification(`Document "${doc.filename || doc.file_name}" deleted successfully!`, 'success');
         // Reload uploaded documents to reflect the deletion
-        loadUploadedDocuments();
+        await loadUploadedDocuments();
       } else {
         const error = await response.json();
         console.error('Delete error:', error);

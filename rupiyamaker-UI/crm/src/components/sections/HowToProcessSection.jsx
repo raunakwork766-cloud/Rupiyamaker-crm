@@ -42,6 +42,11 @@ export default function HowToProcessSection({ process, onSave, lead, canEdit = t
   // Focus state for required tenure field
   const [isTenureFocused, setIsTenureFocused] = useState(false);
 
+  // Suppress sync dispatch flag (used when applying remote sync to avoid loops)
+  const suppressLoanSyncRef = useRef(false);
+  // Ref to latest saveToAPI (stable for event listeners)
+  const saveToAPIRef = useRef(null);
+
   // Tenure mode: 'months' or 'years'
   const [tenureMode, setTenureMode] = useState('months');
   // Raw years input value when in years mode
@@ -193,20 +198,40 @@ export default function HowToProcessSection({ process, onSave, lead, canEdit = t
     
     // NEW: Read from process_data first (top-level field), fallback to dynamic_fields.process
     const currentProcess = process || lead?.process_data || lead?.dynamic_fields?.process || {};
-    const tenure = currentProcess.required_tenure || lead?.process_data?.required_tenure || lead?.dynamic_fields?.process?.required_tenure;
+    // Cross-section fallback: if process_data tenure/loan amount not yet set, read from obligation_data
+    const obligationData = lead?.dynamic_fields?.obligation_data
+      || lead?.dynamic_fields?.check_eligibility
+      || lead?.dynamic_details?.check_eligibility
+      || {};
+    // process_data is the canonical source for tenure and loan amount — always read it first
+    const tenure = lead?.process_data?.required_tenure
+      || currentProcess.required_tenure
+      || lead?.dynamic_fields?.process?.required_tenure
+      || obligationData?.tenure_months
+      || obligationData?.check_eligibility?.tenure_months
+      || lead?.dynamic_fields?.check_eligibility?.tenure_months
+      || lead?.dynamic_details?.check_eligibility?.tenure_months;
+    const loanAmountRaw = lead?.process_data?.loan_amount_required
+      || currentProcess.loan_amount_required
+      || lead?.dynamic_fields?.process?.loan_amount_required
+      || obligationData?.loanRequired
+      || obligationData?.loan_required
+      || lead?.dynamic_fields?.financial_details?.loan_required
+      || lead?.dynamic_details?.financial_details?.loan_required;
     
     console.log(`📊 Loading from process_data (NEW) or dynamic_fields.process (fallback)`);
     console.log(`📊 currentProcess:`, currentProcess);
+    console.log(`📊 cross-section fallback tenure:`, tenure, 'loanAmountRaw:', loanAmountRaw);
     
     setFields({
       processingBank: currentProcess.processing_bank || lead?.process_data?.processing_bank || lead?.dynamic_fields?.process?.processing_bank || "",
-      loanAmountRequired: currentProcess.loan_amount_required ? formatINR(currentProcess.loan_amount_required) : (lead?.process_data?.loan_amount_required ? formatINR(lead.process_data.loan_amount_required) : (lead?.dynamic_fields?.process?.loan_amount_required ? formatINR(lead.dynamic_fields.process.loan_amount_required) : "")),
+      loanAmountRequired: loanAmountRaw ? formatINR(String(loanAmountRaw).replace(/[^\d.]/g, '')) : "",
       purposeOfLoan: currentProcess.purpose_of_loan || lead?.process_data?.purpose_of_loan || lead?.dynamic_fields?.process?.purpose_of_loan || "",
       howToProcess: (() => { const v = currentProcess.how_to_process || lead?.process_data?.how_to_process || lead?.dynamic_fields?.process?.how_to_process || ""; return (v === 'None' || v === 'none') ? '' : v; })(),
       loanType: currentProcess.loan_type || lead?.process_data?.loan_type || lead?.dynamic_fields?.process?.loan_type || "",
-      requiredTenure: tenure ? `${tenure} months` : "",
+      requiredTenure: tenure ? `${String(tenure).replace(/[^\d]/g,'')} months` : "",
       caseType: (() => { const v = currentProcess.case_type || lead?.process_data?.case_type || lead?.dynamic_fields?.process?.case_type || ""; return (v === 'Normal' || v === 'normal') ? '' : v; })(),
-      year: tenure ? formatYearFromTenure(tenure) : "",
+      year: tenure ? formatYearFromTenure(String(tenure).replace(/[^\d]/g,'')) : "",
     });
     
     // Set selected loan type from lead if available (match by id or name)
@@ -582,13 +607,39 @@ export default function HowToProcessSection({ process, onSave, lead, canEdit = t
       lead.process_data[processField] = processedValue;
       console.log(`✅ Updated lead.process_data in memory:`, lead.process_data);
       
-      // Call onSave callback if provided to notify parent component
+      // Call onSave callback to update parent selectedLead.process_data (merge)
       if (onSave && typeof onSave === 'function') {
-        onSave({ 
-          processField, 
-          processedValue,
-          process_data: lead.process_data  // Changed from dynamic_fields.process
-        });
+        onSave('process_data', { [processField]: processedValue });
+      }
+      
+      // Bidirectional sync: notify ObligationSection of loan amount / tenure changes
+      try {
+        if (!suppressLoanSyncRef.current && lead?._id) {
+          if (processField === 'loan_amount_required') {
+            // Mirror to in-memory obligation_data so the OBLIGATION tab (when next mounted)
+            // sees the latest value via its initial-load fallback chain.
+            try {
+              if (!lead.dynamic_fields) lead.dynamic_fields = {};
+              if (!lead.dynamic_fields.obligation_data) lead.dynamic_fields.obligation_data = {};
+              lead.dynamic_fields.obligation_data.loanRequired = processedValue;
+              lead.dynamic_fields.obligation_data.loan_required = processedValue;
+            } catch (_) {}
+            window.dispatchEvent(new CustomEvent('loan-field-sync', {
+              detail: { leadId: String(lead._id), source: 'process', field: 'loan_amount', value: processedValue || 0 }
+            }));
+          } else if (processField === 'required_tenure') {
+            try {
+              if (!lead.dynamic_fields) lead.dynamic_fields = {};
+              if (!lead.dynamic_fields.obligation_data) lead.dynamic_fields.obligation_data = {};
+              lead.dynamic_fields.obligation_data.tenure_months = processedValue;
+            } catch (_) {}
+            window.dispatchEvent(new CustomEvent('loan-field-sync', {
+              detail: { leadId: String(lead._id), source: 'process', field: 'tenure_months', value: processedValue || 0 }
+            }));
+          }
+        }
+      } catch (syncErr) {
+        console.warn('loan-field-sync dispatch failed:', syncErr);
       }
       
       return true;
@@ -598,6 +649,39 @@ export default function HowToProcessSection({ process, onSave, lead, canEdit = t
       return false;
     }
   };
+
+  // Keep ref to latest saveToAPI for use inside event listeners
+  saveToAPIRef.current = saveToAPI;
+
+  // Listen for loan field sync events from ObligationSection (bidirectional sync)
+  useEffect(() => {
+    const handler = async (ev) => {
+      try {
+        const { leadId, source, field, value } = ev.detail || {};
+        if (source !== 'obligation') return;
+        if (!lead?._id || String(lead._id) !== String(leadId)) return;
+        if (!canEdit) return;
+
+        suppressLoanSyncRef.current = true;
+        if (field === 'loan_amount') {
+          const num = Number(value) || 0;
+          const display = num ? formatINR(String(num)) : '';
+          setFields(prev => (prev.loanAmountRequired === display ? prev : { ...prev, loanAmountRequired: display }));
+          if (saveToAPIRef.current) await saveToAPIRef.current('loanAmountRequired', display);
+        } else if (field === 'tenure_months') {
+          const months = parseInt(value) || 0;
+          const display = months ? `${months} months` : '';
+          const yearDisplay = months ? formatYearFromTenure(months) : '';
+          setFields(prev => ({ ...prev, requiredTenure: display, year: yearDisplay }));
+          if (saveToAPIRef.current) await saveToAPIRef.current('requiredTenure', display);
+        }
+      } finally {
+        setTimeout(() => { suppressLoanSyncRef.current = false; }, 200);
+      }
+    };
+    window.addEventListener('loan-field-sync', handler);
+    return () => window.removeEventListener('loan-field-sync', handler);
+  }, [lead?._id, canEdit]);
 
   // Helper: get display value for years input (shows "2 years" when not focused)
   const getYearsDisplayValue = () => {

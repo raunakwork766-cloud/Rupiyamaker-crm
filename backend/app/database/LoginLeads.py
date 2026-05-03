@@ -227,7 +227,9 @@ class LoginLeadsDB:
                 }
             )
         
-        return result.modified_count > 0
+        # Treat as success if the document was matched, even if no fields changed
+        # (auto-save may resend identical data which yields modified_count=0)
+        return result.matched_count > 0
     
     async def delete_login_lead(self, login_lead_id: str, user_id: str) -> bool:
         """Delete a login lead"""

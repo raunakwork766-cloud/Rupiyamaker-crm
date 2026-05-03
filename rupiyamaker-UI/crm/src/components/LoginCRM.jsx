@@ -1000,7 +1000,8 @@ const LoginCRM = ({ user, selectedLoanType: initialLoanType, department = "login
     };
     
     // Function to update lead fields with debounced auto-save functionality
-    const handleSelectedLeadFieldChange = (field, value, skipSuccessMessage = false, saveDelay = 2000) => {
+    // skipBackendSave: when true, only update local state (use when caller already saved to API itself)
+    const handleSelectedLeadFieldChange = (field, value, skipSuccessMessage = false, saveDelay = 2000, skipBackendSave = false) => {
         if (!selectedLead) return;
         
         // Update local state immediately for responsive UI
@@ -1022,6 +1023,9 @@ const LoginCRM = ({ user, selectedLoanType: initialLoanType, department = "login
                 updated.dynamic_fields.applicant_form = value;
                 // Also set it at the root level for backward compatibility
                 updated.loginForm = value;
+            } else if (field === "process_data") {
+                // Merge process_data (value is a partial update object)
+                updated.process_data = { ...(prev.process_data || {}), ...value };
             } else {
                 // For other fields, set directly
                 updated[field] = value;
@@ -1051,11 +1055,21 @@ const LoginCRM = ({ user, selectedLoanType: initialLoanType, department = "login
                             applicant_form: value
                         },
                         loginForm: value
+                    }),
+                    ...(field === "process_data" && {
+                        process_data: { ...(l.process_data || {}), ...value }
                     })
                 } : l
             )
         );
         
+        // If caller already persisted the change (e.g. ObligationSection saves directly to its own
+        // endpoint), skip the parent debounced PUT to avoid duplicate saves and "Pending changes"
+        // flicker. We still update local state above so UI stays in sync.
+        if (skipBackendSave) {
+            return;
+        }
+
         // Mark as pending save
         setPendingSaves(prev => ({ ...prev, [field]: value }));
         
@@ -4819,13 +4833,15 @@ const LoginCRM = ({ user, selectedLoanType: initialLoanType, department = "login
               {
                 label: "How to Process",
                 content: <LazySection height="250px">
-                  <HowToProcessSection process={lead.process} onSave={(field, value) => handleSelectedLeadFieldChange(field, value, true, 1500)} lead={lead} canEdit={canEditLogin()} />
+                  <HowToProcessSection process={lead.process} onSave={(field, value) => handleSelectedLeadFieldChange(field, value, true, 0, true)} lead={lead} canEdit={canEditLogin()} />
 ```
                 </LazySection>
               },
               {
                 label: "Login Operations",
-                content: <OperationsSection lead={lead} onSave={(field, value) => handleSelectedLeadFieldChange(field, value, true, 1500)} canEdit={canEditLogin()} />
+                content: <LazySection height="300px">
+                  <OperationsSection lead={lead} onSave={(field, value) => handleSelectedLeadFieldChange(field, value, true, 1500)} canEdit={canEditLogin()} />
+                </LazySection>
               },
               {
                 label: "APPLICANT FORM",
@@ -4865,22 +4881,24 @@ const LoginCRM = ({ user, selectedLoanType: initialLoanType, department = "login
                         + Add Co-Applicant
                       </button>
                     </div>
-                    <LoginFormSection
-                      data={lead.dynamic_fields?.applicant_form || lead.loginForm || {}}
-                      onSave={updated => {
-                        // Use the enhanced field change handler with immediate save (delay=0) since 
-                        // LoginFormSection already handles onBlur properly
-                        handleSelectedLeadFieldChange("applicant_form", updated, true, 0);
-                      }}
-                      bankOptions={bankOptions}
-                      mobileNumber={lead.mobile_number}
-                      bankName={lead.salaryAccountBank || lead.bank_name}
-                      isReadOnlyMobile={true}
-                      leadId={lead._id}
-                      leadCustomerName={lead.first_name && lead.last_name ? `${lead.first_name} ${lead.last_name}` : lead.customerName}
-                      leadData={lead}
-                      canEdit={canEditLogin()}
-                    />
+                    <LazySection height="400px">
+                      <LoginFormSection
+                        data={lead.dynamic_fields?.applicant_form || lead.loginForm || {}}
+                        onSave={updated => {
+                          // Use the enhanced field change handler with immediate save (delay=0) since 
+                          // LoginFormSection already handles onBlur properly
+                          handleSelectedLeadFieldChange("applicant_form", updated, true, 0);
+                        }}
+                        bankOptions={bankOptions}
+                        mobileNumber={lead.mobile_number}
+                        bankName={lead.salaryAccountBank || lead.bank_name}
+                        isReadOnlyMobile={true}
+                        leadId={lead._id}
+                        leadCustomerName={lead.first_name && lead.last_name ? `${lead.first_name} ${lead.last_name}` : lead.customerName}
+                        leadData={lead}
+                        canEdit={canEditLogin()}
+                      />
+                    </LazySection>
                     {(lead.dynamic_fields?.co_applicant_form || lead.coApplicantForm) && (
                       <div className="mt-6 sm:mt-8 pt-4 sm:pt-6 border-t-2 border-cyan-400 w-full">
                         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 gap-2">
@@ -4900,22 +4918,24 @@ const LoginCRM = ({ user, selectedLoanType: initialLoanType, department = "login
                             Remove Co-Applicant
                           </button>
                         </div>
-                        <LoginFormSection
-                          data={lead.dynamic_fields?.co_applicant_form || lead.coApplicantForm || {}}
-                          onSave={updated => {
-                            // Use the enhanced field change handler with immediate save (delay=0) since 
-                            // LoginFormSection already handles onBlur properly
-                            handleSelectedLeadFieldChange("co_applicant_form", updated, true, 0);
-                          }}
-                          bankOptions={bankOptions}
-                          mobileNumber=""
-                          bankName=""
-                          isCoApplicant={true}
-                          leadId={lead._id}
-                          leadCustomerName={lead.first_name && lead.last_name ? `${lead.first_name} ${lead.last_name} - Co-Applicant` : `${lead.customerName || lead.customer_name || ''} - Co-Applicant`}
-                          leadData={lead}
-                          canEdit={canEditLogin()}
-                        />
+                        <LazySection height="400px">
+                          <LoginFormSection
+                            data={lead.dynamic_fields?.co_applicant_form || lead.coApplicantForm || {}}
+                            onSave={updated => {
+                              // Use the enhanced field change handler with immediate save (delay=0) since 
+                              // LoginFormSection already handles onBlur properly
+                              handleSelectedLeadFieldChange("co_applicant_form", updated, true, 0);
+                            }}
+                            bankOptions={bankOptions}
+                            mobileNumber=""
+                            bankName=""
+                            isCoApplicant={true}
+                            leadId={lead._id}
+                            leadCustomerName={lead.first_name && lead.last_name ? `${lead.first_name} ${lead.last_name} - Co-Applicant` : `${lead.customerName || lead.customer_name || ''} - Co-Applicant`}
+                            leadData={lead}
+                            canEdit={canEditLogin()}
+                          />
+                        </LazySection>
                       </div>
                     )}
                   </div>
@@ -4924,7 +4944,7 @@ const LoginCRM = ({ user, selectedLoanType: initialLoanType, department = "login
               {
                 label: "Important Questions",
                 content: (
-                  <ImportantQuestionsSection
+                  <LazySection height="300px"><ImportantQuestionsSection
                     leadData={lead} 
                     onUpdate={updated => {
                       // Use debounced save for important questions
@@ -4940,7 +4960,7 @@ const LoginCRM = ({ user, selectedLoanType: initialLoanType, department = "login
                       department: localStorage.getItem('userDepartment') || 'login'
                     }}
                     canEdit={canEditLogin()}
-                  />
+                  /></LazySection>
                 )
               },
             ]
@@ -4954,8 +4974,18 @@ const LoginCRM = ({ user, selectedLoanType: initialLoanType, department = "login
                     <ObligationSection
                       leadData={lead}
                       handleChangeFunc={(field, value) => {
-                        // Pass to the original handleFieldChange with skipSuccessMessage=true
-                        handleSelectedLeadFieldChange(field, value, true);
+                        // Persist via parent's debounced PUT to dynamic_fields.<field>
+                        // (this is the canonical save path for login lead obligation data —
+                        // the "Pending changes" badge has been removed from the UI so the
+                        // brief debounce window is no longer visible to the user).
+                        handleSelectedLeadFieldChange(field, value, true, 800);
+                      }}
+                      onProcessDataUpdate={(updates) => {
+                        // Called when ObligationSection persists a process_data field
+                        // (e.g. loan_amount_required or required_tenure).
+                        // Merge into parent selectedLead state so HowToProcessSection
+                        // sees the correct value when the tab is switched.
+                        handleSelectedLeadFieldChange('process_data', updates, true, 0, true);
                       }}
                       onDataUpdate={async () => {
                         // Immediately refetch the selected lead to show updated values
@@ -5039,94 +5069,11 @@ const LoginCRM = ({ user, selectedLoanType: initialLoanType, department = "login
                 ),
               },
             ],
-          },
-          {
-            label: "REASSIGNMENT HISTORY",
-            getContent: (lead) => [
-              {
-                content: (
-                  <div className="p-4">
-                    {reassignmentHistoryLoading ? (
-                      <div className="flex items-center justify-center py-12 gap-3">
-                        <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-cyan-400"></div>
-                        <span className="text-cyan-400 text-sm">Loading assignment history...</span>
-                      </div>
-                    ) : reassignmentHistory.length === 0 ? (
-                      <div className="flex flex-col items-center justify-center py-16 gap-3 text-gray-500">
-                        <svg className="w-12 h-12 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
-                        </svg>
-                        <p className="text-base font-medium">No assignment history found</p>
-                        <p className="text-xs text-gray-600">This lead has not been reassigned yet.</p>
-                      </div>
-                    ) : (
-                      <div className="space-y-3">
-                        <div className="flex items-center gap-2 mb-4">
-                          <span className="text-cyan-400 font-bold text-base">Assignment / Reassignment History</span>
-                          <span className="bg-cyan-400/20 text-cyan-300 text-xs font-bold px-2.5 py-1 rounded-full border border-cyan-400/40">{reassignmentHistory.length} record{reassignmentHistory.length !== 1 ? 's' : ''}</span>
-                        </div>
-                        {reassignmentHistory.map((entry, idx) => {
-                          const dateStr = entry.assigned_date
-                            ? new Date(entry.assigned_date).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short', timeZone: 'Asia/Kolkata' })
-                            : 'Unknown date';
-                          return (
-                            <div key={idx} className="relative bg-[#0c1828] border border-cyan-900/50 rounded-xl p-4 hover:border-cyan-500/50 transition-colors">
-                              {/* Timeline dot */}
-                              <div className="absolute -left-1.5 top-5 w-3 h-3 rounded-full bg-cyan-400 border-2 border-black hidden sm:block"></div>
-                              <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2">
-                                <div className="flex-1 min-w-0">
-                                  {/* Assigned By */}
-                                  <div className="flex items-center gap-2 mb-2">
-                                    <svg className="w-4 h-4 text-yellow-400 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
-                                      <path fillRule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clipRule="evenodd" />
-                                    </svg>
-                                    <span className="text-xs text-gray-400 uppercase tracking-wider">Assigned By</span>
-                                    <span className="text-white font-semibold text-sm">{entry.assigned_by_name || '—'}</span>
-                                  </div>
-                                  {/* Assigned To */}
-                                  <div className="flex items-start gap-2 mb-2">
-                                    <svg className="w-4 h-4 text-green-400 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
-                                      <path d="M13 6a3 3 0 11-6 0 3 3 0 016 0zM18 8a2 2 0 11-4 0 2 2 0 014 0zM14 15a4 4 0 00-8 0v3h8v-3zM6 8a2 2 0 11-4 0 2 2 0 014 0zM16 18v-3a5.972 5.972 0 00-.75-2.906A3.005 3.005 0 0119 15v3h-3zM4.75 12.094A5.973 5.973 0 004 15v3H1v-3a3 3 0 013.75-2.906z" />
-                                    </svg>
-                                    <span className="text-xs text-gray-400 uppercase tracking-wider mt-0.5">Assigned To</span>
-                                    <div className="flex flex-wrap gap-1.5">
-                                      {(entry.assigned_to_names || []).length > 0
-                                        ? entry.assigned_to_names.map((name, ni) => (
-                                            <span key={ni} className="bg-blue-500/20 text-blue-300 border border-blue-500/30 px-2 py-0.5 rounded-full text-xs font-medium">{name}</span>
-                                          ))
-                                        : <span className="text-gray-500 text-xs">—</span>
-                                      }
-                                    </div>
-                                  </div>
-                                  {/* Remark */}
-                                  {entry.remark && (
-                                    <div className="flex items-start gap-2 mt-2 bg-black/30 rounded-lg p-2">
-                                      <svg className="w-4 h-4 text-gray-400 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 8h10M7 12h4m1 8l-4-4H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-3l-4 4z" />
-                                      </svg>
-                                      <span className="text-gray-300 text-xs italic">{entry.remark}</span>
-                                    </div>
-                                  )}
-                                </div>
-                                {/* Date badge */}
-                                <div className="flex flex-col items-end gap-1 flex-shrink-0">
-                                  <span className="text-[10px] bg-cyan-900/40 text-cyan-300 border border-cyan-700/40 px-2 py-1 rounded-lg font-mono whitespace-nowrap">{dateStr}</span>
-                                  <span className="text-[10px] text-gray-600 capitalize">{(entry.assignment_type || 'login_department').replace(/_/g, ' ')}</span>
-                                </div>
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    )}
-                  </div>
-                ),
-              },
-            ],
           }
         ];
 
-        const activeTabSection = detailSections[activeTab];
+        const safeActiveTab = (activeTab >= 0 && activeTab < detailSections.length) ? activeTab : 0;
+        const activeTabSection = detailSections[safeActiveTab];
         const sectionData = activeTabSection.getContent(
             selectedLead,
             handleSelectedLeadFieldChange
@@ -5144,12 +5091,7 @@ const LoginCRM = ({ user, selectedLoanType: initialLoanType, department = "login
                                 <span className="text-yellow-400 text-sm font-medium">Saving...</span>
                             </div>
                         )}
-                        {Object.keys(pendingSaves).length > 0 && !isSaving && (
-                            <div className="flex items-center gap-2 px-3 py-1 bg-orange-600/20 rounded-full border border-orange-500/50">
-                                <div className="w-3 h-3 bg-orange-400 rounded-full animate-pulse"></div>
-                                <span className="text-orange-400 text-sm font-medium">Pending changes</span>
-                            </div>
-                        )}
+                        {/* "Pending changes" badge removed — autosave handles persistence transparently */}
                     </div>
                     <div className="ml-auto flex items-center gap-3">
                         {/* File received indicator - only show when file_sent_to_login is true */}

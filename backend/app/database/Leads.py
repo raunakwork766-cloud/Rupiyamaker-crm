@@ -536,7 +536,9 @@ class LeadsDB:
         if current_lead.get("dynamic_fields"):
             logger.info(f"📋 CURRENT dynamic_fields in DB: {list(current_lead['dynamic_fields'].keys())}")
             if "obligation_data" in current_lead["dynamic_fields"]:
-                logger.info(f"✅ obligation_data EXISTS in current lead ({len(current_lead['dynamic_fields']['obligation_data'])} fields)")
+                _obl_data = current_lead["dynamic_fields"].get("obligation_data")
+                _obl_len = len(_obl_data) if hasattr(_obl_data, "__len__") else 0
+                logger.info(f"✅ obligation_data EXISTS in current lead ({_obl_len} fields)")
         
         # Add updated timestamp
         update_data["updated_at"] = get_ist_now()
@@ -577,7 +579,9 @@ class LeadsDB:
             
             # CRITICAL: Verify obligation_data is preserved
             if "obligation_data" in update_data["dynamic_fields"]:
-                logger.info(f"✅ obligation_data IS in update ({len(update_data['dynamic_fields']['obligation_data'])} fields)")
+                _u_obl = update_data['dynamic_fields'].get('obligation_data')
+                _u_obl_len = len(_u_obl) if hasattr(_u_obl, '__len__') else 0
+                logger.info(f"✅ obligation_data IS in update ({_u_obl_len} fields)")
             elif "obligation_data" in current_lead.get("dynamic_fields", {}):
                 # Routes layer should have merged this, but double-check as safety net
                 logger.warning(f"⚠️ obligation_data NOT in update but EXISTS in DB - RESTORING with DEEP COPY")
@@ -594,7 +598,9 @@ class LeadsDB:
         
         logger.info(f"✅ FINAL dynamic_fields keys going to DB: {list(update_data['dynamic_fields'].keys())}")
         if "obligation_data" in update_data["dynamic_fields"]:
-            logger.info(f"✅✅ obligation_data CONFIRMED in final update ({len(update_data['dynamic_fields']['obligation_data'])} fields)")
+            _f_obl = update_data['dynamic_fields'].get('obligation_data')
+            _f_obl_len = len(_f_obl) if hasattr(_f_obl, '__len__') else 0
+            logger.info(f"✅✅ obligation_data CONFIRMED in final update ({_f_obl_len} fields)")
         
         # Special handling for login form fields
         login_form_fields = [

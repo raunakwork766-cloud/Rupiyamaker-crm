@@ -291,7 +291,7 @@ const fetchCompanyCategories = async () => {
   }
 };
 
-export default function CustomerObligationForm({ leadData, handleChangeFunc, onDataUpdate, onUnsavedChangesUpdate, canEdit = true, onDownloadReady, saveContext }) {
+export default function CustomerObligationForm({ leadData, handleChangeFunc, onDataUpdate, onUnsavedChangesUpdate, canEdit = true, onDownloadReady, saveContext, onProcessDataUpdate }) {
   // Immediate safety check to prevent any initialization errors
   if (typeof React === 'undefined' || !React.useState) {
     console.error('React is not properly loaded');
@@ -468,6 +468,11 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
   const [ceTenureYearsInput, setCeTenureYearsInput] = useState('');
   const [ceRoi, setCeRoi] = useState('');
   const [ceMultiplier, setCeMultiplier] = useState('0');
+
+  // Bidirectional sync with HowToProcessSection
+  const suppressLoanSyncDispatchRef = useRef(false);
+  const [pendingRemoteSyncTrigger, setPendingRemoteSyncTrigger] = useState(0);
+  const handleObligationFieldBlurRef = useRef(null);
 
   // State to track if data has been loaded to prevent continuous API calls
   const [dataLoaded, setDataLoaded] = useState(false);
@@ -1518,6 +1523,9 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
         'loan_required',       // Alternative snake_case
         'loan_amount',
         
+        // Cross-section sync: HowToProcess process_data
+        'process_data.loan_amount_required',
+        
         // Dynamic_fields root level (where backend GET expects it)
         'dynamic_fields.loanRequired',
         'dynamic_fields.loan_required',
@@ -2254,7 +2262,7 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
         setCeMonthlyEmiCanPay(Number(ceMonthlyEmiValue));
       }
       
-      const ceTenureMonthsValue = getFieldValue(['ceTenureMonths', 'check_eligibility.tenure_months', 'dynamic_fields.check_eligibility.tenure_months']);
+      const ceTenureMonthsValue = getFieldValue(['ceTenureMonths', 'check_eligibility.tenure_months', 'dynamic_fields.check_eligibility.tenure_months', 'process_data.required_tenure', 'dynamic_fields.process.required_tenure']);
       if (ceTenureMonthsValue) {
         console.log('📝 Setting CE tenure months:', ceTenureMonthsValue);
         setCeTenureMonths(String(ceTenureMonthsValue));
@@ -2264,6 +2272,18 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
       if (ceTenureYearsValue) {
         console.log('📝 Setting CE tenure years:', ceTenureYearsValue);
         setCeTenureYears(String(ceTenureYearsValue));
+      } else if (ceTenureMonthsValue) {
+        // Derive years display from months when only months are available (cross-section sync)
+        const m = parseInt(String(ceTenureMonthsValue).replace(/[^\d]/g, '')) || 0;
+        if (m > 0) {
+          const ty = Math.floor(m / 12);
+          const rm = m % 12;
+          let yrs = '';
+          if (rm === 0) yrs = `${ty} Years`;
+          else if (rm === 1) yrs = `${ty} Years 1 Month`;
+          else yrs = `${ty} Years ${rm} Months`;
+          setCeTenureYears(yrs);
+        }
       }
       
       const ceRoiValue = getFieldValue(['ceRoi', 'check_eligibility.roi', 'dynamic_fields.check_eligibility.roi']);
@@ -2458,7 +2478,8 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
         });
         
         // 🚨 EMERGENCY DATA RECOVERY - Attempt to recover cleared data
-        if (fieldsCleared.length >= 2 && leadData?.file_sent_to_login) {
+        // Skip recovery when the user has actively interacted with the form — clearing is intentional.
+        if (!hasUserInteraction && fieldsCleared.length >= 2 && leadData?.file_sent_to_login) {
           console.warn('🚨 CRITICAL DATA LOSS - Initiating emergency recovery...');
           
           // Try to recover from multiple sources
@@ -2516,7 +2537,8 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
     }
     
     // Auto-recovery for file_sent_to_login scenarios (only when needed)
-    if (leadData?.file_sent_to_login && backupObligationData && dataStableForFileSentToLogin) {
+    // IMPORTANT: never recover after the user has interacted — that would undo intentional clears.
+    if (!hasUserInteraction && leadData?.file_sent_to_login && backupObligationData && dataStableForFileSentToLogin) {
       let shouldRecover = false;
       
       if (debugStateValues.salary && !salary && backupObligationData.salary) {
@@ -4193,12 +4215,13 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
     // Set a new timer - will only save if no more blur events happen within 500ms
     blurSaveTimerRef.current = setTimeout(async () => {
       console.log('💾 [BLUR] 500ms elapsed with no more changes, saving now...');
-      
-      // Notify parent component about the final obligation state
+
+      // Notify parent so the canonical PUT to dynamic_fields.obligations is queued.
+      // (The parent path is the actual persistence mechanism for login-lead obligation data.)
       if (handleChangeFunc) {
         handleChangeFunc('obligations', obligations);
       }
-      
+
       try {
         await handleSaveObligations();
         console.log('✅ [BLUR] Save completed successfully');
@@ -4207,6 +4230,115 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
       }
     }, 500); // Wait 500ms (0.5 seconds) after last blur before saving
   };
+
+  // Keep ref to latest handleObligationFieldBlur so event listeners can call current closure
+  handleObligationFieldBlurRef.current = handleObligationFieldBlur;
+
+  // Helper to dispatch sync events to HowToProcessSection (skipped while applying remote sync)
+  const dispatchLoanFieldSync = (field, value) => {
+    if (suppressLoanSyncDispatchRef.current) return;
+    if (!leadData?._id) return;
+    try {
+      window.dispatchEvent(new CustomEvent('loan-field-sync', {
+        detail: { leadId: String(leadData._id), source: 'obligation', field, value }
+      }));
+    } catch (e) {
+      console.warn('loan-field-sync dispatch failed:', e);
+    }
+  };
+
+  // Cross-section persistence: write loan_amount / tenure into process_data so the
+  // HowToProcessSection picks them up (process_data is treated as the single source of
+  // truth for these two fields, ensuring both tabs always show the same values).
+  const persistToProcessData = async (processField, value) => {
+    if (!leadData?._id) return;
+    try {
+      const userId = localStorage.getItem('userId');
+      if (!userId) return;
+      const isLoginLead = !!leadData.original_lead_id || !!leadData.login_created_at;
+      const apiUrl = isLoginLead
+        ? `/api/lead-login/login-leads/${leadData._id}?user_id=${userId}`
+        : `/api/leads/${leadData._id}?user_id=${userId}`;
+      const payload = { process_data: { [processField]: value } };
+      const res = await fetch(apiUrl, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        },
+        body: JSON.stringify(payload)
+      });
+      if (res.ok) {
+        // Mirror to in-memory lead so a later remount of HowToProcess sees the value
+        if (!leadData.process_data) leadData.process_data = {};
+        leadData.process_data[processField] = value;
+        // Notify parent (LoginCRM) to merge into selectedLead.process_data so that
+        // when the user switches to HowToProcess tab, it receives the updated value.
+        onProcessDataUpdate?.({ [processField]: value });
+        console.log(`✅ [SYNC] Persisted process_data.${processField} = ${value}`);
+      } else {
+        console.warn(`⚠️ [SYNC] Failed to persist process_data.${processField}, status=${res.status}`);
+      }
+    } catch (e) {
+      console.warn('persistToProcessData error:', e);
+    }
+  };
+
+  // Listen for loan field sync events from HowToProcessSection (bidirectional sync)
+  useEffect(() => {
+    const handler = (ev) => {
+      const { leadId, source, field, value } = ev.detail || {};
+      if (source !== 'obligation' && source !== 'process') return;
+      if (source !== 'process') return; // only react to process side
+      if (!leadData?._id || String(leadData._id) !== String(leadId)) return;
+      if (!canEdit) return;
+
+      suppressLoanSyncDispatchRef.current = true;
+      try {
+        if (field === 'loan_amount') {
+          const num = Number(value) || 0;
+          const display = num ? formatINR(String(num)) : '';
+          setLoanRequired(display);
+        } else if (field === 'tenure_months') {
+          const months = parseInt(value) || 0;
+          if (months > 0) {
+            setCeTenureMonths(formatTenure(String(months)));
+            const ty = Math.floor(months / 12);
+            const rm = months % 12;
+            if (rm === 0) setCeTenureYears(`${ty} Years`);
+            else if (rm === 1) setCeTenureYears(`${ty} Years 1 Month`);
+            else setCeTenureYears(`${ty} Years ${rm} Months`);
+            const yrs = months / 12;
+            setCeTenureYearsInput(Number.isInteger(yrs) ? String(yrs) : String(parseFloat(yrs.toFixed(2))));
+          } else {
+            setCeTenureMonths('');
+            setCeTenureYears('');
+            setCeTenureYearsInput('');
+          }
+        } else {
+          return;
+        }
+        setHasUserInteraction(true);
+        setHasUnsavedChanges(true);
+        setPendingRemoteSyncTrigger(t => t + 1);
+      } finally {
+        setTimeout(() => { suppressLoanSyncDispatchRef.current = false; }, 1500);
+      }
+    };
+    window.addEventListener('loan-field-sync', handler);
+    return () => window.removeEventListener('loan-field-sync', handler);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [leadData?._id, canEdit]);
+
+  // When a remote sync just updated state, schedule a save via the existing blur path
+  useEffect(() => {
+    if (pendingRemoteSyncTrigger > 0 && hasUnsavedChanges) {
+      if (handleObligationFieldBlurRef.current) {
+        handleObligationFieldBlurRef.current();
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingRemoteSyncTrigger, hasUnsavedChanges]);
 
   // Handle credit card tenure (4%) selection with mutual exclusivity
   const handleCreditCardTenure = (index) => {
@@ -7486,6 +7618,12 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
                       type="text"
                       value={ceTenureMonths}
                       onChange={canEdit ? handleCeTenureMonthsChange : undefined}
+                      onBlur={() => {
+                        handleObligationFieldBlur();
+                        const months = parseInt(parseTenure(ceTenureMonths)) || 0;
+                        dispatchLoanFieldSync('tenure_months', months);
+                        persistToProcessData('required_tenure', months || null);
+                      }}
                       disabled={!canEdit}
                       placeholder="Months"
                       className="w-full bg-white text-black placeholder-slate-400 rounded-lg p-2.5 pr-24 font-black text-sm outline-none focus:ring-2 focus:ring-blue-500 transition-shadow border-none shadow-sm"
@@ -7502,6 +7640,13 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
                       type="text"
                       value={ceTenureYearsInput}
                       onChange={canEdit ? handleCeTenureYearsDecimalChange : undefined}
+                      onBlur={() => {
+                        handleObligationFieldBlur();
+                        const yrs = parseFloat(ceTenureYearsInput) || 0;
+                        const months = Math.round(yrs * 12);
+                        dispatchLoanFieldSync('tenure_months', months);
+                        persistToProcessData('required_tenure', months || null);
+                      }}
                       disabled={!canEdit}
                       placeholder="Years"
                       className="w-full bg-white text-black placeholder-slate-400 rounded-lg p-2.5 pr-24 font-black text-sm outline-none focus:ring-2 focus:ring-blue-500 transition-shadow border-none shadow-sm"
@@ -7598,7 +7743,10 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
               const n = parseTenure(ceTenureMonths);
               const customEmi = (principal && r && n) ? Math.round(principal * r * Math.pow(1+r,n) / (Math.pow(1+r,n)-1)) : 0;
               const foirElig = parseINR(eligibility?.finalEligibility) || 0;
-              const customExceedsEligibility = principal > 0 && principal > foirElig;
+              // Only flag as "Exceeds" when we actually have inputs to compute eligibility against:
+              // ROI, tenure (months) and a computed FOIR eligibility ceiling. Otherwise show neutral hint.
+              const eligibilityComputable = parseROI(ceRoi) > 0 && parseTenure(ceTenureMonths) > 0 && foirElig > 0;
+              const customExceedsEligibility = eligibilityComputable && principal > 0 && principal > foirElig;
               return (
                 <div className={`rounded-xl border overflow-hidden transition-all ${customExceedsEligibility ? 'border-red-500/30' : 'border-blue-500/20'}`}>
                   <div className={`px-4 py-2.5 flex items-center justify-between ${customExceedsEligibility ? 'bg-red-500/10' : 'bg-[#0f1929]'}`}>
@@ -7621,7 +7769,13 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
                           setHasUserInteraction(true);
                           setHasUnsavedChanges(true);
                         }}
-                        onBlur={handleObligationFieldBlur}
+                        onBlur={(e) => {
+                          handleObligationFieldBlur();
+                          const num = parseINR(e.target.value) || 0;
+                          dispatchLoanFieldSync('loan_amount', num);
+                          // Cross-section persistence: also write to process_data
+                          persistToProcessData('loan_amount_required', num || null);
+                        }}
                         disabled={!canEdit}
                         className={`w-full h-[44px] bg-black border rounded-lg pl-7 pr-3 font-black text-white text-base outline-none transition-all ${customExceedsEligibility ? 'border-red-500/50 focus:ring-2 focus:ring-red-500 text-red-300' : 'border-slate-700/50 focus:ring-2 focus:ring-blue-500'}`}
                         placeholder="Enter loan amount"
@@ -7636,14 +7790,18 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
                   </div>
                   <div className={`px-4 py-2 flex items-center justify-between ${customExceedsEligibility ? 'bg-[#1a0a0a]' : 'bg-emerald-500/5'}`}>
                     {principal > 0 ? (
-                      <>
-                        <span className={`text-[10px] font-bold flex items-center gap-1.5 ${customExceedsEligibility ? 'text-red-400' : 'text-emerald-400'}`}>
-                          {customExceedsEligibility ? '⚠ Exceeds FOIR eligibility limit' : '✓ Within FOIR eligibility'}
-                        </span>
-                        <span className="text-[10px] font-bold text-slate-500">Max: <span className="text-emerald-400">₹{eligibility.finalEligibility}</span></span>
-                      </>
+                      eligibilityComputable ? (
+                        <>
+                          <span className={`text-[10px] font-bold flex items-center gap-1.5 ${customExceedsEligibility ? 'text-red-400' : 'text-emerald-400'}`}>
+                            {customExceedsEligibility ? '⚠ Exceeds FOIR eligibility limit' : '✓ Within FOIR eligibility'}
+                          </span>
+                          <span className="text-[10px] font-bold text-slate-500">Max: <span className="text-emerald-400">₹{eligibility.finalEligibility}</span></span>
+                        </>
+                      ) : (
+                        <span className="text-[10px] text-slate-500 font-medium">Enter ROI &amp; tenure (months) to check FOIR eligibility</span>
+                      )
                     ) : (
-                      <span className="text-[10px] text-slate-500 font-medium">Enter a loan amount to see EMI & eligibility</span>
+                      <span className="text-[10px] text-slate-500 font-medium">Enter a loan amount to see EMI &amp; eligibility</span>
                     )}
                   </div>
                 </div>

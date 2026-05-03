@@ -4894,6 +4894,7 @@ async def get_lead_obligations(
         personal_details = dynamic_fields.get("personal_details") or {}
         check_eligibility = dynamic_fields.get("check_eligibility") or {}
         eligibility_details = dynamic_fields.get("eligibility_details") or {}
+        process_data = lead.get("process_data") or {}
     except HTTPException:
         # Re-raise HTTP exceptions
         raise
@@ -4922,7 +4923,7 @@ async def get_lead_obligations(
             "partnerSalary": dynamic_fields.get("partnerSalary", financial_details.get("partner_salary", "")),
             "yearlyBonus": dynamic_fields.get("yearlyBonus", financial_details.get("yearly_bonus", "")),
             "bonusDivision": dynamic_fields.get("bonusDivision", financial_details.get("bonus_division", None)),
-            "loanRequired": dynamic_fields.get("loanRequired", financial_details.get("loanRequired", financial_details.get("loan_required", lead.get("loan_amount", "") if lead else ""))),
+            "loanRequired": process_data.get("loan_amount_required") or dynamic_fields.get("loanRequired", financial_details.get("loanRequired", financial_details.get("loan_required", lead.get("loan_amount", "") if lead else ""))),
             "companyName": dynamic_fields.get("companyName", personal_details.get("company_name", "")),
             "companyType": dynamic_fields.get("companyType", personal_details.get("company_type", [])),
             "companyCategory": dynamic_fields.get("companyCategory", personal_details.get("company_category", [])),
@@ -4962,7 +4963,7 @@ async def get_lead_obligations(
                                     check_eligibility.get("custom_foir_percent", "")),
             "ceMonthlyEmiCanPay": dynamic_fields.get("ceMonthlyEmiCanPay", 
                                     check_eligibility.get("monthly_emi_can_pay", 0)),
-            "ceTenureMonths": dynamic_fields.get("ceTenureMonths", 
+            "ceTenureMonths": process_data.get("required_tenure") or dynamic_fields.get("ceTenureMonths", 
                                     check_eligibility.get("tenure_months", "")),
             "ceTenureYears": dynamic_fields.get("ceTenureYears", 
                                     check_eligibility.get("tenure_years", "")),
@@ -4975,7 +4976,8 @@ async def get_lead_obligations(
         # Combine both data sets
         response_data = {
             **obligation_data,
-            **eligibility_data
+            **eligibility_data,
+            "process_data": process_data,
         }
         
         return response_data
