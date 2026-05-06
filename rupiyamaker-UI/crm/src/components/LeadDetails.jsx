@@ -1,4 +1,4 @@
-import React, { useState, useEffect, lazy, Suspense } from 'react';
+import React, { useState, useEffect, lazy, Suspense, useRef } from 'react';
 import {
     ArrowLeft, User, Building, CreditCard, FileText, MessageSquare,
     Paperclip, CheckSquare, Activity, UserCheck, Share2, Lock,
@@ -40,6 +40,9 @@ export default function LeadDetails({ lead, user, onBack, onLeadUpdate, readOnly
     const [assignableUsers, setAssignableUsers] = useState([]);
     const [showCoApplicant, setShowCoApplicant] = useState(false);
     const [shareableLink, setShareableLink] = useState('');
+    const [activeApplicantTab, setActiveApplicantTab] = useState('applicant');
+    const applicantFormRef = useRef(null);
+    const coApplicantFormRef = useRef(null);
 
     // Fetch assignable users for reassignment
     const fetchAssignableUsers = async () => {
@@ -464,44 +467,7 @@ export default function LeadDetails({ lead, user, onBack, onLeadUpdate, readOnly
                             }}
                         />
                         )}
-                        {!effectiveReadOnly && (
-                        <button
-                            className="bg-green-600 hover:bg-green-700 px-4 py-2 rounded-lg font-medium transition-colors flex items-center"
-                            onClick={async () => {
-                                // Toggle the co-applicant form visibility
-                                const newShowCoApplicant = !showCoApplicant;
-                                
-                                // First update the state to show/hide the form immediately
-                                setShowCoApplicant(newShowCoApplicant);
-                                
-                                if (newShowCoApplicant) {
-                                    console.log("Showing co-applicant form");
-                                    
-                                    // If showing co-applicant form and no co-applicant form exists yet, create one
-                                    if (!leadData.dynamic_fields?.co_applicant_form) {
-                                        console.log("Creating new co-applicant form");
-                                        
-                                        // Create empty co-applicant form with basic structure
-                                        const currentDynamicFields = leadData.dynamic_fields || {};
-                                        const updatedFields = {
-                                            dynamic_fields: {
-                                                ...currentDynamicFields,
-                                                co_applicant_form: {}
-                                            }
-                                        };
-                                        
-                                        // Update the lead data with the new co-applicant form
-                                        await updateLead(updatedFields);
-                                    }
-                                } else {
-                                    console.log("Hiding co-applicant form");
-                                }
-                            }}
-                        >
-                            <Plus className="w-4 h-4 mr-2" />
-                            {showCoApplicant ? 'Hide Co-Applicant Form' : 'Show Co-Applicant Form'}
-                        </button>
-                        )}
+
                         {!effectiveReadOnly && (
                         leadData?.form_share === false ? (
                             <div className="flex items-center bg-gray-500 px-4 py-2 rounded-lg font-medium text-white">
@@ -602,6 +568,13 @@ export default function LeadDetails({ lead, user, onBack, onLeadUpdate, readOnly
                     </div>
                 )}
 
+                {/* Lead Name Header - Above Tabs */}
+                <div className="px-3 sm:px-4 lg:px-5 py-2 bg-[#0a1525] border-b border-[#1a2332] w-full">
+                    <h2 className="text-base sm:text-lg font-bold text-white tracking-wide truncate">
+                        {(`${leadData.first_name || ''} ${leadData.last_name || ''}`.trim()) || leadData.customer_name || leadData.customerName || leadData.name || 'Lead'}
+                    </h2>
+                </div>
+
                 {/* Tab Navigation - Segmented Control */}
                 <div className="px-3 sm:px-4 lg:px-5 py-2 bg-black border-b border-[#1a2332] w-full">
                     <div className="flex w-full border border-[#2D3C56] rounded-md overflow-hidden bg-[#0d1520]">
@@ -674,19 +647,71 @@ export default function LeadDetails({ lead, user, onBack, onLeadUpdate, readOnly
                                 {/* Applicant Form Section */}
                                 <div className="mb-3">
                                     <h3 className="text-xs font-bold text-[#03B0F5] mb-2 uppercase tracking-wide">APPLICANT FORM</h3>
-                                    <div className="space-y-3">
-                                        <div className="flex justify-between items-center mb-2">
-                                            <h4 className="text-sm font-semibold text-[#03B0F5]">Primary Applicant</h4>
-                                            {!showCoApplicant && !effectiveReadOnly && (
-                                                <button
-                                                    className="px-3 py-1.5 bg-green-600 text-white rounded-lg hover:bg-green-700 transition font-bold text-sm"
-                                                    onClick={() => setShowCoApplicant(true)}
-                                                >
-                                                    + Add Co-Applicant
-                                                </button>
-                                            )}
-                                        </div>
+                                    {/* Tab Header */}
+                                    <div className="flex items-center gap-1 bg-gray-100 rounded-xl p-1 mb-3 border border-gray-200">
+                                        <button
+                                            onClick={() => setActiveApplicantTab('applicant')}
+                                            className={`flex-1 px-4 py-2 text-sm font-bold rounded-lg transition-colors ${
+                                                activeApplicantTab === 'applicant'
+                                                    ? 'bg-white text-[#03B0F5] shadow-sm'
+                                                    : 'text-gray-500 hover:text-gray-700'
+                                            }`}
+                                        >
+                                            Applicant
+                                        </button>
+                                        <button
+                                            onClick={async () => {
+                                                setActiveApplicantTab('co-applicant');
+                                                if (!showCoApplicant) {
+                                                    setShowCoApplicant(true);
+                                                    if (!leadData.dynamic_fields?.co_applicant_form) {
+                                                        await updateLead({ dynamic_fields: { ...leadData.dynamic_fields, co_applicant_form: {} } });
+                                                    }
+                                                }
+                                            }}
+                                            className={`flex-1 px-4 py-2 text-sm font-bold rounded-lg transition-colors ${
+                                                activeApplicantTab === 'co-applicant'
+                                                    ? 'bg-white text-[#03B0F5] shadow-sm'
+                                                    : 'text-gray-500 hover:text-gray-700'
+                                            }`}
+                                        >
+                                            Co-Applicant
+                                        </button>
+                                        {/* Share icon on right */}
+                                        {!effectiveReadOnly && (
+                                            <button
+                                                onClick={() => {
+                                                    if (activeApplicantTab === 'applicant') {
+                                                        applicantFormRef.current?.handleGenerateShareLink();
+                                                    } else {
+                                                        coApplicantFormRef.current?.handleGenerateShareLink();
+                                                    }
+                                                }}
+                                                className="ml-1 p-2 text-gray-500 hover:text-[#03B0F5] rounded-lg hover:bg-white transition-colors"
+                                                title={activeApplicantTab === 'applicant' ? 'Share Applicant Form' : 'Share Co-Applicant Form'}
+                                            >
+                                                <Share2 className="w-4 h-4" />
+                                            </button>
+                                        )}
+                                        {/* Remove Co-Applicant */}
+                                        {showCoApplicant && activeApplicantTab === 'co-applicant' && !effectiveReadOnly && (
+                                            <button
+                                                onClick={() => {
+                                                    updateLead({ dynamic_fields: { ...leadData.dynamic_fields, co_applicant_form: null } });
+                                                    setShowCoApplicant(false);
+                                                    setActiveApplicantTab('applicant');
+                                                }}
+                                                className="ml-1 p-1.5 text-red-500 hover:text-red-700 rounded-lg hover:bg-red-50 transition-colors text-xs font-bold"
+                                                title="Remove Co-Applicant"
+                                            >
+                                                ✕
+                                            </button>
+                                        )}
+                                    </div>
+                                    {/* Form Content */}
+                                    {activeApplicantTab === 'applicant' && (
                                         <LoginFormSection
+                                            ref={applicantFormRef}
                                             data={leadData.dynamic_fields?.applicant_form || leadData.loginForm || {}}
                                             onSave={(updated) => updateLead({ dynamic_fields: { ...leadData.dynamic_fields, applicant_form: updated } })}
                                             bankOptions={[]}
@@ -697,38 +722,25 @@ export default function LeadDetails({ lead, user, onBack, onLeadUpdate, readOnly
                                             leadCustomerName={`${leadData.first_name || ''} ${leadData.last_name || ''}`.trim() || leadData.customerName || leadData.name || ''}
                                             leadData={leadData}
                                             canEdit={!effectiveReadOnly}
+                                            hideShareButton={true}
                                         />
-                                        
-                                        {/* Co-Applicant Form */}
-                                        {showCoApplicant && (
-                                            <div className="mt-4 pt-4 border-t-2 border-cyan-400">
-                                                <div className="flex justify-between items-center mb-2">
-                                                    <h4 className="text-sm font-semibold text-[#03B0F5]">Co-Applicant</h4>
-                                                    <button
-                                                        className="px-3 py-1.5 bg-red-600 text-white rounded-lg hover:bg-red-700 transition font-bold text-sm"
-                                                        onClick={() => {
-                                                            updateLead({ dynamic_fields: { ...leadData.dynamic_fields, co_applicant_form: null } });
-                                                            setShowCoApplicant(false);
-                                                        }}
-                                                    >
-                                                        Remove Co-Applicant
-                                                    </button>
-                                                </div>
-                                                <LoginFormSection
-                                                    data={leadData.dynamic_fields?.co_applicant_form || leadData.coApplicantForm || {}}
-                                                    onSave={(updated) => updateLead({ dynamic_fields: { ...leadData.dynamic_fields, co_applicant_form: updated } })}
-                                                    bankOptions={[]}
-                                                    mobileNumber=""
-                                                    bankName=""
-                                                    isCoApplicant={true}
-                                                    leadId={leadData._id}
-                                                    leadCustomerName={`${leadData.first_name || ''} ${leadData.last_name || ''}`.trim() + ' - Co-Applicant'}
-                                                    leadData={leadData}
-                                                    canEdit={!effectiveReadOnly}
-                                                />
-                                            </div>
-                                        )}
-                                    </div>
+                                    )}
+                                    {activeApplicantTab === 'co-applicant' && (
+                                        <LoginFormSection
+                                            ref={coApplicantFormRef}
+                                            data={leadData.dynamic_fields?.co_applicant_form || leadData.coApplicantForm || {}}
+                                            onSave={(updated) => updateLead({ dynamic_fields: { ...leadData.dynamic_fields, co_applicant_form: updated } })}
+                                            bankOptions={[]}
+                                            mobileNumber=""
+                                            bankName=""
+                                            isCoApplicant={true}
+                                            leadId={leadData._id}
+                                            leadCustomerName={`${leadData.first_name || ''} ${leadData.last_name || ''}`.trim() + ' - Co-Applicant'}
+                                            leadData={leadData}
+                                            canEdit={!effectiveReadOnly}
+                                            hideShareButton={true}
+                                        />
+                                    )}
                                 </div>
 
                                 {/* Important Questions Section */}

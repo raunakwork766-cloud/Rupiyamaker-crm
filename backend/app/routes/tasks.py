@@ -97,7 +97,7 @@ async def enhance_task_details(
         lead = None
         if leads_cache and str(task_dict["lead_id"]) in leads_cache:
             lead = leads_cache[str(task_dict["lead_id"])]
-        else:
+        elif leads_db is not None:
             lead = await leads_db.get_lead(task_dict["lead_id"])
         
         if lead:

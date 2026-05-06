@@ -1785,7 +1785,7 @@ const WarningPage = memo(() => {
     return (
       <>
         <style>{stickyHeaderStyles}</style>
-        <div className="min-h-screen bg-black text-white font-sans overflow-hidden">
+        <div className="min-h-screen bg-black text-white font-sans">
       {/* Background Pattern */}
       <div
         className="fixed inset-0 opacity-[0.02] pointer-events-none z-0"

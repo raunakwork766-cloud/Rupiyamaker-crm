@@ -4,11 +4,31 @@ import { getISTTimestamp } from '../../utils/dateUtils';
 // API base URL - Use proxy in development
 const API_BASE_URL = '/api'; // Always use API proxy
 
+const REQUIRED_APPLICANT_FIELDS = [
+  { key: 'customerName', label: 'Customer Name' },
+  { key: 'mobileNumber', label: 'Mobile Number' },
+  { key: 'qualification', label: 'Highest Qualification' },
+  { key: 'mothersName', label: "Mother's Name" },
+  { key: 'maritalStatus', label: 'Marital Status' },
+  { key: 'currentAddress', label: 'Current Address' },
+  { key: 'currentAddressType', label: 'Current Address Type' },
+  { key: 'permanentAddress', label: 'Permanent Address' },
+  { key: 'companyName', label: 'Company Name' },
+  { key: 'yourDesignation', label: 'Your Designation' },
+  { key: 'ref1Name', label: 'Reference 1 - Name' },
+  { key: 'ref1Mobile', label: 'Reference 1 - Mobile' },
+  { key: 'ref1Relation', label: 'Reference 1 - Relation' },
+  { key: 'ref2Name', label: 'Reference 2 - Name' },
+  { key: 'ref2Mobile', label: 'Reference 2 - Mobile' },
+  { key: 'ref2Relation', label: 'Reference 2 - Relation' },
+];
+
 const FileSentToLoginSection = ({ lead, onClose, onUpdate }) => {
   const [status, setStatus] = useState('pending');
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState('');
   const [loginResponse, setLoginResponse] = useState(null);
+  const [missingFields, setMissingFields] = useState([]);
   
   // New state for department and user selection
   const [departments, setDepartments] = useState([]);
@@ -105,6 +125,17 @@ const FileSentToLoginSection = ({ lead, onClose, onUpdate }) => {
     if (!selectedDepartment) {
       setStatus('error');
       setMessage('Please select a department');
+      return;
+    }
+
+    // Validate applicant form completeness before sending
+    const applicantForm = lead?.dynamic_fields?.applicant_form || {};
+    const missing = REQUIRED_APPLICANT_FIELDS
+      .filter(f => !applicantForm[f.key] || String(applicantForm[f.key]).trim() === '')
+      .map(f => f.label);
+    if (missing.length > 0) {
+      setMissingFields(missing);
+      setStatus('incomplete');
       return;
     }
 
@@ -690,6 +721,37 @@ const FileSentToLoginSection = ({ lead, onClose, onUpdate }) => {
                 className="px-3 py-1.5 bg-gradient-to-r from-cyan-500 to-blue-600 text-white rounded-lg hover:from-blue-600 hover:to-cyan-500 transition text-sm"
               >
                 Close
+              </button>
+            </div>
+          </>
+        )}
+
+        {status === 'incomplete' && (
+          <>
+            <div className="bg-red-900/30 border border-red-700 rounded-lg p-3 mb-3">
+              <div className="flex items-center mb-2">
+                <svg className="w-5 h-5 text-red-400 mr-2 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path>
+                </svg>
+                <p className="text-red-400 font-semibold text-base">Applicant Form Incomplete</p>
+              </div>
+              <p className="text-gray-300 text-sm mb-2">The following required fields are not filled. Please complete them before sending to Login:</p>
+              <ul className="space-y-1 max-h-48 overflow-y-auto">
+                {missingFields.map((field, index) => (
+                  <li key={index} className="flex items-center text-yellow-300 text-sm">
+                    <span className="w-5 h-5 flex-shrink-0 bg-red-700/60 rounded-full flex items-center justify-center text-xs font-bold mr-2">{index + 1}</span>
+                    {field}
+                  </li>
+                ))}
+              </ul>
+            </div>
+            <p className="text-gray-400 text-xs mb-3">Go to the <span className="text-cyan-300 font-medium">Applicant Form</span> tab under Lead Details and fill all required fields, then try again.</p>
+            <div className="flex justify-end">
+              <button
+                onClick={onClose}
+                className="px-3 py-1.5 bg-gray-700 text-white rounded-lg hover:bg-gray-600 transition text-sm"
+              >
+                Close &amp; Fill Form
               </button>
             </div>
           </>

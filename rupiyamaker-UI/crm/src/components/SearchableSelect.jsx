@@ -15,7 +15,9 @@ const SearchableSelect = ({
   const [isOpen, setIsOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [filteredOptions, setFilteredOptions] = useState(options);
+  const [openUpward, setOpenUpward] = useState(false);
   const dropdownRef = useRef(null);
+  const triggerRef = useRef(null);
 
   // Filter options based on search term
   useEffect(() => {
@@ -53,6 +55,10 @@ const SearchableSelect = ({
 
   const toggleDropdown = () => {
     if (!disabled) {
+      if (!isOpen && triggerRef.current) {
+        const rect = triggerRef.current.getBoundingClientRect();
+        setOpenUpward(window.innerHeight - rect.bottom < 300);
+      }
       setIsOpen(!isOpen);
       if (!isOpen) {
         setSearchTerm('');
@@ -84,6 +90,7 @@ const SearchableSelect = ({
     <div className={`relative ${className}`} ref={dropdownRef}>
       {/* Main select button */}
       <div
+        ref={triggerRef}
         className={getButtonStyles()}
         onClick={toggleDropdown}
       >
@@ -102,7 +109,7 @@ const SearchableSelect = ({
 
       {/* Dropdown menu */}
       {isOpen && !disabled && (
-        <div className="absolute z-50 w-full mt-1 bg-white border border-gray-300 rounded-lg shadow-lg">
+        <div className={`absolute z-50 w-full bg-white border border-gray-300 rounded-lg shadow-lg ${openUpward ? 'bottom-full mb-1' : 'top-full mt-1'}`}>
           {/* Search input */}
           <div className="p-3 border-b border-gray-200">
             <div className="relative">

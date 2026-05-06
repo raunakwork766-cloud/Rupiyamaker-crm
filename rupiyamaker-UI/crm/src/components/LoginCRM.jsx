@@ -147,7 +147,8 @@ import {
     ListTodo,
     Calendar,
     Clock,
-    RefreshCw
+    RefreshCw,
+    Share2
 } from 'lucide-react';
 import { formatDate, getISTTimestamp } from '../utils/dateUtils';
 import dayjs from 'dayjs';
@@ -726,6 +727,20 @@ const LoginCRM = ({ user, selectedLoanType: initialLoanType, department = "login
             document.body.style.overflow = '';
         };
     }, [activeTab, selectedLead]);
+
+    // Lock main scroll container when lead detail view is open (prevents remark panel overflow)
+    useEffect(() => {
+        const el = document.getElementById('main-scroll-container');
+        if (!el) return;
+        if (showLeadDetails && selectedLead) {
+            el.style.overflowY = 'hidden';
+        } else {
+            el.style.overflowY = 'auto';
+        }
+        return () => {
+            el.style.overflowY = 'auto';
+        };
+    }, [showLeadDetails, selectedLead]);
     
     // Bank options state for dynamic dropdown
     const [bankOptions, setBankOptions] = useState(["HDFC Bank", "ICICI Bank", "SBI Bank", "Axis Bank"]); // Default banks, will be fetched from backend
@@ -753,6 +768,10 @@ const LoginCRM = ({ user, selectedLoanType: initialLoanType, department = "login
     const [pendingTabChange, setPendingTabChange] = useState(null);
     const [obligationModalTrigger, setObligationModalTrigger] = useState(null);
     const [obligationDownloadFn, setObligationDownloadFn] = useState(null);
+
+    const [activeApplicantTab, setActiveApplicantTab] = useState('applicant');
+    const applicantFormRef = useRef(null);
+    const coApplicantFormRef = useRef(null);
     
     const [users, setUsers] = useState([]);
     const [juniorUsers, setJuniorUsers] = useState([]);
@@ -4847,96 +4866,108 @@ const LoginCRM = ({ user, selectedLoanType: initialLoanType, department = "login
                 label: "APPLICANT FORM",
                 content: (
                   <div className="space-y-4 sm:space-y-6 w-full">
-                    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 gap-2">
-                      <h3 className="text-base sm:text-lg font-bold text-[#03B0F5]">Primary Applicant</h3>
-                      <button
-                        className={`px-3 sm:px-4 py-2 rounded-lg transition font-bold text-sm sm:text-lg whitespace-nowrap ${
-                          canEditLogin() 
-                            ? 'bg-green-600 text-white hover:bg-green-700' 
-                            : 'bg-gray-400 text-gray-600 cursor-not-allowed'
-                        }`}
-                        onClick={() => {
-                          if (!canEditLogin()) return;
-                          // Add co-applicant functionality - initialize with empty co-applicant form
-                          const coApplicantData = {
-                            // Initialize with empty form structure to ensure the form appears
-                            first_name: '',
-                            last_name: '',
-                            mobile_number: '',
-                            email: '',
-                            date_of_birth: '',
-                            // Add other default fields as needed to match LoginFormSection expectations
-                            address: '',
-                            city: '',
-                            state: '',
-                            pincode: '',
-                            pan_number: '',
-                            aadhar_number: '',
-                            initialized: true // Flag to ensure form shows up
-                          };
-                          handleFieldChange("co_applicant_form", coApplicantData);
-                        }}
-                        disabled={!canEditLogin()}
-                      >
-                        + Add Co-Applicant
-                      </button>
-                    </div>
-                    <LazySection height="400px">
-                      <LoginFormSection
-                        data={lead.dynamic_fields?.applicant_form || lead.loginForm || {}}
-                        onSave={updated => {
-                          // Use the enhanced field change handler with immediate save (delay=0) since 
-                          // LoginFormSection already handles onBlur properly
-                          handleSelectedLeadFieldChange("applicant_form", updated, true, 0);
-                        }}
-                        bankOptions={bankOptions}
-                        mobileNumber={lead.mobile_number}
-                        bankName={lead.salaryAccountBank || lead.bank_name}
-                        isReadOnlyMobile={true}
-                        leadId={lead._id}
-                        leadCustomerName={lead.first_name && lead.last_name ? `${lead.first_name} ${lead.last_name}` : lead.customerName}
-                        leadData={lead}
-                        canEdit={canEditLogin()}
-                      />
-                    </LazySection>
-                    {(lead.dynamic_fields?.co_applicant_form || lead.coApplicantForm) && (
-                      <div className="mt-6 sm:mt-8 pt-4 sm:pt-6 border-t-2 border-cyan-400 w-full">
-                        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 gap-2">
-                          <h3 className="text-base sm:text-lg font-bold text-[#03B0F5]">Co-Applicant</h3>
-                          <button
-                            className={`px-3 sm:px-4 py-2 rounded-lg transition font-bold text-sm sm:text-lg whitespace-nowrap ${
-                              canEditLogin() 
-                                ? 'bg-red-600 text-white hover:bg-red-700' 
-                                : 'bg-gray-400 text-gray-600 cursor-not-allowed'
-                            }`}
-                            onClick={() => {
-                              if (!canEditLogin()) return;
-                              handleFieldChange("co_applicant_form", null);
-                            }}
-                            disabled={!canEditLogin()}
-                          >
-                            Remove Co-Applicant
-                          </button>
-                        </div>
-                        <LazySection height="400px">
-                          <LoginFormSection
-                            data={lead.dynamic_fields?.co_applicant_form || lead.coApplicantForm || {}}
-                            onSave={updated => {
-                              // Use the enhanced field change handler with immediate save (delay=0) since 
-                              // LoginFormSection already handles onBlur properly
-                              handleSelectedLeadFieldChange("co_applicant_form", updated, true, 0);
-                            }}
-                            bankOptions={bankOptions}
-                            mobileNumber=""
-                            bankName=""
-                            isCoApplicant={true}
-                            leadId={lead._id}
-                            leadCustomerName={lead.first_name && lead.last_name ? `${lead.first_name} ${lead.last_name} - Co-Applicant` : `${lead.customerName || lead.customer_name || ''} - Co-Applicant`}
-                            leadData={lead}
-                            canEdit={canEditLogin()}
-                          />
-                        </LazySection>
+                    {/* Tab bar */}
+                    <div className="flex items-center gap-2 border-b border-gray-700 pb-0">
+                      <div className="flex gap-1 flex-1">
+                        <button
+                          className={`px-4 py-2 rounded-t-lg font-semibold text-sm transition-colors ${
+                            activeApplicantTab === 'applicant'
+                              ? 'bg-[#03B0F5] text-white'
+                              : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                          }`}
+                          onClick={() => setActiveApplicantTab('applicant')}
+                        >
+                          Applicant
+                        </button>
+                        <button
+                          className={`px-4 py-2 rounded-t-lg font-semibold text-sm transition-colors ${
+                            activeApplicantTab === 'co-applicant'
+                              ? 'bg-[#03B0F5] text-white'
+                              : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                          }`}
+                          onClick={() => {
+                            if (!lead.dynamic_fields?.co_applicant_form && !lead.coApplicantForm) {
+                              if (canEditLogin()) {
+                                handleFieldChange("co_applicant_form", { initialized: true });
+                              }
+                            }
+                            setActiveApplicantTab('co-applicant');
+                          }}
+                        >
+                          Co-Applicant
+                        </button>
                       </div>
+                      {/* Share icon */}
+                      <button
+                        className="p-2 rounded-lg bg-green-600 hover:bg-green-700 text-white transition-colors"
+                        title="Share Applicant Form"
+                        onClick={() => {
+                          if (activeApplicantTab === 'applicant') {
+                            applicantFormRef.current?.handleGenerateShareLink?.();
+                          } else {
+                            coApplicantFormRef.current?.handleGenerateShareLink?.();
+                          }
+                        }}
+                      >
+                        <Share2 size={16} />
+                      </button>
+                      {/* Remove co-applicant button */}
+                      {activeApplicantTab === 'co-applicant' && (lead.dynamic_fields?.co_applicant_form || lead.coApplicantForm) && canEditLogin() && (
+                        <button
+                          className="p-2 rounded-lg bg-red-600 hover:bg-red-700 text-white transition-colors text-xs font-semibold"
+                          title="Remove Co-Applicant"
+                          onClick={() => {
+                            handleFieldChange("co_applicant_form", null);
+                            setActiveApplicantTab('applicant');
+                          }}
+                        >
+                          <X size={16} />
+                        </button>
+                      )}
+                    </div>
+
+                    {/* Applicant tab */}
+                    {activeApplicantTab === 'applicant' && (
+                      <LazySection height="400px">
+                        <LoginFormSection
+                          ref={applicantFormRef}
+                          data={lead.dynamic_fields?.applicant_form || lead.loginForm || {}}
+                          onSave={updated => {
+                            handleSelectedLeadFieldChange("applicant_form", updated, true, 0);
+                          }}
+                          bankOptions={bankOptions}
+                          mobileNumber={lead.mobile_number}
+                          bankName={lead.salaryAccountBank || lead.bank_name}
+                          isReadOnlyMobile={true}
+                          leadId={lead._id}
+                          leadCustomerName={lead.first_name && lead.last_name ? `${lead.first_name} ${lead.last_name}` : lead.customerName}
+                          leadData={lead}
+                          canEdit={canEditLogin()}
+                          hideShareButton={true}
+                        />
+                      </LazySection>
+                    )}
+
+                    {/* Co-Applicant tab */}
+                    {activeApplicantTab === 'co-applicant' && (
+                      <LazySection height="400px">
+                        <LoginFormSection
+                          ref={coApplicantFormRef}
+                          data={lead.dynamic_fields?.co_applicant_form || lead.coApplicantForm || {}}
+                          onSave={updated => {
+                            handleSelectedLeadFieldChange("co_applicant_form", updated, true, 0);
+                          }}
+                          bankOptions={bankOptions}
+                          mobileNumber=""
+                          bankName=""
+                          isCoApplicant={true}
+                          leadId={lead._id}
+                          leadCustomerName={lead.first_name && lead.last_name ? `${lead.first_name} ${lead.last_name} - Co-Applicant` : `${lead.customerName || lead.customer_name || ''} - Co-Applicant`}
+                          leadData={lead}
+                          canEdit={canEditLogin()}
+                          hideShareButton={true}
+                        />
+                      </LazySection>
                     )}
                   </div>
                 ),
@@ -5001,18 +5032,6 @@ const LoginCRM = ({ user, selectedLoanType: initialLoanType, department = "login
                 )
               }
             ]
-          },
-          {
-            label: "REMARK",
-            getContent: (leadData) => [
-              {
-                content: (
-                  <div className="p-6 bg-white rounded-xl shadow-2xl text-[1rem] text-gray-100 border-l-4 border-cyan-500/60">
-                    <RemarkSection leadData={leadData} canEdit={canEditLogin()} />
-                  </div>
-                ),
-              },
-            ],
           },
           {
             label: "TASK",
@@ -5080,21 +5099,19 @@ const LoginCRM = ({ user, selectedLoanType: initialLoanType, department = "login
         );
         
         return (
-            <div className={activeTab === 1 ? 'h-screen overflow-hidden bg-black text-white text-sm sm:text-base w-full flex flex-col' : 'min-h-screen bg-black text-white text-sm sm:text-base w-full'}>
-                {/* Header */}
-                <div className="flex items-center gap-2 sm:gap-3 px-4 sm:px-6 py-4 sm:py-6 bg-[#0c1019] shadow-lg">
-                    <div className="flex items-center gap-2">
-                        {/* Auto-save indicator */}
+            <div className="h-full overflow-hidden bg-black text-white text-sm sm:text-base w-full flex flex-col">
+                {/* Header - Name + File Received in one row */}
+                <div className="flex items-center gap-2 sm:gap-3 px-4 sm:px-7 py-2 sm:py-3 bg-[#0a1525] border-b border-[#1a2332] w-full">
+                    <h2 className="text-base sm:text-lg font-bold text-white tracking-wide truncate flex-1">
+                        {(`${selectedLead.first_name || ''} ${selectedLead.last_name || ''}`.trim()) || selectedLead.customer_name || selectedLead.customerName || selectedLead.name || 'Lead'}
+                    </h2>
+                    <div className="flex items-center gap-2 flex-shrink-0">
                         {isSaving && (
                             <div className="flex items-center gap-2 px-3 py-1 bg-yellow-600/20 rounded-full border border-yellow-500/50">
                                 <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-yellow-400"></div>
                                 <span className="text-yellow-400 text-sm font-medium">Saving...</span>
                             </div>
                         )}
-                        {/* "Pending changes" badge removed — autosave handles persistence transparently */}
-                    </div>
-                    <div className="ml-auto flex items-center gap-3">
-                        {/* File received indicator - only show when file_sent_to_login is true */}
                         {selectedLead?.file_sent_to_login && (
                             <div className="flex items-center gap-2 px-3 py-1 bg-green-600/20 rounded-full border border-green-500/50">
                                 <div className="w-3 h-3 bg-green-400 rounded-full"></div>
@@ -5106,7 +5123,7 @@ const LoginCRM = ({ user, selectedLoanType: initialLoanType, department = "login
 
                 {/* Tabs */}
                 <div 
-                  className="flex flex-wrap items-center gap-2 px-4 sm:px-7 py-2 sm:py-3 bg-black border-b border-[#232c3a] overflow-x-auto relative "
+                  className="flex flex-wrap items-center gap-1.5 px-2 sm:px-4 lg:px-7 py-1.5 bg-black border-b border-[#232c3a] overflow-x-auto relative"
                   data-tab-area="true"
                 >
                     {detailSections.map((tab, idx) => (
@@ -5115,12 +5132,12 @@ const LoginCRM = ({ user, selectedLoanType: initialLoanType, department = "login
                             data-tab-button="true"
                             data-tab-index={idx}
                             className={`
-                                flex items-center px-3 sm:px-6 py-2 sm:py-3 rounded-3xl font-extrabold border shadow-md text-sm sm:text-lg transition whitespace-nowrap relative  cursor-pointer
+                                flex items-center px-3 sm:px-4 lg:px-5 py-1 sm:py-1.5 rounded-3xl font-extrabold border shadow-md text-xs sm:text-sm lg:text-[0.9rem] transition whitespace-nowrap relative cursor-pointer
                                 ${idx === activeTab
                                     ? "bg-[#03B0F5] via-blue-700 to-cyan-500 text-white border-cyan-400 shadow-lg scale-105"
                                     : "bg-white text-[#03B0F5] border-[#2D3C56] hover:bg-cyan-400/10 hover:text-cyan-400"
                                 }
-                                focus:outline-none focus:ring-2 focus:ring-cyan-400
+                                focus:outline-none
                             `}
                             style={{
                                 boxShadow: idx === activeTab ? "0 4px 16px 0 #1cb5e080" : undefined,
@@ -5182,8 +5199,8 @@ const LoginCRM = ({ user, selectedLoanType: initialLoanType, department = "login
                
 
                 {/* Content */}
-                <div className={activeTab === 1 ? 'flex-1 min-h-0 overflow-hidden w-full' : 'px-2 sm:px-4 lg:px-6 py-4 lg:py-6 w-full relative z-0'}>
-                    <div className={activeTab === 1 ? 'w-full h-full' : 'w-full relative z-0'}>
+                <div className={activeTab === 1 ? 'flex-1 min-h-0 w-full overflow-hidden' : 'flex flex-1 min-h-0 overflow-hidden'}>
+                    <div className={activeTab === 1 ? 'w-full h-full' : 'flex-1 overflow-y-auto overflow-x-hidden scrollbar-hide px-2 sm:px-3 lg:px-4 py-3'}>
                         {sectionData.map((section, idx) => {
                             const sectionKey = `${activeTab}-${idx}`;
                             const isCollapsed = collapsedSections[sectionKey];
@@ -5191,23 +5208,37 @@ const LoginCRM = ({ user, selectedLoanType: initialLoanType, department = "login
                             return (
                                 <div key={idx} className={activeTab === 1 ? 'w-full h-full' : 'mb-6 w-full'}>
                                     {section.label && (
-                                        <button
-                                            className="w-full px-2 sm:px-5 py-3 font-extrabold text-base sm:text-lg lg:text-[1.05rem] text-[#03B0F5] bg-gray-200 hover:bg-gray-300 border-2 border-gray-400 rounded-lg flex items-center justify-between transition-colors duration-200 shadow-md"
-                                            onClick={() => toggleSectionCollapse(sectionKey)}
-                                        >
-                                            <span>{section.label}</span>
-                                            <svg
-                                                className={`w-5 h-5 transform transition-transform duration-200 ${isCollapsed ? '' : 'rotate-180'}`}
-                                                fill="none"
-                                                stroke="currentColor"
-                                                viewBox="0 0 24 24"
-                                            >
-                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                                            </svg>
-                                        </button>
+                                        <>
+                                            {activeTab === 0 ? (
+                                                <button
+                                                    className="w-full px-2 sm:px-4 py-1.5 font-extrabold text-sm sm:text-base lg:text-[0.95rem] text-[#03B0F5] bg-gray-200 hover:bg-gray-300 border border-gray-400 rounded-lg flex items-center justify-between transition-colors duration-200 shadow-sm"
+                                                    onClick={() => toggleSectionCollapse(sectionKey)}
+                                                >
+                                                    <span>{section.label}</span>
+                                                    <svg
+                                                        className={`w-5 h-5 transform transition-transform duration-200 ${isCollapsed ? '' : 'rotate-180'}`}
+                                                        fill="none"
+                                                        stroke="currentColor"
+                                                        viewBox="0 0 24 24"
+                                                    >
+                                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                                                    </svg>
+                                                </button>
+                                            ) : (
+                                                <div className="px-2 sm:px-5 py-2 font-extrabold text-base sm:text-lg lg:text-[1.05rem] text-[#03B0F5]">
+                                                    {section.label}
+                                                </div>
+                                            )}
+                                        </>
                                     )}
-                                    {(!section.label || !isCollapsed) && (
-                                        <div className={activeTab === 1 ? 'w-full h-full' : 'w-full mt-2'}>
+                                    {activeTab === 0 ? (
+                                        !isCollapsed && (
+                                            <div className="w-full mt-2">
+                                                {section.content}
+                                            </div>
+                                        )
+                                    ) : (
+                                        <div className={activeTab === 1 ? 'w-full h-full' : 'w-full'}>
                                             {section.content}
                                         </div>
                                     )}
@@ -5215,6 +5246,18 @@ const LoginCRM = ({ user, selectedLoanType: initialLoanType, department = "login
                             );
                         })}
                     </div>
+                    {/* Remark - Persistent Right Panel (same as LeadCRM) */}
+                    {activeTab === 0 && (
+                        <div className="w-80 flex-shrink-0 flex flex-col bg-white border-l border-gray-200 overflow-hidden h-full">
+                            <div className="px-3 py-1.5 border-b border-gray-100 bg-gray-50 flex items-center gap-2 flex-shrink-0">
+                                <svg className="w-3.5 h-3.5 text-[#03B0F5]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" /></svg>
+                                <h3 className="text-xs font-bold text-gray-700 uppercase tracking-wide">Remark</h3>
+                            </div>
+                            <div className="flex-1 min-h-0 overflow-hidden">
+                                <RemarkSection leadData={selectedLead} canEdit={canEditLogin()} />
+                            </div>
+                        </div>
+                    )}
                 </div>
             </div>
         );

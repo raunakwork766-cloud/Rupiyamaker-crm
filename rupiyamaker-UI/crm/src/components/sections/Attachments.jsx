@@ -6,6 +6,7 @@ import jsPDF from 'jspdf';
 import 'jspdf-autotable';
 import './attachments.css';
 import { getISTDateYMD } from '../../utils/dateUtils';
+import { hasPermission, getUserPermissions, isSuperAdmin } from '../../utils/permissions';
 
 // Document categories from premium_document_upload.html reference
 const DOCUMENT_CATEGORIES = [
@@ -95,6 +96,7 @@ export default function Attachments({ leadId, userId }) {
   const [isLoading, setIsLoading] = useState(false);
   const [uploadingKey, setUploadingKey] = useState(null); // tracks which doc-type is currently uploading
   const [isDownloadingAll, setIsDownloadingAll] = useState(false); // State for download all operation
+  const [isDownloadingPdfsOnly, setIsDownloadingPdfsOnly] = useState(false); // State for download PDFs only operation
   const [uploadedDocuments, setUploadedDocuments] = useState([]);
   const [showPasswordFor, setShowPasswordFor] = useState({});
   const [leadData, setLeadData] = useState(null); // State to store lead data for form exports
@@ -1394,6 +1396,27 @@ export default function Attachments({ leadId, userId }) {
     return await parentHandle.getDirectoryHandle(name, { create: true });
   };
 
+  // Returns uploaded documents in the exact same order they appear in the UI
+  // (follows allDisplayTypes order: active primary → historical → extra, then profile-filtered)
+  const getOrderedDocuments = () => {
+    const extraDocNameSet = new Set(extraDocFields.map(f => f.name));
+    const orderedTypes = [
+      ...attachmentTypes.map(t => ({ name: t.name })),
+      ...historicalAttachmentTypes
+        .filter(t => !attachmentTypes.some(a => a.name === t.name))
+        .filter(t => !extraDocNameSet.has(t.name)),
+      ...extraDocFields.map(f => ({ name: f.name })),
+    ];
+    const result = [];
+    orderedTypes.forEach(type => {
+      const typeDocs = getProfileDocs(
+        uploadedDocuments.filter(d => d.document_type === type.name)
+      );
+      result.push(...typeDocs);
+    });
+    return result;
+  };
+
   // Handler for downloading all files as ZIP
   const handleDownloadAll = async () => {
     if (!leadId || uploadedDocuments.length === 0) {
@@ -1419,7 +1442,7 @@ export default function Attachments({ leadId, userId }) {
     }
   };
 
-  // Download all files as a ZIP archive
+  // Download all files as a ZIP archive (ordered as per UI display)
   const _downloadAsZip = async (currentLeadData, folderName) => {
     try {
       const zip = new JSZip();
@@ -1429,11 +1452,19 @@ export default function Attachments({ leadId, userId }) {
       let downloadedCount = 0;
       let failedCount = 0;
 
-      const documentsByType = {};
-      uploadedDocuments.forEach(doc => {
+      // Build UI-ordered list of documents (mirrors the display order)
+      const orderedDocs = getOrderedDocuments();
+
+      // Build ordered type→docs map (preserving display order)
+      const seenTypes = [];
+      const docsByTypeOrdered = new Map();
+      orderedDocs.forEach(doc => {
         const type = doc.document_type || 'Other';
-        if (!documentsByType[type]) documentsByType[type] = [];
-        documentsByType[type].push(doc);
+        if (!docsByTypeOrdered.has(type)) {
+          docsByTypeOrdered.set(type, []);
+          seenTypes.push(type);
+        }
+        docsByTypeOrdered.get(type).push(doc);
       });
 
       const allFolder = zip.folder("All");
@@ -1478,31 +1509,16 @@ export default function Attachments({ leadId, userId }) {
         } catch (e) { console.error('Co-Applicant PDF failed:', e); }
       }
 
-      for (const doc of uploadedDocuments) {
-        try {
-          const _isLoginForZip = currentLeadData && (currentLeadData.original_lead_id || currentLeadData.login_created_at);
-          const response = await fetch(
-            _isLoginForZip
-              ? `${BASE_URL}/lead-login/login-leads/${leadId}/attachments/${doc._id}/download?user_id=${currentUserId}`
-              : `${BASE_URL}/leads/${leadId}/attachments/${doc._id}/download?user_id=${currentUserId}`,
-            { headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` } }
-          );
-          if (response.ok) {
-            const blob = await response.blob();
-            const filename = doc.filename || doc.file_name || `document_${doc._id}`;
-            allFolder.file(filename, blob);
-            allFolderDownloadedCount++;
-          }
-        } catch (e) { console.error(`Error downloading ${doc.filename || doc._id}:`, e); }
-      }
+      const _isLoginForZip = currentLeadData && (currentLeadData.original_lead_id || currentLeadData.login_created_at);
 
-      for (const [docType, docs] of Object.entries(documentsByType)) {
+      // Fetch each file once, add to both "All" folder and its type-specific folder (in UI order)
+      for (const docType of seenTypes) {
         const folder = zip.folder(docType);
+        const docs = docsByTypeOrdered.get(docType);
         for (const doc of docs) {
           try {
-            const _isLoginForZip2 = currentLeadData && (currentLeadData.original_lead_id || currentLeadData.login_created_at);
             const response = await fetch(
-              _isLoginForZip2
+              _isLoginForZip
                 ? `${BASE_URL}/lead-login/login-leads/${leadId}/attachments/${doc._id}/download?user_id=${currentUserId}`
                 : `${BASE_URL}/leads/${leadId}/attachments/${doc._id}/download?user_id=${currentUserId}`,
               { headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` } }
@@ -1511,13 +1527,15 @@ export default function Attachments({ leadId, userId }) {
               const blob = await response.blob();
               const filename = doc.filename || doc.file_name || `document_${doc._id}`;
               folder.file(filename, blob);
+              allFolder.file(filename, blob);
               downloadedCount++;
+              allFolderDownloadedCount++;
               if (doc.has_password) {
                 const password = getDocumentPassword(doc);
                 passwordInfo.push({ folder: docType, filename, password: password && !password.includes("not available") ? password : "Password not available" });
               }
             } else { failedCount++; }
-          } catch (e) { failedCount++; }
+          } catch (e) { failedCount++; console.error(`Error downloading ${doc.filename || doc._id}:`, e); }
         }
       }
 
@@ -1552,6 +1570,88 @@ export default function Attachments({ leadId, userId }) {
       setIsDownloadingAll(false);
     }
   };
+
+  // Download only PDF files as a flat ZIP (no subfolders) ordered exactly as shown in the UI
+  const _downloadPdfsAsZip = async (currentLeadData, folderName, orderedPdfDocs) => {
+    try {
+      const zip = new JSZip();
+      const _isLoginForZip = currentLeadData && (currentLeadData.original_lead_id || currentLeadData.login_created_at);
+      let downloadedCount = 0;
+      let failedCount = 0;
+
+      // Track used filenames to avoid collisions in flat structure
+      const usedNames = {};
+
+      for (const doc of orderedPdfDocs) {
+        try {
+          const response = await fetch(
+            _isLoginForZip
+              ? `${BASE_URL}/lead-login/login-leads/${leadId}/attachments/${doc._id}/download?user_id=${currentUserId}`
+              : `${BASE_URL}/leads/${leadId}/attachments/${doc._id}/download?user_id=${currentUserId}`,
+            { headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` } }
+          );
+          if (response.ok) {
+            const blob = await response.blob();
+            let filename = doc.filename || doc.file_name || `document_${doc._id}.pdf`;
+            // Deduplicate filenames in flat structure
+            if (usedNames[filename]) {
+              usedNames[filename]++;
+              const dot = filename.lastIndexOf('.');
+              filename = dot >= 0
+                ? filename.substring(0, dot) + `_${usedNames[filename]}` + filename.substring(dot)
+                : filename + `_${usedNames[filename]}`;
+            } else {
+              usedNames[filename] = 1;
+            }
+            zip.file(filename, blob);
+            downloadedCount++;
+          } else { failedCount++; }
+        } catch (e) { failedCount++; console.error(`Error downloading PDF ${doc.filename || doc._id}:`, e); }
+      }
+
+      if (downloadedCount > 0) {
+        const zipBlob = await zip.generateAsync({ type: "blob" });
+        saveAs(zipBlob, `${folderName}.zip`);
+        let msg = `Successfully downloaded ${downloadedCount} PDF file(s).`;
+        if (failedCount > 0) msg += ` ${failedCount} file(s) failed.`;
+        showNotification(msg, 'success');
+      } else {
+        showNotification('No PDF files could be downloaded', 'error');
+      }
+    } catch (error) {
+      console.error('Error creating PDF ZIP file:', error);
+      showNotification('Failed to create PDF download archive: ' + error.message, 'error');
+    } finally {
+      setIsDownloadingPdfsOnly(false);
+    }
+  };
+
+  // Handler for downloading PDFs only as ZIP
+  const handleDownloadPdfsOnly = async () => {
+    const orderedDocs = getOrderedDocuments();
+    const pdfDocs = orderedDocs.filter(doc => {
+      const fname = (doc.filename || doc.file_name || '').toLowerCase();
+      return fname.endsWith('.pdf');
+    });
+    if (!leadId || pdfDocs.length === 0) {
+      showNotification('No PDF documents available to download', 'warning');
+      return;
+    }
+    try {
+      setIsDownloadingPdfsOnly(true);
+      let currentLeadData = leadData;
+      if (!currentLeadData) currentLeadData = await fetchLeadData();
+      const zipName = getDownloadFolderName(currentLeadData) + '_PDFs_Only';
+      await _downloadPdfsAsZip(currentLeadData, zipName, pdfDocs);
+    } catch (error) {
+      console.error('Error downloading PDFs:', error);
+      showNotification('Failed to download PDFs: ' + error.message, 'error');
+    } finally {
+      setIsDownloadingPdfsOnly(false);
+    }
+  };
+
+
 
   // Handler for removing a file
   const handleRemoveFile = (attachmentKey, index) => {
@@ -1903,17 +2003,31 @@ export default function Attachments({ leadId, userId }) {
 
       {/* ── Header: DL ALL (left) + Switcher (right) ── */}
       <div className="mb-2 border-b border-gray-100 pb-2 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-        <div className="flex items-center gap-1.5">
-          <button
-            onClick={handleDownloadAll}
-            disabled={isDownloadingAll || getProfileDocs(uploadedDocuments).length === 0}
-            className="bg-gray-900 border border-gray-900 text-white px-3 py-1 rounded text-[11px] font-bold hover:bg-black transition flex items-center shadow-sm disabled:opacity-40 disabled:cursor-not-allowed"
-          >
-            {isDownloadingAll
-              ? <><i className="fa-solid fa-spinner fa-spin mr-1 text-xs"></i> Zipping…</>
-              : <><i className="fa-solid fa-download mr-1 text-xs"></i> DOWNLOAD ALL ({getProfileDocs(uploadedDocuments).length})</>
-            }
-          </button>
+        <div className="flex items-center gap-1.5 flex-wrap">
+          {(isSuperAdmin(getUserPermissions()) || hasPermission(getUserPermissions(), 'leads.pl_odd_leads', 'download_attachments')) && (
+            <>
+              <button
+                onClick={handleDownloadAll}
+                disabled={isDownloadingAll || isDownloadingPdfsOnly || getProfileDocs(uploadedDocuments).length === 0}
+                className="bg-gray-900 border border-gray-900 text-white px-3 py-1 rounded text-[11px] font-bold hover:bg-black transition flex items-center shadow-sm disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                {isDownloadingAll
+                  ? <><i className="fa-solid fa-spinner fa-spin mr-1 text-xs"></i> Zipping…</>
+                  : <><i className="fa-solid fa-download mr-1 text-xs"></i> DOWNLOAD ALL ({getProfileDocs(uploadedDocuments).length})</>
+                }
+              </button>
+              <button
+                onClick={handleDownloadPdfsOnly}
+                disabled={isDownloadingPdfsOnly || isDownloadingAll || getProfileDocs(uploadedDocuments).filter(d => (d.filename || d.file_name || '').toLowerCase().endsWith('.pdf')).length === 0}
+                className="bg-blue-700 border border-blue-700 text-white px-3 py-1 rounded text-[11px] font-bold hover:bg-blue-800 transition flex items-center shadow-sm disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                {isDownloadingPdfsOnly
+                  ? <><i className="fa-solid fa-spinner fa-spin mr-1 text-xs"></i> Zipping PDFs…</>
+                  : <><i className="fa-solid fa-file-pdf mr-1 text-xs"></i> DOWNLOAD PDFs ONLY ({getProfileDocs(uploadedDocuments).filter(d => (d.filename || d.file_name || '').toLowerCase().endsWith('.pdf')).length})</>
+                }
+              </button>
+            </>
+          )}
         </div>
 
         {/* Applicant / Co-Applicant Switcher */}

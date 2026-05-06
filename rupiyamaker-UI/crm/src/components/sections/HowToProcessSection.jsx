@@ -48,7 +48,7 @@ export default function HowToProcessSection({ process, onSave, lead, canEdit = t
   const saveToAPIRef = useRef(null);
 
   // Tenure mode: 'months' or 'years'
-  const [tenureMode, setTenureMode] = useState('months');
+  const [tenureMode, setTenureMode] = useState('years');
   // Raw years input value when in years mode
   const [tenureYearsInput, setTenureYearsInput] = useState('');
   // Focus state for years input
@@ -233,6 +233,19 @@ export default function HowToProcessSection({ process, onSave, lead, canEdit = t
       caseType: (() => { const v = currentProcess.case_type || lead?.process_data?.case_type || lead?.dynamic_fields?.process?.case_type || ""; return (v === 'Normal' || v === 'normal') ? '' : v; })(),
       year: tenure ? formatYearFromTenure(String(tenure).replace(/[^\d]/g,'')) : "",
     });
+
+    // Initialize tenureYearsInput for years display mode
+    if (tenure) {
+      const months = parseInt(String(tenure).replace(/[^\d]/g,'')) || 0;
+      if (months > 0) {
+        const years = months / 12;
+        setTenureYearsInput(Number.isInteger(years) ? years.toString() : parseFloat(years.toFixed(2)).toString());
+      } else {
+        setTenureYearsInput('');
+      }
+    } else {
+      setTenureYearsInput('');
+    }
     
     // Set selected loan type from lead if available (match by id or name)
     const loanTypeValue = lead?.process_data?.loan_type || lead?.dynamic_fields?.process?.loan_type;
@@ -673,6 +686,13 @@ export default function HowToProcessSection({ process, onSave, lead, canEdit = t
           const display = months ? `${months} months` : '';
           const yearDisplay = months ? formatYearFromTenure(months) : '';
           setFields(prev => ({ ...prev, requiredTenure: display, year: yearDisplay }));
+          // Also update tenureYearsInput for years display mode
+          if (months > 0) {
+            const years = months / 12;
+            setTenureYearsInput(Number.isInteger(years) ? years.toString() : parseFloat(years.toFixed(2)).toString());
+          } else {
+            setTenureYearsInput('');
+          }
           if (saveToAPIRef.current) await saveToAPIRef.current('requiredTenure', display);
         }
       } finally {
@@ -935,29 +955,9 @@ export default function HowToProcessSection({ process, onSave, lead, canEdit = t
               <span className="absolute left-4 top-1/2 transform -translate-y-1/2 text-[#00bcd4] font-semibold z-10">₹</span>
               <input
                 type="text"
-                className={`w-full p-3 pl-8 border-2 border-[#00bcd4] rounded-md bg-white text-green-600 text-md font-bold transition-all duration-300 focus:border-[#0097a7] focus:shadow-[0_0_0_3px_rgba(0,188,212,0.1)] ${
-                  !canEdit ? 'bg-gray-100 cursor-not-allowed' : ''
-                }`}
+                className="w-full p-3 pl-8 border-2 border-[#00bcd4] rounded-md bg-gray-50 text-green-600 text-md font-bold cursor-not-allowed"
                 value={fields.loanAmountRequired}
-                onChange={e => canEdit && handleChange("loanAmountRequired", e.target.value)}
-                onFocus={e => {
-                  if (!canEdit) return;
-                  // On focus, show raw number for editing
-                  if (fields.loanAmountRequired) {
-                    const rawValue = parseINR(fields.loanAmountRequired);
-                    e.target.value = rawValue;
-                    setFields(prev => ({ ...prev, loanAmountRequired: rawValue }));
-                  }
-                }}
-                onBlur={e => {
-                  if (!canEdit) return;
-                  // On blur, format as INR and save
-                  const rawValue = parseINR(e.target.value);
-                  const formattedValue = rawValue ? formatINR(rawValue) : "";
-                  setFields(prev => ({ ...prev, loanAmountRequired: formattedValue }));
-                  handleBlur("loanAmountRequired", rawValue);
-                }}
-                readOnly={!canEdit}
+                readOnly
                 placeholder="0"
               />
             </div>
@@ -967,15 +967,13 @@ export default function HowToProcessSection({ process, onSave, lead, canEdit = t
           <div className="flex flex-col gap-2">
             <div className="flex items-center justify-between">
               <label className={labelClass} style={labelStyle}>REQUIRED TENURE</label>
-              {canEdit && (
-                <button
-                  type="button"
-                  onClick={handleTenureModeSwitch}
-                  className="text-xs font-bold text-white bg-[#00bcd4] hover:bg-[#0097a7] px-3 py-1 rounded-full transition-colors duration-200 ml-2 whitespace-nowrap"
-                >
-                  {tenureMode === 'months' ? '↔ Switch to Years' : '↔ Switch to Months'}
-                </button>
-              )}
+              <button
+                type="button"
+                onClick={handleTenureModeSwitch}
+                className="text-xs font-bold text-white bg-[#00bcd4] hover:bg-[#0097a7] px-3 py-1 rounded-full transition-colors duration-200 ml-2 whitespace-nowrap"
+              >
+                {tenureMode === 'months' ? '↔ Switch to Years' : '↔ Switch to Months'}
+              </button>
             </div>
             <div className="relative">
               {tenureMode === 'months' ? (
@@ -983,24 +981,9 @@ export default function HowToProcessSection({ process, onSave, lead, canEdit = t
                   <input
                     ref={tenureInputRef}
                     type="text"
-                    className={`w-full p-3 pr-36 border-2 border-[#00bcd4] rounded-md bg-white text-green-600 text-md font-bold transition-all duration-300 focus:border-[#0097a7] focus:shadow-[0_0_0_3px_rgba(0,188,212,0.1)] ${
-                      !canEdit ? 'bg-gray-100 cursor-not-allowed' : ''
-                    }`}
+                    className="w-full p-3 pr-36 border-2 border-[#00bcd4] rounded-md bg-gray-50 text-green-600 text-md font-bold cursor-not-allowed"
                     value={getTenureDisplayValue()}
-                    onChange={e => {
-                      if (!canEdit) return;
-                      const numericValue = e.target.value.replace(/[^\d]/g, '');
-                      handleChange('requiredTenure', numericValue);
-                    }}
-                    onFocus={handleTenureFocus}
-                    onBlur={handleTenureBlur}
-                    onKeyDown={e => {
-                      const allowedKeys = ['Backspace', 'Delete', 'ArrowLeft', 'ArrowRight', 'Tab'];
-                      if (!allowedKeys.includes(e.key) && !/[0-9]/.test(e.key)) {
-                        e.preventDefault();
-                      }
-                    }}
-                    readOnly={!canEdit}
+                    readOnly
                     placeholder="Enter months"
                   />
                   {fields.year && (
@@ -1013,20 +996,9 @@ export default function HowToProcessSection({ process, onSave, lead, canEdit = t
                 <>
                   <input
                     type="text"
-                    className={`w-full p-3 pr-36 border-2 border-[#00bcd4] rounded-md bg-white text-green-600 text-md font-bold transition-all duration-300 focus:border-[#0097a7] focus:shadow-[0_0_0_3px_rgba(0,188,212,0.1)] ${
-                      !canEdit ? 'bg-gray-100 cursor-not-allowed' : ''
-                    }`}
+                    className="w-full p-3 pr-36 border-2 border-[#00bcd4] rounded-md bg-gray-50 text-green-600 text-md font-bold cursor-not-allowed"
                     value={getYearsDisplayValue()}
-                    onChange={handleYearsInputChange}
-                    onFocus={() => setIsTenureYearsFocused(true)}
-                    onBlur={handleYearsInputBlur}
-                    onKeyDown={e => {
-                      const allowedKeys = ['Backspace', 'Delete', 'ArrowLeft', 'ArrowRight', 'Tab', '.'];
-                      if (!allowedKeys.includes(e.key) && !/[0-9]/.test(e.key)) {
-                        e.preventDefault();
-                      }
-                    }}
-                    readOnly={!canEdit}
+                    readOnly
                     placeholder="Enter years"
                   />
                   {tenureYearsInput && (() => {

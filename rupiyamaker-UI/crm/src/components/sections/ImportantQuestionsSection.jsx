@@ -13,6 +13,8 @@ export default function ImportantQuestionsSection({ leadData, onUpdate, currentU
     const [isSending, setIsSending] = useState(false);
     const [error, setError] = useState('');
     const [open, setOpen] = useState(false); // Dropdown closed by default
+    const [showIncompletePopup, setShowIncompletePopup] = useState(false);
+    const [missingFields, setMissingFields] = useState([]);
 
     // Get user permissions
     const userPermissions = currentUserRole?.permissions || getUserPermissions();
@@ -227,6 +229,34 @@ export default function ImportantQuestionsSection({ leadData, onUpdate, currentU
     const handleSendToLoginDepartment = async () => {
         if (!shouldShowSendButton()) return;
 
+        // Validate applicant form completeness
+        const REQUIRED_APPLICANT_FIELDS = [
+            { key: 'customerName', label: 'Customer Name' },
+            { key: 'mobileNumber', label: 'Mobile Number' },
+            { key: 'qualification', label: 'Highest Qualification' },
+            { key: 'mothersName', label: "Mother's Name" },
+            { key: 'maritalStatus', label: 'Marital Status' },
+            { key: 'currentAddress', label: 'Current Address' },
+            { key: 'currentAddressType', label: 'Current Address Type' },
+            { key: 'permanentAddress', label: 'Permanent Address' },
+            { key: 'companyName', label: 'Company Name' },
+            { key: 'yourDesignation', label: 'Your Designation' },
+            { key: 'ref1Name', label: 'Reference 1 - Name' },
+            { key: 'ref1Mobile', label: 'Reference 1 - Mobile' },
+            { key: 'ref1Relation', label: 'Reference 1 - Relation' },
+            { key: 'ref2Name', label: 'Reference 2 - Name' },
+            { key: 'ref2Mobile', label: 'Reference 2 - Mobile' },
+            { key: 'ref2Relation', label: 'Reference 2 - Relation' },
+        ];
+        const applicantForm = leadData?.dynamic_fields?.applicant_form || {};
+        const missing = REQUIRED_APPLICANT_FIELDS
+            .filter(f => !applicantForm[f.key] || String(applicantForm[f.key]).trim() === '')
+            .map(f => f.label);
+        if (missing.length > 0) {
+            setMissingFields(missing);
+            setShowIncompletePopup(true);
+            return;
+        }
         setIsSending(true);
         try {
             const response = await fetch(`${API_BASE_URL}/lead-login/send-to-login-department/${leadData._id}?user_id=${userId}`, {
@@ -279,6 +309,7 @@ export default function ImportantQuestionsSection({ leadData, onUpdate, currentU
     }
 
     return (
+        <>
         <div className="p-4">
             {/* Progress and Send Button Section */}
             <div className="flex items-center justify-between mb-4">
@@ -401,5 +432,38 @@ export default function ImportantQuestionsSection({ leadData, onUpdate, currentU
                 </div>
             )}
         </div>
+
+        {/* Incomplete Applicant Form Popup */}
+        {showIncompletePopup && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
+                <div className="bg-white rounded-2xl shadow-2xl p-6 max-w-md w-full mx-4">
+                    <div className="flex items-start gap-3 mb-4">
+                        <div className="w-10 h-10 rounded-full bg-red-100 flex items-center justify-center flex-shrink-0 mt-0.5">
+                            <AlertCircle className="w-6 h-6 text-red-600" />
+                        </div>
+                        <div>
+                            <h3 className="font-bold text-lg text-gray-900">Applicant Form Incomplete</h3>
+                            <p className="text-sm text-gray-500 mt-0.5">Please fill all required fields before sending to login department.</p>
+                        </div>
+                    </div>
+                    <p className="text-sm text-gray-700 mb-3 font-semibold">The following fields are missing in the Applicant Form:</p>
+                    <div className="bg-red-50 border border-red-200 rounded-xl p-3 mb-5 max-h-52 overflow-y-auto">
+                        {missingFields.map((field, idx) => (
+                            <div key={idx} className="flex items-center gap-2 py-1">
+                                <span className="w-2 h-2 rounded-full bg-red-500 flex-shrink-0" />
+                                <span className="text-red-700 font-medium text-sm">{field}</span>
+                            </div>
+                        ))}
+                    </div>
+                    <button
+                        onClick={() => setShowIncompletePopup(false)}
+                        className="w-full px-4 py-2.5 bg-[#03B0F5] text-white rounded-xl font-bold hover:bg-[#029fd9] transition-colors"
+                    >
+                        Go Back &amp; Fill Form
+                    </button>
+                </div>
+            </div>
+        )}
+        </>
     );
 }

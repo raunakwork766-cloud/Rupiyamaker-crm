@@ -17,9 +17,13 @@ const CustomStatusDropdown = ({
     const [statusSearchTerm, setStatusSearchTerm] = useState('');
     const [subStatusSearchTerm, setSubStatusSearchTerm] = useState('');
     const [isLoading, setIsLoading] = useState(false);
+    const [statusOpenUpward, setStatusOpenUpward] = useState(false);
+    const [subStatusOpenUpward, setSubStatusOpenUpward] = useState(false);
     
     const statusDropdownRef = useRef(null);
     const subStatusDropdownRef = useRef(null);
+    const statusTriggerRef = useRef(null);
+    const subStatusTriggerRef = useRef(null);
 
     // Load statuses on component mount and when department changes
     useEffect(() => {
@@ -101,7 +105,16 @@ const CustomStatusDropdown = ({
                 <label className="block text-lg font-semibold text-black mb-1">Status</label>
                 <div className="status-dropdown">
                     <button
-                        onClick={() => !disabled && setShowStatusDropdown(!showStatusDropdown)}
+                        ref={statusTriggerRef}
+                        onClick={() => {
+                            if (!disabled) {
+                                if (!showStatusDropdown && statusTriggerRef.current) {
+                                    const rect = statusTriggerRef.current.getBoundingClientRect();
+                                    setStatusOpenUpward(window.innerHeight - rect.bottom < 280);
+                                }
+                                setShowStatusDropdown(!showStatusDropdown);
+                            }
+                        }}
                         disabled={disabled || isLoading}
                         className="w-full bg-white border border-gray-600 rounded px-3 py-2 text-black text-left focus:outline-none focus:border-blue-500 disabled:opacity-50"
                     >
@@ -113,7 +126,7 @@ const CustomStatusDropdown = ({
                     </button>
 
                     {showStatusDropdown && (
-                        <div className="absolute z-50 w-full mt-1 bg-white border border-gray-600 rounded-lg shadow-lg max-h-60 overflow-auto">
+                        <div className={`absolute z-50 w-full bg-white border border-gray-600 rounded-lg shadow-lg max-h-60 overflow-auto ${statusOpenUpward ? 'bottom-full mb-1' : 'top-full mt-1'}`}>
                             <div className="p-2 border-b border-gray-600">
                                 <input
                                     type="text"
@@ -157,7 +170,16 @@ const CustomStatusDropdown = ({
                 <label className="block text-lg font-semibold text-black mb-1">Sub-Status</label>
                 <div className="status-dropdown">
                     <button
-                        onClick={() => !disabled && selectedStatus && setShowSubStatusDropdown(!showSubStatusDropdown)}
+                        ref={subStatusTriggerRef}
+                        onClick={() => {
+                            if (!disabled && selectedStatus) {
+                                if (!showSubStatusDropdown && subStatusTriggerRef.current) {
+                                    const rect = subStatusTriggerRef.current.getBoundingClientRect();
+                                    setSubStatusOpenUpward(window.innerHeight - rect.bottom < 280);
+                                }
+                                setShowSubStatusDropdown(!showSubStatusDropdown);
+                            }
+                        }}
                         disabled={disabled || !selectedStatus}
                         className="w-full bg-white border border-gray-600 rounded px-3 py-2 text-black text-left focus:outline-none focus:border-blue-500 disabled:opacity-50"
                     >
@@ -169,7 +191,7 @@ const CustomStatusDropdown = ({
                     </button>
 
                     {showSubStatusDropdown && (
-                        <div className="absolute z-50 w-full mt-1 bg-white border border-gray-600 rounded-lg shadow-lg max-h-60 overflow-auto">
+                        <div className={`absolute z-50 w-full bg-white border border-gray-600 rounded-lg shadow-lg max-h-60 overflow-auto ${subStatusOpenUpward ? 'bottom-full mb-1' : 'top-full mt-1'}`}>
                             <div className="p-2 border-b border-gray-600">
                                 <input
                                     type="text"

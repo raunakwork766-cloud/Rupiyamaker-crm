@@ -1137,7 +1137,7 @@ const SettingsPage = () => {
 
     const loadDesignations = async () => {
         try {
-            const response = await axios.get(`${BASE_URL}/designations?user_id=${user_id}`);
+            const response = await axios.get(`${BASE_URL}/designations/?user_id=${user_id}`);
             const designationsData = response.data.designations || response.data;
             
             // Make sure each designation has both _id and id properties for compatibility
@@ -1163,7 +1163,7 @@ const SettingsPage = () => {
 
     const loadRoles = async () => {
         try {
-            const response = await axios.get(`${BASE_URL}/roles?user_id=${user_id}`);
+            const response = await axios.get(`${BASE_URL}/roles/?user_id=${user_id}`);
             const rolesData = response.data.roles || response.data;
             
             // Make sure each role has both _id and id properties for compatibility
@@ -1651,7 +1651,7 @@ const updateStatus = async (statusId, statusData) => {
                     endpoint = `/departments/${id}`;
                     break;
                 case 'designations':
-                    endpoint = `/designations/${id}`;
+                    endpoint = `/designations/${id}/`;
                     break;
                 case 'roles':
                     endpoint = `/roles/${id}`;
@@ -1811,7 +1811,7 @@ const updateStatus = async (statusId, statusData) => {
                     break;
                 case 'designations':
                     endpoint = modalType === 'add'
-                        ? `/designations`
+                        ? `/designations/`
                         : `/designations/${editingItem.id}`;
                     data = {
                         name: formData.name,

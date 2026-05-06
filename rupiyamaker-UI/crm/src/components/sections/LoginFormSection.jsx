@@ -49,7 +49,8 @@ const LoginFormSection = forwardRef(function LoginFormSection({
   isPublic = false,
   leadData = null, // Add leadData prop to access form_share and other lead info
   canEdit = true, // Add canEdit prop for permission-based editing
-  onFieldChange = null // Optional callback for auto-save (public form)
+  onFieldChange = null, // Optional callback for auto-save (public form)
+  hideShareButton = false // Hide built-in share button when parent controls sharing
 }, ref) {
   // Add state for save status indicator
   const [saveStatus, setSaveStatus] = useState('');
@@ -61,15 +62,19 @@ const LoginFormSection = forwardRef(function LoginFormSection({
     // Initialize with the current bank name from data or bankName prop
     return data?.salaryAccountBank || bankName || '';
   });
+  const [bankOpenUpward, setBankOpenUpward] = useState(false);
+  const [qualOpenUpward, setQualOpenUpward] = useState(false);
   
   // Create ref for dropdown
   const bankDropdownRef = useRef(null);
+  const bankTriggerRef = useRef(null);
   const [availableBanks, setAvailableBanks] = useState([]);
 
   // Qualification searchable dropdown states
   const [qualOpen, setQualOpen] = useState(false);
   const [qualSearch, setQualSearch] = useState('');
   const qualRef = useRef(null);
+  const qualTriggerRef = useRef(null);
 
   const [fields, setFields] = useState({
     // For co-applicants, only pre-fill reference name if it exists in their own data
@@ -328,7 +333,8 @@ const LoginFormSection = forwardRef(function LoginFormSection({
   useImperativeHandle(ref, () => ({
     handleSaveForm,
     handleSaveFormWithoutSubmit,
-    getCurrentFormData
+    getCurrentFormData,
+    handleGenerateShareLink
   }));
 
   const handleBlur = (field, value) => {
@@ -908,7 +914,7 @@ const LoginFormSection = forwardRef(function LoginFormSection({
       )}
 
       {/* Share and Export Buttons at the top - show separate share buttons for applicant and co-applicant */}
-      {!isPublic && canEdit && (
+      {!isPublic && canEdit && !hideShareButton && (
         <div className="flex justify-start items-center mb-6">
           <button
             type="button"
@@ -959,6 +965,7 @@ const LoginFormSection = forwardRef(function LoginFormSection({
               <div className="relative" ref={bankDropdownRef}>
                 {/* SearchableSelect-style dropdown button */}
                 <div
+                  ref={bankTriggerRef}
                   className={`w-full px-3 py-2 border rounded-lg cursor-pointer flex items-center justify-between ${
                     (isPublic || !canEdit) 
                       ? 'bg-gray-100 text-gray-400 border-gray-300 cursor-not-allowed'
@@ -966,6 +973,10 @@ const LoginFormSection = forwardRef(function LoginFormSection({
                   } ${showBankDropdown ? 'border-cyan-400' : ''}`}
                   onClick={() => {
                     if (!isPublic && canEdit) {
+                      if (!showBankDropdown && bankTriggerRef.current) {
+                        const rect = bankTriggerRef.current.getBoundingClientRect();
+                        setBankOpenUpward(window.innerHeight - rect.bottom < 300);
+                      }
                       setShowBankDropdown(!showBankDropdown);
                       if (!showBankDropdown) {
                         setBankSearch('');
@@ -989,7 +1000,7 @@ const LoginFormSection = forwardRef(function LoginFormSection({
 
                 {/* SearchableSelect-style dropdown menu */}
                 {showBankDropdown && !isPublic && canEdit && (
-                  <div className="absolute z-50 w-full mt-1 bg-white border border-gray-300 rounded-lg shadow-lg">
+                  <div className={`absolute z-50 w-full bg-white border border-gray-300 rounded-lg shadow-lg ${bankOpenUpward ? 'bottom-full mb-1' : 'top-full mt-1'}`}>
                     {/* Search input */}
                     <div className="p-3 border-b border-gray-200">
                       <div className="relative">
@@ -1122,12 +1133,22 @@ const LoginFormSection = forwardRef(function LoginFormSection({
           <div className="relative" ref={qualRef}>
             <div
               className={`w-full px-3 py-2 border rounded-lg cursor-pointer flex items-center justify-between ${
-                (isPublic || !canEdit)
+                !canEdit
                   ? 'bg-gray-100 text-gray-400 border-gray-300 cursor-not-allowed'
                   : 'bg-white border-black hover:border-cyan-400'
               } ${qualOpen ? 'border-cyan-400' : ''}`}
               style={{ fontSize: '15px', fontWeight: 'bold', color: fields.qualification ? '#16a34a' : '#6b7280' }}
-              onClick={() => { if (!isPublic && canEdit) { setQualOpen(v => !v); setQualSearch(''); } }}
+              ref={qualTriggerRef}
+              onClick={() => {
+                if (canEdit) {
+                  if (!qualOpen && qualTriggerRef.current) {
+                    const rect = qualTriggerRef.current.getBoundingClientRect();
+                    setQualOpenUpward(window.innerHeight - rect.bottom < 300);
+                  }
+                  setQualOpen(v => !v);
+                  setQualSearch('');
+                }
+              }}
             >
               <span className="flex-1">
                 {fields.qualification
@@ -1138,8 +1159,8 @@ const LoginFormSection = forwardRef(function LoginFormSection({
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
               </svg>
             </div>
-            {qualOpen && !isPublic && canEdit && (
-              <div className="absolute z-50 w-full mt-1 bg-white border border-gray-300 rounded-lg shadow-lg">
+            {qualOpen && canEdit && (
+              <div className={`absolute z-50 w-full bg-white border border-gray-300 rounded-lg shadow-lg ${qualOpenUpward ? 'bottom-full mb-1' : 'top-full mt-1'}`}>
                 <div className="p-2 border-b border-gray-200">
                   <input
                     type="text"

@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from "react";
-import { Send, User, RefreshCcw, AlertCircle } from "lucide-react";
+import React, { useState, useEffect, useRef } from "react";
+import { Send, User, AlertCircle } from "lucide-react";
 
 // API base URL - Use proxy in development
 const API_BASE_URL = '/api'; // Always use API proxy
@@ -14,6 +14,7 @@ export default function CommentSection({ leadData }) {
     id: "",
     avatar: null,
   });
+  const messagesEndRef = useRef(null);
   
   // Get current user information when component mounts
   useEffect(() => {
@@ -28,6 +29,11 @@ export default function CommentSection({ leadData }) {
       avatar: null,
     });
   }, []);
+
+  // Scroll to bottom when comments load/update
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [comments]);
 
   // Load comments/notes from API when component mounts or leadData changes
   useEffect(() => {
@@ -54,9 +60,6 @@ export default function CommentSection({ leadData }) {
       const apiUrl = isLoginLead
         ? `${API_BASE_URL}/lead-login/login-leads/${leadData._id}/notes?user_id=${userId}`
         : `${API_BASE_URL}/leads/${leadData._id}/notes?user_id=${userId}`;
-      
-      console.log(`📡 Remark (GET): Using ${isLoginLead ? 'LOGIN LEADS' : 'MAIN LEADS'} endpoint`);
-
       
       const response = await fetch(apiUrl, {
         method: 'GET',
@@ -93,15 +96,10 @@ export default function CommentSection({ leadData }) {
         throw new Error('No user ID available');
       }
       
-      // Use the dedicated notes API endpoint
-      // Determine if this is a login lead
       const isLoginLead = leadData && (leadData.original_lead_id || leadData.login_created_at);
       const apiUrl = isLoginLead
         ? `${API_BASE_URL}/lead-login/login-leads/${leadData._id}/notes?user_id=${userId}`
         : `${API_BASE_URL}/leads/${leadData._id}/notes?user_id=${userId}`;
-      
-      console.log(`📡 Remark (POST): Using ${isLoginLead ? 'LOGIN LEADS' : 'MAIN LEADS'} endpoint`);
-
       
       const noteData = {
         lead_id: leadData._id,
@@ -125,8 +123,6 @@ export default function CommentSection({ leadData }) {
       }
       
       setComment("");
-      
-      // Refresh notes list after adding a new one
       await fetchNotes();
       
     } catch (error) {
@@ -138,126 +134,130 @@ export default function CommentSection({ leadData }) {
   };
 
   const formatTime = (time) =>
-    new Intl.DateTimeFormat("default", {
-      dateStyle: "medium",
-      timeStyle: "short",
+    new Intl.DateTimeFormat("en-IN", {
+      day: "numeric",
+      month: "short",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: true,
       timeZone: "Asia/Kolkata",
     }).format(new Date(time));
 
+  const getInitials = (name) => {
+    if (!name) return 'U';
+    return name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
+  };
+
+  const isCurrentUser = (note) => note.created_by === currentUser.id;
+
   return (
-    <div className="w-full p-4 space-y-4">
-      {/* Header with refresh button */}
-      <div className="flex justify-between items-center">
-        <h3 className="text-lg font-semibold text-gray-800">Remarks</h3>
-        <button 
-          onClick={fetchNotes} 
-          className="text-blue-500 hover:text-blue-700 flex items-center text-sm"
-          disabled={isLoading}
-        >
-          <RefreshCcw className={`w-4 h-4 mr-1 ${isLoading ? 'animate-spin' : ''}`} />
-          Refresh
-        </button>
-      </div>
-      
-      {/* Error display */}
-      {error && (
-        <div className="bg-red-100 text-red-700 p-3 rounded-lg flex items-start">
-          <AlertCircle className="w-5 h-5 mr-2 flex-shrink-0 mt-0.5" />
-          <span>{error}</span>
-        </div>
-      )}
-      
-      {/* Top Input Bar */}
-      <div className="flex items-center border border-gray-300 rounded-full px-3 py-2 bg-white shadow-sm">
-        {/* Avatar */}
-        <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-purple-500 to-blue-500 p-[2px] mr-3">
-          <div className="bg-white w-full h-full rounded-full flex items-center justify-center">
-            {currentUser.avatar ? (
-              <img
-                src={currentUser.avatar}
-                alt="avatar"
-                className="w-full h-full object-cover rounded-full"
-              />
-            ) : (
-              <User className="text-black w-5 h-5" />
-            )}
+    <div className="flex flex-col h-full bg-[#f0f4f8]">
+      {/* Messages Area */}
+      <div className="flex-1 overflow-y-auto px-3 py-3 space-y-2 min-h-0">
+        {/* Error display */}
+        {error && (
+          <div className="bg-red-50 text-red-600 px-3 py-2 rounded-lg flex items-center gap-2 text-xs">
+            <AlertCircle className="w-4 h-4 flex-shrink-0" />
+            <span>{error}</span>
           </div>
-        </div>
+        )}
 
-        {/* Input Field */}
-        <textarea
-          placeholder={`Write a remark as ${currentUser.name}... (Shift+Enter for new line)`}
-          className="flex-1 outline-none border-none text-sm text-gray-700 placeholder:text-gray-400 bg-transparent resize-none overflow-auto"
-          rows={1}
-          value={comment}
-          onChange={(e) => setComment(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" && !e.shiftKey) {
-              e.preventDefault();
-              handlePost();
-            }
-            // Shift+Enter creates new line naturally
-          }}
-          disabled={isLoading}
-          style={{ minHeight: '24px', maxHeight: '120px' }}
-        />
+        {/* Loading state */}
+        {isLoading && comments.length === 0 && (
+          <div className="flex justify-center py-6">
+            <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-[#03B0F5]"></div>
+          </div>
+        )}
 
-        {/* Send Button */}
-        <button 
-          onClick={handlePost} 
-          disabled={isLoading || !comment.trim()}
-          className={`${!comment.trim() ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
-        >
-          <Send className={`w-5 h-5 ${isLoading ? 'text-gray-400' : 'text-blue-500 hover:text-blue-600'}`} />
-        </button>
-      </div>
-
-      {/* Loading indicator */}
-      {isLoading && comments.length === 0 && (
-        <div className="flex justify-center py-8">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
-        </div>
-      )}
-
-      {/* Empty state */}
-      {!isLoading && comments.length === 0 && (
-        <div className="text-center py-8 text-gray-500">
-          <User className="w-12 h-12 mx-auto mb-2 opacity-25" />
-          <p>No remarks yet. Be the first to add one!</p>
-        </div>
-      )}
-
-      {/* Comments Feed */}
-      <div className="space-y-3">
-        {comments.map((note) => (
-          <div key={note._id} className="flex items-start gap-3">
-            {/* Avatar & Name Column */}
-            <div className="flex flex-col items-center min-w-[50px]">
-              <div className="w-9 h-9 rounded-full bg-gradient-to-tr from-purple-500 to-blue-500 p-[2px]">
-                <div className="bg-white w-full h-full rounded-full flex items-center justify-center">
-                  <User className="text-black w-4 h-4" />
-                </div>
-              </div>
-              <span className="text-xs mt-1 text-gray-700 font-medium">
-                {note.creator_name || "User"}
-              </span>
+        {/* Empty state */}
+        {!isLoading && comments.length === 0 && (
+          <div className="flex flex-col items-center justify-center py-10 text-gray-400">
+            <div className="w-12 h-12 rounded-full bg-gray-200 flex items-center justify-center mb-3">
+              <svg className="w-6 h-6 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+              </svg>
             </div>
+            <p className="text-xs font-medium">No remarks yet</p>
+            <p className="text-xs mt-0.5">Start the conversation...</p>
+          </div>
+        )}
 
-            {/* Comment Box */}
-            <div className="bg-gray-100 rounded-lg p-3 shadow-sm flex-1">
-              <div className="flex justify-between items-center mb-1">
-                <span className="text-xs text-gray-500">{formatTime(note.created_at)}</span>
-                {note.can_edit && (
-                  <div className="flex space-x-1">
-                    {/* We can add edit/delete functionality here in the future */}
-                  </div>
+        {/* Chat Messages */}
+        {comments.map((note) => {
+          const isMine = isCurrentUser(note);
+          const initials = getInitials(note.creator_name);
+          return (
+            <div key={note._id} className={`flex items-end gap-2 ${isMine ? 'flex-row-reverse' : 'flex-row'}`}>
+              {/* Avatar */}
+              <div className={`w-7 h-7 rounded-full flex-shrink-0 flex items-center justify-center text-white text-xs font-bold ${isMine ? 'bg-[#03B0F5]' : 'bg-gray-500'}`}>
+                {initials}
+              </div>
+              {/* Bubble */}
+              <div className={`max-w-[75%] ${isMine ? 'items-end' : 'items-start'} flex flex-col gap-0.5`}>
+                {!isMine && (
+                  <span className="text-[10px] text-gray-500 font-medium px-1">{note.creator_name || 'User'}</span>
                 )}
+                <div className={`px-3 py-2 rounded-2xl text-sm leading-snug shadow-sm ${
+                  isMine
+                    ? 'bg-[#03B0F5] text-white rounded-br-sm'
+                    : 'bg-white text-gray-800 rounded-bl-sm'
+                }`}>
+                  {note.content}
+                </div>
+                <span className="text-[9px] text-gray-400 px-1">{formatTime(note.created_at)}</span>
               </div>
-              <p className="text-sm text-gray-800">{note.content}</p>
             </div>
+          );
+        })}
+        <div ref={messagesEndRef} />
+      </div>
+
+      {/* Input Area - always at bottom */}
+      <div className="flex-shrink-0 border-t border-gray-200 bg-white px-3 py-2">
+        <div className="flex items-end gap-2">
+          <div className="w-7 h-7 rounded-full bg-[#03B0F5] flex-shrink-0 flex items-center justify-center text-white text-xs font-bold mb-0.5">
+            {getInitials(currentUser.name)}
           </div>
-        ))}
+          <div className="flex-1 flex items-end bg-gray-100 rounded-2xl px-3 py-1.5 gap-2">
+            <textarea
+              placeholder="Add a remark..."
+              className="flex-1 bg-transparent outline-none text-sm text-gray-800 placeholder:text-gray-400 resize-none overflow-auto leading-snug"
+              rows={1}
+              value={comment}
+              onChange={(e) => {
+                setComment(e.target.value);
+                e.target.style.height = 'auto';
+                e.target.style.height = Math.min(e.target.scrollHeight, 80) + 'px';
+              }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault();
+                  handlePost();
+                }
+              }}
+              disabled={isLoading}
+              style={{ minHeight: '20px', maxHeight: '80px' }}
+            />
+            <button
+              onClick={handlePost}
+              disabled={isLoading || !comment.trim()}
+              className={`mb-0.5 flex-shrink-0 w-7 h-7 rounded-full flex items-center justify-center transition-all ${
+                comment.trim() && !isLoading
+                  ? 'bg-[#03B0F5] text-white hover:bg-[#029fd9] shadow-sm'
+                  : 'bg-gray-300 text-gray-400 cursor-not-allowed'
+              }`}
+            >
+              {isLoading ? (
+                <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+              ) : (
+                <Send className="w-3.5 h-3.5" />
+              )}
+            </button>
+          </div>
+        </div>
       </div>
     </div>
   );
 }
+

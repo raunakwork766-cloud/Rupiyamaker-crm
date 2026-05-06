@@ -1189,20 +1189,22 @@ function App() {
               {localStorage.getItem('loginType') === 'attendance_only' ? (
                 <AttendanceOnlyShell user={user} onLogout={handleLogout} />
               ) : (
-              <div className="flex h-screen bg-black text-white">
+              <div style={{ display: 'flex', height: '100vh', overflow: 'hidden', background: '#000', color: '#fff' }}>
                 {/* Sidebar - Hidden on mobile view, visible on desktop view */}
                 {!isMobileView && (
                   <Sidebar selectedLabel={selectedLabel} setSelectedLabel={setSelectedLabel} />
                 )}
                 
-                <div className="flex-1 flex flex-col overflow-hidden">
+                {/* Main column: fixed height column, navbar on top, scrollable content below */}
+                <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
                   <TopNavbar
                     selectedLabel={selectedLabel}
                     userName={`${user?.first_name || ''} ${user?.last_name || ''}`}
                     onLogout={handleLogout}
                     user={user}
                   />
-                  <div className="flex-1 overflow-y-auto">
+                  {/* CRITICAL: minHeight:0 lets flex child shrink below content height → enables scroll */}
+                  <div id="main-scroll-container" style={{ flex: 1, minHeight: 0, overflowY: 'auto', overflowX: 'hidden' }}>
                     {/* Conditional rendering based on view mode */}
                     {isMobileView ? (
                       // Mobile view - Force Feed component only with optimized styling

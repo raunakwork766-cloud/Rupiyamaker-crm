@@ -1879,7 +1879,7 @@ async def check_super_admin_status(
 
 # ============= Channel Names Endpoints =============
 
-@router.post("/channel-names/", response_model=dict)
+@router.post("/channel-names", response_model=dict)
 async def create_channel_name(
     channel_data: ChannelNameCreate,
     user_id: str = Query(..., description="ID of the user making the request"),
@@ -1905,7 +1905,7 @@ async def create_channel_name(
             detail=f"Failed to create channel name: {str(e)}"
         )
 
-@router.get("/channel-names/", response_model=List[ChannelNameInDB])
+@router.get("/channel-names", response_model=List[ChannelNameInDB])
 async def get_channel_names(
     is_active: Optional[bool] = Query(None, description="Filter by active status"),
     user_id: str = Query(..., description="ID of the user making the request"),

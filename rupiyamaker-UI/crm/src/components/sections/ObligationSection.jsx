@@ -467,7 +467,7 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
   const [ceTenureMode, setCeTenureMode] = useState('months');
   const [ceTenureYearsInput, setCeTenureYearsInput] = useState('');
   const [ceRoi, setCeRoi] = useState('');
-  const [ceMultiplier, setCeMultiplier] = useState('0');
+  const [ceMultiplier, setCeMultiplier] = useState('');
 
   // Bidirectional sync with HowToProcessSection
   const suppressLoanSyncDispatchRef = useRef(false);
@@ -2040,19 +2040,33 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
         
         console.log('🔍 Final processed obligations with preserved/generated IDs:', processedObligations.map(o => ({ id: o.id, action: o.action, product: o.product })));
         
-        // Don't sort immediately after reload to prevent dropdown index mismatch
+        // Sort by action priority then product dropdown order on load (case-insensitive)
+        const productOrderOnLoad = [
+          'PL (PERSONAL LOAN)', 'OD (OVERDRAFT)', 'CC (CREDIT CARD)', 'BL (BUSINESS LOAN)',
+          'HL (HOME LOAN)', 'LAP (LOAN AGAINST PROPERTY)', 'AL (AUTO LOAN/ CAR LOAN)',
+          'EL (EDUCATION LOAN)', 'GL (GOLD LOAN)', 'LOC (LOAN ON CREDIT CARD)',
+          'CD (CONSUMER DURABLE LOAN)', 'APP LOAN', 'INSURANCE'
+        ];
+        const sortedOnLoad = [...processedObligations].sort((a, b) => {
+          const ap = { 'BT': 1, 'Obligate': 2, 'CO-PAY': 3, 'NO-PAY': 4, 'Closed': 5 };
+          const pa = ap[a.action] || 6;
+          const pb = ap[b.action] || 6;
+          if (pa !== pb) return pa - pb;
+          const ra = productOrderOnLoad.indexOf((a.product || '').toUpperCase()); const rb = productOrderOnLoad.indexOf((b.product || '').toUpperCase());
+          return (ra === -1 ? 999 : ra) - (rb === -1 ? 999 : rb);
+        });
         console.log('📋 OBLIGATIONS UPDATE:', {
           currentCount: obligations.length,
-          newCount: processedObligations.length,
+          newCount: sortedOnLoad.length,
           leadId: leadData?._id,
           isLoginLead,
-          firstObligation: processedObligations[0] ? { 
-            product: processedObligations[0].product, 
-            bankName: processedObligations[0].bankName,
-            emi: processedObligations[0].emi 
+          firstObligation: sortedOnLoad[0] ? { 
+            product: sortedOnLoad[0].product, 
+            bankName: sortedOnLoad[0].bankName,
+            emi: sortedOnLoad[0].emi 
           } : null
         });
-        setObligations(processedObligations);
+        setObligations(sortedOnLoad);
         setDataLoaded(true); // Mark data as loaded after successful obligation load
         
         // React will handle re-rendering automatically when obligations change
@@ -2298,8 +2312,8 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
         console.log('📝 Setting CE multiplier:', multiplierValue);
         setCeMultiplier(String(multiplierValue));
       } else {
-        console.log('📝 Setting CE multiplier to default: 0');
-        setCeMultiplier('0');
+        console.log('📝 Setting CE multiplier to default: empty');
+        setCeMultiplier('');
       }
       
       const loanEligibilityStatusValue = getFieldValue(['loanEligibilityStatus', 'check_eligibility.loan_eligibility_status', 'dynamic_fields.check_eligibility.loan_eligibility_status']);
@@ -2416,8 +2430,22 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
             selectedRoiPercentage: obl.selectedRoiPercentage || obl.selected_roi_percentage || null
           }));
           
-          setObligations(processedObligations);
-          console.log('✅ [SYNC] Obligations synced from leadData');
+          const productOrderSync = [
+            'PL (PERSONAL LOAN)', 'OD (OVERDRAFT)', 'CC (CREDIT CARD)', 'BL (BUSINESS LOAN)',
+            'HL (HOME LOAN)', 'LAP (LOAN AGAINST PROPERTY)', 'AL (AUTO LOAN/ CAR LOAN)',
+            'EL (EDUCATION LOAN)', 'GL (GOLD LOAN)', 'LOC (LOAN ON CREDIT CARD)',
+            'CD (CONSUMER DURABLE LOAN)', 'APP LOAN', 'INSURANCE'
+          ];
+          const sortedSync = [...processedObligations].sort((a, b) => {
+            const ap = { 'BT': 1, 'Obligate': 2, 'CO-PAY': 3, 'NO-PAY': 4, 'Closed': 5 };
+            const pa = ap[a.action] || 6;
+            const pb = ap[b.action] || 6;
+            if (pa !== pb) return pa - pb;
+            const ra = productOrderSync.indexOf((a.product || '').toUpperCase()); const rb = productOrderSync.indexOf((b.product || '').toUpperCase());
+            return (ra === -1 ? 999 : ra) - (rb === -1 ? 999 : rb);
+          });
+          setObligations(sortedSync);
+          console.log('✅ [SYNC] Obligations synced and sorted from leadData');
         } else {
           console.log('⏭️ [SYNC] Skipping sync - obligations already loaded or row was deleted (preventing overwrite)');
         }
@@ -3914,15 +3942,28 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
     return strValue.replace(/[^0-9.]/g, '');
   };
 
-  // Utility function to sort obligations by action priority
+  // Product sort order matching productTypes dropdown order (uppercase for case-insensitive match)
+  const PRODUCT_ORDER = [
+    'PL (PERSONAL LOAN)', 'OD (OVERDRAFT)', 'CC (CREDIT CARD)', 'BL (BUSINESS LOAN)',
+    'HL (HOME LOAN)', 'LAP (LOAN AGAINST PROPERTY)', 'AL (AUTO LOAN/ CAR LOAN)',
+    'EL (EDUCATION LOAN)', 'GL (GOLD LOAN)', 'LOC (LOAN ON CREDIT CARD)',
+    'CD (CONSUMER DURABLE LOAN)', 'APP LOAN', 'INSURANCE'
+  ];
+
+  // Utility function to sort obligations by action priority, then by product dropdown order
   const sortObligationsByPriority = (obligations) => {
-    console.log('🔄 Sorting obligations by priority');
+    console.log('🔄 Sorting obligations by priority then product order');
     return [...obligations].sort((a, b) => {
-      const priority = { 'BT': 1, 'Obligate': 2, 'CO-PAY': 3, 'NO-PAY': 4, 'Closed': 5 };
-      const priorityA = priority[a.action] || 6;
-      const priorityB = priority[b.action] || 6;
-      console.log(`Sorting: ${a.action} (${priorityA}) vs ${b.action} (${priorityB})`);
-      return priorityA - priorityB;
+      const actionPriority = { 'BT': 1, 'Obligate': 2, 'CO-PAY': 3, 'NO-PAY': 4, 'Closed': 5 };
+      const pa = actionPriority[a.action] || 6;
+      const pb = actionPriority[b.action] || 6;
+      if (pa !== pb) return pa - pb;
+      // Same action: sort by product dropdown order (case-insensitive)
+      const prodA = PRODUCT_ORDER.indexOf((a.product || '').toUpperCase());
+      const prodB = PRODUCT_ORDER.indexOf((b.product || '').toUpperCase());
+      const rankA = prodA === -1 ? 999 : prodA;
+      const rankB = prodB === -1 ? 999 : prodB;
+      return rankA - rankB;
     });
   };
 
@@ -5960,6 +6001,18 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
     // Mark as having unsaved changes
     setHasUnsavedChanges(true);
     
+    // Deferred sort: group same-action rows by product type
+    setTimeout(() => {
+      setObligations(prevObs => {
+        const sorted = sortObligationsByPriority(prevObs);
+        console.log('🔄 Deferred sorting after product select');
+        if (handleChangeFunc) {
+          handleChangeFunc('obligations', sorted);
+        }
+        return sorted;
+      });
+    }, 150);
+    
     console.log(`Product dropdown closed for index ${index}`);
   }
 
@@ -6881,6 +6934,29 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [leadData?._id]);
 
+  // ─── Sort obligations for display ──────────────────────────────────────────
+  // Action priority: BT (1) → Obligate (2) → CO-PAY (3) → NO-PAY (4) → Closed (5)
+  // Within same action: sort by product dropdown order (case-insensitive match)
+  const DISPLAY_ACTION_PRIORITY = { 'BT': 1, 'Obligate': 2, 'CO-PAY': 3, 'NO-PAY': 4, 'Closed': 5 };
+  // Uppercase version so comparison works regardless of how product was stored
+  const DISPLAY_PRODUCT_ORDER_UPPER = [
+    'PL (PERSONAL LOAN)', 'OD (OVERDRAFT)', 'CC (CREDIT CARD)', 'BL (BUSINESS LOAN)',
+    'HL (HOME LOAN)', 'LAP (LOAN AGAINST PROPERTY)', 'AL (AUTO LOAN/ CAR LOAN)',
+    'EL (EDUCATION LOAN)', 'GL (GOLD LOAN)', 'LOC (LOAN ON CREDIT CARD)',
+    'CD (CONSUMER DURABLE LOAN)', 'APP LOAN', 'INSURANCE'
+  ];
+  const sortedObligationsForDisplay = obligations
+    .map((row, originalIdx) => ({ ...row, _origIdx: originalIdx }))
+    .sort((a, b) => {
+      const pa = DISPLAY_ACTION_PRIORITY[a.action] || 6;
+      const pb = DISPLAY_ACTION_PRIORITY[b.action] || 6;
+      if (pa !== pb) return pa - pb;
+      const ra = DISPLAY_PRODUCT_ORDER_UPPER.indexOf((a.product || '').toUpperCase());
+      const rb = DISPLAY_PRODUCT_ORDER_UPPER.indexOf((b.product || '').toUpperCase());
+      return (ra === -1 ? 999 : ra) - (rb === -1 ? 999 : rb);
+    });
+  // ───────────────────────────────────────────────────────────────────────────
+
   return (
     <>
     <div ref={obligationSectionRef} key={leadData?.file_sent_to_login ? `obligation-stable-${leadData._id}` : `obligation-component-${componentKey}-${renderKey}-${lastSaveTime}`} className="flex bg-black text-slate-300" style={{height:'100%',overflow:'hidden',fontFamily:'system-ui,-apple-system,sans-serif'}}>
@@ -7174,7 +7250,9 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
                   </tr>
                 </thead>
                 <tbody key={`obligations-tbody-${forceRender}-${renderKey}-${lastSaveTime}-${obligations.map(o => `${o.id}-${o.selectedRoiPercentage}-${o.selectedTenurePercentage}`).join(',')}`}>
-                  {obligations.map((row, idx) => {
+                  {sortedObligationsForDisplay
+                    .map((row, displayIdx) => {
+                    const idx = row._origIdx;
                     // Create simple, direct action change handler
                     const createActionChangeHandler = (rowId, rowIndex) => {
                       return (e) => {
@@ -7262,7 +7340,7 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
                     
                     return (
                     <tr key={`${row.id}-${idx}-action-${row.action}`} className={`border-b-2 text-[12px] border-gray-600 align-middle ${getRowStyling(row.action)}`}>
-                      <td className="px-1 py-1 text-center  text-white font-bold border-r-2 border-gray-600 bg-black">{idx + 1}</td>
+                      <td className="px-1 py-1 text-center  text-white font-bold border-r-2 border-gray-600 bg-black">{displayIdx + 1}</td>
 
                       {/* Product Select - Searchable Dropdown */}
                       <td className="px-2 py-2 border-r-2 border-gray-600 bg-black relative">
@@ -7703,7 +7781,8 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
                     value={ceMultiplier}
                     onChange={canEdit ? handleCeMultiplierChange : undefined}
                     disabled={!canEdit}
-                    className="w-9 bg-white text-black font-black px-1 rounded outline-none text-center h-[18px] focus:ring-1 focus:ring-yellow-500"
+                    placeholder=""
+                    className="w-16 bg-white text-black font-black px-1 rounded outline-none text-center h-[18px] focus:ring-1 focus:ring-yellow-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                   />
                 </div>
               </div>

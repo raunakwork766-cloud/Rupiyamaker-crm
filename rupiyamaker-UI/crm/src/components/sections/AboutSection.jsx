@@ -234,8 +234,12 @@ export default function AboutSection({ lead, onSave, canEdit = true }) {
   const [dataCodeSearchTerm, setDataCodeSearchTerm] = useState('');
   const [showAssignInlineDropdown, setShowAssignInlineDropdown] = useState(false);
   const [assignInlineSearch, setAssignInlineSearch] = useState('');
+  const [campaignOpenUpward, setCampaignOpenUpward] = useState(false);
+  const [assignInlineOpenUpward, setAssignInlineOpenUpward] = useState(false);
   const campaignDropdownRef = useRef(null);
+  const campaignTriggerRef = useRef(null);
   const assignInlineDropdownRef = useRef(null);
+  const assignInlineTriggerRef = useRef(null);
 
   // Close Campaign/Source dropdown on outside click
   useEffect(() => {
@@ -2030,11 +2034,16 @@ export default function AboutSection({ lead, onSave, canEdit = true }) {
             <label className={labelClass} style={labelStyle}>SOURCE NAME</label>
             <div ref={campaignDropdownRef} className="relative w-full">
               <div
+                ref={campaignTriggerRef}
                 className={`w-full p-2 border border-[#00bcd4] rounded-md text-green-600 text-md font-bold min-h-[40px] flex items-center cursor-pointer transition-all duration-300 hover:border-[#0097a7] ${!canEdit ? 'bg-gray-100 cursor-not-allowed' : 'bg-white'}`}
                 onClick={() => {
                   if (canEdit) {
                     setShowProductDropdown(false);
                     setShowDataCodeDropdown(false);
+                    if (!showCampaignDropdown && campaignTriggerRef.current) {
+                      const rect = campaignTriggerRef.current.getBoundingClientRect();
+                      setCampaignOpenUpward(window.innerHeight - rect.bottom < 280);
+                    }
                     setShowCampaignDropdown(prev => !prev);
                   }
                 }}
@@ -2047,7 +2056,7 @@ export default function AboutSection({ lead, onSave, canEdit = true }) {
                 </div>
               </div>
               {showCampaignDropdown && canEdit && (
-                <div className="absolute z-[500] top-full left-0 right-0 mt-1 bg-white border-2 border-[#00bcd4] rounded-lg shadow-xl overflow-hidden">
+                <div className={`absolute z-[500] left-0 right-0 bg-white border-2 border-[#00bcd4] rounded-lg shadow-xl overflow-hidden ${campaignOpenUpward ? 'bottom-full mb-1' : 'top-full mt-1'}`}>
                   <div className="p-2 border-b border-gray-100">
                     <div className="relative">
                       <svg className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
@@ -2312,8 +2321,17 @@ export default function AboutSection({ lead, onSave, canEdit = true }) {
             <label className={labelClass} style={labelStyle}>ASSIGNED Lead</label>
             <div ref={assignInlineDropdownRef} className="relative w-full">
               <div
+                ref={assignInlineTriggerRef}
                 className={`w-full p-2 border border-[#00bcd4] rounded-md text-green-600 text-md font-bold min-h-[40px] flex flex-wrap gap-2 items-center transition-all duration-300 ${canEditAssignedLead ? 'bg-white cursor-pointer hover:border-[#0097a7]' : 'bg-gray-100 cursor-not-allowed'}`}
-                onClick={() => { if (canEditAssignedLead) setShowAssignInlineDropdown(prev => !prev); }}
+                onClick={() => {
+                  if (canEditAssignedLead) {
+                    if (!showAssignInlineDropdown && assignInlineTriggerRef.current) {
+                      const rect = assignInlineTriggerRef.current.getBoundingClientRect();
+                      setAssignInlineOpenUpward(window.innerHeight - rect.bottom < 280);
+                    }
+                    setShowAssignInlineDropdown(prev => !prev);
+                  }
+                }}
               >
                 {assignReportTo.length === 0 && (
                   <span className="text-gray-400 font-normal text-sm">Click to select assignee(s)</span>
@@ -2352,7 +2370,7 @@ export default function AboutSection({ lead, onSave, canEdit = true }) {
                   (u.designation || '').toLowerCase().includes(assignInlineSearch.toLowerCase())
                 );
                 return (
-                  <div className="absolute z-[500] top-full left-0 right-0 mt-1 bg-white border-2 border-[#00bcd4] rounded-lg shadow-xl overflow-hidden">
+                  <div className={`absolute z-[500] left-0 right-0 bg-white border-2 border-[#00bcd4] rounded-lg shadow-xl overflow-hidden ${assignInlineOpenUpward ? 'bottom-full mb-1' : 'top-full mt-1'}`}>
                     <div className="p-2 border-b border-gray-100">
                       <div className="relative">
                         <svg className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>

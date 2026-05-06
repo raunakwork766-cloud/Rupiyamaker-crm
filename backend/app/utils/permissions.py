@@ -1565,7 +1565,14 @@ class PermissionManager:
         
         # Determine ownership/assignment
         is_creator = lead.get("created_by") == user_id
-        is_assigned = lead.get("assigned_to") == user_id
+        # Handle both string and list formats for assigned_to
+        _assigned_to = lead.get("assigned_to")
+        if isinstance(_assigned_to, list):
+            is_assigned = user_id in _assigned_to
+        elif isinstance(_assigned_to, str):
+            is_assigned = _assigned_to == user_id
+        else:
+            is_assigned = False
         
         # Check if user is in assign_report_to (handle both string and list formats)
         assign_report_to = lead.get("assign_report_to")

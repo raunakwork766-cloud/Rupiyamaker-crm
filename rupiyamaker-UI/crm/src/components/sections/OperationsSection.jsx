@@ -219,6 +219,7 @@ export default function OperationsSection({ lead, onSave, canEdit = true }) {
 
   // State for dropdowns and popup
   const [showChannelDropdown, setShowChannelDropdown] = useState(false);
+  const [channelOpenUpward, setChannelOpenUpward] = useState(false);
   const [showLoginPersonPopup, setShowLoginPersonPopup] = useState(false);
   const [channelOptions, setChannelOptions] = useState([]);
   const [channelSearchQuery, setChannelSearchQuery] = useState('');
@@ -232,6 +233,7 @@ export default function OperationsSection({ lead, onSave, canEdit = true }) {
 
   // Refs for dropdown click outside detection
   const channelDropdownRef = useRef(null);
+  const channelTriggerRef = useRef(null);
 
   // Utility functions for formatting (matching login.html)
   const formatIndianCurrency = (num) => {
@@ -936,10 +938,19 @@ export default function OperationsSection({ lead, onSave, canEdit = true }) {
             {key === 'channel_name' ? (
               <div className="relative w-full dropdown-container" ref={channelDropdownRef}>
                 <div
+                  ref={channelTriggerRef}
                   className={`w-full p-3 border-2 border-[#00bcd4] rounded-md bg-white text-green-600 text-md font-bold cursor-pointer flex items-center justify-between transition-all duration-300 focus-within:border-[#0097a7] focus-within:shadow-[0_0_0_3px_rgba(0,188,212,0.1)] ${
                     isFieldReadOnly ? 'bg-gray-100 cursor-not-allowed' : ''
                   }`}
-                  onClick={() => !isFieldReadOnly && setShowChannelDropdown(!showChannelDropdown)}
+                  onClick={() => {
+                    if (!isFieldReadOnly) {
+                      if (!showChannelDropdown && channelTriggerRef.current) {
+                        const rect = channelTriggerRef.current.getBoundingClientRect();
+                        setChannelOpenUpward(window.innerHeight - rect.bottom < 300);
+                      }
+                      setShowChannelDropdown(!showChannelDropdown);
+                    }
+                  }}
                   onBlur={() => {
                     if (formData[key]) {
                       handleInputBlur(key, formData[key]);
@@ -976,7 +987,7 @@ export default function OperationsSection({ lead, onSave, canEdit = true }) {
                   </svg>
                 </div>
                 {showChannelDropdown && !isFieldReadOnly && (
-                  <div className="absolute z-50 w-full bg-white border border-gray-300 rounded-md shadow-lg max-h-60 overflow-y-auto mt-1">
+                  <div className={`absolute z-50 w-full bg-white border border-gray-300 rounded-md shadow-lg max-h-60 overflow-y-auto ${channelOpenUpward ? 'bottom-full mb-1' : 'top-full mt-1'}`}>
                     <div className="p-3 border-b border-gray-200">
                       <div className="relative">
                         <input

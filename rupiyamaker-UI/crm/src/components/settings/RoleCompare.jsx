@@ -17,6 +17,7 @@ const ACTION_LABELS = {
     status_change:        'Status Change',
     rollback_login:       'Roll Back Login',
     download_obligation:  'Download Obligation',
+    download_attachments: 'Download Attachments',
     channel:              'View Channel Name',
     edit:                 'Edit Data',
     warning_setting:      'Warning Setting',
@@ -59,7 +60,7 @@ const allPermissions = {
     'dashboard': ['show'],
     'Leads CRM': {
         'Create LEAD': ['show', 'duplicate_lead', 'bank_name_permission'],
-        'PL & ODD LEADS': ['show', 'view_team', 'view_all', 'view_data_code', 'status_change', 'rollback_login', 'download_obligation', 'delete'],
+        'PL & ODD LEADS': ['show', 'view_team', 'view_all', 'view_data_code', 'status_change', 'rollback_login', 'download_obligation', 'download_attachments', 'delete'],
     },
     'login': ['show', 'view_team', 'view_all', 'channel', 'edit', 'delete'],
     'tasks': ['show', 'view_team', 'view_all', 'delete'],
