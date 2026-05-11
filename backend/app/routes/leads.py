@@ -5019,7 +5019,7 @@ async def update_lead_obligations(
     print(f"🔴 Lead ID: {lead_id}")
     print(f"🔴 User ID: {user_id}")
     print(f"🔴 Obligation data keys: {list(obligation_data.keys())}")
-    if 'obligations' in obligation_data:
+    if 'obligations' in obligation_data and obligation_data['obligations'] is not None:
         print(f"🔴 Obligations array length: {len(obligation_data['obligations'])}")
         print(f"🔴 Obligations array: {obligation_data['obligations']}")
     print("="*80)
@@ -5063,6 +5063,8 @@ async def update_lead_obligations(
         for key, value in obligation_data["dynamic_fields"].items():
             if key == "obligations":
                 # SPECIAL CASE: Always REPLACE obligations array, never merge
+                if value is None:
+                    value = []
                 print(f"🔵 [OBLIGATIONS] Replacing obligations array in dynamic_fields - NEW COUNT: {len(value) if isinstance(value, list) else 'NOT A LIST'}")
                 dynamic_fields[key] = value
             elif isinstance(value, dict) and key in dynamic_fields and isinstance(dynamic_fields[key], dict):
@@ -5078,6 +5080,8 @@ async def update_lead_obligations(
             if key not in ["dynamic_fields", "processingBank"]:  # Skip these special cases
                 if key == "obligations":
                     # SPECIAL CASE: Always REPLACE obligations array, never merge
+                    if value is None:
+                        value = []
                     print(f"🔵 [OBLIGATIONS] Found root-level 'obligations' key")
                     print(f"🔵 [OBLIGATIONS] Obligations type: {type(value)}")
                     print(f"🔵 [OBLIGATIONS] Obligations count: {len(value) if isinstance(value, list) else 'NOT A LIST'}")
@@ -5099,7 +5103,7 @@ async def update_lead_obligations(
     
     print(f"🔵 [OBLIGATIONS] About to save to database:")
     print(f"🔵 [OBLIGATIONS] Lead ID: {lead_id}")
-    print(f"🔵 [OBLIGATIONS] Obligations count in update_data: {len(update_data['dynamic_fields'].get('obligations', [])) if isinstance(update_data.get('dynamic_fields'), dict) else 'NO OBLIGATIONS'}")
+    print(f"🔵 [OBLIGATIONS] Obligations count in update_data: {len(update_data['dynamic_fields'].get('obligations') or []) if isinstance(update_data.get('dynamic_fields'), dict) else 'NO OBLIGATIONS'}")
     
     # Add processing_bank at root level if provided
     if "processingBank" in obligation_data and obligation_data["processingBank"]:
