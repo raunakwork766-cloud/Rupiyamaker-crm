@@ -1,14 +1,43 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
-import { Save, RotateCcw, Bell, AlertTriangle, ClipboardList, Ticket, Loader2 } from 'lucide-react';
+import { Loader2 } from 'lucide-react';
 
 const API_BASE_URL = '/api';
 
+// accent border color per type — matches HTML mockup left-bar colors
 const MODAL_TYPES = [
-    { key: 'announcement', label: 'Announcements', description: 'Company-wide alerts', icon: '📢', color: 'red', borderColor: 'border-red-500', bgColor: 'bg-red-500/10', textColor: 'text-red-400' },
-    { key: 'warning', label: 'Warnings', description: 'Violation or urgent alerts', icon: '⚠️', color: 'yellow', borderColor: 'border-yellow-500', bgColor: 'bg-yellow-500/10', textColor: 'text-yellow-400' },
-    { key: 'task', label: 'Tasks Prompt', description: 'Pending callbacks & logs', icon: '📋', color: 'indigo', borderColor: 'border-indigo-500', bgColor: 'bg-indigo-500/10', textColor: 'text-indigo-400' },
-    { key: 'ticket', label: 'Ticket Updates', description: 'Updates on open tickets', icon: '🎫', color: 'green', borderColor: 'border-green-500', bgColor: 'bg-green-500/10', textColor: 'text-green-400' },
+    {
+        key: 'announcement',
+        label: 'Announcements',
+        description: 'Company-wide alerts',
+        icon: '📢',
+        iconColor: '#ff4757',
+        accentColor: '#ff4757',   // --danger
+    },
+    {
+        key: 'warning',
+        label: 'Warnings',
+        description: 'Violation or urgent alerts',
+        icon: '⚠️',
+        iconColor: '#ffa502',
+        accentColor: '#ffa502',
+    },
+    {
+        key: 'task',
+        label: 'Tasks Prompt',
+        description: 'Pending callbacks & logs',
+        icon: '📋',
+        iconColor: '#4e54c8',     // --primary
+        accentColor: '#4e54c8',
+    },
+    {
+        key: 'ticket',
+        label: 'Ticket Updates',
+        description: 'Updates on open tickets',
+        icon: '🎫',
+        iconColor: '#2ed573',     // --success
+        accentColor: '#2ed573',
+    },
 ];
 
 const TIME_UNITS = [
@@ -25,9 +54,7 @@ const PopupModalSettings = ({ userId }) => {
     const [saveMessage, setSaveMessage] = useState('');
     const [hasChanges, setHasChanges] = useState(false);
 
-    useEffect(() => {
-        fetchSettings();
-    }, []);
+    useEffect(() => { fetchSettings(); }, []);
 
     const fetchSettings = async () => {
         try {
@@ -37,18 +64,13 @@ const PopupModalSettings = ({ userId }) => {
             if (response.data?.success && response.data?.data?.modals) {
                 setSettings(response.data.data.modals);
             } else {
-                // Set defaults if no data from backend
                 const defaults = {};
                 MODAL_TYPES.forEach(m => {
                     defaults[m.key] = {
-                        label: m.label,
-                        description: m.description,
-                        icon: m.icon,
                         force_accept: m.key === 'announcement',
                         max_cut_limit: m.key === 'announcement' ? 0 : m.key === 'warning' ? 1 : m.key === 'task' ? 2 : 3,
                         reappear_time: m.key === 'announcement' ? 0 : m.key === 'warning' ? 1 : m.key === 'task' ? 2 : 4,
                         reappear_unit: m.key === 'announcement' ? 'seconds' : 'hours',
-                        enabled: true,
                     };
                 });
                 setSettings(defaults);
@@ -76,15 +98,6 @@ const PopupModalSettings = ({ userId }) => {
         setHasChanges(true);
     };
 
-    const handleToggleEnabled = (modalKey) => {
-        setSettings(prev => {
-            const updated = { ...prev };
-            updated[modalKey] = { ...updated[modalKey], enabled: !updated[modalKey].enabled };
-            return updated;
-        });
-        setHasChanges(true);
-    };
-
     const handleFieldChange = (modalKey, field, value) => {
         setSettings(prev => {
             const updated = { ...prev };
@@ -98,10 +111,8 @@ const PopupModalSettings = ({ userId }) => {
         try {
             setSaving(true);
             const uid = userId || localStorage.getItem('userId');
-            await axios.put(`${API_BASE_URL}/settings/popup-modal-settings?user_id=${uid}`, {
-                modals: settings
-            });
-            setSaveMessage('Settings saved successfully!');
+            await axios.put(`${API_BASE_URL}/settings/popup-modal-settings?user_id=${uid}`, { modals: settings });
+            setSaveMessage('✓ Configuration saved successfully');
             setHasChanges(false);
             setTimeout(() => setSaveMessage(''), 3000);
         } catch (error) {
@@ -115,169 +126,264 @@ const PopupModalSettings = ({ userId }) => {
 
     if (loading) {
         return (
-            <div className="flex items-center justify-center p-12">
-                <Loader2 className="animate-spin text-indigo-500" size={32} />
-                <span className="ml-3 text-gray-400">Loading popup modal settings...</span>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '3rem' }}>
+                <Loader2 className="animate-spin" size={32} style={{ color: '#4e54c8' }} />
+                <span style={{ marginLeft: '0.75rem', color: '#888' }}>Loading popup modal settings...</span>
             </div>
         );
     }
 
     return (
-        <div className="space-y-6">
-            {/* Header */}
-            <div className="border-b border-gray-700 pb-4">
-                <h2 className="text-xl font-semibold text-white flex items-center gap-2">
-                    <Bell size={22} className="text-indigo-400" />
+        <div style={{ fontFamily: "'Outfit', 'Inter', system-ui, sans-serif", color: '#f0f0f0' }}>
+
+            {/* ── Header ── */}
+            <div style={{ marginBottom: '2rem', borderBottom: '1px solid #2a2a2a', paddingBottom: '1.5rem' }}>
+                <h1 style={{
+                    fontSize: '2rem',
+                    fontWeight: 600,
+                    background: 'linear-gradient(to right, #ffffff, #a0a0a0)',
+                    WebkitBackgroundClip: 'text',
+                    WebkitTextFillColor: 'transparent',
+                    marginBottom: '0.5rem',
+                }}>
                     Agent Screen Popups
-                </h2>
-                <p className="text-gray-400 text-sm mt-1">
-                    Configure interaction rules, limits, and reappear logic for agent screen modals.
+                </h1>
+                <p style={{ color: '#888', fontSize: '1rem' }}>
+                    Configure interaction rules, limits, and reappear logic for agent screen models.
                 </p>
             </div>
 
-            {/* Modal Cards */}
-            <div className="space-y-4">
-                {MODAL_TYPES.map((modalType) => {
-                    const modal = settings[modalType.key] || {};
-                    const isForced = modal.force_accept;
-                    const isEnabled = modal.enabled !== false;
+            {/* ── Cards ── */}
+            <div style={{ display: 'grid', gap: '1.5rem' }}>
+                {MODAL_TYPES.map((mt) => {
+                    const modal = settings[mt.key] || {};
+                    const isForced = !!modal.force_accept;
 
                     return (
                         <div
-                            key={modalType.key}
-                            className={`bg-gray-800/60 border-l-4 ${modalType.borderColor} rounded-xl p-5 transition-all hover:bg-gray-800/90 hover:shadow-lg ${
-                                !isEnabled ? 'opacity-50' : ''
-                            }`}
+                            key={mt.key}
+                            style={{
+                                background: '#121212',
+                                border: '1px solid #2a2a2a',
+                                borderRadius: '16px',
+                                padding: '1.5rem',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'space-between',
+                                position: 'relative',
+                                overflow: 'hidden',
+                                transition: 'all 0.3s ease',
+                                cursor: 'default',
+                            }}
+                            onMouseEnter={e => {
+                                e.currentTarget.style.background = '#1a1a1a';
+                                e.currentTarget.style.borderColor = '#3a3a3a';
+                                e.currentTarget.style.boxShadow = '0 8px 30px rgba(0,0,0,0.5)';
+                                e.currentTarget.style.transform = 'translateY(-2px)';
+                            }}
+                            onMouseLeave={e => {
+                                e.currentTarget.style.background = '#121212';
+                                e.currentTarget.style.borderColor = '#2a2a2a';
+                                e.currentTarget.style.boxShadow = 'none';
+                                e.currentTarget.style.transform = 'translateY(0)';
+                            }}
                         >
-                            <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
-                                {/* Left: Info */}
-                                <div className="flex items-center gap-4 lg:w-1/4">
-                                    <div className={`w-12 h-12 rounded-xl flex items-center justify-center text-2xl ${modalType.bgColor} border border-gray-700`}>
-                                        {modalType.icon}
-                                    </div>
-                                    <div>
-                                        <h3 className="text-white font-medium text-base">{modalType.label}</h3>
-                                        <p className="text-gray-500 text-xs mt-0.5">{modalType.description}</p>
-                                    </div>
+                            {/* Left accent bar */}
+                            <div style={{
+                                position: 'absolute',
+                                top: 0, left: 0,
+                                width: '4px',
+                                height: '100%',
+                                background: mt.accentColor,
+                                borderRadius: '16px 0 0 16px',
+                                opacity: 0.6,
+                            }} />
+
+                            {/* Card Info — 25% width */}
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '1.5rem', width: '25%' }}>
+                                <div style={{
+                                    width: '50px', height: '50px',
+                                    borderRadius: '12px',
+                                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                    fontSize: '1.5rem',
+                                    background: 'rgba(255,255,255,0.05)',
+                                    border: '1px solid rgba(255,255,255,0.1)',
+                                    color: mt.iconColor,
+                                }}>
+                                    {mt.icon}
                                 </div>
-
-                                {/* Right: Controls */}
-                                <div className="flex flex-wrap items-center gap-6 lg:gap-8">
-                                    {/* Enabled Toggle */}
-                                    <div className="flex flex-col items-center gap-1.5">
-                                        <span className="text-xs text-gray-500 uppercase tracking-wide font-semibold">Enabled</span>
-                                        <button
-                                            onClick={() => handleToggleEnabled(modalType.key)}
-                                            className={`relative w-12 h-6 rounded-full transition-colors ${
-                                                isEnabled ? 'bg-green-500' : 'bg-gray-600'
-                                            }`}
-                                        >
-                                            <span
-                                                className={`absolute top-0.5 w-5 h-5 rounded-full bg-white transition-transform ${
-                                                    isEnabled ? 'translate-x-6' : 'translate-x-0.5'
-                                                }`}
-                                            />
-                                        </button>
-                                    </div>
-
-                                    {/* Force Accept Toggle */}
-                                    <div className="flex flex-col items-center gap-1.5">
-                                        <span className="text-xs text-gray-500 uppercase tracking-wide font-semibold">Force Accept</span>
-                                        <button
-                                            onClick={() => isEnabled && handleToggleForceAccept(modalType.key)}
-                                            disabled={!isEnabled}
-                                            className={`relative w-12 h-6 rounded-full transition-colors ${
-                                                isForced ? 'bg-indigo-500' : 'bg-gray-600'
-                                            } ${!isEnabled ? 'cursor-not-allowed' : 'cursor-pointer'}`}
-                                        >
-                                            <span
-                                                className={`absolute top-0.5 w-5 h-5 rounded-full bg-white transition-transform ${
-                                                    isForced ? 'translate-x-6' : 'translate-x-0.5'
-                                                }`}
-                                            />
-                                        </button>
-                                    </div>
-
-                                    {/* Max Cut Limit */}
-                                    <div className="flex flex-col items-center gap-1.5">
-                                        <span className="text-xs text-gray-500 uppercase tracking-wide font-semibold">Max Cut Limit</span>
-                                        <input
-                                            type="number"
-                                            min="0"
-                                            value={modal.max_cut_limit || 0}
-                                            onChange={(e) => handleFieldChange(modalType.key, 'max_cut_limit', Math.max(0, parseInt(e.target.value) || 0))}
-                                            disabled={isForced || !isEnabled}
-                                            className="w-20 text-center bg-gray-900 border border-gray-700 text-white rounded-lg px-2 py-1.5 text-sm focus:border-indigo-500 focus:outline-none disabled:opacity-40 disabled:cursor-not-allowed"
-                                            title={isForced ? 'Disabled when Force Accept is ON' : ''}
-                                        />
-                                    </div>
-
-                                    {/* Reappear After */}
-                                    <div className="flex flex-col items-center gap-1.5">
-                                        <span className="text-xs text-gray-500 uppercase tracking-wide font-semibold">Reappear After</span>
-                                        <div className="flex gap-2">
-                                            <input
-                                                type="number"
-                                                min="0"
-                                                value={modal.reappear_time || 0}
-                                                onChange={(e) => handleFieldChange(modalType.key, 'reappear_time', Math.max(0, parseInt(e.target.value) || 0))}
-                                                disabled={isForced || !isEnabled}
-                                                className="w-16 text-center bg-gray-900 border border-gray-700 text-white rounded-lg px-2 py-1.5 text-sm focus:border-indigo-500 focus:outline-none disabled:opacity-40 disabled:cursor-not-allowed"
-                                            />
-                                            <select
-                                                value={modal.reappear_unit || 'seconds'}
-                                                onChange={(e) => handleFieldChange(modalType.key, 'reappear_unit', e.target.value)}
-                                                disabled={isForced || !isEnabled}
-                                                className="bg-gray-900 border border-gray-700 text-white rounded-lg px-2 py-1.5 text-sm focus:border-indigo-500 focus:outline-none disabled:opacity-40 disabled:cursor-not-allowed"
-                                            >
-                                                {TIME_UNITS.map(u => (
-                                                    <option key={u.value} value={u.value}>{u.label}</option>
-                                                ))}
-                                            </select>
-                                        </div>
-                                    </div>
+                                <div>
+                                    <h3 style={{ fontSize: '1.2rem', fontWeight: 500, color: '#f0f0f0' }}>{mt.label}</h3>
+                                    <p style={{ fontSize: '0.85rem', color: '#888', marginTop: '0.25rem' }}>{mt.description}</p>
                                 </div>
                             </div>
 
-                            {/* Force Accept Info */}
-                            {isForced && isEnabled && (
-                                <div className="mt-3 flex items-center gap-2 text-xs text-indigo-400 bg-indigo-500/10 rounded-lg px-3 py-2">
-                                    <AlertTriangle size={14} />
-                                    <span>Force Accept is ON — User cannot dismiss this popup. It must be accepted.</span>
+                            {/* Card Controls */}
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '2.5rem', flexGrow: 1, justifyContent: 'flex-end' }}>
+
+                                {/* Force Accept */}
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                                    <span style={{ fontSize: '0.8rem', color: '#888', textTransform: 'uppercase', letterSpacing: '0.5px', fontWeight: 600 }}>
+                                        Force Accept
+                                    </span>
+                                    <label style={{ position: 'relative', display: 'inline-block', width: '50px', height: '26px', cursor: 'pointer' }}>
+                                        <input
+                                            type="checkbox"
+                                            checked={isForced}
+                                            onChange={() => handleToggleForceAccept(mt.key)}
+                                            style={{ opacity: 0, width: 0, height: 0, position: 'absolute' }}
+                                        />
+                                        <span style={{
+                                            position: 'absolute',
+                                            top: 0, left: 0, right: 0, bottom: 0,
+                                            background: isForced ? '#4e54c8' : '#333',
+                                            borderRadius: '34px',
+                                            transition: '0.4s',
+                                            boxShadow: isForced ? '0 0 10px rgba(78,84,200,0.4)' : 'none',
+                                        }}>
+                                            <span style={{
+                                                position: 'absolute',
+                                                height: '18px', width: '18px',
+                                                left: isForced ? '28px' : '4px',
+                                                bottom: '4px',
+                                                background: 'white',
+                                                borderRadius: '50%',
+                                                transition: '0.3s',
+                                            }} />
+                                        </span>
+                                    </label>
                                 </div>
-                            )}
+
+                                {/* Max Cut Limit */}
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                                    <span style={{ fontSize: '0.8rem', color: '#888', textTransform: 'uppercase', letterSpacing: '0.5px', fontWeight: 600 }}>
+                                        Max Cut Limit
+                                    </span>
+                                    <input
+                                        type="number"
+                                        min="0"
+                                        value={modal.max_cut_limit ?? 0}
+                                        onChange={e => handleFieldChange(mt.key, 'max_cut_limit', Math.max(0, parseInt(e.target.value) || 0))}
+                                        disabled={isForced}
+                                        title={isForced ? 'Disabled when Force Accept is ON' : ''}
+                                        style={{
+                                            width: '90px',
+                                            textAlign: 'center',
+                                            background: '#0a0a0a',
+                                            border: '1px solid #333',
+                                            color: '#fff',
+                                            padding: '0.6rem 1rem',
+                                            borderRadius: '8px',
+                                            fontSize: '0.95rem',
+                                            outline: 'none',
+                                            opacity: isForced ? 0.4 : 1,
+                                            cursor: isForced ? 'not-allowed' : 'text',
+                                            MozAppearance: 'textfield',
+                                        }}
+                                    />
+                                </div>
+
+                                {/* Reappear After */}
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                                    <span style={{ fontSize: '0.8rem', color: '#888', textTransform: 'uppercase', letterSpacing: '0.5px', fontWeight: 600 }}>
+                                        Reappear After
+                                    </span>
+                                    <div style={{ display: 'flex', gap: '0.5rem' }}>
+                                        <input
+                                            type="number"
+                                            min="0"
+                                            value={modal.reappear_time ?? 0}
+                                            onChange={e => handleFieldChange(mt.key, 'reappear_time', Math.max(0, parseInt(e.target.value) || 0))}
+                                            disabled={isForced}
+                                            style={{
+                                                width: '60px',
+                                                textAlign: 'center',
+                                                background: '#0a0a0a',
+                                                border: '1px solid #333',
+                                                color: '#fff',
+                                                padding: '0.6rem 0.5rem',
+                                                borderRadius: '8px',
+                                                fontSize: '0.95rem',
+                                                outline: 'none',
+                                                opacity: isForced ? 0.4 : 1,
+                                                cursor: isForced ? 'not-allowed' : 'text',
+                                                MozAppearance: 'textfield',
+                                            }}
+                                        />
+                                        <select
+                                            value={modal.reappear_unit || 'seconds'}
+                                            onChange={e => handleFieldChange(mt.key, 'reappear_unit', e.target.value)}
+                                            disabled={isForced}
+                                            style={{
+                                                background: '#0a0a0a',
+                                                border: '1px solid #333',
+                                                color: '#fff',
+                                                padding: '0.6rem 1rem',
+                                                borderRadius: '8px',
+                                                fontSize: '0.95rem',
+                                                outline: 'none',
+                                                opacity: isForced ? 0.4 : 1,
+                                                cursor: isForced ? 'not-allowed' : 'pointer',
+                                            }}
+                                        >
+                                            {TIME_UNITS.map(u => (
+                                                <option key={u.value} value={u.value}>{u.label}</option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                </div>
+
+                            </div>
                         </div>
                     );
                 })}
             </div>
 
-            {/* Action Bar */}
-            <div className="border-t border-gray-700 pt-4 flex items-center justify-between">
-                <div>
-                    {saveMessage && (
-                        <span className={`text-sm ${saveMessage.includes('success') ? 'text-green-400' : 'text-red-400'}`}>
-                            {saveMessage.includes('success') ? '✓' : '✗'} {saveMessage}
-                        </span>
-                    )}
-                </div>
-                <div className="flex gap-3">
-                    <button
-                        onClick={fetchSettings}
-                        className="flex items-center gap-2 px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg text-sm font-medium transition-colors"
-                    >
-                        <RotateCcw size={16} />
-                        Reset
-                    </button>
-                    <button
-                        onClick={handleSave}
-                        disabled={saving || !hasChanges}
-                        className="flex items-center gap-2 px-6 py-2 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white rounded-lg text-sm font-semibold transition-all shadow-lg shadow-indigo-500/25 disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                        {saving ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
-                        {saving ? 'Saving...' : 'Save Configuration'}
-                    </button>
-                </div>
+            {/* ── Action Bar ── */}
+            <div style={{
+                marginTop: '3rem',
+                paddingTop: '1.5rem',
+                borderTop: '1px solid #2a2a2a',
+                display: 'flex',
+                justifyContent: 'flex-end',
+                alignItems: 'center',
+            }}>
+                {saveMessage && (
+                    <span style={{
+                        color: saveMessage.startsWith('✓') ? '#2ed573' : '#ff4757',
+                        fontSize: '0.9rem',
+                        marginRight: '1.5rem',
+                    }}>
+                        {saveMessage}
+                    </span>
+                )}
+                <button
+                    onClick={handleSave}
+                    disabled={saving}
+                    style={{
+                        background: 'linear-gradient(135deg, #4e54c8, #8f94fb)',
+                        color: 'white',
+                        border: 'none',
+                        padding: '0.8rem 2rem',
+                        borderRadius: '8px',
+                        fontWeight: 600,
+                        fontSize: '1rem',
+                        cursor: saving ? 'not-allowed' : 'pointer',
+                        boxShadow: '0 4px 15px rgba(78,84,200,0.4)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '0.5rem',
+                        opacity: saving ? 0.7 : 1,
+                        transition: 'all 0.3s ease',
+                    }}
+                    onMouseEnter={e => { if (!saving) e.currentTarget.style.transform = 'translateY(-2px)'; }}
+                    onMouseLeave={e => { e.currentTarget.style.transform = 'translateY(0)'; }}
+                >
+                    {saving && <Loader2 size={16} className="animate-spin" />}
+                    Save Configurations
+                </button>
             </div>
+
         </div>
     );
 };

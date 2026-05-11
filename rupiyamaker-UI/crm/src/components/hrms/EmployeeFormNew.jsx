@@ -215,6 +215,7 @@ const EmployeeForm = ({
     const joiningDateRef = useRef(null);
     const usernameRef = useRef(null);
     const passwordRef = useRef(null);
+    const fileInputRef = useRef(null);
     const isUserSuperAdmin = isSuperAdmin(userPermissions);
     
     // Helper: check if a specific action is granted for a page in the permissions data
@@ -552,162 +553,57 @@ const EmployeeForm = ({
 
     // Function to generate next employee ID
     const generateNextEmployeeId = async () => {
+        let nextId = '001';
         try {
-            // Get all employees to find the next ID
-            const response = await hrmsService.getAllEmployees();
-            if (response && response.data) {
-                // Find the highest employee_id number
-                let maxId = 0;
-                response.data.forEach(emp => {
-                    if (emp.employee_id) {
-                        const numericId = parseInt(emp.employee_id);
-                        if (!isNaN(numericId) && numericId > maxId) {
-                            maxId = numericId;
-                        }
-                    }
-                });
-                
-                // Next ID
-                const nextId = (maxId + 1).toString().padStart(3, '0');
-                
-                setFormData({
-                    profile_photo: '',
-                    employee_id: nextId,
-                    first_name: '',
-                    last_name: '',
-                    phone: '',
-                    alternate_phone: '',
-                    email: '',
-                    work_email: '',
-                    personal_email: '',
-                    dob: '',
-                    pan_number: '',
-                    aadhaar_number: '',
-                    highest_qualification: '',
-                    experience_level: '',
-                    gender: '',
-                    marital_status: '',
-                    nationality: 'Indian',
-                    blood_group: '',
-                    current_address: '',
-                    current_city: '',
-                    current_state: '',
-                    current_pincode: '',
-                    same_as_current: false,
-                    emergency_contact_1_name: '',
-                    emergency_contact_1_phone: '',
-                    emergency_contact_1_relation: '',
-                    emergency_contact_2_name: '',
-                    emergency_contact_2_phone: '',
-                    emergency_contact_2_relation: '',
-                    joining_date: '',
-                    monthly_salary: '',
-                    monthly_target: '',
-                    incentive: '',
-                    department_id: '',
-                    role_id: '',
-                    designation: '',
-                    salary_account_number: '',
-                    salary_ifsc_code: '',
-                    salary_bank_name: '',
-                    username: '',
-                    password: ''
-                });
-            } else {
-                // If no employees exist, start with 001
-                setFormData({
-                    profile_photo: '',
-                    employee_id: '001',
-                    first_name: '',
-                    last_name: '',
-                    phone: '',
-                    alternate_phone: '',
-                    email: '',
-                    work_email: '',
-                    personal_email: '',
-                    dob: '',
-                    pan_number: '',
-                    aadhaar_number: '',
-                    highest_qualification: '',
-                    experience_level: '',
-                    gender: '',
-                    marital_status: '',
-                    nationality: 'Indian',
-                    blood_group: '',
-                    current_address: '',
-                    current_city: '',
-                    current_state: '',
-                    current_pincode: '',
-                    same_as_current: false,
-                    emergency_contact_1_name: '',
-                    emergency_contact_1_phone: '',
-                    emergency_contact_1_relation: '',
-                    emergency_contact_2_name: '',
-                    emergency_contact_2_phone: '',
-                    emergency_contact_2_relation: '',
-                    joining_date: '',
-                    monthly_salary: '',
-                    monthly_target: '',
-                    incentive: '',
-                    department_id: '',
-                    role_id: '',
-                    designation: '',
-                    salary_account_number: '',
-                    salary_ifsc_code: '',
-                    salary_bank_name: '',
-                    username: '',
-                    password: ''
-                });
-            }
-            setImageUrl(null);
+            const id = await hrmsService.getNextEmployeeId();
+            if (id) nextId = id;
         } catch (error) {
             console.error('Error generating employee ID:', error);
-            // Fallback to RM001 if there's an error
-            setFormData({
-                profile_photo: '',
-                employee_id: '001',
-                first_name: '',
-                last_name: '',
-                phone: '',
-                alternate_phone: '',
-                email: '',
-                work_email: '',
-                personal_email: '',
-                dob: '',
-                pan_number: '',
-                aadhaar_number: '',
-                highest_qualification: '',
-                experience_level: '',
-                gender: '',
-                marital_status: '',
-                nationality: 'Indian',
-                blood_group: '',
-                current_address: '',
-                current_city: '',
-                current_state: '',
-                current_pincode: '',
-                same_as_current: false,
-                emergency_contact_1_name: '',
-                emergency_contact_1_phone: '',
-                emergency_contact_1_relation: '',
-                emergency_contact_2_name: '',
-                emergency_contact_2_phone: '',
-                emergency_contact_2_relation: '',
-                joining_date: '',
-                monthly_salary: '',
-                monthly_target: '',
-                incentive: '',
-                department_id: '',
-                role_id: '',
-                designation: '',
-                salary_account_number: '',
-                salary_ifsc_code: '',
-                salary_bank_name: '',
-                username: '',
-                password: ''
-            });
-            setImageUrl(null);
         }
+        setFormData({
+            profile_photo: '',
+            employee_id: nextId,
+            first_name: '',
+            last_name: '',
+            phone: '',
+            alternate_phone: '',
+            email: '',
+            work_email: '',
+            personal_email: '',
+            dob: '',
+            pan_number: '',
+            aadhaar_number: '',
+            highest_qualification: '',
+            experience_level: '',
+            gender: '',
+            marital_status: '',
+            nationality: 'Indian',
+            blood_group: '',
+            current_address: '',
+            current_city: '',
+            current_state: '',
+            current_pincode: '',
+            same_as_current: false,
+            emergency_contact_1_name: '',
+            emergency_contact_1_phone: '',
+            emergency_contact_1_relation: '',
+            emergency_contact_2_name: '',
+            emergency_contact_2_phone: '',
+            emergency_contact_2_relation: '',
+            joining_date: '',
+            monthly_salary: '',
+            monthly_target: '',
+            incentive: '',
+            department_id: '',
+            role_id: '',
+            designation: '',
+            salary_account_number: '',
+            salary_ifsc_code: '',
+            salary_bank_name: '',
+            username: '',
+            password: ''
+        });
+        setImageUrl(null);
     };
 
     const fetchDropdownData = async () => {
@@ -1823,14 +1719,36 @@ const EmployeeForm = ({
                             <div>
                                 <label>Profile Photo</label>
                                 <div className="photo-upload">
-                                    <div className="photo-circle">
+                                    <div
+                                        className="photo-circle"
+                                        style={{cursor: 'pointer', position: 'relative'}}
+                                        onClick={() => fileInputRef.current?.click()}
+                                        title="Click to upload photo"
+                                    >
                                         {imageUrl ? (
                                             <img src={imageUrl} alt="Profile" style={{width: '100%', height: '100%', borderRadius: '50%', objectFit: 'cover'}} />
                                         ) : (
                                             <span>👤</span>
                                         )}
+                                        <div style={{
+                                            position: 'absolute', bottom: 0, right: 0,
+                                            background: '#4f46e5', borderRadius: '50%',
+                                            width: 28, height: 28, display: 'flex',
+                                            alignItems: 'center', justifyContent: 'center',
+                                            boxShadow: '0 1px 4px rgba(0,0,0,0.2)'
+                                        }}>
+                                            <span style={{color: '#fff', fontSize: 14}}>📷</span>
+                                        </div>
                                     </div>
+                                    <button
+                                        type="button"
+                                        className="photo-change-btn"
+                                        onClick={() => fileInputRef.current?.click()}
+                                    >
+                                        📷 {imageUrl ? 'Change Photo' : 'Upload Photo'}
+                                    </button>
                                     <input 
+                                        ref={fileInputRef}
                                         type="file" 
                                         accept="image/png, image/jpeg"
                                         onChange={handleFileChange}
@@ -2601,10 +2519,37 @@ const EmployeeForm = ({
                                 </div>
                             </div>
                             <button
-                                onClick={() => {
+                                onClick={async (e) => {
+                                    e.stopPropagation();
                                     const details = `Employee Details:\n\nEmployee ID: ${successData.employeeId || 'Will be assigned'}\nName: ${successData.firstName} ${successData.lastName}\nPhone: ${successData.phone || 'N/A'}\nDepartment: ${successData.department}\nRole: ${successData.role}\nDesignation: ${successData.designation || 'N/A'}\nUsername: ${successData.username || 'N/A'}${createdPassword ? `\nPassword: ${createdPassword}` : ''}\nLogin URL: ${window.location.origin}/login`;
-                                    navigator.clipboard.writeText(details);
-                                    message.success('✅ Employee details copied to clipboard!');
+
+                                    if (navigator.clipboard && navigator.clipboard.writeText) {
+                                        try {
+                                            await navigator.clipboard.writeText(details);
+                                            message.success('✅ Employee details copied to clipboard!');
+                                            return;
+                                        } catch (err) {
+                                            // fall through to execCommand fallback
+                                        }
+                                    }
+                                    // Fallback: off-screen textarea with high z-index so it can receive focus
+                                    const textarea = document.createElement('textarea');
+                                    textarea.value = details;
+                                    textarea.style.cssText = 'position:fixed;top:0;left:0;width:2px;height:2px;opacity:0;z-index:999999;';
+                                    document.body.appendChild(textarea);
+                                    textarea.focus();
+                                    textarea.select();
+                                    try {
+                                        const ok = document.execCommand('copy');
+                                        if (ok) {
+                                            message.success('✅ Employee details copied to clipboard!');
+                                        } else {
+                                            message.error('Copy failed. Please select the text manually and press Ctrl+C.');
+                                        }
+                                    } catch (execErr) {
+                                        message.error('Copy failed. Please select the text manually and press Ctrl+C.');
+                                    }
+                                    document.body.removeChild(textarea);
                                 }}
                                 style={{
                                     marginTop: '15px',

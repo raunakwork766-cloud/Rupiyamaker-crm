@@ -824,12 +824,19 @@ function App() {
                 version: firstNotification.version || 1
               };
 
-              // Store in localStorage for persistence
-              localStorage.setItem('pendingAnnouncement', JSON.stringify(announcementPayload));
-
-              // Show the announcement
-              setGlobalAnnouncementData(announcementPayload);
-              setShowGlobalAnnouncement(true);
+              // Show the announcement (check cut limit before showing)
+              const annSettings = (() => { try { const r = localStorage.getItem('popup_modal_settings'); return r ? JSON.parse(r)?.announcement : null; } catch (_) { return null; } })();
+              const annMaxCut = annSettings?.max_cut_limit ?? 999;
+              const annCutCount = getAnnouncementCutCount(currentNotificationId);
+              const annForceAccept = annSettings?.force_accept ?? true;
+              // Only skip if: cut limit not reached AND dismissed recently AND not force-accept
+              const skipAnn = !annForceAccept && annCutCount < annMaxCut && isAnnouncementDismissedRecently(currentNotificationId);
+              if (!skipAnn) {
+                // Store in localStorage for persistence
+                localStorage.setItem('pendingAnnouncement', JSON.stringify(announcementPayload));
+                setGlobalAnnouncementData(announcementPayload);
+                setShowGlobalAnnouncement(true);
+              }
             }
           } else if (notifications.length === 0) {
             // ✨ CRITICAL FIX: If no notifications returned and one is currently showing,
@@ -919,7 +926,73 @@ function App() {
     };
   }, [isAuthenticated, showGlobalAnnouncement, user]);
 
-  // GLOBAL: Load pending announcement from localStorage on mount
+  // GLOBAL: Fetch popup modal settings and cache in localStorage
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    const fetchPopupSettings = async () => {
+      try {
+        const uid = localStorage.getItem('userId') || localStorage.getItem('user_id');
+        if (!uid) return;
+        const res = await fetch(`/api/settings/popup-modal-settings?user_id=${uid}`, {
+          headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (data?.data?.modals) {
+            localStorage.setItem('popup_modal_settings', JSON.stringify(data.data.modals));
+          }
+        }
+      } catch (_) {}
+    };
+    fetchPopupSettings();
+  }, [isAuthenticated]);
+
+  // GLOBAL: Announcement dismiss helpers
+  const isAnnouncementDismissedRecently = (notificationId) => {
+    try {
+      const raw = localStorage.getItem('announcement_dismiss_times');
+      if (!raw) return false;
+      const times = JSON.parse(raw);
+      const dismissedAt = times[notificationId];
+      if (!dismissedAt) return false;
+      const settings = (() => { try { const r = localStorage.getItem('popup_modal_settings'); return r ? JSON.parse(r)?.announcement : null; } catch (_) { return null; } })();
+      const t = parseInt(settings?.reappear_time) || 0;
+      const u = settings?.reappear_unit || 'hours';
+      const msMap = { seconds: 1000, minutes: 60000, hours: 3600000, days: 86400000 };
+      const reappearMs = t > 0 ? t * (msMap[u] || 1000) : 0;
+      if (reappearMs <= 0) return false;
+      return (Date.now() - dismissedAt) < reappearMs;
+    } catch (_) { return false; }
+  };
+
+  const getAnnouncementCutCount = (notificationId) => {
+    try {
+      const raw = localStorage.getItem('popup_cut_counts');
+      return raw ? (JSON.parse(raw)[`announcement_${notificationId}`] || 0) : 0;
+    } catch (_) { return 0; }
+  };
+
+  const handleGlobalAnnouncementDismiss = () => {
+    const notificationId = globalAnnouncementData?.notificationId;
+    if (!notificationId) { setShowGlobalAnnouncement(false); setGlobalAnnouncementData(null); localStorage.removeItem('pendingAnnouncement'); return; }
+    // Increment cut count
+    try {
+      const raw = localStorage.getItem('popup_cut_counts');
+      const counts = raw ? JSON.parse(raw) : {};
+      counts[`announcement_${notificationId}`] = (counts[`announcement_${notificationId}`] || 0) + 1;
+      localStorage.setItem('popup_cut_counts', JSON.stringify(counts));
+    } catch (_) {}
+    // Record dismiss time for reappear logic
+    try {
+      const raw = localStorage.getItem('announcement_dismiss_times');
+      const times = raw ? JSON.parse(raw) : {};
+      times[notificationId] = Date.now();
+      localStorage.setItem('announcement_dismiss_times', JSON.stringify(times));
+    } catch (_) {}
+    setShowGlobalAnnouncement(false);
+    setGlobalAnnouncementData(null);
+    localStorage.removeItem('pendingAnnouncement');
+  };
   useEffect(() => {
     if (!isAuthenticated) return;
 
@@ -927,8 +1000,13 @@ function App() {
     if (pendingAnnouncement) {
       try {
         const announcementData = JSON.parse(pendingAnnouncement);
-        setGlobalAnnouncementData(announcementData);
-        setShowGlobalAnnouncement(true);
+        // Check if dismissed recently
+        if (!isAnnouncementDismissedRecently(announcementData.notificationId)) {
+          setGlobalAnnouncementData(announcementData);
+          setShowGlobalAnnouncement(true);
+        } else {
+          localStorage.removeItem('pendingAnnouncement');
+        }
       } catch (error) {
         console.error('Error loading pending announcement:', error);
         localStorage.removeItem('pendingAnnouncement');
@@ -1237,6 +1315,7 @@ function App() {
           <GlobalAnnouncementModal 
             announcementData={globalAnnouncementData}
             onAcknowledge={handleGlobalAnnouncementAcknowledge}
+            onDismiss={handleGlobalAnnouncementDismiss}
             onLogout={handleLogout}
           />
         )}
@@ -1248,7 +1327,15 @@ function App() {
 }
 
 // Global Announcement Modal Component
-const GlobalAnnouncementModal = ({ announcementData, onAcknowledge, onLogout }) => {
+const GlobalAnnouncementModal = ({ announcementData, onAcknowledge, onDismiss, onLogout }) => {
+  // ── Compute canDismiss from popup settings ──────────────────────────────
+  const annSettings = (() => { try { const r = localStorage.getItem('popup_modal_settings'); return r ? JSON.parse(r)?.announcement : null; } catch (_) { return null; } })();
+  const annForceAccept = annSettings?.force_accept ?? true;
+  const annMaxCut = annSettings?.max_cut_limit ?? 0;
+  const annCutCount = (() => { try { const r = localStorage.getItem('popup_cut_counts'); return r ? (JSON.parse(r)[`announcement_${announcementData?.notificationId}`] || 0) : 0; } catch (_) { return 0; } })();
+  const canDismissAnn = !annForceAccept && annCutCount < annMaxCut && typeof onDismiss === 'function';
+  const annDismissalsLeft = Math.max(0, annMaxCut - annCutCount);
+
   useEffect(() => {
     const timer = setTimeout(() => {
       const detailsContent = document.getElementById('global-announcement-details-content');
@@ -1641,7 +1728,26 @@ const GlobalAnnouncementModal = ({ announcementData, onAcknowledge, onLogout }) 
         className="global-announcement-modal-wrapper"
         id="global-announcement-modal"
         onClick={(e) => e.stopPropagation()}
+        style={{ position: 'relative' }}
       >
+        {/* Dismiss (cut) button — shown only when force_accept is OFF and cut limit not reached */}
+        {canDismissAnn && (
+          <button
+            onClick={onDismiss}
+            title={`Dismiss (${annDismissalsLeft} dismissal${annDismissalsLeft !== 1 ? 's' : ''} left)`}
+            style={{
+              position: 'absolute', top: '12px', right: '12px', zIndex: 10,
+              width: '32px', height: '32px', borderRadius: '50%',
+              background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.25)',
+              color: '#ccc', cursor: 'pointer', display: 'flex', alignItems: 'center',
+              justifyContent: 'center', fontSize: '16px', transition: 'all 0.2s',
+            }}
+            onMouseEnter={e => { e.currentTarget.style.background = 'rgba(255,100,100,0.25)'; e.currentTarget.style.color = '#fff'; }}
+            onMouseLeave={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.1)'; e.currentTarget.style.color = '#ccc'; }}
+          >
+            ×
+          </button>
+        )}
         <div style={{ padding: '30px' }}>
           <div className="global-announcement-header">
             <div className="global-announcement-header-icon">📢</div>

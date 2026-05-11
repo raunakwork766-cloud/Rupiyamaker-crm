@@ -67,6 +67,18 @@ async def list_employees(
     employees = await users_db.get_employees_with_readable_passwords(status, department_id)
     return [convert_object_id(employee) for employee in employees]
 
+@router.get("/employees/next-id", response_model=Dict[str, str])
+async def get_next_employee_id(
+    user_id: str = Query(..., description="ID of the user making the request"),
+    users_db: UsersDB = Depends(get_users_db),
+    roles_db: RolesDB = Depends(get_roles_db)
+):
+    """Return the next available employee ID (RM-prefix format)"""
+    await check_permission(user_id, "employees", "show", users_db, roles_db)
+    next_id = await users_db._generate_employee_id()
+    return {"next_id": next_id}
+
+
 @router.post("/employees/with-photo", response_model=Dict[str, str], status_code=status.HTTP_201_CREATED)
 async def create_employee_with_photo(
     # Employee data as form fields
@@ -182,7 +194,7 @@ async def create_employee_with_photo(
     
     # Generate employee ID if not provided
     if not employee_id:
-        employee_data["employee_id"] = users_db._generate_employee_id()
+        employee_data["employee_id"] = await users_db._generate_employee_id()
     else:
         employee_data["employee_id"] = employee_id
     

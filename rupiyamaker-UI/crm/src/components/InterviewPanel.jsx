@@ -6,7 +6,8 @@ import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import useTabWithHistory from '../hooks/useTabWithHistory';
 import useModalHistory from '../hooks/useModalHistory';
-import { ChevronLeft, ChevronRight, ChevronDown, X, MoreVertical, Calendar, History, RefreshCw, ArrowRightLeft, CheckCircle, Plus, Search, Settings, Briefcase, User, FileText, XCircle, PhoneOff, PlayCircle, Info, Circle, ShieldAlert, TrendingUp, Bell, BarChart3, Users, Lock, Upload, Download, Trash2, Filter } from 'lucide-react';
+import { ChevronLeft, ChevronRight, ChevronDown, X, MoreVertical, Calendar, History, RefreshCw, ArrowRightLeft, CheckCircle, Plus, Search, Settings, Briefcase, User, FileText, XCircle, PhoneOff, PlayCircle, Info, Circle, ShieldAlert, TrendingUp, Bell, BarChart3, Users, Lock, Upload, Download, Trash2, Filter, FileSpreadsheet } from 'lucide-react';
+import * as XLSX from 'xlsx';
 import { cn } from "../lib/utils.js";
 import EditInterview from './EditInterview';
 import DuplicateInterviewModal from './DuplicateInterviewModal';
@@ -1413,6 +1414,68 @@ const InterviewPanel = () => {
     setCheckboxVisible(true);
   };
 
+  // Export interviews to Excel with multiple sheets
+  const handleExportExcel = () => {
+    const formatDateIST = (val) => {
+      if (!val) return '';
+      try {
+        const d = new Date(val);
+        if (isNaN(d)) return val;
+        return d.toLocaleString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Asia/Kolkata' });
+      } catch { return val; }
+    };
+    const formatDateOnlyIST = (val) => {
+      if (!val) return '';
+      try {
+        const d = new Date(val);
+        if (isNaN(d)) return val;
+        return d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'Asia/Kolkata' });
+      } catch { return val; }
+    };
+    const toRow = (i) => ({
+      'Candidate Name': i.candidate_name || '',
+      'Mobile Number': i.mobile_number || '',
+      'Gender': i.gender || '',
+      'Experience Type': i.experience_type || '',
+      'City': i.city || '',
+      'Job Opening / Role': i.job_opening || '',
+      'Interview Type': i.interview_type || '',
+      'Source Portal': i.source_portal || '',
+      'Status': i.status || '',
+      'Sub Status': i.sub_status || '',
+      'Decline Reason': i.decline_reason || '',
+      'Stage': getStageFromStatus(i.status),
+      'Interview Date': formatDateOnlyIST(i.interview_date),
+      'Created At': formatDateIST(i.created_at),
+      'Owner / Created By': i.created_by_name || i.created_by || '',
+      'WhatsApp Sent': i.wa_sent ? 'Yes' : 'No',
+    });
+
+    const stageFilter = (stage) => interviews.filter(i => getStageFromStatus(i.status) === stage);
+
+    const sheets = [
+      { name: 'All Interviews', data: interviews },
+      { name: 'Interviews', data: stageFilter('Interview') },
+      { name: 'Job Offered', data: stageFilter('Job Offered') },
+      { name: 'Training', data: stageFilter('Training') },
+      { name: 'Hired', data: stageFilter('Hired') },
+      { name: 'Rejected', data: stageFilter('Rejected') },
+    ];
+
+    const wb = XLSX.utils.book_new();
+    sheets.forEach(({ name, data }) => {
+      const rows = data.length > 0 ? data.map(toRow) : [{}];
+      const ws = XLSX.utils.json_to_sheet(rows);
+      // Auto column widths
+      const colWidths = Object.keys(rows[0] || {}).map(k => ({ wch: Math.max(k.length, 14) }));
+      ws['!cols'] = colWidths;
+      XLSX.utils.book_append_sheet(wb, ws, name);
+    });
+
+    const today = new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'Asia/Kolkata' }).replace(/ /g, '-');
+    XLSX.writeFile(wb, `Interviews-${today}.xlsx`);
+  };
+
   const handleCancelSelection = () => {
     setSelectedInterviews([]);
     setSelectAll(false);
@@ -2158,48 +2221,58 @@ const InterviewPanel = () => {
                 )}
               </div>
             )}
-          </div>
-          {/* SELECT / BULK DELETE controls */}
-          {activeTab !== 'dashboard' && (
-            <div className="flex items-center gap-2">
-              {permissions.can_delete && !checkboxVisible && (
+
+            {/* Export to Excel Button */}
+            {activeTab !== 'dashboard' && activeTab !== 'audit_logs' && (
+              <button
+                onClick={handleExportExcel}
+                className="px-3 py-2 border rounded-md text-xs font-medium flex items-center gap-1.5 transition-colors bg-white border-slate-300 text-slate-700 hover:bg-emerald-50 hover:border-emerald-400 hover:text-emerald-700"
+                title="Export interviews to Excel (all tabs)"
+              >
+                <FileSpreadsheet size={14} />
+                Export Excel
+              </button>
+            )}
+
+            {/* Select Button (for bulk delete) - next to Filter */}
+            {activeTab !== 'dashboard' && activeTab !== 'audit_logs' && permissions.can_delete && !checkboxVisible && (
+              <button
+                className="px-3 py-2 border rounded-md text-xs font-medium flex items-center gap-1.5 transition-colors bg-white border-slate-300 text-slate-700 hover:bg-red-50 hover:border-red-400 hover:text-red-700"
+                onClick={handleShowCheckboxes}
+              >
+                <Trash2 size={14} />
+                Select
+              </button>
+            )}
+            {activeTab !== 'dashboard' && activeTab !== 'audit_logs' && permissions.can_delete && checkboxVisible && (
+              <div className="flex items-center gap-3 bg-slate-100 rounded-lg px-3 py-2">
+                <label className="flex items-center cursor-pointer text-blue-600 font-bold text-sm">
+                  <input
+                    type="checkbox"
+                    className="accent-blue-500 mr-1.5 cursor-pointer"
+                    checked={selectAll}
+                    onChange={handleSelectAll}
+                    style={{ width: 16, height: 16 }}
+                  />
+                  Select All
+                </label>
+                <span className="text-slate-700 font-semibold text-sm">{selectedInterviews.length} selected</span>
                 <button
-                  className="bg-blue-600 text-white px-4 py-2 rounded-lg font-bold shadow hover:bg-blue-500 transition text-sm"
-                  onClick={handleShowCheckboxes}
+                  className="px-3 py-1 bg-red-600 text-white rounded font-bold hover:bg-red-700 transition text-sm disabled:opacity-50"
+                  onClick={handleBulkDelete}
+                  disabled={selectedInterviews.length === 0}
                 >
-                  Select
+                  Delete ({selectedInterviews.length})
                 </button>
-              )}
-              {permissions.can_delete && checkboxVisible && (
-                <div className="flex items-center gap-3 bg-slate-100 rounded-lg px-3 py-2">
-                  <label className="flex items-center cursor-pointer text-blue-600 font-bold text-sm">
-                    <input
-                      type="checkbox"
-                      className="accent-blue-500 mr-1.5 cursor-pointer"
-                      checked={selectAll}
-                      onChange={handleSelectAll}
-                      style={{ width: 16, height: 16 }}
-                    />
-                    Select All
-                  </label>
-                  <span className="text-slate-700 font-semibold text-sm">{selectedInterviews.length} selected</span>
-                  <button
-                    className="px-3 py-1 bg-red-600 text-white rounded font-bold hover:bg-red-700 transition text-sm disabled:opacity-50"
-                    onClick={handleBulkDelete}
-                    disabled={selectedInterviews.length === 0}
-                  >
-                    Delete ({selectedInterviews.length})
-                  </button>
-                  <button
-                    className="px-3 py-1 bg-slate-500 text-white rounded font-bold hover:bg-slate-600 transition text-sm"
-                    onClick={handleCancelSelection}
-                  >
-                    Cancel
-                  </button>
-                </div>
-              )}
-            </div>
-          )}
+                <button
+                  className="px-3 py-1 bg-slate-500 text-white rounded font-bold hover:bg-slate-600 transition text-sm"
+                  onClick={handleCancelSelection}
+                >
+                  Cancel
+                </button>
+              </div>
+            )}
+          </div>
 
           {/* RIGHT: Action buttons */}
           <div className="flex items-center gap-2">

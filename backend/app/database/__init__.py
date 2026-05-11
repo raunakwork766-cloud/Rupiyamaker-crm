@@ -9,7 +9,12 @@ logger = logging.getLogger(__name__)
 # ============ SYNC DATABASE (Legacy Support) ============
 try:
     # Legacy sync connection for backward compatibility
-    legacy_client = MongoClient(Config.MONGO_URI)
+    legacy_client = MongoClient(
+        Config.MONGO_URI,
+        serverSelectionTimeoutMS=10000,
+        connectTimeoutMS=10000,
+        socketTimeoutMS=60000,
+    )
     db = legacy_client[Config.COMPANY_NAME]
     logger.info("✓ Legacy sync MongoDB connection established")
 except Exception as e:
@@ -67,7 +72,13 @@ async def init_database():
     
     try:
         # Create async client and database
-        async_client = AsyncIOMotorClient(Config.MONGO_URI)
+        # Add timeouts to prevent workers from hanging indefinitely on slow queries
+        async_client = AsyncIOMotorClient(
+            Config.MONGO_URI,
+            serverSelectionTimeoutMS=10000,  # 10s to find a server
+            connectTimeoutMS=10000,          # 10s to establish connection
+            socketTimeoutMS=60000,           # 60s max per operation (prevents worker hang)
+        )
         async_db = async_client[Config.COMPANY_NAME]
         
         # Test connection

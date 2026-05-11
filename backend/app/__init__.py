@@ -235,6 +235,8 @@ except ImportError as e:
 # Log full validation errors (422) to backend log for debugging
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
+from starlette.exceptions import HTTPException as StarletteHTTPException
+import traceback as _traceback
 
 @app.exception_handler(RequestValidationError)
 async def validation_exception_handler(request, exc):
@@ -246,6 +248,32 @@ async def validation_exception_handler(request, exc):
     except Exception:
         pass
     return JSONResponse(status_code=422, content={"detail": exc.errors()})
+
+# 🛡️ GLOBAL CATCH-ALL EXCEPTION HANDLER
+# Prevents the backend process from crashing on ANY unhandled error.
+# Any unexpected exception in a request handler will be logged and return 500
+# instead of bubbling up and potentially killing the worker.
+@app.exception_handler(Exception)
+async def global_exception_handler(request, exc):
+    # Let HTTPException pass through normally (FastAPI handles it)
+    if isinstance(exc, StarletteHTTPException):
+        return JSONResponse(
+            status_code=exc.status_code,
+            content={"detail": exc.detail}
+        )
+    try:
+        tb = _traceback.format_exc()
+        logging.error(
+            f"🔴 UNHANDLED EXCEPTION on {request.method} {request.url.path}: "
+            f"{type(exc).__name__}: {str(exc)}\n{tb}"
+        )
+    except Exception:
+        # Never let logging itself crash the handler
+        pass
+    return JSONResponse(
+        status_code=500,
+        content={"detail": "Internal server error. The team has been notified."}
+    )
 
 # Add async Motor performance monitoring endpoint
 @app.get("/performance/stats", tags=["Performance"])

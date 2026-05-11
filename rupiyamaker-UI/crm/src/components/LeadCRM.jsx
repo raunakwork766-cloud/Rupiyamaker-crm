@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, memo, useCallback, useMemo } from 'react';
-import { Search, Filter, CheckSquare, Plus, Eye, Edit, Trash2, User, Building, CreditCard, FileText, UserCheck, ChevronRight, ChevronLeft, Settings, X, Square, Users, CheckCircle, AlertTriangle, XCircle, Edit2, ListTodo, Calendar, Copy, Clock, DollarSign } from 'lucide-react';
+import { Search, Filter, CheckSquare, Plus, Eye, Edit, Trash2, User, Building, CreditCard, FileText, UserCheck, ChevronRight, ChevronLeft, Settings, X, Square, Users, CheckCircle, AlertTriangle, XCircle, Edit2, ListTodo, Calendar, Copy, Clock, DollarSign, Share2 } from 'lucide-react';
 import { checkForDirectLeadView, handleDirectLeadViewOnMount } from '../utils/leadDirectViewFallback';
 import { setupPermissionRefreshListeners } from '../utils/immediatePermissionRefresh.js';
 import { leadEvents } from '../utils/auth';
@@ -1225,6 +1225,9 @@ const LeadCRM = memo(function LeadCRM({ user, selectedLoanType: initialLoanType,
     const [checkedRows, setCheckedRows] = useState([]);
     const [activeTab, setActiveTab] = useState(0);
     const [openSections, setOpenSections] = useState([]); // Changed to array to allow multiple sections open
+    const [activeApplicantTab, setActiveApplicantTab] = useState('applicant');
+    const applicantFormRef = useRef(null);
+    const coApplicantFormRef = useRef(null);
 
     // Persist open lead + tab to sessionStorage so page refresh restores it.
     // On unmount (navigate away via sidebar), clear restore so coming back shows the list.
@@ -2525,60 +2528,89 @@ const LeadCRM = memo(function LeadCRM({ user, selectedLoanType: initialLoanType,
                 {
                     label: "APPLICANT FORM",
                     content: (
-                        <div className="space-y-6">
-                            <div className="flex justify-between items-center mb-4">
-                                <h3 className="text-lg font-bold text-[#03B0F5]">Primary Applicant</h3>
+                        <div className="space-y-4">
+                            {/* Tab bar - matching LoginCRM style */}
+                            <div className="flex items-center gap-2 border-b border-gray-700 pb-0">
+                                <div className="flex gap-1 flex-1">
+                                    <button
+                                        className={`px-4 py-2 rounded-t-lg font-semibold text-sm transition-colors ${
+                                            activeApplicantTab === 'applicant'
+                                                ? 'bg-[#03B0F5] text-white'
+                                                : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                                        }`}
+                                        onClick={() => setActiveApplicantTab('applicant')}
+                                    >
+                                        Applicant
+                                    </button>
+                                    <button
+                                        className={`px-4 py-2 rounded-t-lg font-semibold text-sm transition-colors ${
+                                            activeApplicantTab === 'co-applicant'
+                                                ? 'bg-[#03B0F5] text-white'
+                                                : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                                        }`}
+                                        onClick={() => {
+                                            if (!lead.dynamic_fields?.co_applicant_form && !lead.coApplicantForm) {
+                                                handleFieldChange("co_applicant_form", { initialized: true });
+                                            }
+                                            setActiveApplicantTab('co-applicant');
+                                        }}
+                                    >
+                                        Co-Applicant
+                                    </button>
+                                </div>
+                                {/* Share icon */}
                                 <button
-                                    className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition font-bold text-lg"
+                                    className="p-2 rounded-lg bg-green-600 hover:bg-green-700 text-white transition-colors"
+                                    title="Share Applicant Form"
                                     onClick={() => {
-                                        const coApplicantData = {
-                                            first_name: '',
-                                            last_name: '',
-                                            mobile_number: '',
-                                            email: '',
-                                            date_of_birth: '',
-                                            address: '',
-                                            city: '',
-                                            state: '',
-                                            pincode: '',
-                                            pan_number: '',
-                                            aadhar_number: '',
-                                            initialized: true
-                                        };
-                                        handleFieldChange("co_applicant_form", coApplicantData);
+                                        if (activeApplicantTab === 'applicant') {
+                                            applicantFormRef.current?.handleGenerateShareLink?.();
+                                        } else {
+                                            coApplicantFormRef.current?.handleGenerateShareLink?.();
+                                        }
                                     }}
                                 >
-                                    + Add Co-Applicant
+                                    <Share2 size={16} />
                                 </button>
+                                {/* Remove co-applicant button */}
+                                {activeApplicantTab === 'co-applicant' && (lead.dynamic_fields?.co_applicant_form || lead.coApplicantForm) && (
+                                    <button
+                                        className="p-2 rounded-lg bg-red-600 hover:bg-red-700 text-white transition-colors"
+                                        title="Remove Co-Applicant"
+                                        onClick={() => {
+                                            handleFieldChange("co_applicant_form", null);
+                                            setActiveApplicantTab('applicant');
+                                        }}
+                                    >
+                                        <X size={16} />
+                                    </button>
+                                )}
                             </div>
-                            {console.log('🔍 [LeadCRM] Preparing to render LoginFormSection')}
-                            {console.log('🔍 lead.dynamic_fields:', lead.dynamic_fields)}
-                            {console.log('🔍 lead.dynamic_fields?.applicant_form:', lead.dynamic_fields?.applicant_form)}
-                            {console.log('🔍 lead.loginForm:', lead.loginForm)}
-                            {console.log('🔍 Final data being passed:', lead.dynamic_fields?.applicant_form || lead.loginForm || {})}
-                            <LoginFormSection
-                                data={lead.dynamic_fields?.applicant_form || lead.loginForm || {}}
-                                onSave={updated => handleFieldChange("applicant_form", updated)}
-                                bankOptions={bankOptions}
-                                mobileNumber={lead.mobile_number}
-                                bankName={lead.salaryAccountBank || lead.bank_name}
-                                isReadOnlyMobile={true}
-                                leadId={lead._id}
-                                leadCustomerName={`${lead.first_name || ''} ${lead.last_name || ''}`.trim() || lead.customerName || lead.name || ''}
-                                leadData={lead}
-                            />
-                            {(lead.dynamic_fields?.co_applicant_form || lead.coApplicantForm) && (
-                                <div className="mt-8 pt-6 border-t-2 border-cyan-400">
-                                    <div className="flex justify-between items-center mb-4">
-                                        <h3 className="text-lg font-bold text-[#03B0F5]">Co-Applicant</h3>
-                                        <button
-                                            className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition font-bold text-lg"
-                                            onClick={() => handleFieldChange("co_applicant_form", null)}
-                                        >
-                                            Remove Co-Applicant
-                                        </button>
-                                    </div>
+
+                            {/* Applicant tab */}
+                            {activeApplicantTab === 'applicant' && (
+                                <LazySection height="400px">
                                     <LoginFormSection
+                                        ref={applicantFormRef}
+                                        data={lead.dynamic_fields?.applicant_form || lead.loginForm || {}}
+                                        onSave={updated => handleFieldChange("applicant_form", updated)}
+                                        bankOptions={bankOptions}
+                                        mobileNumber={lead.mobile_number}
+                                        bankName={lead.salaryAccountBank || lead.bank_name}
+                                        isReadOnlyMobile={true}
+                                        leadId={lead._id}
+                                        leadCustomerName={`${lead.first_name || ''} ${lead.last_name || ''}`.trim() || lead.customerName || lead.name || ''}
+                                        leadData={lead}
+                                        hideShareButton={true}
+                                    />
+                                </LazySection>
+                            )}
+
+                            {/* Co-Applicant tab */}
+                            {activeApplicantTab === 'co-applicant' && (
+                                <LazySection height="400px">
+                                    <LoginFormSection
+                                        ref={coApplicantFormRef}
                                         data={lead.dynamic_fields?.co_applicant_form || lead.coApplicantForm || {}}
                                         onSave={updated => handleFieldChange("co_applicant_form", updated)}
                                         bankOptions={bankOptions}
@@ -2588,8 +2620,9 @@ const LeadCRM = memo(function LeadCRM({ user, selectedLoanType: initialLoanType,
                                         leadId={lead._id}
                                         leadCustomerName={`${`${lead.first_name || ''} ${lead.last_name || ''}`.trim() || lead.customerName || lead.name || ''} - Co-Applicant`}
                                         leadData={lead}
+                                        hideShareButton={true}
                                     />
-                                </div>
+                                </LazySection>
                             )}
                         </div>
                     ),
@@ -6929,10 +6962,10 @@ const LeadCRM = memo(function LeadCRM({ user, selectedLoanType: initialLoanType,
                     </div>
                     {/* Remark - Persistent Right Panel */}
                     {activeTab === 0 && (
-                        <div className="w-80 flex-shrink-0 flex flex-col bg-white border-l border-gray-200 overflow-hidden h-full">
-                            <div className="px-3 py-1.5 border-b border-gray-100 bg-gray-50 flex items-center gap-2 flex-shrink-0">
+                        <div className="w-80 flex-shrink-0 flex flex-col border-l border-[#03B0F5]/20 overflow-hidden h-full" style={{background:'#fff'}}>
+                            <div className="px-3 py-2 border-b border-[#03B0F5]/20 flex items-center gap-2 flex-shrink-0" style={{background:'linear-gradient(90deg,#eef8ff 0%,#f0f4ff 100%)'}}>
                                 <svg className="w-3.5 h-3.5 text-[#03B0F5]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" /></svg>
-                                <h3 className="text-xs font-bold text-gray-700 uppercase tracking-wide">Remark</h3>
+                                <h3 className="text-xs font-bold text-[#03B0F5] uppercase tracking-wide">Remarks</h3>
                             </div>
                             <div className="flex-1 min-h-0 overflow-hidden">
                                 <RemarkSection leadData={selectedLead} />

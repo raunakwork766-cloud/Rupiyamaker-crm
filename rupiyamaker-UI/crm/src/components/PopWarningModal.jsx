@@ -11,6 +11,55 @@ import { API_BASE_URL } from '../config/api';
  */
 
 const DISMISS_STORAGE_KEY = 'warning_dismiss_times';
+const CUT_COUNTS_KEY = 'popup_cut_counts';
+
+// ─── Settings helpers ────────────────────────────────────────────────────────
+const getWarnSettings = () => {
+  try {
+    const raw = localStorage.getItem('popup_modal_settings');
+    if (!raw) return null;
+    return JSON.parse(raw)?.warning || null;
+  } catch (_) { return null; }
+};
+
+const toMs = (time, unit) => {
+  const t = parseInt(time) || 0;
+  if (t <= 0) return 0;
+  switch (unit) {
+    case 'seconds': return t * 1000;
+    case 'minutes': return t * 60 * 1000;
+    case 'hours':   return t * 60 * 60 * 1000;
+    case 'days':    return t * 24 * 60 * 60 * 1000;
+    default:        return t * 1000;
+  }
+};
+
+const getWarnCutCount = (itemId) => {
+  try {
+    const raw = localStorage.getItem(CUT_COUNTS_KEY);
+    if (!raw) return 0;
+    return JSON.parse(raw)[`warning_${itemId}`] || 0;
+  } catch (_) { return 0; }
+};
+
+const incrementWarnCutCount = (itemId) => {
+  try {
+    const raw = localStorage.getItem(CUT_COUNTS_KEY);
+    const counts = raw ? JSON.parse(raw) : {};
+    counts[`warning_${itemId}`] = (counts[`warning_${itemId}`] || 0) + 1;
+    localStorage.setItem(CUT_COUNTS_KEY, JSON.stringify(counts));
+  } catch (_) {}
+};
+
+const clearWarnCutCount = (itemId) => {
+  try {
+    const raw = localStorage.getItem(CUT_COUNTS_KEY);
+    if (!raw) return;
+    const counts = JSON.parse(raw);
+    delete counts[`warning_${itemId}`];
+    localStorage.setItem(CUT_COUNTS_KEY, JSON.stringify(counts));
+  } catch (_) {}
+};
 
 const getOrdinalSuffix = (n) => {
   const s = ['th', 'st', 'nd', 'rd'];
@@ -44,7 +93,7 @@ const PopWarningModal = () => {
     return null;
   }, []);
 
-  // Check if a warning was recently dismissed (within the last hour)
+  // Check if a warning was recently dismissed (within the configured reappear window)
   const isDismissedRecently = useCallback((warningId) => {
     try {
       const raw = localStorage.getItem(DISMISS_STORAGE_KEY);
@@ -52,8 +101,10 @@ const PopWarningModal = () => {
       const dismissTimes = JSON.parse(raw);
       const dismissedAt = dismissTimes[warningId];
       if (!dismissedAt) return false;
-      const elapsed = Date.now() - dismissedAt;
-      return elapsed < 60 * 60 * 1000; // 1 hour
+      const settings = getWarnSettings();
+      const reappearMs = settings ? toMs(settings.reappear_time, settings.reappear_unit) : 60 * 60 * 1000;
+      if (reappearMs <= 0) return false; // reappear immediately
+      return (Date.now() - dismissedAt) < reappearMs;
     } catch (_) {
       return false;
     }
@@ -76,9 +127,11 @@ const PopWarningModal = () => {
       if (!raw) return;
       const dismissTimes = JSON.parse(raw);
       const now = Date.now();
+      const settings = getWarnSettings();
+      const reappearMs = settings ? toMs(settings.reappear_time, settings.reappear_unit) : 60 * 60 * 1000;
       let changed = false;
       for (const key of Object.keys(dismissTimes)) {
-        if (now - dismissTimes[key] >= 60 * 60 * 1000) {
+        if (reappearMs <= 0 || now - dismissTimes[key] >= reappearMs) {
           delete dismissTimes[key];
           changed = true;
         }
@@ -165,6 +218,7 @@ const PopWarningModal = () => {
 
   const handleDismiss = () => {
     if (!current) return;
+    incrementWarnCutCount(current.id);
     recordDismiss(current.id);
     setDismissed(true);
     // Move to next visible warning or hide
@@ -201,7 +255,7 @@ const PopWarningModal = () => {
         }
       );
       if (res.ok) {
-        // Remove dismiss entry if it exists
+        // Remove dismiss entry and cut count on acknowledge
         try {
           const raw = localStorage.getItem(DISMISS_STORAGE_KEY);
           if (raw) {
@@ -210,6 +264,7 @@ const PopWarningModal = () => {
             localStorage.setItem(DISMISS_STORAGE_KEY, JSON.stringify(dismissTimes));
           }
         } catch (_) {}
+        clearWarnCutCount(current.id);
 
         window.dispatchEvent(new CustomEvent('warning-acknowledged'));
         setDone(true);
@@ -251,6 +306,23 @@ const PopWarningModal = () => {
   const warningNumber = current.warning_number || 0;
   const totalWarnings = current.total_warnings || 0;
 
+  // ── Settings-driven dismiss logic ────────────────────────────────────────
+  const warnSettings = getWarnSettings();
+  const isForceAccept = warnSettings?.force_accept ?? false;
+  const maxCutLimit = warnSettings?.max_cut_limit ?? 999;
+  const cutCount = getWarnCutCount(current.id);
+  const canDismiss = !isForceAccept && cutCount < maxCutLimit;
+  const reappearMs = warnSettings ? toMs(warnSettings.reappear_time, warnSettings.reappear_unit) : 60 * 60 * 1000;
+  const formatReappear = () => {
+    if (!warnSettings) return '1 hour';
+    const t = warnSettings.reappear_time || 0;
+    const u = warnSettings.reappear_unit || 'hours';
+    if (t <= 0) return 'shortly';
+    const labels = { seconds: t === 1 ? '1 second' : `${t} seconds`, minutes: t === 1 ? '1 minute' : `${t} minutes`, hours: t === 1 ? '1 hour' : `${t} hours`, days: t === 1 ? '1 day' : `${t} days` };
+    return labels[u] || `${t} ${u}`;
+  };
+  const dismissalsLeft = Math.max(0, maxCutLimit - cutCount);
+
   return (
     <div
       className="fixed inset-0 z-[99999] flex items-center justify-center bg-slate-900/70 backdrop-blur-sm p-4 sm:p-6"
@@ -286,15 +358,17 @@ const PopWarningModal = () => {
                 {queueIdx + 1} / {queue.length}
               </span>
             )}
-            {/* Close/Dismiss button */}
-            <button
-              onClick={handleDismiss}
-              disabled={loading || done}
-              className="w-8 h-8 rounded-full bg-white border border-slate-300 hover:border-red-400 hover:bg-red-50 flex items-center justify-center transition-all shadow-sm group"
-              title="Dismiss for now (will reappear in 1 hour)"
-            >
-              <X className="w-4 h-4 text-slate-400 group-hover:text-red-500" />
-            </button>
+            {/* Close/Dismiss button — only shown when not force-accept and cut limit not reached */}
+            {canDismiss && (
+              <button
+                onClick={handleDismiss}
+                disabled={loading || done}
+                className="w-8 h-8 rounded-full bg-white border border-slate-300 hover:border-red-400 hover:bg-red-50 flex items-center justify-center transition-all shadow-sm group"
+                title={`Dismiss (${dismissalsLeft} dismissal${dismissalsLeft !== 1 ? 's' : ''} left — reappears in ${formatReappear()})`}
+              >
+                <X className="w-4 h-4 text-slate-400 group-hover:text-red-500" />
+              </button>
+            )}
           </div>
         </div>
 
@@ -380,7 +454,12 @@ const PopWarningModal = () => {
         {/* Footer */}
         <div className="px-6 py-4 bg-slate-50 border-t border-slate-200 flex justify-between items-center gap-3">
           <p className="text-[10px] text-slate-400 italic">
-            Dismissing will re-show this warning in 1 hour
+            {isForceAccept
+              ? 'Force Accept is ON — you must acknowledge this warning.'
+              : !canDismiss
+              ? `Dismiss limit reached (${cutCount}/${maxCutLimit}) — acknowledgment required.`
+              : `${dismissalsLeft} dismiss${dismissalsLeft !== 1 ? 'als' : 'al'} left • reappears in ${formatReappear()}`
+            }
           </p>
           {done ? (
             <div className="flex items-center gap-2 text-green-700 font-bold text-sm px-4 py-2.5">

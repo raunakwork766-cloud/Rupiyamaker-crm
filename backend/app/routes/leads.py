@@ -4691,21 +4691,25 @@ async def update_lead_via_public_login_form(
     
     # Check for applicant_form update
     if 'applicant_form' in dynamic_fields:
-        if 'applicant_form' not in lead_dynamic_fields:
+        if not isinstance(lead_dynamic_fields.get('applicant_form'), dict):
             lead_dynamic_fields['applicant_form'] = {}
-        # Merge the applicant form data instead of replacing it
-        lead_dynamic_fields['applicant_form'].update(dynamic_fields['applicant_form'])
-        form_field_updated = True
-        form_type = "applicant_form"
+        incoming_applicant = dynamic_fields.get('applicant_form') or {}
+        if isinstance(incoming_applicant, dict):
+            # Merge the applicant form data instead of replacing it
+            lead_dynamic_fields['applicant_form'].update(incoming_applicant)
+            form_field_updated = True
+            form_type = "applicant_form"
     
     # Check for co_applicant_form update
     if 'co_applicant_form' in dynamic_fields:
-        if 'co_applicant_form' not in lead_dynamic_fields:
+        if not isinstance(lead_dynamic_fields.get('co_applicant_form'), dict):
             lead_dynamic_fields['co_applicant_form'] = {}
-        # Merge the co-applicant form data instead of replacing it
-        lead_dynamic_fields['co_applicant_form'].update(dynamic_fields['co_applicant_form'])
-        form_field_updated = True
-        form_type = "co_applicant_form"
+        incoming_co_applicant = dynamic_fields.get('co_applicant_form') or {}
+        if isinstance(incoming_co_applicant, dict):
+            # Merge the co-applicant form data instead of replacing it
+            lead_dynamic_fields['co_applicant_form'].update(incoming_co_applicant)
+            form_field_updated = True
+            form_type = "co_applicant_form"
     
     if not form_field_updated:
         raise HTTPException(

@@ -69,7 +69,7 @@ if __name__ == "__main__":
         # 4 workers is sufficient for moderate production load (~1000 concurrent users)
         # Each uvicorn worker uses ~200-300MB RAM
         config.update({
-            "workers": 4,  # Fixed 4 workers (~800MB total) instead of 16 (~3.2GB)
+            "workers": 8,  # Increased from 4 to 8 — prevents all workers from getting exhausted by slow DB queries
             # Note: worker_class is for gunicorn, not uvicorn
             # "max_requests": 100000,         # Not supported by uvicorn
             # "max_requests_jitter": 10000,   # Not supported by uvicorn

@@ -2719,16 +2719,16 @@ const calculateMonthlyStats = (record, selectedYear, selectedMonth, daysInMonth,
     }
   }
 
-  // EL → actual remaining balance from Leave Management (earned over time, shows 0 if none allocated)
-  // PL → fixed monthly allotment from attendance settings (same credit every month regardless of accumulated balance)
-  // Grace → monthly limit from attendance settings
-  const elDays = record.earnedLeavesRemaining ?? 0            // EL: actual balance (from Leave Management)
-  const plDays = parseFloat(record.plMonthly ?? 1.0)          // PL: per-month allotment (from attendance settings)
+  // PL/EL days: use only the LV days actually marked in attendance records.
+  // This is the only correct source of truth — if employee was present all days,
+  // lvDaysTaken = 0, so nothing gets added to salary regardless of leave balance.
+  const plDays = lvDaysTaken  // LV days actually taken in attendance (all leave types = paid for salary)
+  const elDays = 0            // EL is already counted in lvDaysTaken above
   const graceMonthly = record.graceMonthlyLimit ?? 3          // Grace limit per month (from attendance settings — grace_usage_limit)
   const graceRemainingMonthly = Math.min(record.graceRemaining ?? graceMonthly, graceMonthly)
 
-  // Final attendance = Present + PL (monthly) + EL (remaining), only if Present > 0
-  const finalScore = presentScore > 0 ? (presentScore + plDays + elDays) : 0
+  // Final attendance = Present + LV days actually taken, only if Present > 0
+  const finalScore = presentScore > 0 ? (presentScore + plDays) : 0
 
   const workingDays = daysInMonth - holidaysCount
   const attendancePercentage = workingDays > 0 ? ((Math.max(0, presentScore) / workingDays) * 100).toFixed(1) : "0"
@@ -2736,8 +2736,8 @@ const calculateMonthlyStats = (record, selectedYear, selectedMonth, daysInMonth,
   return {
     presentScore,
     actualPresent,   // Days actually present (no negative deduction from absences)
-    plDays,          // PL remaining (actual, from Leave Management)
-    elDays,          // EL remaining (actual, from Leave Management)
+    plDays,          // LV days actually marked in attendance (used as paid days in salary)
+    elDays,          // Always 0 — folded into plDays/lvDaysTaken
     graceRemaining: graceRemainingMonthly, // Monthly grace remaining
     graceTotal: graceMonthly, // Monthly grace total (from settings)
     finalScore,
@@ -3219,11 +3219,12 @@ export default function MonthlyAttendanceTable() {
         if (response && response.employees) {
           const formattedData = convertToCalendarFormat(response, activeEmployeeIds, salaryMap, employeeStatusMap, allHrmsEmployees)
 
-          // Fetch leave balances for all employees in parallel
+          // Fetch leave balances for all employees in parallel (use selected month period)
+          const leavePeriod = `${selectedYear}-${String(selectedMonth).padStart(2, '0')}`
           const leaveBalanceResults = await Promise.allSettled(
             formattedData.map(record =>
               axios.get(`${BASE_URL}/settings/leave-balance/${record.id}`, {
-                params: { user_id: user.user_id },
+                params: { user_id: user.user_id, period: leavePeriod },
                 headers: getAuthHeaders()
               }).then(res => ({ id: record.id, data: res.data?.data || {} }))
             )

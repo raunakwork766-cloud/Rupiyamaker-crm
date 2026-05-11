@@ -15,6 +15,55 @@ const EditTicketLazy = lazy(() => import('./EditTicket'));
 
 const DISMISS_STORAGE_KEY = 'task_ticket_dismiss_times';
 const TWENTY_FOUR_HOURS = 24 * 60 * 60 * 1000;
+const CUT_COUNTS_KEY = 'popup_cut_counts';
+
+// ─── Settings helpers ────────────────────────────────────────────────────────
+const getItemPopupSettings = (type) => {
+  try {
+    const raw = localStorage.getItem('popup_modal_settings');
+    if (!raw) return null;
+    return JSON.parse(raw)?.[type] || null;
+  } catch (_) { return null; }
+};
+
+const toMsTT = (time, unit) => {
+  const t = parseInt(time) || 0;
+  if (t <= 0) return 0;
+  switch (unit) {
+    case 'seconds': return t * 1000;
+    case 'minutes': return t * 60 * 1000;
+    case 'hours':   return t * 60 * 60 * 1000;
+    case 'days':    return t * 24 * 60 * 60 * 1000;
+    default:        return t * 1000;
+  }
+};
+
+const getItemCutCount = (itemId, type) => {
+  try {
+    const raw = localStorage.getItem(CUT_COUNTS_KEY);
+    if (!raw) return 0;
+    return JSON.parse(raw)[`${type}_${itemId}`] || 0;
+  } catch (_) { return 0; }
+};
+
+const incrementItemCutCount = (itemId, type) => {
+  try {
+    const raw = localStorage.getItem(CUT_COUNTS_KEY);
+    const counts = raw ? JSON.parse(raw) : {};
+    counts[`${type}_${itemId}`] = (counts[`${type}_${itemId}`] || 0) + 1;
+    localStorage.setItem(CUT_COUNTS_KEY, JSON.stringify(counts));
+  } catch (_) {}
+};
+
+const clearItemCutCount = (itemId, type) => {
+  try {
+    const raw = localStorage.getItem(CUT_COUNTS_KEY);
+    if (!raw) return;
+    const counts = JSON.parse(raw);
+    delete counts[`${type}_${itemId}`];
+    localStorage.setItem(CUT_COUNTS_KEY, JSON.stringify(counts));
+  } catch (_) {}
+};
 
 const priorityColors = {
   High: { bg: 'bg-red-100', text: 'text-red-700', border: 'border-red-200', badge: 'bg-red-600' },
@@ -54,26 +103,31 @@ const PopTaskTicketModal = () => {
     return null;
   }, []);
 
-  // Check if an item was recently dismissed (within last 24 hours)
-  const isDismissedRecently = useCallback((itemId) => {
+  // Check if an item was recently dismissed (based on its type's configured reappear time)
+  const isDismissedRecently = useCallback((itemId, itemType) => {
     try {
       const raw = localStorage.getItem(DISMISS_STORAGE_KEY);
       if (!raw) return false;
       const dismissTimes = JSON.parse(raw);
-      const dismissedAt = dismissTimes[itemId];
-      if (!dismissedAt) return false;
-      return (Date.now() - dismissedAt) < TWENTY_FOUR_HOURS;
+      const entry = dismissTimes[itemId];
+      if (!entry) return false;
+      const timestamp = typeof entry === 'object' ? entry.timestamp : entry;
+      const type = itemType || (typeof entry === 'object' ? entry.type : null) || 'task';
+      const settings = getItemPopupSettings(type);
+      const reappearMs = settings ? toMsTT(settings.reappear_time, settings.reappear_unit) : TWENTY_FOUR_HOURS;
+      if (reappearMs <= 0) return false;
+      return (Date.now() - timestamp) < reappearMs;
     } catch (_) {
       return false;
     }
   }, []);
 
   // Record dismiss time
-  const recordDismiss = useCallback((itemId) => {
+  const recordDismiss = useCallback((itemId, itemType) => {
     try {
       const raw = localStorage.getItem(DISMISS_STORAGE_KEY);
       const dismissTimes = raw ? JSON.parse(raw) : {};
-      dismissTimes[itemId] = Date.now();
+      dismissTimes[itemId] = { timestamp: Date.now(), type: itemType || 'task' };
       localStorage.setItem(DISMISS_STORAGE_KEY, JSON.stringify(dismissTimes));
     } catch (_) {}
   }, []);
@@ -87,7 +141,12 @@ const PopTaskTicketModal = () => {
       const now = Date.now();
       let changed = false;
       for (const key of Object.keys(dismissTimes)) {
-        if (now - dismissTimes[key] >= TWENTY_FOUR_HOURS) {
+        const entry = dismissTimes[key];
+        const timestamp = typeof entry === 'object' ? entry.timestamp : entry;
+        const type = typeof entry === 'object' ? entry.type : 'task';
+        const settings = getItemPopupSettings(type);
+        const reappearMs = settings ? toMsTT(settings.reappear_time, settings.reappear_unit) : TWENTY_FOUR_HOURS;
+        if (reappearMs <= 0 || now - timestamp >= reappearMs) {
           delete dismissTimes[key];
           changed = true;
         }
@@ -131,7 +190,7 @@ const PopTaskTicketModal = () => {
       if (!mountedRef.current) return;
 
       cleanupDismissEntries();
-      const visibleList = allItems.filter(item => !isDismissedRecently(item.id));
+      const visibleList = allItems.filter(item => !isDismissedRecently(item.id, item.type));
 
       setQueue(allItems);
       setCurrent(prev => {
@@ -323,7 +382,7 @@ const PopTaskTicketModal = () => {
       window.dispatchEvent(new CustomEvent('task-ticket-acknowledged', { detail: { type: 'task', id: taskId } }));
       setQueue(prev => {
         const remaining = prev.filter(w => w.id !== taskId);
-        const visible = remaining.filter(w => !isDismissedRecently(w.id));
+        const visible = remaining.filter(w => !isDismissedRecently(w.id, w.type));
         setCurrent(visible.length > 0 ? visible[0] : null);
         return remaining;
       });
@@ -416,7 +475,7 @@ const PopTaskTicketModal = () => {
       window.dispatchEvent(new CustomEvent('task-ticket-acknowledged', { detail: { type: 'ticket', id: ticketId } }));
       setQueue(prev => {
         const remaining = prev.filter(w => w.id !== ticketId);
-        const visible = remaining.filter(w => !isDismissedRecently(w.id));
+        const visible = remaining.filter(w => !isDismissedRecently(w.id, w.type));
         setCurrent(visible.length > 0 ? visible[0] : null);
         return remaining;
       });
@@ -509,8 +568,10 @@ const PopTaskTicketModal = () => {
 
   const handleDismiss = () => {
     if (!current) return;
-    recordDismiss(current.id);
-    const remaining = queue.filter(w => w.id !== current.id && !isDismissedRecently(w.id));
+    const itemType = current.type || 'task';
+    incrementItemCutCount(current.id, itemType);
+    recordDismiss(current.id, itemType);
+    const remaining = queue.filter(w => w.id !== current.id && !isDismissedRecently(w.id, w.type));
     if (remaining.length > 0) {
       setCurrent(remaining[0]);
     } else {
@@ -553,6 +614,7 @@ const PopTaskTicketModal = () => {
             localStorage.setItem(DISMISS_STORAGE_KEY, JSON.stringify(dismissTimes));
           }
         } catch (_) {}
+        clearItemCutCount(current.id, current.type || 'task');
 
         window.dispatchEvent(new CustomEvent('task-ticket-acknowledged', { detail: { type: current.type, id: current.id } }));
         setDone(true);
@@ -564,7 +626,7 @@ const PopTaskTicketModal = () => {
           setRemarkError(false);
           setQueue(prev => {
             const remaining = prev.filter(w => w.id !== current.id);
-            const visible = remaining.filter(w => !isDismissedRecently(w.id));
+            const visible = remaining.filter(w => !isDismissedRecently(w.id, w.type));
             setCurrent(visible.length > 0 ? visible[0] : null);
             return remaining;
           });
@@ -691,6 +753,22 @@ const PopTaskTicketModal = () => {
   const totalTasks = queue.filter(i => i.type === 'task').length;
   const totalTickets = queue.filter(i => i.type === 'ticket').length;
 
+  // ── Settings-driven dismiss logic ────────────────────────────────────────
+  const itemSettings = getItemPopupSettings(current.type || 'task');
+  const isForceAcceptTT = itemSettings?.force_accept ?? false;
+  const maxCutLimitTT = itemSettings?.max_cut_limit ?? 999;
+  const cutCountTT = getItemCutCount(current.id, current.type || 'task');
+  const canDismissTT = !isForceAcceptTT && cutCountTT < maxCutLimitTT;
+  const formatReappearTT = () => {
+    if (!itemSettings) return '24 hours';
+    const t = itemSettings.reappear_time || 0;
+    const u = itemSettings.reappear_unit || 'hours';
+    if (t <= 0) return 'shortly';
+    const labels = { seconds: t === 1 ? '1 second' : `${t} seconds`, minutes: t === 1 ? '1 minute' : `${t} minutes`, hours: t === 1 ? '1 hour' : `${t} hours`, days: t === 1 ? '1 day' : `${t} days` };
+    return labels[u] || `${t} ${u}`;
+  };
+  const dismissalsLeftTT = Math.max(0, maxCutLimitTT - cutCountTT);
+
   return (
     <div
       className="fixed inset-0 z-[99998] flex items-center justify-center bg-slate-900/70 backdrop-blur-sm p-4 sm:p-6"
@@ -737,15 +815,17 @@ const PopTaskTicketModal = () => {
                 {queueIdx + 1} / {queue.length}
               </span>
             )}
-            {/* Close/Dismiss button */}
-            <button
-              onClick={handleDismiss}
-              disabled={loading || done}
-              className={`w-8 h-8 rounded-full bg-white border border-slate-300 hover:border-${accentColor}-400 hover:bg-${accentColor}-50 flex items-center justify-center transition-all shadow-sm group`}
-              title="Dismiss for now (will reappear in 24 hours)"
-            >
-              <X className={`w-4 h-4 text-slate-400 group-hover:text-${accentColor}-500`} />
-            </button>
+            {/* Close/Dismiss button — only shown when not force-accept and cut limit not reached */}
+            {canDismissTT && (
+              <button
+                onClick={handleDismiss}
+                disabled={loading || done}
+                className={`w-8 h-8 rounded-full bg-white border border-slate-300 hover:border-${accentColor}-400 hover:bg-${accentColor}-50 flex items-center justify-center transition-all shadow-sm group`}
+                title={`Dismiss (${dismissalsLeftTT} dismissal${dismissalsLeftTT !== 1 ? 's' : ''} left — reappears in ${formatReappearTT()})`}
+              >
+                <X className={`w-4 h-4 text-slate-400 group-hover:text-${accentColor}-500`} />
+              </button>
+            )}
           </div>
         </div>
 
@@ -846,7 +926,12 @@ const PopTaskTicketModal = () => {
         {/* Footer */}
         <div className="px-6 py-4 bg-slate-50 border-t border-slate-200 flex justify-between items-center gap-3">
           <p className="text-[10px] text-slate-400 italic">
-            Dismissing will re-show this in 24 hours
+            {isForceAcceptTT
+              ? 'Force Accept is ON — you must acknowledge this item.'
+              : !canDismissTT
+              ? `Dismiss limit reached (${cutCountTT}/${maxCutLimitTT}) — acknowledgment required.`
+              : `${dismissalsLeftTT} dismiss${dismissalsLeftTT !== 1 ? 'als' : 'al'} left • reappears in ${formatReappearTT()}`
+            }
           </p>
           {done ? (
             <div className="flex items-center gap-2 text-green-700 font-bold text-sm px-4 py-2.5">

@@ -123,6 +123,12 @@ export const hrmsService = {
         }
     },
 
+    getNextEmployeeId: async () => {
+        const userId = getUserId();
+        const response = await api.get(`/hrms/employees/next-id?user_id=${userId}`);
+        return response?.next_id || null;
+    },
+
     // Fetch all employees with optional filters using the working users endpoint
     getEmployees: async (status = null, departmentId = null) => {
         try {

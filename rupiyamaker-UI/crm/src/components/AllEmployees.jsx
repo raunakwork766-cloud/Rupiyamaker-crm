@@ -213,6 +213,106 @@ if (typeof document !== 'undefined') {
     document.head.appendChild(styleSheet);
 }
 
+// ── Standalone popup shown after employee creation ────────────────────────────
+function CreatedEmpPopup({ data, onClose }) {
+    const [copied, setCopied] = React.useState(false);
+
+    const allText = [
+        `Employee Name: ${data.name}`,
+        `Employee ID: ${data.empId}`,
+        `Phone: ${data.phone}`,
+        `Department: ${data.department}`,
+        `Role: ${data.role}`,
+        `Designation: ${data.designation}`,
+        `Username: ${data.username}`,
+        `Password: ${data.password}`,
+        `Login URL: ${data.loginUrl}`,
+    ].join('\n');
+
+    const handleCopy = async () => {
+        let success = false;
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            try {
+                await navigator.clipboard.writeText(allText);
+                success = true;
+            } catch (_) { /* fall through */ }
+        }
+        if (!success) {
+            const ta = document.createElement('textarea');
+            ta.value = allText;
+            ta.style.cssText = 'position:fixed;top:0;left:0;width:2px;height:2px;opacity:0;z-index:999999;';
+            document.body.appendChild(ta);
+            ta.focus();
+            ta.select();
+            try { success = document.execCommand('copy'); } catch (_) { }
+            document.body.removeChild(ta);
+        }
+        if (success) {
+            setCopied(true);
+            setTimeout(() => setCopied(false), 2500);
+        } else {
+            alert('Copy failed — please select the text and press Ctrl+C.');
+        }
+    };
+
+    return (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.8)', zIndex: 99999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px' }}
+            onClick={onClose}>
+            <div style={{ background: '#0d1117', border: '1px solid #1e3a4a', borderRadius: '12px', width: '100%', maxWidth: '420px', boxShadow: '0 8px 40px rgba(0,0,0,0.6)' }}
+                onClick={e => e.stopPropagation()}>
+
+                {/* Header */}
+                <div style={{ padding: '16px 20px 12px', borderBottom: '1px solid #1e2d3d', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <span style={{ color: '#03b0f5', fontWeight: 800, fontSize: '15px' }}>✅ Employee Created</span>
+                    <button type="button" onClick={onClose} style={{ background: 'transparent', border: 'none', color: '#555', fontSize: '20px', cursor: 'pointer', lineHeight: 1 }}>×</button>
+                </div>
+
+                {/* Text block — click anywhere to copy */}
+                <div onClick={handleCopy} title="Click to copy"
+                    style={{ margin: '14px 20px', background: '#0a1929', border: '1px solid #1e3a4a', borderRadius: '8px', padding: '14px 16px', cursor: 'pointer', userSelect: 'none', lineHeight: '2' }}>
+                    {[
+                        ['Employee Name', data.name],
+                        ['Employee ID', data.empId],
+                        ['Phone', data.phone],
+                        ['Department', data.department],
+                        ['Role', data.role],
+                        ['Designation', data.designation],
+                        ['Username', data.username],
+                        ['Password', data.password],
+                        ['Login URL', data.loginUrl],
+                    ].map(([k, v]) => (
+                        <div key={k} style={{ display: 'flex', gap: '8px', fontSize: '13px' }}>
+                            <span style={{ color: '#5a7a8a', minWidth: '110px', flexShrink: 0 }}>{k}:</span>
+                            <span style={{ color: k === 'Password' ? '#fbbf24' : '#e6edf3', fontWeight: 600, fontFamily: k === 'Password' || k === 'Username' ? 'monospace' : 'inherit' }}>{v}</span>
+                        </div>
+                    ))}
+                    <div style={{ marginTop: '10px', textAlign: 'center', color: '#1e4060', fontSize: '11px' }}>click to copy all</div>
+                </div>
+
+                {/* Footer */}
+                <div style={{ padding: '12px 20px', borderTop: '1px solid #1e2d3d', display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
+                    <button
+                        type="button"
+                        onClick={handleCopy}
+                        style={{
+                            background: copied ? 'rgba(34,197,94,0.15)' : 'rgba(3,176,245,0.12)',
+                            border: `1px solid ${copied ? '#22c55e' : '#03b0f5'}`,
+                            color: copied ? '#22c55e' : '#03b0f5',
+                            padding: '8px 18px', borderRadius: '7px', cursor: 'pointer', fontWeight: 700, fontSize: '13px',
+                            transition: 'all 0.2s'
+                        }}>
+                        {copied ? '✅ Copied!' : '📋 Copy All'}
+                    </button>
+                    <button type="button" onClick={onClose}
+                        style={{ background: '#03b0f5', border: 'none', color: '#000', padding: '8px 22px', borderRadius: '7px', cursor: 'pointer', fontWeight: 800, fontSize: '13px' }}>
+                        Done
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+}
+
 const AllEmployees = () => {
     const [activeTab, setActiveTab] = useTabWithHistory('status', 'active', { localStorageKey: 'allEmployeesTab' });
     const [employees, setEmployees] = useState([]);
@@ -1497,80 +1597,9 @@ const AllEmployees = () => {
     return (
         <>
             {/* ── Employee Created Success Popup ── */}
-            {createdEmpPopup && (() => {
-                const allText = [
-                    `Employee Name: ${createdEmpPopup.name}`,
-                    `Employee ID: ${createdEmpPopup.empId}`,
-                    `Phone: ${createdEmpPopup.phone}`,
-                    `Department: ${createdEmpPopup.department}`,
-                    `Role: ${createdEmpPopup.role}`,
-                    `Designation: ${createdEmpPopup.designation}`,
-                    `Username: ${createdEmpPopup.username}`,
-                    `Password: ${createdEmpPopup.password}`,
-                    `Login URL: ${createdEmpPopup.loginUrl}`,
-                ].join('\n');
-                const doCopy = () => {
-                    navigator.clipboard.writeText(allText).then(() => {
-                        message.success('Copied!', 1.5);
-                    }).catch(() => {
-                        const ta = document.createElement('textarea');
-                        ta.value = allText; document.body.appendChild(ta);
-                        ta.select(); document.execCommand('copy');
-                        document.body.removeChild(ta);
-                        message.success('Copied!', 1.5);
-                    });
-                };
-                return (
-                    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.8)', zIndex: 99999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px' }}
-                        onClick={() => setCreatedEmpPopup(null)}>
-                        <div style={{ background: '#0d1117', border: '1px solid #1e3a4a', borderRadius: '12px', width: '100%', maxWidth: '420px', boxShadow: '0 8px 40px rgba(0,0,0,0.6)' }}
-                            onClick={e => e.stopPropagation()}>
-
-                            {/* Header */}
-                            <div style={{ padding: '16px 20px 12px', borderBottom: '1px solid #1e2d3d', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                                <span style={{ color: '#03b0f5', fontWeight: 800, fontSize: '15px' }}>✅ Employee Created</span>
-                                <button onClick={() => setCreatedEmpPopup(null)} style={{ background: 'transparent', border: 'none', color: '#555', fontSize: '20px', cursor: 'pointer', lineHeight: 1 }}>×</button>
-                            </div>
-
-                            {/* Text block — click anywhere to copy */}
-                            <div
-                                onClick={doCopy}
-                                title="Click to copy"
-                                style={{ margin: '14px 20px', background: '#0a1929', border: '1px solid #1e3a4a', borderRadius: '8px', padding: '14px 16px', cursor: 'pointer', userSelect: 'none', lineHeight: '2' }}>
-                                {[
-                                    ['Employee Name', createdEmpPopup.name],
-                                    ['Employee ID', createdEmpPopup.empId],
-                                    ['Phone', createdEmpPopup.phone],
-                                    ['Department', createdEmpPopup.department],
-                                    ['Role', createdEmpPopup.role],
-                                    ['Designation', createdEmpPopup.designation],
-                                    ['Username', createdEmpPopup.username],
-                                    ['Password', createdEmpPopup.password],
-                                    ['Login URL', createdEmpPopup.loginUrl],
-                                ].map(([k, v]) => (
-                                    <div key={k} style={{ display: 'flex', gap: '8px', fontSize: '13px' }}>
-                                        <span style={{ color: '#5a7a8a', minWidth: '110px', flexShrink: 0 }}>{k}:</span>
-                                        <span style={{ color: k === 'Password' ? '#fbbf24' : '#e6edf3', fontWeight: 600, fontFamily: k === 'Password' || k === 'Username' ? 'monospace' : 'inherit' }}>{v}</span>
-                                    </div>
-                                ))}
-                                <div style={{ marginTop: '10px', textAlign: 'center', color: '#1e4060', fontSize: '11px' }}>click to copy all</div>
-                            </div>
-
-                            {/* Footer */}
-                            <div style={{ padding: '12px 20px', borderTop: '1px solid #1e2d3d', display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
-                                <button onClick={doCopy}
-                                    style={{ background: 'rgba(3,176,245,0.12)', border: '1px solid #03b0f5', color: '#03b0f5', padding: '8px 18px', borderRadius: '7px', cursor: 'pointer', fontWeight: 700, fontSize: '13px' }}>
-                                    📋 Copy All
-                                </button>
-                                <button onClick={() => setCreatedEmpPopup(null)}
-                                    style={{ background: '#03b0f5', border: 'none', color: '#000', padding: '8px 22px', borderRadius: '7px', cursor: 'pointer', fontWeight: 800, fontSize: '13px' }}>
-                                    Done
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                );
-            })()}
+            {createdEmpPopup && (
+                <CreatedEmpPopup data={createdEmpPopup} onClose={() => setCreatedEmpPopup(null)} />
+            )}
 
             {selectedEmployeeForDetails ? (
                 <EmployeeDetails
