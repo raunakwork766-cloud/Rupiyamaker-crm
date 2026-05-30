@@ -1,10 +1,11 @@
 import React, { useEffect, useState, useRef, useCallback } from "react";
 import { createPortal } from "react-dom";
-import { User, LogOut, Clock, Camera, X, Key, Eye, EyeOff, Upload, Maximize, Minimize } from "lucide-react";
-import { useNavigate } from "react-router-dom";
+import { User, LogOut, Clock, Camera, X, Key, Eye, EyeOff, Upload, Maximize, Minimize, Search } from "lucide-react";
+import { useNavigate, useLocation } from "react-router-dom";
 import NotificationBell from "./NotificationBell";
 import { getProfilePictureUrlWithCacheBusting } from "../utils/mediaUtils";
 import hrmsService from "../services/hrmsService";
+import { dispatchNavbarPageSearch, getNavbarSearchPlaceholder } from "../utils/navbarPageSearch";
 
 // v2 - attendance without face recognition
 const API_BASE_URL = '/api'; // Always use proxy
@@ -417,12 +418,13 @@ function FullscreenIcon() {
 }
 
 export default function TopNavbar({
-  selectedLabel = "Feed",
   userName = "John Doe",
   onLogout,
   user,
 }) {
   const navigate = useNavigate();
+  const location = useLocation();
+  const [pageSearchQuery, setPageSearchQuery] = useState('');
   const [time, setTime] = useState(new Date());
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [showTimeMenu, setShowTimeMenu] = useState(false);
@@ -1427,39 +1429,78 @@ export default function TopNavbar({
     if (onLogout) onLogout();
   };
 
+  useEffect(() => {
+    document.body.classList.add('has-navbar-page-search');
+    return () => document.body.classList.remove('has-navbar-page-search');
+  }, []);
+
+  useEffect(() => {
+    setPageSearchQuery('');
+    dispatchNavbarPageSearch('');
+  }, [location.pathname]);
+
+  const handlePageSearchChange = (e) => {
+    const query = e.target.value;
+    setPageSearchQuery(query);
+    dispatchNavbarPageSearch(query);
+  };
+
+  const searchPlaceholder = getNavbarSearchPlaceholder(location.pathname);
+
   return (
-    <div className="flex items-center justify-between h-16 sm:h-20 px-4 sm:px-6 lg:px-8 border-b border-white/10 bg-black/40 backdrop-blur-lg shadow-md">
-      {/* Left side - Title */}
-      <h2 className="text-lg sm:text-2xl lg:text-3xl font-semibold text-white drop-shadow-md truncate max-w-[40%] sm:max-w-none">
-        {selectedLabel}
-      </h2>
-      
+    <div className="flex items-center justify-between gap-3 h-14 sm:h-16 px-4 sm:px-6 lg:px-8 border-b border-white/[0.07] shadow-sm" style={{ background: 'rgba(5,5,8,0.92)', backdropFilter: 'blur(20px)', WebkitBackdropFilter: 'blur(20px)' }}>
+      {/* Left — page search */}
+      <div className="relative flex-1 min-w-0 max-w-xl">
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-white/35 pointer-events-none" />
+        <input
+          type="search"
+          value={pageSearchQuery}
+          onChange={handlePageSearchChange}
+          placeholder={searchPlaceholder}
+          className="w-full h-9 sm:h-10 pl-9 pr-9 rounded-lg border border-white/10 bg-white/[0.06] text-sm text-white placeholder:text-white/35 outline-none transition-colors focus:border-[#3b82f6] focus:bg-white/[0.08] focus:ring-2 focus:ring-[#3b82f6]/20"
+          aria-label="Search current page"
+        />
+        {pageSearchQuery && (
+          <button
+            type="button"
+            onClick={() => {
+              setPageSearchQuery('');
+              dispatchNavbarPageSearch('');
+            }}
+            className="absolute right-2 top-1/2 -translate-y-1/2 w-6 h-6 rounded-full text-white/40 hover:text-white hover:bg-white/10 flex items-center justify-center"
+            aria-label="Clear search"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
+        )}
+      </div>
+
       {/* Right side - Actions */}
-      <div className="flex items-center gap-2 sm:gap-4 lg:gap-6">
-        {/* Speed Dial Button — visible to all users */}
+      <div className="flex items-center gap-2 sm:gap-4 lg:gap-6 shrink-0">
+        {/* Speed Dial Button */}
         <button
           type="button"
           onClick={() => window.open('/speed-dial', '_blank', 'noopener,noreferrer')}
-          className="relative p-2 rounded-lg text-white/70 hover:text-white hover:bg-white/10 transition-colors flex items-center gap-1"
+          className="relative p-2 rounded-md text-white/50 hover:text-white hover:bg-white/[0.07] transition-all flex items-center gap-1.5"
           title="Speed Dial"
         >
-          <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h4v4H4V6zm6 0h4v4h-4V6zm6 0h4v4h-4V6zM4 14h4v4H4v-4zm6 0h4v4h-4v-4zm6 0h4v4h-4v-4z" />
           </svg>
-          <span className="text-xs font-bold">Speed&nbsp;Dial</span>
+          <span className="text-[11px] font-medium hidden sm:inline">Speed Dial</span>
         </button>
 
         {/* FAQ Button */}
         <button
           type="button"
           onClick={() => navigate('/faq')}
-          className="relative p-2 rounded-lg text-white/70 hover:text-white hover:bg-white/10 transition-colors flex items-center gap-1"
+          className="relative p-2 rounded-md text-white/50 hover:text-white hover:bg-white/[0.07] transition-all flex items-center gap-1.5"
           title="FAQ"
         >
-          <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0z" />
           </svg>
-          <span className="text-xs font-bold">FAQ</span>
+          <span className="text-[11px] font-medium hidden sm:inline">FAQ</span>
         </button>
 
         {/* Fullscreen Toggle */}
@@ -1474,11 +1515,11 @@ export default function TopNavbar({
           }}
           onMouseEnter={e => e.currentTarget.querySelector('span').style.opacity = '1'}
           onMouseLeave={e => e.currentTarget.querySelector('span').style.opacity = '0'}
-          className="relative p-2 rounded-lg text-white/70 hover:text-white hover:bg-white/10 transition-colors"
+          className="relative p-2 rounded-md text-white/50 hover:text-white hover:bg-white/[0.07] transition-all"
           title="Toggle Fullscreen"
         >
           <FullscreenIcon />
-          <span style={{opacity: 0, transition: 'opacity 0.15s'}} className="absolute -bottom-7 left-1/2 -translate-x-1/2 bg-black/80 text-white text-[10px] font-bold px-2 py-0.5 rounded whitespace-nowrap pointer-events-none">Fullscreen</span>
+          <span style={{opacity: 0, transition: 'opacity 0.15s'}} className="absolute -bottom-7 left-1/2 -translate-x-1/2 bg-black/80 text-white text-[10px] font-medium px-2 py-0.5 rounded whitespace-nowrap pointer-events-none">Fullscreen</span>
         </button>
 
         {/* Notifications Bell - Hidden on very small screens */}
@@ -1491,7 +1532,7 @@ export default function TopNavbar({
           <button
             ref={timeRef}
             type="button"
-            className="flex items-center gap-1 sm:gap-3 cursor-pointer hover:bg-white/5 p-2 sm:p-3 rounded-lg transition-colors"
+            className="flex items-center gap-1 sm:gap-2 cursor-pointer hover:bg-white/[0.06] p-2 rounded-md transition-all"
             onClick={(e) => {
               e.preventDefault();
               e.stopPropagation();
@@ -1500,8 +1541,8 @@ export default function TopNavbar({
             }}
           >
             <div className="flex items-center gap-0">
-              <p className="text-4xl sm:text-4xl lg:text-5xl font-semibold text-white tracking-tighter">{numericTime}</p>
-              <p className="text-xs sm:text-sm -mt-4 sm:-mt-3 font-medium text-white">{period}</p>
+              <p className="text-2xl sm:text-3xl font-semibold text-white tracking-tighter">{numericTime}</p>
+              <p className="text-[10px] sm:text-xs -mt-3 sm:-mt-2 font-medium text-white/60">{period}</p>
             </div>
           </button>
           <FloatingDropdown isOpen={showTimeMenu} triggerRef={timeRef} width="w-80 sm:w-80">
@@ -1590,7 +1631,7 @@ export default function TopNavbar({
           <button
             ref={userRef}
             type="button"
-            className="flex items-center gap-2 sm:gap-4 cursor-pointer"
+            className="flex items-center gap-2 sm:gap-3 cursor-pointer hover:bg-white/[0.05] px-2 py-1.5 rounded-md transition-all"
             onClick={(e) => {
               e.preventDefault();
               e.stopPropagation();
@@ -1600,16 +1641,16 @@ export default function TopNavbar({
           >
             {/* User name and designation - Hidden on mobile */}
             <div className="text-right hidden sm:block">
-              <p className="text-white font-bold text-lg">
+              <p className="text-white font-semibold text-sm leading-tight">
                 {userName}
               </p>
-              <p className="text-xs text-gray-300 font-medium uppercase tracking-wide">
-                {user?.designation || 'DIRECTOR OF OPERATIONS'}
+              <p className="text-[10px] text-white/40 font-medium uppercase tracking-wider mt-0.5">
+                {user?.designation || 'Staff'}
               </p>
             </div>
             
             {/* Profile picture - Always visible, rectangular styling */}
-            <div className="flex items-center justify-center w-12 h-12 sm:w-14 sm:h-14 rounded-lg bg-gradient-to-br from-blue-500 to-purple-600 border-2 border-white/30 shadow-lg hover:shadow-xl hover:scale-105 transition-all duration-300 ease-in-out overflow-hidden">
+            <div className="flex items-center justify-center w-8 h-8 sm:w-9 sm:h-9 rounded-lg bg-gradient-to-br from-blue-500 to-purple-600 border border-white/20 overflow-hidden flex-shrink-0">
               {userProfilePhoto && !profilePhotoError ? (
                 <img 
                   src={userProfilePhoto} 

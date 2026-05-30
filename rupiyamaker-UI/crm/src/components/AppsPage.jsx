@@ -27,10 +27,10 @@ const API_BASE_URL = '/api'; // Always use API proxy
 const getImageUrl = (imageUrl) => {
   if (!imageUrl) return null;
 
-  // If it's a full URL pointing to the rupiyamaker backend (any port), convert to /api proxy
-  const rupiyamakerMatch = imageUrl.match(/^https?:\/\/rupiyamaker\.com:\d+\/(.*)/);
-  if (rupiyamakerMatch) {
-    return `/api/${rupiyamakerMatch[1]}`;
+  // If it's a full URL pointing to the CRM backend (any port), convert to /api proxy
+  const backendMatch = imageUrl.match(/^https?:\/\/crm\.fixyourfinance\.ai(?::\d+)?\/(.*)/);
+  if (backendMatch) {
+    return `/api/${backendMatch[1]}`;
   }
 
   // If it's a relative path starting with /media/, use /api proxy

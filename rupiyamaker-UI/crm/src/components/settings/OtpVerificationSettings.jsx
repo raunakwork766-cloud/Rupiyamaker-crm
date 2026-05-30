@@ -218,27 +218,31 @@ const OtpVerificationSettings = () => {
 
     // ── Render ────────────────────────────────────────────────────────────
     return (
-        <div className="bg-black rounded-xl shadow-lg overflow-hidden">
+        <div className="hs-card">
             {/* Header */}
-            <div className="p-6 border-b border-gray-700">
-                <h3 className="text-xl font-bold text-white flex items-center gap-2">
-                    <Shield className="w-5 h-5 text-blue-400" />
-                    OTP Verification
-                    <button
-                        onClick={load}
-                        disabled={loading}
-                        title="Refresh employee list"
-                        className="ml-2 p-1 rounded hover:bg-gray-700 text-gray-400 hover:text-white transition-colors disabled:opacity-40"
-                    >
-                        <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
-                    </button>
-                </h3>
-                <p className="text-sm text-gray-300 mt-1">
-                    Choose which employee(s) will receive the login OTP for users of each role.
-                    The OTP will be sent to each approver's <strong>HRMS Personal Email</strong>.
-                    A user of that role can only log in after entering the OTP shared by an approver.
-                </p>
-                <div className="mt-3 flex items-start gap-2 text-xs text-amber-300 bg-amber-900/20 border border-amber-800/40 rounded p-2">
+            <div className="hs-card-header">
+                <div>
+                    <h3 className="hs-card-title flex items-center gap-2">
+                        <Shield className="w-5 h-5" style={{ color: '#ff7a59' }} />
+                        OTP Verification
+                        <button
+                            onClick={load}
+                            disabled={loading}
+                            title="Refresh employee list"
+                            className="hs-icon-btn"
+                            type="button"
+                        >
+                            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+                        </button>
+                    </h3>
+                    <p className="hs-card-subtitle">
+                        Choose which employee(s) will receive the login OTP for users of each role.
+                        The OTP will be sent to each approver&apos;s HRMS Personal Email.
+                    </p>
+                </div>
+            </div>
+            <div style={{ padding: '0 24px 16px' }}>
+                <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, fontSize: 12, color: '#856404', background: '#fff8e1', border: '1px solid #f0d58c', borderRadius: 3, padding: 10 }}>
                     <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-0.5" />
                     <span>Roles without an OTP routing rule will be <strong>blocked from logging in</strong>.</span>
                 </div>
@@ -261,8 +265,8 @@ const OtpVerificationSettings = () => {
                     }}
                 >
                     {/* ── Left: Roles list ── */}
-                    <div className="w-72 border-r border-gray-700 flex flex-col" style={{ minHeight: 0 }}>
-                        <div className="p-3 border-b border-gray-700">
+                    <div className="w-72 border-r border-gray-200 flex flex-col bg-white" style={{ minHeight: 0 }}>
+                        <div className="p-3 border-b border-gray-200">
                             <div className="relative">
                                 <Search className="w-4 h-4 absolute left-2 top-1/2 -translate-y-1/2 text-gray-400" />
                                 <input
@@ -270,7 +274,7 @@ const OtpVerificationSettings = () => {
                                     placeholder="Search roles..."
                                     value={roleSearch}
                                     onChange={(e) => setRoleSearch(e.target.value)}
-                                    className="w-full pl-8 pr-3 py-2 bg-gray-900 border border-gray-600 rounded text-sm text-white placeholder-gray-500 focus:outline-none focus:border-blue-500"
+                                    className="w-full pl-8 pr-3 py-2 bg-white border border-gray-300 rounded text-sm text-gray-800 placeholder-gray-400 focus:outline-none focus:border-blue-500"
                                 />
                             </div>
                         </div>
@@ -289,7 +293,7 @@ const OtpVerificationSettings = () => {
                                             onClick={() => handleRoleSelect(roleId)}
                                             className={`px-3 py-3 cursor-pointer border-b border-gray-700/50 flex items-center justify-between transition-colors ${
                                                 isSel
-                                                    ? 'bg-blue-900/40 border-l-2 border-l-blue-500'
+                                                    ? 'bg-blue-50 border-l-2 border-l-blue-500'
                                                     : 'hover:bg-gray-700/50'
                                             }`}
                                         >
@@ -406,7 +410,7 @@ const OtpVerificationSettings = () => {
                                 )}
 
                                 {/* Employee search */}
-                                <div className="p-3 border-b border-gray-700">
+                                <div className="p-3 border-b border-gray-200">
                                     <div className="relative">
                                         <Search className="w-4 h-4 absolute left-2 top-1/2 -translate-y-1/2 text-gray-400" />
                                         <input
@@ -414,7 +418,7 @@ const OtpVerificationSettings = () => {
                                             placeholder="Search employees by name, username, or personal email..."
                                             value={empSearch}
                                             onChange={(e) => setEmpSearch(e.target.value)}
-                                            className="w-full pl-8 pr-3 py-2 bg-gray-900 border border-gray-600 rounded text-sm text-white placeholder-gray-500 focus:outline-none focus:border-blue-500"
+                                            className="w-full pl-8 pr-3 py-2 bg-white border border-gray-300 rounded text-sm text-gray-800 placeholder-gray-400 focus:outline-none focus:border-blue-500"
                                         />
                                     </div>
                                 </div>
@@ -435,7 +439,7 @@ const OtpVerificationSettings = () => {
                                                     className={`flex items-center gap-3 px-3 py-2 rounded cursor-pointer transition-colors ${
                                                         isChecked
                                                             ? 'bg-blue-900/30 border border-blue-700/50'
-                                                            : 'hover:bg-gray-800/60 border border-transparent'
+                                                            : 'hover:bg-gray-50 border border-transparent'
                                                     }`}
                                                 >
                                                     <input

@@ -6,6 +6,7 @@ import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import useTabWithHistory from '../hooks/useTabWithHistory';
 import useModalHistory from '../hooks/useModalHistory';
+import useNavbarPageSearch from '../hooks/useNavbarPageSearch';
 import { ChevronLeft, ChevronRight, ChevronDown, X, MoreVertical, Calendar, History, RefreshCw, ArrowRightLeft, CheckCircle, Plus, Search, Settings, Briefcase, User, FileText, XCircle, PhoneOff, PlayCircle, Info, Circle, ShieldAlert, TrendingUp, Bell, BarChart3, Users, Lock, Upload, Download, Trash2, Filter, FileSpreadsheet } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { cn } from "../lib/utils.js";
@@ -90,40 +91,254 @@ const parseFormattedDate = (str) => {
 const getISTDateKey = (value) => toISTDateYMD(value);
 
 const InterviewPanel = () => {
-  // CSS styles for sticky headers
-  const stickyHeaderStyles = `
-    .sticky-table-container {
-      max-height: 600px;
-      overflow-y: auto;
-      overflow-x: auto;
-      border-radius: 12px;
-    }
-    
-    .sticky-header {
-      position: sticky;
-      top: 0;
-      background: white;
-      z-index: 10;
-      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-    }
-    
-    .sticky-th {
-      position: sticky;
-      top: 0;
-      background: white;
-      z-index: 10;
-      border-bottom: 2px solid #e5e7eb;
-    }
+  const interviewPageStyles = `
+    .task-page-container { padding: 0; max-width: 100%; background: #000; min-height: 100vh; font-family: -apple-system, BlinkMacSystemFont, 'Lexend Deca', sans-serif; color: #e2e8f0; }
+    .task-top-bar { display: flex; justify-content: space-between; align-items: flex-start; padding: 20px 24px 0; border-bottom: 1px solid #1f1f27; background: #000; }
+    .task-top-bar-left h1 { font-size: 22px; font-weight: 700; color: #f0f0f5; margin: 0 0 2px; line-height: 1.2; }
+    .task-top-bar-left p { font-size: 13px; color: #6b7a99; margin: 0 0 12px; }
+    .task-top-bar-right { display: flex; gap: 8px; align-items: center; padding-top: 4px; flex-wrap: wrap; }
+    .task-btn-secondary { background: #1a1a24; color: #c8d0e0; border: 1px solid #2a2a3a; padding: 7px 14px; border-radius: 3px; font-size: 13px; font-weight: 500; cursor: pointer; transition: background 0.15s, border-color 0.15s; white-space: nowrap; display: inline-flex; align-items: center; gap: 6px; }
+    .task-btn-secondary:hover { background: #22222e; border-color: #3a3a50; }
+    .task-btn-secondary.active-filter { background: #1e3a5f; border-color: #3b82f6; color: #93c5fd; }
+    .task-btn-create { background: #3b82f6; color: #fff; border: none; padding: 7px 14px; border-radius: 3px; font-size: 13px; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 6px; transition: background 0.15s; white-space: nowrap; }
+    .task-btn-create:hover { background: #2563eb; }
+    .task-view-toggle-bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 24px; background: #000; border-bottom: 1px solid #1f1f27; flex-wrap: wrap; }
+    .task-view-toggle-group { display: flex; gap: 0; flex-wrap: wrap; flex: 0 1 auto; min-width: 0; overflow-x: auto; scrollbar-width: none; }
+    .task-view-toggle-group::-webkit-scrollbar { display: none; }
+    .task-view-toggle-btn { padding: 12px 16px; border: none; background: transparent; font-size: 13px; font-weight: 600; color: #6b7a99; cursor: pointer; border-bottom: 3px solid transparent; transition: color 0.15s, border-color 0.15s; white-space: nowrap; display: inline-flex; align-items: center; gap: 4px; }
+    .task-view-toggle-btn:hover { color: #c8d0e0; }
+    .task-view-toggle-btn.active { color: #f97316; font-weight: 800; border-bottom-color: #f97316; }
+    .task-filter-dropdown { padding: 6px 28px 6px 10px; border-radius: 3px; border: 1px solid #2a2a3a; background-color: #1a1a24; color: #c8d0e0; font-size: 13px; font-weight: 500; appearance: none; min-height: 32px; background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="%236b7a99" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>'); background-repeat: no-repeat; background-position: right 8px center; cursor: pointer; outline: none; }
+    .task-filter-dropdown:focus { border-color: #3b82f6; }
+    .task-search-box--in-bar { position: relative; width: 260px; min-width: 200px; flex-shrink: 0; }
+    .task-search-box--in-bar input { background: #1a1a24; border: 1px solid #2a2a3a; border-radius: 3px; padding: 6px 32px 6px 32px; color: #c8d0e0; font-size: 13px; width: 100%; outline: none; transition: border-color 0.15s; box-sizing: border-box; }
+    .task-search-box--in-bar input::placeholder { color: #4a5570; }
+    .task-search-box--in-bar input:focus { border-color: #3b82f6; box-shadow: 0 0 0 2px rgba(59,130,246,0.15); }
+    .task-search-box--in-bar .search-icon { position: absolute; left: 9px; top: 50%; transform: translateY(-50%); color: #4a5570; pointer-events: none; }
+    .task-search-box--in-bar .search-clear { position: absolute; right: 8px; top: 50%; transform: translateY(-50%); color: #4a5570; background: none; border: none; cursor: pointer; padding: 2px; display: flex; align-items: center; }
+    .task-search-box--in-bar .search-clear:hover { color: #c8d0e0; }
+    .task-toolbar-right { display: flex; align-items: center; justify-content: flex-end; gap: 8px; margin-left: auto; flex-shrink: 0; flex-wrap: wrap; }
+    .task-select-controls { display: flex; align-items: center; gap: 8px; }
+    .task-select-controls label { display: flex; align-items: center; cursor: pointer; color: #c8d0e0; font-size: 13px; gap: 5px; }
+    .task-select-controls span { color: #6b7a99; font-size: 13px; }
+    .task-select-btn-del { padding: 5px 12px; background: #1a0a0a; color: #f87171; border: 1px solid #7f1d1d; border-radius: 3px; font-size: 13px; cursor: pointer; }
+    .task-select-btn-del:hover { background: #2a0f0f; }
+    .task-select-btn-cancel { padding: 5px 12px; background: #1a1a24; color: #6b7a99; border: 1px solid #2a2a3a; border-radius: 3px; font-size: 13px; cursor: pointer; }
+    .task-select-btn-cancel:hover { background: #22222e; }
+    .task-loading-spinner { display: flex; flex-direction: column; justify-content: center; align-items: center; padding: 80px 20px; min-height: 100vh; }
+    .task-loading-spinner .spinner { width: 32px; height: 32px; border: 3px solid #1a1a24; border-top-color: #3b82f6; border-radius: 50%; animation: interviewSpin 0.7s linear infinite; margin-bottom: 12px; }
+    .task-empty-state { display: flex; flex-direction: column; justify-content: center; align-items: center; padding: 80px 20px; text-align: center; }
+    .task-empty-state-title { font-size: 17px; font-weight: 700; color: #c8d0e0; margin: 0 0 6px; }
+    .task-empty-state-sub { font-size: 14px; color: #4a5570; margin: 0; }
+    .interview-page-content { padding: 16px 24px 24px; }
+    .interview-table-container { overflow-x: auto; max-height: calc(100vh - 280px); overflow-y: auto; border: 1px solid #1f1f27; border-radius: 4px; background: #000; }
+    .interview-table { width: 100%; border-collapse: collapse; min-width: 1200px; text-align: left; }
+    .interview-table thead { background: #ffffff; position: sticky; top: 0; z-index: 10; box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1); border-bottom: 2px solid #e5e7eb; }
+    .interview-table thead th { color: #03b0f5; font-weight: 800; font-size: 13px; text-transform: uppercase; letter-spacing: 0.05em; padding: 12px 16px; text-align: left; border-bottom: 1px solid #e5e7eb; white-space: nowrap; background: #ffffff; }
+    .interview-table tbody td { padding: 10px 16px; font-size: 13px; color: #ffffff; font-weight: 600; vertical-align: middle; border-bottom: 1px solid #1a1a22; }
+    .interview-table tbody tr.interview-row { cursor: pointer; transition: background 0.1s; background: #000; }
+    .interview-table tbody tr.interview-row:hover { background: #13131c; }
+    .interview-table tbody tr.interview-row.selected { background: #1e3a5f; }
+    .interview-table tbody tr.interview-row.no-show { background: #1a1508; }
+    .interview-table .col-index { color: #4a5570; font-size: 12px; text-align: center; width: 36px; }
+    .interview-table .cell-primary { font-size: 13px; font-weight: 700; color: #ffffff; line-height: 1.35; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 220px; }
+    .interview-table .cell-secondary { font-size: 11px; color: #6b7a99; margin-top: 2px; line-height: 1.35; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 220px; }
+    .interview-table .cell-link { font-size: 13px; font-weight: 500; color: #60a5fa; background: none; border: none; padding: 0; cursor: pointer; text-align: left; line-height: 1.35; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 200px; display: block; }
+    .interview-table .cell-link:hover { color: #93c5fd; text-decoration: underline; }
+    .interview-table .cell-avatar { width: 28px; height: 28px; border-radius: 50%; background: #1a1a24; border: 1px solid #2a2a3a; color: #93c5fd; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 600; flex-shrink: 0; text-transform: uppercase; }
+    .interview-table .cell-stack { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+    .interview-table .cell-inline { display: flex; align-items: center; gap: 8px; min-width: 0; }
+    .interview-table .interview-pill { display: inline-flex; align-items: center; gap: 4px; padding: 2px 6px; border-radius: 2px; font-size: 11px; font-weight: 500; border: 1px solid #2a2a3a; background: #1a1a24; color: #6b7a99; white-space: nowrap; }
+    .interview-table .interview-pill.accent { border-color: #1e3a5f; color: #93c5fd; background: #0f172a; }
+    .interview-table .interview-pill.warn { border-color: #78350f; color: #fbbf24; background: #1a1508; }
+    .interview-table .interview-pill.success { border-color: #064e3b; color: #34d399; background: #0a2a22; }
+    .interview-table .interview-pill.danger { border-color: #7f1d1d; color: #f87171; background: #1a0a0a; }
+    .interview-table .actions-cell { text-align: right; white-space: nowrap; }
+    .interview-table .actions-wrap { display: flex; align-items: center; justify-content: flex-end; gap: 6px; flex-wrap: wrap; }
+    .interview-table .action-btn { background: #1a1a24; border: 1px solid #2a2a3a; color: #c8d0e0; padding: 5px 8px; border-radius: 3px; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; transition: background 0.15s, border-color 0.15s; }
+    .interview-table .action-btn:hover { background: #22222e; border-color: #3a3a50; }
+    .interview-table .action-btn-primary { background: transparent; border: 1px solid #3b82f6; color: #60a5fa; padding: 5px 10px; border-radius: 3px; font-size: 12px; font-weight: 500; cursor: pointer; display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; }
+    .interview-table .action-btn-primary:hover { background: #1e3a5f; color: #93c5fd; }
+    .interview-table .action-btn-warn { border-color: #92400e; color: #fbbf24; background: transparent; padding: 5px 10px; border-radius: 3px; font-size: 12px; font-weight: 500; cursor: pointer; }
+    .interview-table .action-btn-warn:hover { background: #1a1508; }
+    .interview-table .action-btn-audit { border: 1px solid #2a2a3a; background: #1a1a24; color: #6b7a99; padding: 5px 10px; border-radius: 3px; font-size: 12px; font-weight: 500; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; }
+    .interview-table .action-btn-audit.done { border-color: #064e3b; color: #34d399; background: #0a2a22; }
+    .interview-table .action-btn-audit:hover { background: #22222e; }
+    .interview-table .dropdown-menu { background: #13131c; border: 1px solid #2a2a3a; border-radius: 4px; box-shadow: 0 8px 24px rgba(0,0,0,0.4); padding: 4px 0; min-width: 180px; overflow: hidden; text-align: left; }
+    .interview-table .dropdown-item { display: flex; align-items: center; gap: 8px; width: 100%; padding: 8px 14px; border: none; background: transparent; color: #c8d0e0; font-size: 13px; cursor: pointer; text-align: left; }
+    .interview-table .dropdown-item:hover { background: #1a1a24; }
+    .interview-table .dropdown-item.danger { color: #f87171; }
+    .interview-table .dropdown-divider { height: 1px; background: #1f1f27; margin: 4px 0; }
+    /* Row action dropdown — portaled to body, must NOT be scoped under .interview-table */
+    .interview-row-dropdown { position: fixed; background: #13131c; border: 1px solid #2a2a3a; border-radius: 4px; box-shadow: 0 12px 32px rgba(0,0,0,0.55), 0 0 0 1px rgba(255,255,255,0.04); padding: 4px 0; min-width: 196px; overflow: hidden; text-align: left; z-index: 10050; font-family: -apple-system, BlinkMacSystemFont, 'Lexend Deca', sans-serif; }
+    .interview-row-dropdown-item { display: flex; align-items: center; gap: 8px; width: 100%; padding: 9px 14px; border: none; background: transparent; color: #c8d0e0; font-size: 13px; font-weight: 500; cursor: pointer; text-align: left; white-space: nowrap; transition: background 0.12s, color 0.12s; }
+    .interview-row-dropdown-item:hover { background: #1a1a24; color: #e2e8f0; }
+    .interview-row-dropdown-item.danger { color: #f87171; }
+    .interview-row-dropdown-item.danger:hover { background: #1a0a0a; color: #fca5a5; }
+    .interview-row-dropdown-item.warn { color: #fbbf24; }
+    .interview-row-dropdown-item.warn:hover { background: #1a1508; color: #fde68a; }
+    .interview-row-dropdown-divider { height: 1px; background: #1f1f27; margin: 4px 0; }
+    .interview-table .action-btn.open { background: #1e3a5f; border-color: #3b82f6; color: #93c5fd; }
+    .interview-table .alert-link { background: none; border: none; padding: 0; font-size: 11px; color: #60a5fa; cursor: pointer; display: inline-flex; align-items: center; gap: 4px; }
+    .interview-table .alert-link:hover { color: #93c5fd; text-decoration: underline; }
+    .interview-table .alert-link.warn { color: #fbbf24; }
+    .interview-table .alert-link.danger { color: #f87171; }
+    .interview-sub-tabs-bar { background: #000; border-bottom: 1px solid #1f1f27; padding: 8px 24px; display: flex; gap: 8px; overflow-x: auto; flex-wrap: wrap; }
+    .interview-sub-tab-btn { padding: 6px 14px; font-size: 13px; font-weight: 600; border-radius: 4px; border: 1px solid transparent; background: transparent; color: #6b7a99; cursor: pointer; transition: all 0.15s; display: inline-flex; align-items: center; gap: 8px; white-space: nowrap; }
+    .interview-sub-tab-btn:hover { color: #c8d0e0; background: #1a1a24; }
+    .interview-sub-tab-btn.active { background: #1e3a5f; color: #93c5fd; border-color: #3b82f6; font-weight: 700; }
+    .interview-sub-tab-count { background: #1a1a24; border: 1px solid #2a2a3a; color: #c8d0e0; padding: 2px 8px; border-radius: 3px; font-size: 11px; font-weight: 600; }
+    .interview-global-search-banner { margin: 12px 24px 0; padding: 10px 16px; background: #2a1a00; border: 1px solid #78350f; border-radius: 4px; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+    .interview-global-search-banner .banner-text { font-size: 13px; font-weight: 600; color: #fbbf24; }
+    .interview-global-search-banner .banner-meta { font-size: 12px; color: #d97706; }
+    .interview-global-search-banner .banner-clear { background: none; border: none; color: #fbbf24; font-size: 12px; font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; gap: 4px; }
+    .interview-global-search-banner .banner-clear:hover { color: #fde68a; }
+    .sticky-table-container { max-height: calc(100vh - 280px); overflow-y: auto; overflow-x: auto; border-radius: 4px; }
+    .sticky-header { position: sticky; top: 0; background: #000; z-index: 10; box-shadow: 0 2px 4px rgba(0,0,0,0.3); }
+    .sticky-th { position: sticky; top: 0; background: #ffffff; color: #03b0f5; z-index: 10; border-bottom: 1px solid #e5e7eb; font-weight: 800; }
+    @keyframes interviewSpin { to { transform: rotate(360deg); } }
+    @keyframes slideInRight { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+    @keyframes scaleIn { from { transform: scale(0.95); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+    .interview-page-container .bg-white { background-color: #000 !important; }
+    .interview-page-container .bg-slate-50 { background-color: #000 !important; }
+    .interview-page-container .bg-slate-100 { background-color: #1a1a24 !important; }
+    .interview-page-container .text-slate-900, .interview-page-container .text-slate-800, .interview-page-container .text-slate-700 { color: #e2e8f0 !important; }
+    .interview-page-container .text-slate-600, .interview-page-container .text-slate-500 { color: #6b7a99 !important; }
+    .interview-page-container .text-slate-400 { color: #4a5570 !important; }
+    .interview-page-container .border-slate-200, .interview-page-container .border-slate-300, .interview-page-container .border-slate-100 { border-color: #2a2a3a !important; }
+    .interview-page-container .divide-slate-100 > :not([hidden]) ~ :not([hidden]) { border-color: #1a1a22 !important; }
+    .interview-page-container .hover\\:bg-slate-50:hover { background-color: #13131c !important; }
+    .interview-page-container .hover\\:bg-slate-100:hover { background-color: #1a1a24 !important; }
+    .interview-page-container .bg-blue-50 { background-color: #0a1a2a !important; }
+    .interview-page-container .text-blue-700, .interview-page-container .text-blue-600 { color: #60a5fa !important; }
+    .interview-page-container .border-blue-200 { border-color: #1e3a5f !important; }
+    .interview-page-container .bg-emerald-50 { background-color: #0a2a22 !important; }
+    .interview-page-container .text-emerald-700, .interview-page-container .text-emerald-600 { color: #34d399 !important; }
+    .interview-page-container .bg-orange-50 { background-color: #2a1a00 !important; }
+    .interview-page-container .text-orange-800, .interview-page-container .text-orange-700, .interview-page-container .text-orange-600 { color: #fbbf24 !important; }
+    .interview-page-container .border-orange-200 { border-color: #78350f !important; }
+    .interview-page-container .bg-red-50 { background-color: #1a0a0a !important; }
+    .interview-page-container .text-red-700, .interview-page-container .text-red-600, .interview-page-container .text-red-500 { color: #f87171 !important; }
+    .interview-page-container .hover\\:text-red-700:hover { color: #fca5a5 !important; }
+    .interview-page-container .bg-yellow-50 { background-color: #1a1200 !important; }
+    .interview-page-container .text-yellow-700 { color: #fbbf24 !important; }
+    .interview-page-container .bg-indigo-50 { background-color: #0f0a2a !important; }
+    .interview-page-container .text-indigo-700 { color: #a78bfa !important; }
+    .interview-page-container input, .interview-page-container select, .interview-page-container textarea { background-color: #1a1a24; color: #c8d0e0; border-color: #2a2a3a; }
+    .interview-page-container input::placeholder, .interview-page-container textarea::placeholder { color: #4a5570; }
+    .interview-page-container input[type="checkbox"] { accent-color: #3b82f6; }
 
-    @keyframes slideInRight {
-      from { transform: translateX(100%); }
-      to { transform: translateX(0); }
-    }
-
-    @keyframes scaleIn {
-      from { transform: scale(0.95); opacity: 0; }
-      to { transform: scale(1); opacity: 1; }
-    }
+    /* ── Create Interview Modal (HubSpot dark drawer) ── */
+    .interview-create-backdrop { position: fixed; inset: 0; z-index: 9999; background: rgba(0,0,0,0.65); backdrop-filter: blur(2px); transition: opacity 0.28s ease; }
+    .interview-create-modal { position: fixed; top: 0; right: 0; height: 100vh; width: 100%; max-width: 560px; z-index: 10000; background: #13131c; border-left: 1px solid #2a2a3a; display: flex; flex-direction: column; box-shadow: -12px 0 40px rgba(0,0,0,0.45); transition: transform 0.28s cubic-bezier(0.4, 0, 0.2, 1); overflow: hidden; outline: none; }
+    .interview-create-header { display: flex; justify-content: space-between; align-items: center; padding: 16px 20px; border-bottom: 1px solid #1f1f27; background: #000; flex-shrink: 0; }
+    .interview-create-header-left h2 { margin: 0; font-size: 16px; font-weight: 700; color: #f0f0f5; display: flex; align-items: center; gap: 8px; }
+    .interview-create-header-left p { margin: 4px 0 0; font-size: 12px; color: #6b7a99; }
+    .interview-create-header-right { display: flex; align-items: center; gap: 12px; }
+    .interview-create-steps { display: flex; align-items: center; gap: 6px; }
+    .interview-create-step-dot { width: 8px; height: 8px; border-radius: 50%; background: #2a2a3a; }
+    .interview-create-step-dot.active { background: #3b82f6; }
+    .interview-create-close { background: #1a1a24; border: 1px solid #2a2a3a; color: #6b7a99; width: 32px; height: 32px; border-radius: 3px; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: background 0.15s, color 0.15s; }
+    .interview-create-close:hover { background: #22222e; color: #c8d0e0; }
+    .interview-create-body { padding: 16px 20px; overflow-y: auto; flex: 1; background: #000; display: flex; flex-direction: column; gap: 12px; min-height: 0; }
+    .interview-create-section { background: #000; border: 1px solid #1f1f27; border-radius: 4px; overflow: hidden; }
+    .interview-create-section-head { padding: 10px 14px; border-bottom: 1px solid #1f1f27; font-size: 11px; font-weight: 700; color: #6b7a99; text-transform: uppercase; letter-spacing: 0.5px; display: flex; align-items: center; gap: 8px; }
+    .interview-create-section-body { padding: 14px; }
+    .interview-create-grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .interview-create-field { display: flex; flex-direction: column; gap: 6px; }
+    .interview-create-field.span-2 { grid-column: span 2; }
+    .interview-create-label { font-size: 11px; font-weight: 700; color: #6b7a99; text-transform: uppercase; letter-spacing: 0.4px; }
+    .interview-create-label .req { color: #f87171; }
+    .interview-create-input, .interview-create-modal select, .interview-create-modal textarea { width: 100%; background: #1a1a24; border: 1px solid #2a2a3a; color: #c8d0e0; padding: 8px 12px; border-radius: 3px; font-size: 13px; outline: none; transition: border-color 0.15s; box-sizing: border-box; }
+    .interview-create-input:focus, .interview-create-modal select:focus, .interview-create-modal textarea:focus { border-color: #3b82f6; box-shadow: 0 0 0 2px rgba(59,130,246,0.12); }
+    .interview-create-input.error { border-color: #f87171; }
+    .interview-create-input::placeholder, .interview-create-modal textarea::placeholder { color: #4a5570; }
+    .interview-create-input.phone { font-weight: 600; letter-spacing: 0.08em; font-size: 14px; }
+    .interview-create-hint { font-size: 11px; color: #fbbf24; margin-top: 4px; }
+    .interview-create-error { font-size: 11px; color: #f87171; margin-top: 4px; }
+    .interview-create-toggle-group { display: flex; gap: 8px; }
+    .interview-create-toggle-btn { flex: 1; display: flex; align-items: center; justify-content: center; gap: 6px; padding: 8px 12px; border-radius: 3px; border: 1px solid #2a2a3a; background: #1a1a24; color: #6b7a99; font-size: 13px; font-weight: 500; cursor: pointer; transition: all 0.15s; }
+    .interview-create-toggle-btn:hover { border-color: #3a3a50; color: #c8d0e0; }
+    .interview-create-toggle-btn.active { background: #1e3a5f; border-color: #3b82f6; color: #93c5fd; font-weight: 600; }
+    .interview-create-toggle-btn input { display: none; }
+    .interview-create-segmented { display: flex; gap: 4px; padding: 3px; background: #1a1a24; border: 1px solid #2a2a3a; border-radius: 3px; margin-bottom: 8px; }
+    .interview-create-segmented-btn { flex: 1; padding: 7px 10px; border: none; border-radius: 2px; background: transparent; color: #6b7a99; font-size: 12px; font-weight: 600; cursor: pointer; text-transform: capitalize; transition: all 0.15s; }
+    .interview-create-segmented-btn.active { background: #22222e; color: #e2e8f0; }
+    .interview-create-check-group { display: flex; gap: 8px; flex-wrap: wrap; }
+    .interview-create-check-btn { display: flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: 3px; border: 1px solid #2a2a3a; background: #1a1a24; color: #6b7a99; font-size: 12px; font-weight: 500; cursor: pointer; transition: all 0.15s; }
+    .interview-create-check-btn.active { background: #1e3a5f; border-color: #3b82f6; color: #93c5fd; }
+    .interview-create-check-btn input { display: none; }
+    .interview-create-nested { background: #000; border: 1px solid #1f1f27; border-radius: 4px; padding: 12px; display: flex; flex-direction: column; gap: 12px; }
+    .interview-create-company-card { background: #000; border: 1px solid #1f1f27; border-radius: 4px; padding: 10px; }
+    .interview-create-company-title { font-size: 11px; font-weight: 700; color: #6b7a99; text-transform: uppercase; margin-bottom: 8px; }
+    .interview-create-company-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
+    .interview-create-company-grid input { padding: 6px 10px; font-size: 12px; }
+    .interview-create-qual-badge { position: absolute; right: 10px; top: 50%; transform: translateY(-50%); background: #1e3a5f; color: #93c5fd; font-size: 10px; font-weight: 700; padding: 2px 8px; border-radius: 2px; pointer-events: none; }
+    .interview-create-qual-dropdown { position: absolute; left: 0; right: 0; top: calc(100% + 4px); background: #13131c; border: 1px solid #2a2a3a; border-radius: 4px; box-shadow: 0 8px 24px rgba(0,0,0,0.4); z-index: 30; max-height: 220px; overflow-y: auto; }
+    .interview-create-qual-group-label { padding: 6px 12px; font-size: 10px; font-weight: 700; color: #4a5570; text-transform: uppercase; background: #000; border-bottom: 1px solid #1f1f27; position: sticky; top: 0; }
+    .interview-create-qual-option { width: 100%; text-align: left; padding: 8px 14px; border: none; background: transparent; color: #c8d0e0; font-size: 13px; cursor: pointer; }
+    .interview-create-qual-option:hover { background: #1a1a24; color: #93c5fd; }
+    .interview-create-select-trigger { width: 100%; padding: 8px 12px; border: 1px solid #2a2a3a; border-radius: 3px; background: #1a1a24; color: #c8d0e0; font-size: 13px; cursor: pointer; display: flex; justify-content: space-between; align-items: center; }
+    .interview-create-select-trigger.placeholder { color: #4a5570; }
+    .interview-create-select-dropdown { position: absolute; z-index: 99999; width: 100%; margin-top: 4px; background: #13131c; border: 1px solid #2a2a3a; border-radius: 4px; box-shadow: 0 8px 24px rgba(0,0,0,0.4); max-height: 240px; overflow: auto; }
+    .interview-create-select-search { padding: 8px; border-bottom: 1px solid #1f1f27; }
+    .interview-create-select-search input { padding: 6px 10px; font-size: 12px; }
+    .interview-create-select-option { padding: 8px 14px; cursor: pointer; color: #c8d0e0; font-size: 13px; }
+    .interview-create-select-option:hover { background: #1a1a24; color: #93c5fd; }
+    .interview-create-select-empty { padding: 8px 14px; color: #4a5570; font-size: 12px; }
+    .interview-create-loading { background: #000; border: 1px solid #1f1f27; border-radius: 4px; padding: 20px; text-align: center; }
+    .interview-create-loading .spinner { width: 20px; height: 20px; border: 2px solid #1a1a24; border-top-color: #3b82f6; border-radius: 50%; animation: interviewSpin 0.7s linear infinite; margin: 0 auto 8px; }
+    .interview-create-loading p { font-size: 12px; color: #6b7a99; margin: 0; }
+    .interview-create-duplicate { border: 1px solid #2a2a3a; border-radius: 4px; overflow: hidden; }
+    .interview-create-duplicate-head { background: #000; padding: 16px; border-bottom: 1px solid #1f1f27; }
+    .interview-create-duplicate-meta { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; padding: 12px 16px; background: #000; border-bottom: 1px solid #1f1f27; }
+    .interview-create-duplicate-meta-label { font-size: 10px; font-weight: 700; color: #4a5570; text-transform: uppercase; margin-bottom: 2px; }
+    .interview-create-duplicate-meta-value { font-size: 12px; color: #c8d0e0; font-weight: 500; }
+    .interview-create-duplicate-stats { display: flex; gap: 16px; padding: 10px 16px; background: #000; border-bottom: 1px solid #1f1f27; font-size: 12px; font-weight: 500; }
+    .interview-create-duplicate-stats .warn { color: #fbbf24; }
+    .interview-create-duplicate-stats .accent { color: #60a5fa; }
+    .interview-create-duplicate-activity { padding: 14px 16px; background: #000; }
+    .interview-create-duplicate-activity-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; font-size: 11px; font-weight: 700; color: #6b7a99; text-transform: uppercase; }
+    .interview-create-duplicate-activity-item { display: flex; gap: 10px; margin-bottom: 8px; font-size: 12px; }
+    .interview-create-duplicate-activity-item .dot { width: 6px; height: 6px; border-radius: 50%; background: #3b82f6; margin-top: 6px; flex-shrink: 0; }
+    .interview-create-duplicate-activity-card { flex: 1; background: #000; border: 1px solid #1f1f27; border-radius: 4px; padding: 8px 12px; }
+    .interview-create-duplicate-activity-card .action { font-weight: 600; color: #c8d0e0; }
+    .interview-create-duplicate-activity-card .date { color: #4a5570; font-size: 10px; }
+    .interview-create-duplicate-activity-card .detail { color: #6b7a99; margin-top: 2px; }
+    .interview-create-duplicate-footer { padding: 16px; background: #000; border-top: 1px solid #1f1f27; }
+    .interview-create-duplicate-reject { background: #1a0a0a; border: 1px solid #7f1d1d; border-radius: 4px; padding: 12px; display: flex; gap: 12px; }
+    .interview-create-duplicate-reject .title { font-size: 13px; font-weight: 700; color: #f87171; }
+    .interview-create-duplicate-reject .desc { font-size: 12px; color: #fca5a5; margin-top: 4px; line-height: 1.4; }
+    .interview-create-avatar { width: 44px; height: 44px; border-radius: 4px; background: #1a1a24; border: 1px solid #2a2a3a; color: #93c5fd; display: flex; align-items: center; justify-content: center; font-size: 18px; font-weight: 700; flex-shrink: 0; }
+    .interview-create-pill { display: inline-flex; padding: 2px 8px; border-radius: 2px; font-size: 11px; font-weight: 600; color: #fff; }
+    .interview-create-success-banner { background: #0a2a22; border: 1px solid #064e3b; border-radius: 4px; padding: 14px; display: flex; align-items: center; gap: 12px; }
+    .interview-create-success-banner .icon { width: 36px; height: 36px; border-radius: 4px; background: #064e3b; color: #34d399; display: flex; align-items: center; justify-content: center; font-size: 16px; font-weight: 700; }
+    .interview-create-success-banner .title { font-size: 13px; font-weight: 700; color: #34d399; }
+    .interview-create-success-banner .sub { font-size: 12px; color: #6b7a99; margin-top: 2px; }
+    .interview-create-upload { width: 100%; padding: 12px; border: 1px dashed #2a2a3a; border-radius: 4px; background: #1a1a24; color: #6b7a99; font-size: 13px; font-weight: 500; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px; transition: border-color 0.15s, color 0.15s; }
+    .interview-create-upload:hover { border-color: #3b82f6; color: #93c5fd; }
+    .interview-create-attachment { display: flex; align-items: center; gap: 10px; background: #000; border: 1px solid #1f1f27; border-radius: 4px; padding: 10px 12px; }
+    .interview-create-attachment .idx { font-size: 11px; font-weight: 700; color: #4a5570; width: 20px; }
+    .interview-create-attachment .name { font-size: 13px; font-weight: 500; color: #c8d0e0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .interview-create-attachment .meta { font-size: 10px; color: #4a5570; margin-top: 2px; }
+    .interview-create-attachment .actions { display: flex; gap: 4px; margin-left: auto; }
+    .interview-create-attachment .actions a, .interview-create-attachment .actions button { background: none; border: none; color: #6b7a99; cursor: pointer; padding: 4px; }
+    .interview-create-attachment .actions a:hover { color: #60a5fa; }
+    .interview-create-attachment .actions button:hover { color: #f87171; }
+    .interview-create-footer { padding: 14px 20px; border-top: 1px solid #1f1f27; background: #000; flex-shrink: 0; }
+    .interview-create-btn-primary { width: 100%; padding: 10px 16px; background: #3b82f6; color: #fff; border: none; border-radius: 3px; font-size: 13px; font-weight: 600; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px; transition: background 0.15s; }
+    .interview-create-btn-primary:hover:not(:disabled) { background: #2563eb; }
+    .interview-create-btn-primary:disabled { background: #1a1a24; color: #4a5570; cursor: not-allowed; }
+    .interview-create-btn-success { width: 100%; padding: 10px 16px; background: #059669; color: #fff; border: none; border-radius: 3px; font-size: 13px; font-weight: 600; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px; transition: background 0.15s; }
+    .interview-create-btn-success:hover { background: #047857; }
+    .interview-create-btn-warn { width: 100%; padding: 10px 16px; background: #d97706; color: #fff; border: none; border-radius: 3px; font-size: 13px; font-weight: 600; cursor: pointer; transition: background 0.15s; }
+    .interview-create-btn-warn:hover:not(:disabled) { background: #b45309; }
+    .interview-create-btn-warn:disabled { background: #1a1a24; color: #4a5570; cursor: not-allowed; }
+    .interview-create-currency { position: relative; }
+    .interview-create-currency .symbol { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: #4a5570; font-size: 13px; font-weight: 600; pointer-events: none; }
+    .interview-create-currency input { padding-left: 28px; }
+    .interview-create-link { background: none; border: none; padding: 0; font-size: 11px; color: #60a5fa; cursor: pointer; display: inline-flex; align-items: center; gap: 4px; }
+    .interview-create-link:hover { color: #93c5fd; text-decoration: underline; }
   `;
 
   const navigate = useNavigate();
@@ -134,6 +349,10 @@ const InterviewPanel = () => {
   const [activeSubTab, setActiveSubTab] = useTabWithHistory('sub', 'today', { localStorageKey: 'interviewPanelSubTab' });
   const [searchTerm, setSearchTerm] = useState('');
   const [isGlobalSearch, setIsGlobalSearch] = useState(false);
+  useNavbarPageSearch(useCallback((query) => {
+    setSearchTerm(query);
+    setIsGlobalSearch(query.trim().length > 0);
+  }, []));
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [statusCounts, setStatusCounts] = useState([]);
   const [tabCounts, setTabCounts] = useState(TABS);
@@ -2052,27 +2271,100 @@ const InterviewPanel = () => {
 
   if (loading && !isDetailModalOpen && !isHistoryModalOpen && !isSettingsOpen) {
     return (
-      <div className="flex items-center justify-center h-64 bg-slate-50 min-h-screen">
-        <div className="text-lg text-slate-600">Loading interviews...</div>
-      </div>
+      <>
+        <style>{interviewPageStyles}</style>
+        <div className="task-page-container interview-page-container">
+          <div className="task-loading-spinner">
+            <div className="spinner" />
+            <p style={{ color: '#60a5fa', fontSize: 16, fontWeight: 700 }}>Loading interviews...</p>
+          </div>
+        </div>
+      </>
     );
   }
 
+  const candidateCount = activeTab === 'dashboard' ? interviews.length : filteredInterviews.length;
+
   return (
     <>
-      <style>{stickyHeaderStyles}</style>
-      <div className="bg-slate-50 min-h-screen">
-      
-      {/* Header */}
-      <div className="bg-white border-b border-slate-200 px-6 py-3">
-        <div className="flex items-center justify-between gap-4">
-          {/* LEFT: Search bar (hidden on Dashboard) */}
-          <div className="flex items-center gap-3">
-            {activeTab !== 'dashboard' && (
-            <div className="relative w-64">
-              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                <Search size={14} className="text-slate-500" />
-              </div>
+      <style>{interviewPageStyles}</style>
+      <div className="task-page-container interview-page-container">
+
+      {/* Top Bar */}
+      <div className="task-top-bar">
+        <div className="task-top-bar-left">
+          <h1>Interview Panel</h1>
+          <p>{candidateCount} candidate{candidateCount !== 1 ? 's' : ''}</p>
+        </div>
+        <div className="task-top-bar-right">
+          {activeTab !== 'dashboard' && activeTab !== 'audit_logs' && permissions.can_delete && !checkboxVisible && (
+            <button className="task-btn-secondary" onClick={handleShowCheckboxes}>
+              <Trash2 size={14} />
+              Select
+            </button>
+          )}
+          {activeTab !== 'dashboard' && activeTab !== 'audit_logs' && permissions.can_delete && checkboxVisible && (
+            <div className="task-select-controls">
+              <label>
+                <input type="checkbox" checked={selectAll} onChange={handleSelectAll} style={{ width: 14, height: 14, accentColor: '#3b82f6' }} />
+                Select All
+              </label>
+              <span>{selectedInterviews.length} selected</span>
+              <button className="task-select-btn-del" onClick={handleBulkDelete} disabled={selectedInterviews.length === 0}>
+                Delete ({selectedInterviews.length})
+              </button>
+              <button className="task-select-btn-cancel" onClick={handleCancelSelection}>Cancel</button>
+            </div>
+          )}
+          {permissions.can_settings && (
+            <button onClick={() => setIsSettingsOpen(true)} className="task-btn-secondary">
+              <Settings size={14} /> <span className="hidden sm:inline">Settings</span>
+            </button>
+          )}
+          {permissions.can_add && (
+            <button onClick={handleCreateInterview} className="task-btn-create">
+              <Plus size={14} /> Create Interview
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Pipeline tabs + toolbar */}
+      <div className="task-view-toggle-bar">
+        <div className="task-view-toggle-group">
+          {TABS.map((tab) => {
+            const tabCount = tabCounts.find(t => t.id === tab.id)?.count;
+            const isActive = activeTab === tab.id;
+            return (
+              <button
+                key={tab.id}
+                className={`task-view-toggle-btn${isActive ? ' active' : ''}`}
+                onClick={() => {
+                  setActiveTab(tab.id);
+                  if (tab.id === 'interview') setActiveSubTab('today');
+                  if (tab.id === 'audit_logs') setAuditSubTab('Pending');
+                  setReasonFilter('All');
+                  setIsGlobalSearch(false);
+                  setSearchTerm('');
+                  setCheckboxVisible(false);
+                  setSelectedInterviews([]);
+                  setSelectAll(false);
+                }}
+              >
+                {tab.id === 'audit_logs' && <ShieldAlert size={14} />}
+                {tab.icon && <span>{tab.icon}</span>}
+                {tab.label}
+                {tab.id !== 'audit_logs' && tab.id !== 'dashboard' && tabCount !== undefined && (
+                  <span style={{ marginLeft: 5, fontSize: 11, color: isActive ? '#f97316' : '#6b7a99' }}>({tabCount})</span>
+                )}
+              </button>
+            );
+          })}
+        </div>
+        <div className="task-toolbar-right">
+          {activeTab !== 'dashboard' && (
+            <div className="task-search-box--in-bar">
+              <Search size={14} className="search-icon" />
               <input
                 type="text"
                 placeholder="Search by name, mobile, owner, role..."
@@ -2080,7 +2372,6 @@ const InterviewPanel = () => {
                 onChange={(e) => {
                   const val = e.target.value;
                   setSearchTerm(val);
-                  // If searching by phone number (digits only, 3+ chars), find the candidate and switch to their tab
                   if (val.length >= 3 && /^\d+$/.test(val)) {
                     const match = interviews.find(i => i.mobile_number?.includes(val));
                     if (match) {
@@ -2103,376 +2394,233 @@ const InterviewPanel = () => {
                     setIsGlobalSearch(val.length > 0);
                   }
                 }}
-                className="w-full pl-9 pr-8 py-2 bg-white border border-slate-300 rounded-md text-sm text-slate-900 focus:ring-1 focus:ring-blue-500 outline-none"
               />
               {searchTerm && (
-                <button onClick={() => { setSearchTerm(''); setIsGlobalSearch(false); }} className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-600">
+                <button onClick={() => { setSearchTerm(''); setIsGlobalSearch(false); }} className="search-clear">
                   <X size={14} />
                 </button>
               )}
             </div>
-            )}
-            {activeTab === 'rejected' && (
-              <select
-                value={reasonFilter}
-                onChange={(e) => setReasonFilter(e.target.value)}
-                className="px-4 py-2 bg-white border border-slate-300 rounded-md text-sm text-slate-900 outline-none focus:ring-1 focus:ring-blue-500"
+          )}
+          {activeTab === 'rejected' && (
+            <select
+              className="task-filter-dropdown"
+              value={reasonFilter}
+              onChange={(e) => setReasonFilter(e.target.value)}
+            >
+              <option value="All">All Rejection Reasons</option>
+              {declineReasons.map(r => <option key={r} value={r}>{r}</option>)}
+            </select>
+          )}
+          {activeTab !== 'dashboard' && (
+            <div className="relative">
+              <button
+                onClick={() => setShowFilterPopup(prev => !prev)}
+                className={`task-btn-secondary${
+                  (filterOptions.sourcePortal?.length > 0 || filterOptions.jobOpening?.length > 0) ? ' active-filter' : ''
+                }`}
               >
-                <option value="All">All Rejection Reasons</option>
-                {declineReasons.map(r => <option key={r} value={r}>{r}</option>)}
-              </select>
-            )}
-
-            {/* Filter Button */}
-            {activeTab !== 'dashboard' && (
-              <div className="relative">
-                <button
-                  onClick={() => setShowFilterPopup(prev => !prev)}
-                  className={`px-3 py-2 border rounded-md text-xs font-medium flex items-center gap-1.5 transition-colors ${
-                    (filterOptions.sourcePortal?.length > 0 || filterOptions.jobOpening?.length > 0)
-                      ? 'bg-blue-600 border-blue-600 text-white'
-                      : 'bg-white border-slate-300 text-slate-700 hover:bg-slate-50'
-                  }`}
-                >
-                  <Filter size={14} />
-                  Filter
-                  {((filterOptions.sourcePortal?.length || 0) + (filterOptions.jobOpening?.length || 0)) > 0 && (
-                    <span className="bg-white text-blue-600 text-[10px] font-black px-1.5 py-0.5 rounded-full leading-none">
-                      {(filterOptions.sourcePortal?.length || 0) + (filterOptions.jobOpening?.length || 0)}
-                    </span>
-                  )}
-                </button>
-
-                {showFilterPopup && (
-                  <div className="absolute top-full left-0 mt-1 w-64 bg-white border border-slate-200 rounded-xl shadow-xl z-[9999] overflow-hidden">
-                    {/* Header */}
-                    <div className="px-4 py-3 border-b border-slate-100 bg-slate-50 flex items-center justify-between">
-                      <span className="text-xs font-black text-slate-700 uppercase tracking-wider">Filters</span>
-                      <button
-                        onClick={() => setFilterOptions(prev => ({ ...prev, sourcePortal: [], jobOpening: [] }))}
-                        className="text-xs text-red-500 hover:text-red-700 font-semibold"
-                      >
-                        Clear All
-                      </button>
+                <Filter size={14} />
+                Filter
+                {((filterOptions.sourcePortal?.length || 0) + (filterOptions.jobOpening?.length || 0)) > 0 && (
+                  <span style={{ background: '#3b82f6', color: '#fff', fontSize: 10, fontWeight: 700, padding: '1px 6px', borderRadius: 999 }}>
+                    {(filterOptions.sourcePortal?.length || 0) + (filterOptions.jobOpening?.length || 0)}
+                  </span>
+                )}
+              </button>
+              {showFilterPopup && (
+                <div className="absolute top-full right-0 mt-1 w-64 bg-white border border-slate-200 rounded-xl shadow-xl z-[9999] overflow-hidden">
+                  <div className="px-4 py-3 border-b border-slate-100 bg-slate-50 flex items-center justify-between">
+                    <span className="text-xs font-black text-slate-700 uppercase tracking-wider">Filters</span>
+                    <button
+                      onClick={() => setFilterOptions(prev => ({ ...prev, sourcePortal: [], jobOpening: [] }))}
+                      className="text-xs text-red-500 hover:text-red-700 font-semibold"
+                    >
+                      Clear All
+                    </button>
+                  </div>
+                  <div className="p-4 space-y-4 max-h-80 overflow-y-auto">
+                    <div>
+                      <div className="text-[11px] font-black text-slate-500 uppercase tracking-wider mb-2">Source Portal</div>
+                      {sourcePortalOptions.length === 0 ? (
+                        <div className="text-xs text-slate-400 italic">No sources configured in settings.</div>
+                      ) : (
+                        <div className="space-y-1.5">
+                          {sourcePortalOptions.map(portal => (
+                            <label key={portal} className="flex items-center gap-2 cursor-pointer group">
+                              <input
+                                type="checkbox"
+                                checked={filterOptions.sourcePortal?.includes(portal) || false}
+                                onChange={() => setFilterOptions(prev => {
+                                  const list = prev.sourcePortal || [];
+                                  return { ...prev, sourcePortal: list.includes(portal) ? list.filter(p => p !== portal) : [...list, portal] };
+                                })}
+                                className="w-3.5 h-3.5 rounded border-slate-300 accent-blue-600"
+                              />
+                              <span className="text-xs text-slate-700 group-hover:text-blue-700">{portal}</span>
+                            </label>
+                          ))}
+                        </div>
+                      )}
                     </div>
-
-                    <div className="p-4 space-y-4 max-h-80 overflow-y-auto">
-                      {/* Source Portal */}
-                      <div>
-                        <div className="text-[11px] font-black text-slate-500 uppercase tracking-wider mb-2">Source Portal</div>
-                        {sourcePortalOptions.length === 0 ? (
-                          <div className="text-xs text-slate-400 italic">No sources configured in settings.</div>
-                        ) : (
-                          <div className="space-y-1.5">
-                            {sourcePortalOptions.map(portal => (
-                              <label key={portal} className="flex items-center gap-2 cursor-pointer group">
-                                <input
-                                  type="checkbox"
-                                  checked={filterOptions.sourcePortal?.includes(portal) || false}
-                                  onChange={() => setFilterOptions(prev => {
-                                    const list = prev.sourcePortal || [];
-                                    return { ...prev, sourcePortal: list.includes(portal) ? list.filter(p => p !== portal) : [...list, portal] };
-                                  })}
-                                  className="w-3.5 h-3.5 rounded border-slate-300 accent-blue-600"
-                                />
-                                <span className="text-xs text-slate-700 group-hover:text-blue-700">{portal}</span>
-                              </label>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-
-                      {/* Role / Job Opening */}
-                      <div>
-                        <div className="text-[11px] font-black text-slate-500 uppercase tracking-wider mb-2">Role</div>
-                        {jobOpeningOptions.length === 0 ? (
-                          <div className="text-xs text-slate-400 italic">No roles configured in settings.</div>
-                        ) : (
-                          <div className="space-y-1.5">
-                            {jobOpeningOptions.map(role => (
-                              <label key={role} className="flex items-center gap-2 cursor-pointer group">
-                                <input
-                                  type="checkbox"
-                                  checked={filterOptions.jobOpening?.includes(role) || false}
-                                  onChange={() => setFilterOptions(prev => {
-                                    const list = prev.jobOpening || [];
-                                    return { ...prev, jobOpening: list.includes(role) ? list.filter(r => r !== role) : [...list, role] };
-                                  })}
-                                  className="w-3.5 h-3.5 rounded border-slate-300 accent-blue-600"
-                                />
-                                <span className="text-xs text-slate-700 group-hover:text-blue-700">{role}</span>
-                              </label>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Footer */}
-                    <div className="px-4 py-3 border-t border-slate-100 bg-slate-50 flex justify-end">
-                      <button
-                        onClick={() => setShowFilterPopup(false)}
-                        className="px-4 py-1.5 bg-slate-800 hover:bg-slate-700 text-white text-xs font-bold rounded-lg transition-colors"
-                      >
-                        Done
-                      </button>
+                    <div>
+                      <div className="text-[11px] font-black text-slate-500 uppercase tracking-wider mb-2">Role</div>
+                      {jobOpeningOptions.length === 0 ? (
+                        <div className="text-xs text-slate-400 italic">No roles configured in settings.</div>
+                      ) : (
+                        <div className="space-y-1.5">
+                          {jobOpeningOptions.map(role => (
+                            <label key={role} className="flex items-center gap-2 cursor-pointer group">
+                              <input
+                                type="checkbox"
+                                checked={filterOptions.jobOpening?.includes(role) || false}
+                                onChange={() => setFilterOptions(prev => {
+                                  const list = prev.jobOpening || [];
+                                  return { ...prev, jobOpening: list.includes(role) ? list.filter(r => r !== role) : [...list, role] };
+                                })}
+                                className="w-3.5 h-3.5 rounded border-slate-300 accent-blue-600"
+                              />
+                              <span className="text-xs text-slate-700 group-hover:text-blue-700">{role}</span>
+                            </label>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   </div>
-                )}
-              </div>
-            )}
-
-            {/* Export to Excel Button */}
-            {activeTab !== 'dashboard' && activeTab !== 'audit_logs' && (
-              <button
-                onClick={handleExportExcel}
-                className="px-3 py-2 border rounded-md text-xs font-medium flex items-center gap-1.5 transition-colors bg-white border-slate-300 text-slate-700 hover:bg-emerald-50 hover:border-emerald-400 hover:text-emerald-700"
-                title="Export interviews to Excel (all tabs)"
-              >
-                <FileSpreadsheet size={14} />
-                Export Excel
-              </button>
-            )}
-
-            {/* Select Button (for bulk delete) - next to Filter */}
-            {activeTab !== 'dashboard' && activeTab !== 'audit_logs' && permissions.can_delete && !checkboxVisible && (
-              <button
-                className="px-3 py-2 border rounded-md text-xs font-medium flex items-center gap-1.5 transition-colors bg-white border-slate-300 text-slate-700 hover:bg-red-50 hover:border-red-400 hover:text-red-700"
-                onClick={handleShowCheckboxes}
-              >
-                <Trash2 size={14} />
-                Select
-              </button>
-            )}
-            {activeTab !== 'dashboard' && activeTab !== 'audit_logs' && permissions.can_delete && checkboxVisible && (
-              <div className="flex items-center gap-3 bg-slate-100 rounded-lg px-3 py-2">
-                <label className="flex items-center cursor-pointer text-blue-600 font-bold text-sm">
-                  <input
-                    type="checkbox"
-                    className="accent-blue-500 mr-1.5 cursor-pointer"
-                    checked={selectAll}
-                    onChange={handleSelectAll}
-                    style={{ width: 16, height: 16 }}
-                  />
-                  Select All
-                </label>
-                <span className="text-slate-700 font-semibold text-sm">{selectedInterviews.length} selected</span>
-                <button
-                  className="px-3 py-1 bg-red-600 text-white rounded font-bold hover:bg-red-700 transition text-sm disabled:opacity-50"
-                  onClick={handleBulkDelete}
-                  disabled={selectedInterviews.length === 0}
-                >
-                  Delete ({selectedInterviews.length})
-                </button>
-                <button
-                  className="px-3 py-1 bg-slate-500 text-white rounded font-bold hover:bg-slate-600 transition text-sm"
-                  onClick={handleCancelSelection}
-                >
-                  Cancel
-                </button>
-              </div>
-            )}
-          </div>
-
-          {/* RIGHT: Action buttons */}
-          <div className="flex items-center gap-2">
-            {permissions.can_settings && (
-              <button
-                onClick={() => setIsSettingsOpen(true)}
-                className="px-3 py-2 bg-white hover:bg-slate-100 border border-slate-300 text-slate-900 text-xs font-medium rounded-lg transition-colors flex items-center gap-1.5"
-              >
-                <Settings size={14} /> <span className="hidden sm:inline">Settings</span>
-              </button>
-            )}
-            {permissions.can_add && (
-            <button
-              onClick={handleCreateInterview}
-              className="px-3 py-2 bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold rounded-lg transition-colors flex items-center gap-1.5 shadow-lg shadow-blue-900/20"
-            >
-              <Plus size={14} /> Create Interview
+                  <div className="px-4 py-3 border-t border-slate-100 bg-slate-50 flex justify-end">
+                    <button
+                      onClick={() => setShowFilterPopup(false)}
+                      className="px-4 py-1.5 bg-slate-800 hover:bg-slate-700 text-white text-xs font-bold rounded-lg transition-colors"
+                    >
+                      Done
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+          {activeTab !== 'dashboard' && activeTab !== 'audit_logs' && (
+            <button onClick={handleExportExcel} className="task-btn-secondary" title="Export interviews to Excel (all tabs)">
+              <FileSpreadsheet size={14} />
+              Export Excel
             </button>
-            )}
-          </div>
+          )}
         </div>
       </div>
 
-      {/* Pipeline Tabs - Horizontal scroll */}
-      <div className="bg-white border-b border-slate-200 px-6">
-        <div className="flex items-center gap-1 overflow-x-auto py-0 -mb-px" style={{ scrollbarWidth: 'none' }}>
-          {TABS.map((tab) => {
-            const tabCount = tabCounts.find(t => t.id === tab.id)?.count;
-            const isActive = activeTab === tab.id;
-            const tabColors = {
-              dashboard: 'border-slate-500 text-slate-700',
-              interview: 'border-blue-500 text-blue-700',
-              job_offered: 'border-orange-500 text-orange-700',
-              training: 'border-yellow-500 text-yellow-700',
-              hired: 'border-emerald-500 text-emerald-700',
-              rejected: 'border-red-500 text-red-700',
-              audit_logs: 'border-indigo-500 text-indigo-700'
-            };
-            const activeColor = tabColors[tab.id] || 'border-blue-500 text-blue-700';
+      {/* Interview Sub-tabs */}
+      {activeTab === 'interview' && !isGlobalSearch && (
+        <div className="interview-sub-tabs-bar">
+          {INTERVIEW_SUB_TABS.map(sub => {
+            const todayKey = getISTDateYMD();
+            const subCount = (interviews || []).filter(interview => {
+              const stage = getStageFromStatus(interview.status);
+              const interviewDateKey = getISTDateKey(interview.interview_date);
+              if (!interviewDateKey) return false;
+              if (sub.id === 'today') {
+                return interviewDateKey === todayKey && stage === 'Interview';
+              } else if (sub.id === 'upcoming') {
+                return interviewDateKey > todayKey && stage === 'Interview';
+              } else if (sub.id === 'no_show') {
+                return stage === 'No-Show' || (stage === 'Interview' && interviewDateKey < todayKey);
+              } else if (sub.id === 'round2') {
+                return stage === 'Round 2';
+              }
+              return false;
+            }).length;
             return (
               <button
-                key={tab.id}
-                onClick={() => { 
-                  setActiveTab(tab.id);
-                  if (tab.id === 'interview') setActiveSubTab('today');
-                  if (tab.id === 'audit_logs') setAuditSubTab('Pending');
-                  setReasonFilter('All');
-                  setIsGlobalSearch(false);
-                  setSearchTerm('');
-                  setCheckboxVisible(false);
-                  setSelectedInterviews([]);
-                  setSelectAll(false);
-                }}
-                className={`pb-3 px-3 text-sm font-bold transition-all relative whitespace-nowrap shrink-0 flex items-center gap-1 ${
-                  isActive ? activeColor : 'border-transparent text-slate-500 hover:text-slate-800'
-                } ${isActive ? '' : ''}`}
-                style={isActive ? {} : {}}
+                key={sub.id}
+                onClick={() => setActiveSubTab(sub.id)}
+                className={`interview-sub-tab-btn${activeSubTab === sub.id ? ' active' : ''}`}
               >
-                {tab.id === 'audit_logs' && <ShieldAlert size={14} className="inline mr-0.5" />}
-                {tab.icon && <span>{tab.icon}</span>}
-                {tab.label} {tab.id !== 'audit_logs' && tab.id !== 'dashboard' && tabCount !== undefined ? `(${tabCount})` : ''}
-                {isActive && <span className="absolute bottom-0 left-0 w-full h-0.5 bg-blue-600 rounded-t-md" />}
+                {sub.label} <span className="interview-sub-tab-count">{subCount}</span>
               </button>
             );
           })}
         </div>
-      </div>
-
-      {/* Interview Sub-tabs (only when Interview tab is active) */}
-      {activeTab === 'interview' && !isGlobalSearch && (
-        <div className="bg-white border-b border-slate-100 px-6">
-          <div className="flex overflow-x-auto tabs-scroll space-x-2 py-2 pb-1">
-            {INTERVIEW_SUB_TABS.map(sub => {
-              // Calculate sub-tab counts
-              const todayKey = getISTDateYMD();
-              const subCount = (interviews || []).filter(interview => {
-                const stage = getStageFromStatus(interview.status);
-                const interviewDateKey = getISTDateKey(interview.interview_date);
-                if (!interviewDateKey) return false;
-                if (sub.id === 'today') {
-                  return interviewDateKey === todayKey && stage === 'Interview';
-                } else if (sub.id === 'upcoming') {
-                  return interviewDateKey > todayKey && stage === 'Interview';
-                } else if (sub.id === 'no_show') {
-                  return stage === 'No-Show' || (stage === 'Interview' && interviewDateKey < todayKey);
-                } else if (sub.id === 'round2') {
-                  return stage === 'Round 2';
-                }
-                return false;
-              }).length;
-              return (
-                <button
-                  key={sub.id}
-                  onClick={() => setActiveSubTab(sub.id)}
-                  className={`px-4 py-2 text-sm font-medium rounded-md transition-colors flex items-center gap-2 ${
-                    activeSubTab === sub.id
-                      ? 'bg-blue-50 text-blue-700 border border-blue-200'
-                      : 'bg-transparent text-slate-600 hover:text-slate-900'
-                  }`}
-                >
-                  {sub.label} <span className="bg-white border border-slate-300 px-2 py-0.5 rounded text-xs text-slate-700">{subCount}</span>
-                </button>
-              );
-            })}
-          </div>
-        </div>
       )}
 
-      {/* Audit Logs Sub-tabs (Pending / Audited) */}
+      {/* Audit Logs Sub-tabs */}
       {activeTab === 'audit_logs' && !isGlobalSearch && (
-        <div className="bg-white border-b border-slate-100 px-6">
-          <div className="flex space-x-4 py-2">
-            {['Pending', 'Audited'].map(item => {
-              const count = (interviews || []).filter(i => {
-                if (item === 'Pending') return !i.is_audited;
-                return !!i.is_audited;
-              }).length;
-              return (
-                <button
-                  key={item}
-                  onClick={() => setAuditSubTab(item)}
-                  className={`px-4 py-2 text-sm font-medium rounded-md transition-colors flex items-center gap-2 ${
-                    auditSubTab === item
-                      ? 'bg-blue-50 text-blue-700 border border-blue-200'
-                      : 'bg-transparent text-slate-600 hover:text-slate-900'
-                  }`}
-                >
-                  {item} <span className="bg-white border border-slate-300 px-2 py-0.5 rounded text-xs text-slate-700">{count}</span>
-                </button>
-              );
-            })}
-          </div>
+        <div className="interview-sub-tabs-bar">
+          {['Pending', 'Audited'].map(item => {
+            const count = (interviews || []).filter(i => {
+              if (item === 'Pending') return !i.is_audited;
+              return !!i.is_audited;
+            }).length;
+            return (
+              <button
+                key={item}
+                onClick={() => setAuditSubTab(item)}
+                className={`interview-sub-tab-btn${auditSubTab === item ? ' active' : ''}`}
+              >
+                {item} <span className="interview-sub-tab-count">{count}</span>
+              </button>
+            );
+          })}
         </div>
       )}
 
       {/* Global Search Indicator */}
       {isGlobalSearch && searchTerm && (
-        <div className="mx-6 mt-4 bg-orange-50 border border-orange-200 rounded-xl px-4 py-3 flex items-center justify-between">
+        <div className="interview-global-search-banner">
           <div className="flex items-center gap-2">
-            <Search size={14} className="text-orange-600" />
-            <span className="text-sm font-bold text-orange-800">
-              Searching across ALL pipeline stages for "{searchTerm}"
+            <Search size={14} style={{ color: '#fbbf24' }} />
+            <span className="banner-text">
+              Searching across ALL pipeline stages for &quot;{searchTerm}&quot;
             </span>
-            <span className="text-xs text-orange-600">({filteredInterviews.length} results)</span>
+            <span className="banner-meta">({filteredInterviews.length} results)</span>
           </div>
-          <button onClick={() => { setSearchTerm(''); setIsGlobalSearch(false); }} className="text-orange-600 hover:text-orange-800 text-xs font-bold flex items-center gap-1">
+          <button onClick={() => { setSearchTerm(''); setIsGlobalSearch(false); }} className="banner-clear">
             <X size={12} /> Clear
           </button>
         </div>
       )}
 
-      {/* Main Content Area */}
-      <div className="p-6">
-        
-        {/* Dashboard Tab */}
+      {/* Main Content */}
+      <div className="interview-page-content">
         {activeTab === 'dashboard' && (
           <DashboardView interviews={interviews} />
         )}
 
-        {/* Pipeline Table View for all non-dashboard tabs */}
         {activeTab !== 'dashboard' && (
-          <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
+          <div className="interview-table-container">
             {filteredInterviews.length === 0 ? (
-              <div className="py-20 text-center">
-                <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-slate-100 flex items-center justify-center">
-                  <Search size={24} className="text-slate-400" />
-                </div>
-                <p className="text-lg font-bold text-slate-700">No candidates found</p>
-                <p className="text-sm text-slate-500 mt-1">
+              <div className="task-empty-state">
+                <Search size={24} style={{ color: '#4a5570', marginBottom: 16 }} />
+                <p className="task-empty-state-title">No candidates found</p>
+                <p className="task-empty-state-sub">
                   {isGlobalSearch ? 'Try a different search term' : `No candidates in ${activeTab.replace('_', ' ')} stage`}
                 </p>
               </div>
             ) : (
-              <div className="overflow-x-auto" ref={tableScrollRef} onScroll={updateScrollButtons}>
-                <table className="w-full text-left">
-                  <thead className="bg-slate-50 border-b border-slate-200">
+              <div ref={tableScrollRef} onScroll={updateScrollButtons}>
+                <table className="interview-table">
+                  <thead>
                     <tr>
                       {checkboxVisible && (
-                        <th className="px-3 py-2.5 text-[10px] font-semibold text-slate-400 uppercase tracking-wider whitespace-nowrap w-10">
+                        <th style={{ width: 40 }}>
                           <input
                             type="checkbox"
-                            className="accent-blue-500 cursor-pointer"
                             checked={selectAll}
                             onChange={handleSelectAll}
-                            style={{ width: 16, height: 16 }}
+                            style={{ width: 16, height: 16, accentColor: '#3b82f6', cursor: 'pointer' }}
                           />
                         </th>
                       )}
-                      <th className="px-4 py-2.5 text-[10px] font-semibold text-slate-400 uppercase tracking-wider whitespace-nowrap">#</th>
-                      <th className="px-4 py-2.5 text-[10px] font-semibold text-slate-400 uppercase tracking-wider whitespace-nowrap">Created</th>
-                      <th className="px-4 py-2.5 text-[10px] font-semibold text-slate-400 uppercase tracking-wider whitespace-nowrap">Owner</th>
-                      <th className="px-4 py-2.5 text-[10px] font-semibold text-slate-400 uppercase tracking-wider whitespace-nowrap">Candidate</th>
-                      <th className="px-4 py-2.5 text-[10px] font-semibold text-slate-400 uppercase tracking-wider whitespace-nowrap">Exp & Gender</th>
-                      <th className="px-4 py-2.5 text-[10px] font-semibold text-slate-400 uppercase tracking-wider whitespace-nowrap">Role & Source</th>
-                      <th className="px-4 py-2.5 text-[10px] font-semibold text-slate-400 uppercase tracking-wider whitespace-nowrap">Accept & Offer</th>
-                      <th className="px-5 py-2.5 text-[10px] font-semibold text-slate-400 uppercase tracking-wider whitespace-nowrap">Interview Date & Alerts</th>
-                      <th className="px-4 py-2.5 text-[10px] font-semibold text-slate-400 uppercase tracking-wider whitespace-nowrap text-right">Action</th>
+                      <th>#</th>
+                      <th>Created</th>
+                      <th>Owner</th>
+                      <th>Candidate</th>
+                      <th>Exp & Gender</th>
+                      <th>Role & Source</th>
+                      <th>Accept & Offer</th>
+                      <th>Interview Date & Alerts</th>
+                      <th style={{ textAlign: 'right' }}>Action</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-100">
+                  <tbody>
                     {filteredInterviews.map((interview, index) => {
                       const stage = getStageFromStatus(interview.status);
                       const primaryBtn = getForwardButton(stage);
@@ -2992,10 +3140,39 @@ const SettingsModal = ({ onCompanySettingsChange, onDeclineReasonsChange, onCool
 };
 
 // Interview Table Component
+const formatInterviewLabel = (str) => {
+  if (!str) return '—';
+  return String(str).replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+};
+
+const InterviewCreatedMeta = ({ createdAt }) => {
+  if (!createdAt) {
+    return (
+      <>
+        <div className="cell-primary">—</div>
+        <div className="cell-secondary">Not available</div>
+      </>
+    );
+  }
+  const date = new Date(createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'Asia/Kolkata' });
+  const time = new Date(createdAt).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Asia/Kolkata' });
+  return (
+    <>
+      <div className="cell-primary">{date}</div>
+      <div className="cell-secondary">{time} IST</div>
+    </>
+  );
+};
+
 // --- Tag helper ---
 const Tag = ({ icon, text, color }) => {
-  const colors = { blue: "bg-blue-100 text-blue-700", pink: "bg-pink-100 text-pink-700", purple: "bg-purple-100 text-purple-700", green: "bg-emerald-100 text-emerald-700", orange: "bg-orange-100 text-orange-700", red: "bg-red-100 text-red-700" };
-  return <span className={`flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold ${colors[color] || "bg-slate-100 text-slate-700"}`}>{icon && icon}<span>{text}</span></span>;
+  const tone = { blue: 'accent', pink: 'accent', purple: 'accent', green: 'success', orange: 'warn', red: 'danger' }[color] || '';
+  return (
+    <span className={`interview-pill${tone ? ` ${tone}` : ''}`}>
+      {icon}
+      <span>{formatInterviewLabel(text)}</span>
+    </span>
+  );
 };
 
 // --- CANDIDATE TABLE ROW (matching interview module.html) ---
@@ -3046,43 +3223,37 @@ const CandidateTableRow = ({ interview, index, stage, primaryBtn, isNoShow, acti
   // Audit Log view
   if (activeTab === 'audit_logs') {
     return (
-      <tr className={`hover:bg-slate-50/80 transition-colors group ${isSelected ? 'bg-blue-50 ring-1 ring-inset ring-blue-300' : ''}`}>
+      <tr className={`interview-row${isSelected ? ' selected' : ''}`}>
         {checkboxVisible && (
-          <td className="px-3 py-3 border-r border-slate-100">
+          <td>
             <input type="checkbox" className="accent-blue-500 cursor-pointer" checked={!!isSelected} onChange={() => onSelect && onSelect()} onClick={(e) => e.stopPropagation()} style={{ width: 16, height: 16 }} />
           </td>
         )}
-        <td className="px-4 py-3 text-center font-bold text-slate-400 text-xs border-r border-slate-100">{index}</td>
-        <td className="px-4 py-3 border-r border-slate-100">
-          <div className="text-xs font-semibold text-slate-700">{interview.created_at ? new Date(interview.created_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'Asia/Kolkata' }) : 'N/A'}</div>
-          <div className="text-[10px] text-slate-500 mt-0.5 flex items-center gap-1">{interview.created_at ? <>{new Date(interview.created_at).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Asia/Kolkata' })} <span className="text-[9px] font-semibold text-indigo-400 bg-indigo-50 px-1 rounded">IST</span></> : ''}</div>
-        </td>
-        <td className="px-4 py-3 border-r border-slate-100" colSpan={3}>
-          <div className="flex items-center gap-2">
-            <div className="w-7 h-7 rounded-full bg-orange-100 text-orange-600 flex items-center justify-center font-semibold text-xs shrink-0">{(interview.candidate_name || '?').charAt(0)}</div>
-            <div>
-              <div className="font-semibold text-slate-800 text-xs whitespace-nowrap">{interview.candidate_name || '-'}</div>
+        <td className="col-index">{index}</td>
+        <td><InterviewCreatedMeta createdAt={interview.created_at} /></td>
+        <td colSpan={3}>
+          <div className="cell-inline">
+            <div className="cell-avatar">{(interview.candidate_name || '?').charAt(0)}</div>
+            <div className="cell-stack">
+              <div className="cell-primary">{formatInterviewLabel(interview.candidate_name)}</div>
+              <div className="cell-secondary">Candidate</div>
             </div>
           </div>
         </td>
-        <td className="px-4 py-3 border-r border-slate-100">
-          <div className="text-xs font-medium text-slate-700 whitespace-nowrap">{interview.job_opening || '-'}</div>
-          <div className="text-[10px] text-slate-500 whitespace-nowrap">{interview.source_portal || '-'}</div>
+        <td>
+          <div className="cell-stack">
+            <div className="cell-primary">{formatInterviewLabel(interview.job_opening)}</div>
+            <div className="cell-secondary">{interview.source_portal || '—'}</div>
+          </div>
         </td>
-        <td className="px-4 py-3 border-r border-slate-100" colSpan={2}>
-          <span className="text-[10px] text-slate-400 italic">—</span>
-        </td>
-        <td className="px-4 py-3 text-right">
-          <div className="flex items-center justify-end gap-2">
-            <button onClick={onWhatsApp} title={interview.wa_sent ? 'WhatsApp Sent' : 'Send WhatsApp Invite'} className={`p-1.5 rounded-lg border transition-all ${interview.wa_sent ? 'bg-emerald-50 border-emerald-300' : 'bg-white border-slate-200 hover:border-emerald-400 hover:bg-emerald-50'}`}>
-              <svg viewBox="0 0 24 24" width="15" height="15" fill={interview.wa_sent ? '#16a34a' : '#64748b'}><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z"/><path d="M12 0C5.373 0 0 5.373 0 12c0 2.127.558 4.122 1.532 5.858L.057 23.47a.5.5 0 0 0 .609.61l5.701-1.493A11.954 11.954 0 0 0 12 24c6.627 0 12-5.373 12-12S18.627 0 12 0zm0 22c-1.869 0-3.628-.49-5.153-1.346l-.375-.213-3.834 1.004 1.022-3.74-.227-.381A9.956 9.956 0 0 1 2 12C2 6.477 6.477 2 12 2s10 4.477 10 10-4.477 10-10 10z"/></svg>
+        <td colSpan={2}><span className="cell-secondary">—</span></td>
+        <td className="actions-cell">
+          <div className="actions-wrap">
+            <button type="button" onClick={onWhatsApp} title={interview.wa_sent ? 'WhatsApp Sent' : 'Send WhatsApp Invite'} className={`action-btn${interview.wa_sent ? ' action-btn-audit done' : ''}`}>
+              <svg viewBox="0 0 24 24" width="14" height="14" fill={interview.wa_sent ? '#34d399' : '#6b7a99'}><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z"/><path d="M12 0C5.373 0 0 5.373 0 12c0 2.127.558 4.122 1.532 5.858L.057 23.47a.5.5 0 0 0 .609.61l5.701-1.493A11.954 11.954 0 0 0 12 24c6.627 0 12-5.373 12-12S18.627 0 12 0zm0 22c-1.869 0-3.628-.49-5.153-1.346l-.375-.213-3.834 1.004 1.022-3.74-.227-.381A9.956 9.956 0 0 1 2 12C2 6.477 6.477 2 12 2s10 4.477 10 10-4.477 10-10 10z"/></svg>
             </button>
-            <button onClick={onToggleAudit} className="flex items-center gap-2 rounded-lg border px-3 py-1.5 transition-all group/audit" style={interview.is_audited ? {background:'#d1fae5',borderColor:'#6ee7b7'} : {background:'#f8fafc',borderColor:'#e2e8f0'}}>
-              {interview.is_audited ? (
-                <><CheckCircle size={15} className="text-emerald-600" /> <span className="text-emerald-700 font-black text-xs">Audited</span></>
-              ) : (
-                <><Circle size={15} className="text-slate-400 group-hover/audit:text-emerald-500 transition-colors" /> <span className="text-slate-500 text-xs group-hover/audit:text-slate-800">Pending</span></>
-              )}
+            <button type="button" onClick={onToggleAudit} className={`action-btn-audit${interview.is_audited ? ' done' : ''}`}>
+              {interview.is_audited ? <><CheckCircle size={14} /> Audited</> : <><Circle size={14} /> Pending</>}
             </button>
           </div>
         </td>
@@ -3090,155 +3261,148 @@ const CandidateTableRow = ({ interview, index, stage, primaryBtn, isNoShow, acti
     );
   }
 
+  const formatSalary = (value) => (value ? `₹${Number(value).toLocaleString('en-IN')}` : 'Pending');
+
   // Standard Pipeline Row
   return (
-    <tr className={`hover:bg-slate-50/70 transition-colors group cursor-pointer ${isNoShow ? 'bg-amber-50/60' : ''} ${isSelected ? 'bg-blue-50 ring-1 ring-inset ring-blue-300' : ''}`}>
+    <tr className={`interview-row${isNoShow ? ' no-show' : ''}${isSelected ? ' selected' : ''}`}>
       {checkboxVisible && (
-        <td className="px-3 py-3 border-r border-slate-100">
+        <td>
           <input type="checkbox" className="accent-blue-500 cursor-pointer" checked={!!isSelected} onChange={() => onSelect && onSelect()} onClick={(e) => e.stopPropagation()} style={{ width: 16, height: 16 }} />
         </td>
       )}
-      <td className="px-4 py-3 text-center font-bold text-slate-400 text-xs border-r border-slate-100" onClick={onRowClick}>{index}</td>
+      <td className="col-index" onClick={onRowClick}>{index}</td>
 
-      <td className="px-4 py-3 border-r border-slate-100" onClick={onRowClick}>
-        <div className="text-xs font-medium text-slate-600 whitespace-nowrap">{interview.created_at ? new Date(interview.created_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'Asia/Kolkata' }) : 'N/A'}</div>
-        <div className="text-[10px] text-slate-400 mt-0.5 flex items-center gap-1">{interview.created_at ? <>{new Date(interview.created_at).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Asia/Kolkata' })} <span className="text-[9px] font-semibold text-indigo-400 bg-indigo-50 px-1 rounded">IST</span></> : 'Added'}</div>
-      </td>
+      <td onClick={onRowClick}><InterviewCreatedMeta createdAt={interview.created_at} /></td>
 
-      <td className="px-4 py-3 border-r border-slate-100" onClick={onRowClick}>
-        <div className="text-xs font-medium text-slate-700 whitespace-nowrap">{interview.created_by || '-'}</div>
-        <div className="text-[10px] text-slate-500 mt-0.5 whitespace-nowrap">{interview.hr_address || 'Desk N/A'}</div>
-      </td>
-
-      <td className="px-4 py-3 border-r border-slate-100" onClick={onRowClick}>
-        <div className="flex items-center gap-2">
-          <div className="w-7 h-7 rounded-full bg-gradient-to-br from-purple-100 to-indigo-100 text-indigo-700 flex items-center justify-center font-black text-xs shrink-0">{(interview.candidate_name || '?').charAt(0)}</div>
-          <div>
-            <button onClick={(e) => { e.stopPropagation(); onRowClick(); }} className="font-semibold text-slate-800 text-xs hover:text-blue-700 transition-colors text-left leading-tight whitespace-nowrap">{interview.candidate_name || '-'}</button>
-          </div>
-        </div>
-        {isGlobalSearch && <Tag text={stage} color="orange" />}
-      </td>
-
-      <td className="px-4 py-3 border-r border-slate-100" onClick={onRowClick}>
-        <div className="flex flex-col gap-1">
-          <Tag icon={<Briefcase size={9} />} text={interview.experience_type || 'Fresher'} color={(!interview.experience_type || interview.experience_type === 'Fresher') ? 'green' : 'purple'} />
-          <Tag icon={<User size={9} />} text={interview.gender || '-'} color={interview.gender === 'Female' ? 'pink' : 'blue'} />
+      <td onClick={onRowClick}>
+        <div className="cell-stack">
+          <div className="cell-primary">{formatInterviewLabel(interview.created_by)}</div>
+          <div className="cell-secondary">{interview.hr_address || 'Desk N/A'}</div>
         </div>
       </td>
 
-      <td className="px-4 py-3 border-r border-slate-100" onClick={onRowClick}>
-        <div className="text-xs font-medium text-slate-700 whitespace-nowrap">{interview.job_opening || '-'}</div>
-        <div className="text-[10px] text-slate-500 mt-0.5 whitespace-nowrap">{interview.source_portal || '-'}</div>
-      </td>
-
-      <td className="px-2 py-3 border-r border-slate-100" onClick={onRowClick}>
-        <div className="flex flex-col gap-1">
-          <div className="bg-emerald-50 border border-emerald-200 rounded-full px-2 py-0.5 inline-flex items-center gap-0.5 w-fit whitespace-nowrap">
-            <span className="text-[9px] font-bold text-emerald-700">Expected: INR {interview.offer_salary ? Number(interview.offer_salary).toLocaleString('en-IN') : 'Pending'}</span>
-          </div>
-          <div className="bg-blue-50 border border-blue-200 rounded-full px-2 py-0.5 inline-flex items-center gap-0.5 w-fit whitespace-nowrap">
-            <span className="text-[9px] font-bold text-blue-700">Final Offer: {interview.monthly_salary_offered ? 'INR ' + Number(interview.monthly_salary_offered).toLocaleString('en-IN') : 'Pending'}</span>
+      <td onClick={onRowClick}>
+        <div className="cell-inline">
+          <div className="cell-avatar">{(interview.candidate_name || '?').charAt(0)}</div>
+          <div className="cell-stack">
+            <button type="button" onClick={(e) => { e.stopPropagation(); onRowClick(); }} className="cell-link">{formatInterviewLabel(interview.candidate_name)}</button>
+            {isGlobalSearch && <Tag text={stage} color="orange" />}
           </div>
         </div>
       </td>
 
-      <td className="px-5 py-3 border-r border-slate-100" onClick={onRowClick}>
-        <div className="text-xs font-medium text-blue-600 mb-1.5 whitespace-nowrap">{formatInterviewDate(interview.interview_date)}</div>
-        <div className="flex flex-col gap-1 items-start">
-          {(stage === 'Round 2' && interview.round1_feedback) && (
-            <button onClick={(e) => { e.stopPropagation(); onViewRound1 && onViewRound1(); }} className="bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 text-indigo-700 px-2 py-1 rounded-md text-[11px] font-semibold flex items-center gap-1.5 transition-colors">
-              <Info size={11}/> R1 Notes
-            </button>
-          )}
-          {activeTab === 'rejected' && interview.decline_reason && <span className="text-[11px] font-bold text-red-700 bg-red-50 border border-red-200 px-2 py-0.5 rounded-md">{interview.decline_reason}</span>}
-          {interview.reassign_count > 0 && (
-            <button onClick={(e) => { e.stopPropagation(); onViewReassignHistory && onViewReassignHistory(); }} className="bg-orange-50 hover:bg-orange-100 border border-orange-200 rounded-md px-2 py-0.5 text-[11px] text-orange-600 font-semibold flex items-center gap-1 transition-colors">
-              <RefreshCw size={9}/> Reassigned: {interview.reassign_count}x
-            </button>
-          )}
-          {interview.reschedule_count > 0 && (
-            <button onClick={(e) => { e.stopPropagation(); onViewRescheduleHistory && onViewRescheduleHistory(); }} className="bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded-md px-2 py-0.5 text-[11px] text-indigo-600 font-semibold flex items-center gap-1 transition-colors">
-              <Calendar size={9}/> Rescheduled: {interview.reschedule_count}x
-            </button>
-          )}
-          {(!interview.reassign_count && !interview.reschedule_count && activeTab !== 'rejected' && stage !== 'Round 2') && (
-            <span className="text-[10px] text-slate-400 italic">No alerts</span>
-          )}
+      <td onClick={onRowClick}>
+        <div className="cell-stack">
+          <div className="cell-primary">{formatInterviewLabel(interview.experience_type || 'Fresher')}</div>
+          <div className="cell-secondary">{interview.gender || '—'}</div>
         </div>
       </td>
 
-      <td className="px-4 py-3 text-right relative">
-        <div className="flex items-center justify-end gap-1.5">
-          
+      <td onClick={onRowClick}>
+        <div className="cell-stack">
+          <div className="cell-primary">{formatInterviewLabel(interview.job_opening)}</div>
+          <div className="cell-secondary">{interview.source_portal || '—'}</div>
+        </div>
+      </td>
+
+      <td onClick={onRowClick}>
+        <div className="cell-stack">
+          <div className="cell-secondary">Expected: {formatSalary(interview.offer_salary)}</div>
+          <div className="cell-secondary">Final: {formatSalary(interview.monthly_salary_offered)}</div>
+        </div>
+      </td>
+
+      <td onClick={onRowClick}>
+        <div className="cell-stack">
+          <div className="cell-primary" style={{ color: '#60a5fa' }}>{formatInterviewDate(interview.interview_date)}</div>
+          <div className="cell-stack" style={{ marginTop: 4, gap: 4 }}>
+            {(stage === 'Round 2' && interview.round1_feedback) && (
+              <button type="button" onClick={(e) => { e.stopPropagation(); onViewRound1 && onViewRound1(); }} className="alert-link">
+                <Info size={11}/> R1 notes
+              </button>
+            )}
+            {activeTab === 'rejected' && interview.decline_reason && (
+              <span className="interview-pill danger">{interview.decline_reason}</span>
+            )}
+            {interview.reassign_count > 0 && (
+              <button type="button" onClick={(e) => { e.stopPropagation(); onViewReassignHistory && onViewReassignHistory(); }} className="alert-link warn">
+                <RefreshCw size={10}/> Reassigned {interview.reassign_count}x
+              </button>
+            )}
+            {interview.reschedule_count > 0 && (
+              <button type="button" onClick={(e) => { e.stopPropagation(); onViewRescheduleHistory && onViewRescheduleHistory(); }} className="alert-link">
+                <Calendar size={10}/> Rescheduled {interview.reschedule_count}x
+              </button>
+            )}
+            {(!interview.reassign_count && !interview.reschedule_count && activeTab !== 'rejected' && stage !== 'Round 2') && (
+              <span className="cell-secondary">No alerts</span>
+            )}
+          </div>
+        </div>
+      </td>
+
+      <td className="actions-cell">
+        <div className="actions-wrap">
           {activeTab !== 'rejected' && activeTab !== 'hired' && !isNoShow && primaryBtn && (
-            <button onClick={(e) => { e.stopPropagation(); onForward(primaryBtn.targetStage); }} className="bg-blue-600 hover:bg-blue-500 text-white text-[11px] font-bold px-3 py-2 rounded-lg shadow-sm shadow-blue-600/20 transition-all flex items-center gap-1.5 whitespace-nowrap">
+            <button type="button" onClick={(e) => { e.stopPropagation(); onForward(primaryBtn.targetStage); }} className="action-btn-primary">
               <ChevronRight size={14} /> {primaryBtn.text}
             </button>
           )}
-          
+
           {isNoShow && (
-            <button onClick={(e) => { e.stopPropagation(); onReschedule(); }} className="bg-amber-500/20 text-amber-700 border border-amber-300 text-[11px] font-bold px-3 py-2 rounded-lg transition-all">
-              Revive Lead
+            <button type="button" onClick={(e) => { e.stopPropagation(); onReschedule(); }} className="action-btn-warn">
+              Revive lead
             </button>
           )}
 
           {activeTab !== 'rejected' && activeTab !== 'hired' && (
             <div className="relative">
-              <button ref={btnRef} onClick={handleToggleDropdown} className="p-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 transition-colors border border-slate-200">
+              <button type="button" ref={btnRef} onClick={handleToggleDropdown} className={`action-btn${isDropdownOpen ? ' open' : ''}`} aria-label="More actions" aria-expanded={isDropdownOpen}>
                 <MoreVertical size={15} />
               </button>
               {isDropdownOpen && dropdownPos && createPortal(
-                <div
-                  ref={dropdownRef}
-                  style={{ position: 'fixed', top: dropdownPos.top, right: dropdownPos.right, zIndex: 9999 }}
-                  className="w-52 bg-white border border-slate-200 rounded-xl shadow-2xl py-1.5 overflow-hidden text-left"
-                >
+                <div ref={dropdownRef} className="interview-row-dropdown" style={{ top: dropdownPos.top, right: dropdownPos.right }}>
                   {(stage === 'Interview' || stage === 'Round 2') && (
                     <>
-                      <button onClick={() => { onReschedule(); setIsDropdownOpen(false); }} className="w-full text-left px-4 py-2.5 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2"><Calendar size={14}/> Reschedule Date</button>
+                      <button type="button" onClick={() => { onReschedule(); setIsDropdownOpen(false); }} className="interview-row-dropdown-item"><Calendar size={14}/> Reschedule date</button>
                       {!isNoShow && stage === 'Interview' && activeSubTab !== 'no_show' && (
-                        <button onClick={() => { onMarkNoShow(); setIsDropdownOpen(false); }} className="w-full text-left px-4 py-2.5 text-sm text-amber-600 hover:bg-amber-50 flex items-center gap-2"><PhoneOff size={14}/> Mark No-Show</button>
+                        <button type="button" onClick={() => { onMarkNoShow(); setIsDropdownOpen(false); }} className="interview-row-dropdown-item warn"><PhoneOff size={14}/> Mark no-show</button>
                       )}
                     </>
                   )}
-                  <div className="my-1 border-t border-slate-100"/>
-                  <button onClick={() => { onDecline(); setIsDropdownOpen(false); }} className="w-full text-left px-4 py-2.5 text-sm text-red-600 hover:bg-red-50 flex items-center gap-2"><XCircle size={14}/> Decline / Reject</button>
+                  <div className="interview-row-dropdown-divider" />
+                  <button type="button" onClick={() => { onDecline(); setIsDropdownOpen(false); }} className="interview-row-dropdown-item danger"><XCircle size={14}/> Decline / reject</button>
                 </div>,
                 document.body
               )}
             </div>
           )}
 
-          {/* Three-dots menu for Hired stage */}
           {activeTab === 'hired' && (
             <div className="relative">
-              <button ref={btnRef} onClick={handleToggleDropdown} className="p-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 transition-colors border border-slate-200">
+              <button type="button" ref={btnRef} onClick={handleToggleDropdown} className={`action-btn${isDropdownOpen ? ' open' : ''}`} aria-label="More actions" aria-expanded={isDropdownOpen}>
                 <MoreVertical size={15} />
               </button>
               {isDropdownOpen && dropdownPos && createPortal(
-                <div
-                  ref={dropdownRef}
-                  style={{ position: 'fixed', top: dropdownPos.top, right: dropdownPos.right, zIndex: 9999 }}
-                  className="w-52 bg-white border border-slate-200 rounded-xl shadow-2xl py-1.5 overflow-hidden text-left"
-                >
-                  <button onClick={() => { onDecline(); setIsDropdownOpen(false); }} className="w-full text-left px-4 py-2.5 text-sm text-red-600 hover:bg-red-50 flex items-center gap-2"><XCircle size={14}/> Reject / Decline</button>
+                <div ref={dropdownRef} className="interview-row-dropdown" style={{ top: dropdownPos.top, right: dropdownPos.right }}>
+                  <button type="button" onClick={() => { onDecline(); setIsDropdownOpen(false); }} className="interview-row-dropdown-item danger"><XCircle size={14}/> Reject / decline</button>
                 </div>,
                 document.body
               )}
             </div>
           )}
 
-          <button onClick={(e) => { e.stopPropagation(); onWhatsApp(); }} title={interview.wa_sent ? 'WhatsApp Invite Sent' : 'Send WhatsApp Invite'} className={`p-2 rounded-lg border transition-all flex-shrink-0 ${interview.wa_sent ? 'bg-emerald-50 border-emerald-300' : 'bg-white border-slate-200 hover:border-emerald-400 hover:bg-emerald-50'}`}>
-            <svg viewBox="0 0 24 24" width="14" height="14" fill={interview.wa_sent ? '#16a34a' : '#94a3b8'}><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z"/><path d="M12 0C5.373 0 0 5.373 0 12c0 2.127.558 4.122 1.532 5.858L.057 23.47a.5.5 0 0 0 .609.61l5.701-1.493A11.954 11.954 0 0 0 12 24c6.627 0 12-5.373 12-12S18.627 0 12 0zm0 22c-1.869 0-3.628-.49-5.153-1.346l-.375-.213-3.834 1.004 1.022-3.74-.227-.381A9.956 9.956 0 0 1 2 12C2 6.477 6.477 2 12 2s10 4.477 10 10-4.477 10-10 10z"/></svg>
+          <button type="button" onClick={(e) => { e.stopPropagation(); onWhatsApp(); }} title={interview.wa_sent ? 'WhatsApp invite sent' : 'Send WhatsApp invite'} className={`action-btn${interview.wa_sent ? ' action-btn-audit done' : ''}`}>
+            <svg viewBox="0 0 24 24" width="14" height="14" fill={interview.wa_sent ? '#34d399' : '#6b7a99'}><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z"/><path d="M12 0C5.373 0 0 5.373 0 12c0 2.127.558 4.122 1.532 5.858L.057 23.47a.5.5 0 0 0 .609.61l5.701-1.493A11.954 11.954 0 0 0 12 24c6.627 0 12-5.373 12-12S18.627 0 12 0zm0 22c-1.869 0-3.628-.49-5.153-1.346l-.375-.213-3.834 1.004 1.022-3.74-.227-.381A9.956 9.956 0 0 1 2 12C2 6.477 6.477 2 12 2s10 4.477 10 10-4.477 10-10 10z"/></svg>
           </button>
 
           {(activeTab === 'hired' || activeTab === 'rejected') && (
-            <button onClick={(e) => { e.stopPropagation(); onViewHistory(); }} className="text-[11px] font-bold text-slate-700 bg-slate-100 border border-slate-200 px-3 py-2 rounded-lg hover:bg-slate-200 transition-colors flex items-center gap-1.5">
-              <History size={12}/> Full Track
+            <button type="button" onClick={(e) => { e.stopPropagation(); onViewHistory(); }} className="action-btn-primary">
+              <History size={12}/> Full track
             </button>
           )}
-          {activeTab === 'hired' && <span className="text-[11px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-2 rounded-lg">✅ Hired</span>}
+          {activeTab === 'hired' && <span className="interview-pill success">Hired</span>}
         </div>
       </td>
     </tr>
@@ -4799,8 +4963,10 @@ const SearchableSelect = ({
   className = "", 
   required = false,
   name,
-  disabled = false
+  disabled = false,
+  variant = 'light'
 }) => {
+  const isDark = variant === 'dark';
   const [isOpen, setIsOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const dropdownRef = useRef(null);
@@ -4834,10 +5000,12 @@ const SearchableSelect = ({
   return (
     <div className="relative" ref={dropdownRef}>
       <div
-        className={`w-full px-3 py-2 border border-cyan-400 rounded text-black font-bold cursor-pointer flex justify-between items-center ${className} ${disabled ? 'bg-gray-100 cursor-not-allowed' : 'bg-white'}`}
+        className={isDark
+          ? `interview-create-select-trigger${value ? '' : ' placeholder'} ${className}${disabled ? ' opacity-60 cursor-not-allowed' : ''}`
+          : `w-full px-3 py-2 border border-cyan-400 rounded text-black font-bold cursor-pointer flex justify-between items-center ${className} ${disabled ? 'bg-gray-100 cursor-not-allowed' : 'bg-white'}`}
         onClick={() => !disabled && setIsOpen(!isOpen)}
       >
-        <span className={value ? 'text-black' : 'text-gray-500'}>
+        <span className={isDark ? undefined : (value ? 'text-black' : 'text-gray-500')}>
           {displayValue}
         </span>
         <svg 
@@ -4851,33 +5019,31 @@ const SearchableSelect = ({
       </div>
 
       {isOpen && !disabled && (
-        <div className="absolute z-[99999] w-full mt-1 bg-white border border-gray-300 rounded-md shadow-lg max-h-60 overflow-auto">
-          {/* Search input */}
-          <div className="p-2 border-b border-gray-200">
+        <div className={isDark ? 'interview-create-select-dropdown' : 'absolute z-[99999] w-full mt-1 bg-white border border-gray-300 rounded-md shadow-lg max-h-60 overflow-auto'}>
+          <div className={isDark ? 'interview-create-select-search' : 'p-2 border-b border-gray-200'}>
             <input
               type="text"
               placeholder="Search options..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full px-2 py-1 border border-gray-300 rounded text-sm text-black focus:outline-none focus:ring-2 focus:ring-cyan-500"
+              className={isDark ? 'interview-create-input' : 'w-full px-2 py-1 border border-gray-300 rounded text-sm text-black focus:outline-none focus:ring-2 focus:ring-cyan-500'}
               onClick={(e) => e.stopPropagation()}
             />
           </div>
           
-          {/* Options list */}
           <div className="max-h-48 overflow-y-auto">
             {filteredOptions.length > 0 ? (
               filteredOptions.map((option, index) => (
                 <div
                   key={index}
-                  className="px-3 py-2 cursor-pointer hover:bg-cyan-50 hover:text-cyan-700 text-black"
+                  className={isDark ? 'interview-create-select-option' : 'px-3 py-2 cursor-pointer hover:bg-cyan-50 hover:text-cyan-700 text-black'}
                   onClick={() => handleSelect(option)}
                 >
                   {option}
                 </div>
               ))
             ) : (
-              <div className="px-3 py-2 text-gray-500 text-sm">
+              <div className={isDark ? 'interview-create-select-empty' : 'px-3 py-2 text-gray-500 text-sm'}>
                 No options found
               </div>
             )}
@@ -4981,6 +5147,22 @@ const CreateInterviewModal = ({ onClose, onInterviewCreated, jobOpeningOptions, 
   const [reassignReason, setReassignReason] = useState('');
   const [showDuplicateDetails, setShowDuplicateDetails] = useState(false);
   const [checkingDuplicate, setCheckingDuplicate] = useState(false);
+  const [panelVisible, setPanelVisible] = useState(false);
+
+  useEffect(() => {
+    const frame = requestAnimationFrame(() => setPanelVisible(true));
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      cancelAnimationFrame(frame);
+      document.body.style.overflow = prevOverflow;
+    };
+  }, []);
+
+  const handleClose = useCallback(() => {
+    setPanelVisible(false);
+    window.setTimeout(() => onClose(), 280);
+  }, [onClose]);
 
   // Available users for reassignment
   const [availableUsers, setAvailableUsers] = useState([]);
@@ -5080,7 +5262,7 @@ const CreateInterviewModal = ({ onClose, onInterviewCreated, jobOpeningOptions, 
       );
       if (response.success) {
         alert('Reassignment request submitted successfully. Awaiting admin approval.');
-        onClose();
+        handleClose();
       } else {
         alert(response.message || 'Failed to submit reassignment request');
       }
@@ -5211,12 +5393,12 @@ const CreateInterviewModal = ({ onClose, onInterviewCreated, jobOpeningOptions, 
   };
 
   // Helper function to get input CSS classes with error highlighting
-  const getInputClasses = (fieldName, baseClasses = "w-full px-3 py-2 border rounded text-black font-bold") => {
+  const getInputClasses = (fieldName, extra = '') => {
     const hasError = errors[fieldName];
-    return hasError 
-      ? `${baseClasses} border-red-500 bg-red-50 focus:border-red-500 focus:ring-red-200` 
-      : `${baseClasses} border-cyan-400 focus:border-cyan-500 focus:ring-cyan-200`;
+    return `interview-create-input${extra ? ` ${extra}` : ''}${hasError ? ' error' : ''}`;
   };
+
+  const drawerInputCls = 'interview-create-input';
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -5365,27 +5547,32 @@ const CreateInterviewModal = ({ onClose, onInterviewCreated, jobOpeningOptions, 
 
   const handleFinish = async () => {
     await onInterviewCreated(createdInterviewData);
-    onClose();
+    handleClose();
   };
 
-  const drawerInputCls = "w-full bg-slate-50 border border-slate-200 focus:bg-white focus:border-indigo-500 rounded-xl px-3 py-2.5 text-sm text-slate-900 outline-none transition-all";
   const canSubmit = formData.mobile_number.length >= 10 && formData.interview_date && formData.candidate_name.trim();
 
-  return (
-    <div className="fixed inset-0 z-[9999] flex items-center justify-center">
-      {/* Backdrop */}
-      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
-
-      {/* Modal */}
+  return createPortal(
+    <>
       <div
-        className="relative w-full max-w-2xl bg-white rounded-2xl flex flex-col shadow-2xl max-h-[90vh]"
-        style={{ animation: 'scaleIn 0.2s ease-out' }}
+        className="interview-create-backdrop"
+        aria-hidden="true"
+        onClick={handleClose}
+        style={{ opacity: panelVisible ? 1 : 0 }}
+      />
+
+      <div
+        className="interview-create-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-label={formStep === 1 ? 'Add Candidate' : 'Attachments'}
+        tabIndex={-1}
+        style={{ transform: panelVisible ? 'translateX(0)' : 'translateX(100%)' }}
       >
-        {/* Header */}
-        <div className="px-6 py-4 border-b border-slate-200 bg-gradient-to-r from-slate-900 to-indigo-900 rounded-t-2xl flex justify-between items-center shrink-0">
-          <div>
-            <h2 className="font-black text-white text-lg flex items-center gap-2">
-              <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" opacity="0.9">
+        <div className="interview-create-header">
+          <div className="interview-create-header-left">
+            <h2>
+              <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/>
                 <circle cx="9" cy="7" r="4"/>
                 <line x1="19" y1="8" x2="19" y2="14"/>
@@ -5393,59 +5580,56 @@ const CreateInterviewModal = ({ onClose, onInterviewCreated, jobOpeningOptions, 
               </svg>
               {formStep === 1 ? 'Add Candidate' : 'Attachments'}
             </h2>
-            <p className="text-slate-400 text-xs mt-0.5">
-              {formStep === 1 ? 'Step 1 of 2 — Candidate details' : 'Step 2 of 2 — Upload documents'}
-            </p>
+            <p>{formStep === 1 ? 'Step 1 of 2 — Candidate details' : 'Step 2 of 2 — Upload documents'}</p>
           </div>
-          <div className="flex items-center gap-3">
-            {/* Step indicator dots */}
-            <div className="flex items-center gap-1.5">
-              <div className={`w-2 h-2 rounded-full ${formStep === 1 ? 'bg-white' : 'bg-white/40'}`}></div>
-              <div className={`w-2 h-2 rounded-full ${formStep === 2 ? 'bg-white' : 'bg-white/40'}`}></div>
+          <div className="interview-create-header-right">
+            <div className="interview-create-steps">
+              <div className={`interview-create-step-dot${formStep === 1 ? ' active' : ''}`} />
+              <div className={`interview-create-step-dot${formStep === 2 ? ' active' : ''}`} />
             </div>
-            <button onClick={onClose} className="p-2 rounded-lg bg-white/10 hover:bg-white/20 text-white transition-colors">
-              <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            <button type="button" onClick={handleClose} className="interview-create-close" aria-label="Close">
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
             </button>
           </div>
         </div>
 
-        {/* Scrollable body */}
-        <div className="p-5 overflow-y-auto flex-1 bg-slate-50 space-y-4">
+        <div className="interview-create-body">
 
         {formStep === 1 && (<>
-          {/* ── Phone Check ── */}
-          <div className="bg-white border-2 border-indigo-200 rounded-2xl p-4">
-            <label className="block text-xs font-black text-indigo-600 uppercase tracking-wider mb-2">
-              📱 Phone Number <span className="text-red-400">*</span>
-            </label>
-            <input
-              name="mobile_number"
-              value={formData.mobile_number}
-              onChange={handlePhoneCheck}
-              className="w-full bg-indigo-50 border border-indigo-200 focus:bg-white focus:border-indigo-500 rounded-xl px-4 py-3 text-slate-900 text-base font-bold outline-none transition-all tracking-widest"
-              placeholder="Enter 10-digit mobile"
-              maxLength="10"
-              inputMode="numeric"
-            />
-            {formData.mobile_number.length > 0 && formData.mobile_number.length < 10 && (
-              <p className="text-xs text-amber-600 mt-1 font-medium">Enter full 10-digit number</p>
-            )}
-            {errors.mobile_number && (
-              <p className="text-xs text-red-500 mt-1 font-medium">{errors.mobile_number}</p>
-            )}
+          <div className="interview-create-section">
+            <div className="interview-create-section-head">Phone Number</div>
+            <div className="interview-create-section-body">
+              <div className="interview-create-field">
+                <label className="interview-create-label">Mobile <span className="req">*</span></label>
+                <input
+                  name="mobile_number"
+                  value={formData.mobile_number}
+                  onChange={handlePhoneCheck}
+                  className={getInputClasses('mobile_number', 'phone')}
+                  placeholder="Enter 10-digit mobile"
+                  maxLength="10"
+                  inputMode="numeric"
+                />
+                {formData.mobile_number.length > 0 && formData.mobile_number.length < 10 && (
+                  <p className="interview-create-hint">Enter full 10-digit number</p>
+                )}
+                {errors.mobile_number && (
+                  <p className="interview-create-error">{errors.mobile_number}</p>
+                )}
+              </div>
+            </div>
           </div>
 
-          {/* ── Inline Duplicate Match Card (matching HTML design) ── */}
           {checkingDuplicate && (
-            <div className="bg-white border border-slate-200 rounded-2xl p-4 text-center">
-              <div className="animate-spin w-5 h-5 border-2 border-indigo-500 border-t-transparent rounded-full mx-auto mb-2"></div>
-              <p className="text-xs text-slate-500">Checking for duplicates...</p>
+            <div className="interview-create-loading">
+              <div className="spinner" />
+              <p>Checking for duplicates...</p>
             </div>
           )}
           {duplicateMatch && (() => {
-            const stageMeta = { Interview:{bg:'bg-blue-600'}, 'Round 2':{bg:'bg-indigo-600'}, 'Job Offered':{bg:'bg-orange-500'}, Training:{bg:'bg-yellow-500'}, Hired:{bg:'bg-emerald-600'}, Rejected:{bg:'bg-red-600'} };
+            const stageColors = { Interview:'#3b82f6', 'Round 2':'#6366f1', 'Job Offered':'#f97316', Training:'#eab308', Hired:'#059669', Rejected:'#ef4444' };
             const matchStage = getStageFromStatus(duplicateMatch.status);
-            const sm = stageMeta[matchStage] || {bg:'bg-slate-600'};
+            const stageColor = stageColors[matchStage] || '#6b7280';
             const activities = duplicateMatch.activity_history || duplicateMatch.activityHistory || [];
             const ownerName = duplicateMatch.created_by || duplicateMatch.hr || 'N/A';
             const createdDate = duplicateMatch.created_at ? new Date(duplicateMatch.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'Asia/Kolkata' }) : 'N/A';
@@ -5453,70 +5637,77 @@ const CreateInterviewModal = ({ onClose, onInterviewCreated, jobOpeningOptions, 
             const reassignCount = duplicateMatch.reassign_count || duplicateMatch.reassignCount || 0;
             const rescheduleCount = duplicateMatch.reschedule_count || duplicateMatch.rescheduleCount || 0;
             return (
-              <div className="rounded-2xl overflow-hidden border border-slate-200 shadow-lg">
-                <div className="bg-gradient-to-r from-slate-800 to-slate-900 px-5 py-4">
-                  <div className="flex items-center gap-4">
-                    <div className="w-12 h-12 rounded-xl bg-white/10 border border-white/20 flex items-center justify-center text-white text-xl font-black">{(duplicateMatch.candidate_name || 'U').charAt(0)}</div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-3 flex-wrap">
-                        <h3 className="text-lg font-black text-white">{duplicateMatch.candidate_name || 'Unknown'}</h3>
-                        <span className={`text-[11px] font-black text-white px-2.5 py-1 rounded-full ${sm.bg}`}>{matchStage}</span>
+              <div className="interview-create-duplicate">
+                <div className="interview-create-duplicate-head">
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+                    <div className="interview-create-avatar">{(duplicateMatch.candidate_name || 'U').charAt(0)}</div>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                        <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: '#f0f0f5' }}>{duplicateMatch.candidate_name || 'Unknown'}</h3>
+                        <span className="interview-create-pill" style={{ background: stageColor }}>{matchStage}</span>
                       </div>
-                      <div className="flex items-center gap-3 mt-1.5 flex-wrap">
-                        <span className="text-xs text-slate-400">📱 {duplicateMatch.mobile_number}</span>
-                        <span className="text-slate-600">•</span>
-                        <span className="text-xs text-slate-400">{duplicateMatch.job_opening || duplicateMatch.role || 'N/A'}</span>
-                        <span className="text-slate-600">•</span>
-                        <span className="text-xs text-slate-400">{duplicateMatch.experience_type || 'N/A'}</span>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 6, flexWrap: 'wrap', fontSize: 12, color: '#6b7a99' }}>
+                        <span>{duplicateMatch.mobile_number}</span>
+                        <span>•</span>
+                        <span>{duplicateMatch.job_opening || duplicateMatch.role || 'N/A'}</span>
+                        <span>•</span>
+                        <span>{duplicateMatch.experience_type || 'N/A'}</span>
                       </div>
                     </div>
                   </div>
                 </div>
-                <div className="bg-slate-800/90 px-5 py-3 grid grid-cols-3 gap-4 text-xs">
-                  <div><div className="text-slate-500 uppercase text-[10px] font-bold mb-0.5">Owner</div><div className="text-white font-bold">{ownerName}</div></div>
-                  <div><div className="text-slate-500 uppercase text-[10px] font-bold mb-0.5">Created</div><div className="text-white font-medium">{createdDate}</div></div>
-                  <div><div className="text-slate-500 uppercase text-[10px] font-bold mb-0.5">Last Updated</div><div className="text-white font-medium">{updatedDate}</div></div>
+                <div className="interview-create-duplicate-meta">
+                  <div><div className="interview-create-duplicate-meta-label">Owner</div><div className="interview-create-duplicate-meta-value">{ownerName}</div></div>
+                  <div><div className="interview-create-duplicate-meta-label">Created</div><div className="interview-create-duplicate-meta-value">{createdDate}</div></div>
+                  <div><div className="interview-create-duplicate-meta-label">Last Updated</div><div className="interview-create-duplicate-meta-value">{updatedDate}</div></div>
                 </div>
                 {matchStage === 'Rejected' && duplicateMatch.status && (
-                  <div className="bg-red-50 border-b border-red-200 px-5 py-3 flex items-center gap-3">
-                    <XCircle size={16} className="text-red-500 shrink-0"/>
-                    <div><div className="text-[10px] font-black text-red-600 uppercase tracking-wider">Rejection Reason</div><div className="text-sm font-semibold text-red-800">{duplicateMatch.status}</div></div>
+                  <div className="interview-create-duplicate-reject" style={{ borderRadius: 0, borderLeft: 'none', borderRight: 'none' }}>
+                    <XCircle size={16} style={{ color: '#f87171', flexShrink: 0, marginTop: 2 }} />
+                    <div><div className="title" style={{ fontSize: 11, textTransform: 'uppercase' }}>Rejection Reason</div><div className="desc">{duplicateMatch.status}</div></div>
                   </div>
                 )}
-                <div className="bg-white border-b border-slate-200 px-5 py-3 flex gap-4">
-                  <div className="flex items-center gap-1.5 text-xs font-semibold text-orange-600"><RefreshCw size={12}/> {reassignCount} Reassign{reassignCount !== 1 ? 's' : ''}</div>
-                  <div className="flex items-center gap-1.5 text-xs font-semibold text-indigo-600"><Calendar size={12}/> {rescheduleCount} Reschedule{rescheduleCount !== 1 ? 's' : ''}</div>
-                  <div className="flex items-center gap-1.5 text-xs font-semibold text-blue-600"><History size={12}/> {activities.length} Activity</div>
+                <div className="interview-create-duplicate-stats">
+                  <div className="warn" style={{ display: 'flex', alignItems: 'center', gap: 6 }}><RefreshCw size={12}/> {reassignCount} Reassign{reassignCount !== 1 ? 's' : ''}</div>
+                  <div className="accent" style={{ display: 'flex', alignItems: 'center', gap: 6 }}><Calendar size={12}/> {rescheduleCount} Reschedule{rescheduleCount !== 1 ? 's' : ''}</div>
+                  <div className="accent" style={{ display: 'flex', alignItems: 'center', gap: 6 }}><History size={12}/> {activities.length} Activity</div>
                 </div>
-                <div className="bg-white px-5 py-4">
-                  <div className="flex items-center justify-between mb-3">
-                    <div className="text-[11px] font-black text-slate-600 uppercase tracking-wider">Activity History</div>
-                    {activities.length > 3 && <button onClick={() => setShowDuplicateDetails(!showDuplicateDetails)} className="text-[11px] text-blue-600 hover:text-blue-800 font-semibold flex items-center gap-1">{showDuplicateDetails ? <><ChevronDown size={12}/> Less</> : <><ChevronRight size={12}/> +{activities.length - 3} more</>}</button>}
+                <div className="interview-create-duplicate-activity">
+                  <div className="interview-create-duplicate-activity-head">
+                    <span>Activity History</span>
+                    {activities.length > 3 && (
+                      <button type="button" onClick={() => setShowDuplicateDetails(!showDuplicateDetails)} className="interview-create-link">
+                        {showDuplicateDetails ? <><ChevronDown size={12}/> Less</> : <><ChevronRight size={12}/> +{activities.length - 3} more</>}
+                      </button>
+                    )}
                   </div>
-                  {activities.length === 0 && <div className="text-xs text-slate-400 italic py-2">No activity logged.</div>}
-                  <div className="space-y-2">{(showDuplicateDetails ? activities : activities.slice(-3)).map((log, i) => (
-                    <div key={i} className="flex items-start gap-3 text-xs">
-                      <div className="w-1.5 h-1.5 rounded-full bg-blue-500 mt-1.5 shrink-0"></div>
-                      <div className="flex-1 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">
-                        <div className="flex items-center justify-between gap-2"><span className="font-bold text-slate-700">{log.action}</span><span className="text-slate-400 text-[10px] shrink-0">{log.date || (log.timestamp ? new Date(log.timestamp).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : '')}</span></div>
-                        <div className="text-slate-500 mt-0.5">{log.details || log.description || ''}</div>
+                  {activities.length === 0 && <div style={{ fontSize: 12, color: '#4a5570', fontStyle: 'italic' }}>No activity logged.</div>}
+                  {(showDuplicateDetails ? activities : activities.slice(-3)).map((log, i) => (
+                    <div key={i} className="interview-create-duplicate-activity-item">
+                      <div className="dot" />
+                      <div className="interview-create-duplicate-activity-card">
+                        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
+                          <span className="action">{log.action}</span>
+                          <span className="date">{log.date || (log.timestamp ? new Date(log.timestamp).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : '')}</span>
+                        </div>
+                        <div className="detail">{log.details || log.description || ''}</div>
                       </div>
                     </div>
-                  ))}</div>
+                  ))}
                 </div>
-                <div className="px-5 py-5 bg-slate-50 border-t border-slate-200">
+                <div className="interview-create-duplicate-footer">
                   {canReassign ? (
                     <div>
-                      <div className="text-xs font-black text-slate-700 uppercase tracking-wider mb-2">Re-assign to Me <span className="text-red-500">*</span></div>
-                      <textarea value={reassignReason} onChange={e => setReassignReason(e.target.value)} placeholder="Enter mandatory audit reason..." className="w-full h-20 bg-white border border-slate-300 rounded-xl p-3 text-sm text-slate-900 outline-none mb-3 focus:border-blue-500 resize-none" />
-                      <button disabled={!reassignReason.trim() || loading} onClick={handleReassign} className={`w-full py-3 rounded-xl font-black text-sm transition-all ${reassignReason.trim() && !loading ? 'bg-orange-600 hover:bg-orange-500 text-white shadow-lg shadow-orange-600/20' : 'bg-slate-200 text-slate-400 cursor-not-allowed'}`}>
+                      <div className="interview-create-label" style={{ marginBottom: 8 }}>Re-assign to Me <span className="req">*</span></div>
+                      <textarea value={reassignReason} onChange={e => setReassignReason(e.target.value)} placeholder="Enter mandatory audit reason..." className="interview-create-input" style={{ minHeight: 80, resize: 'vertical', marginBottom: 12 }} />
+                      <button type="button" disabled={!reassignReason.trim() || loading} onClick={handleReassign} className="interview-create-btn-warn">
                         {loading ? 'Submitting...' : 'Transfer Lead to Me'}
                       </button>
                     </div>
                   ) : (
-                    <div className="rounded-xl border border-red-200 bg-red-50 p-4 flex items-start gap-4">
-                      <Lock size={22} className="text-red-500 mt-0.5 shrink-0"/>
-                      <div><div className="text-sm font-black text-red-700">Lead is Locked</div><div className="text-xs text-red-600/80 mt-1 leading-relaxed"><b>{ownerName}</b> recently updated this lead. {cooldownDays}-day cooldown active.</div></div>
+                    <div className="interview-create-duplicate-reject">
+                      <Lock size={20} style={{ color: '#f87171', flexShrink: 0, marginTop: 2 }} />
+                      <div><div className="title">Lead is Locked</div><div className="desc"><b>{ownerName}</b> recently updated this lead. {cooldownDays}-day cooldown active.</div></div>
                     </div>
                   )}
                 </div>
@@ -5524,126 +5715,107 @@ const CreateInterviewModal = ({ onClose, onInterviewCreated, jobOpeningOptions, 
             );
           })()}
 
-          {/* ── Main form (shown after phone entered, hidden when duplicate found) ── */}
           {!duplicateMatch && formData.mobile_number.length >= 10 && (
-            <form id="create-interview-drawer" onSubmit={handleSubmit} className="space-y-4">
+            <form id="create-interview-drawer" onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
 
-              {/* ── Basic Info ── */}
-              <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
-                <div className="px-4 py-3 border-b border-slate-100 bg-gradient-to-r from-indigo-50 to-slate-50 flex items-center gap-2">
-                  <span className="text-base">👤</span>
-                  <span className="text-xs font-black text-indigo-700 uppercase tracking-wider">Basic Info</span>
-                </div>
-                <div className="p-4 grid grid-cols-2 gap-3">
-                  {/* Name */}
-                  <div>
-                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5">Candidate Name <span className="text-red-400">*</span></label>
+              <div className="interview-create-section">
+                <div className="interview-create-section-head">Basic Info</div>
+                <div className="interview-create-section-body interview-create-grid-2">
+                  <div className="interview-create-field">
+                    <label className="interview-create-label">Candidate Name <span className="req">*</span></label>
                     <input name="candidate_name" value={formData.candidate_name} onChange={handleInputChange}
-                      className={errors.candidate_name ? drawerInputCls + ' border-red-400' : drawerInputCls}
+                      className={getInputClasses('candidate_name')}
                       placeholder="Full name" />
-                    {errors.candidate_name && <p className="text-xs text-red-500 mt-1">{errors.candidate_name}</p>}
+                    {errors.candidate_name && <p className="interview-create-error">{errors.candidate_name}</p>}
                   </div>
-                  {/* Interview Date */}
-                  <div>
-                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5">Interview Date <span className="text-red-400">*</span></label>
+                  <div className="interview-create-field">
+                    <label className="interview-create-label">Interview Date <span className="req">*</span></label>
                     <input type="date" name="interview_date" value={formData.interview_date} onChange={handleInputChange}
-                      className={errors.date_time ? drawerInputCls + ' border-red-400' : drawerInputCls} />
-                    {errors.date_time && <p className="text-xs text-red-500 mt-1">{errors.date_time}</p>}
+                      className={getInputClasses('date_time')} />
+                    {errors.date_time && <p className="interview-create-error">{errors.date_time}</p>}
                   </div>
-                  {/* Alternate Number */}
-                  <div>
-                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5">Alt. Phone</label>
+                  <div className="interview-create-field">
+                    <label className="interview-create-label">Alt. Phone</label>
                     <input name="alternate_number" value={formData.alternate_number} onChange={e => {
                       const val = e.target.value.replace(/\D/g, '').slice(0, 10);
                       setFormData(prev => ({ ...prev, alternate_number: val }));
                     }}
-                      className={errors.alternate_number ? drawerInputCls + ' border-red-400' : drawerInputCls}
+                      className={getInputClasses('alternate_number')}
                       placeholder="Optional" maxLength="10" inputMode="numeric" />
-                    {errors.alternate_number && <p className="text-xs text-red-500 mt-1">{errors.alternate_number}</p>}
+                    {errors.alternate_number && <p className="interview-create-error">{errors.alternate_number}</p>}
                   </div>
-                  {/* Source */}
-                  <div>
-                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5">Source</label>
+                  <div className="interview-create-field">
+                    <label className="interview-create-label">Source</label>
                     <SearchableSelect
                       name="source_portal"
                       value={formData.source_portal}
                       onChange={handleInputChange}
                       options={sourcePortalOptions}
                       placeholder="Select source..."
+                      variant="dark"
                     />
                   </div>
-                  {/* Age */}
-                  <div>
-                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5">Age</label>
+                  <div className="interview-create-field">
+                    <label className="interview-create-label">Age</label>
                     <input type="number" name="age" value={formData.age} onChange={handleInputChange}
                       className={drawerInputCls} placeholder="e.g. 24" min="18" max="65" />
                   </div>
-                  {/* City */}
-                  <div>
-                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5">City</label>
+                  <div className="interview-create-field">
+                    <label className="interview-create-label">City</label>
                     <input name="city" value={formData.city} onChange={handleInputChange}
                       className={drawerInputCls} placeholder="Current city" />
                   </div>
-                  {/* Gender toggle */}
-                  <div className="col-span-2">
-                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5">Gender <span className="text-red-400">*</span></label>
-                    <div className="flex gap-2">
+                  <div className="interview-create-field span-2">
+                    <label className="interview-create-label">Gender <span className="req">*</span></label>
+                    <div className="interview-create-toggle-group">
                       {['Male', 'Female'].map(g => (
-                        <label key={g} className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl border-2 cursor-pointer transition-all font-bold text-sm ${formData.gender === g ? 'bg-indigo-600 border-indigo-600 text-white' : 'bg-white border-slate-200 text-slate-500 hover:border-indigo-300'}`}>
-                          <input type="radio" name="gender" value={g} checked={formData.gender === g} onChange={handleInputChange} className="hidden" />
-                          {g === 'Male' ? '👨' : '👩'} {g}
+                        <label key={g} className={`interview-create-toggle-btn${formData.gender === g ? ' active' : ''}`}>
+                          <input type="radio" name="gender" value={g} checked={formData.gender === g} onChange={handleInputChange} />
+                          {g}
                         </label>
                       ))}
                     </div>
-                    {errors.gender && <p className="text-xs text-red-500 mt-1">{errors.gender}</p>}
+                    {errors.gender && <p className="interview-create-error">{errors.gender}</p>}
                   </div>
                 </div>
               </div>
 
-              {/* ── Education & Background ── */}
-              <div className="bg-white border border-slate-200 rounded-2xl shadow-sm">
-                <div className="px-4 py-3 border-b border-slate-100 bg-gradient-to-r from-purple-50 to-slate-50 flex items-center gap-2">
-                  <span className="text-base">🎓</span>
-                  <span className="text-xs font-black text-purple-700 uppercase tracking-wider">Education & Background</span>
-                </div>
-                <div className="p-4 grid grid-cols-2 gap-3">
-                  {/* Marital Status */}
-                  <div>
-                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5">Marital Status</label>
+              <div className="interview-create-section">
+                <div className="interview-create-section-head">Education & Background</div>
+                <div className="interview-create-section-body interview-create-grid-2">
+                  <div className="interview-create-field">
+                    <label className="interview-create-label">Marital Status</label>
                     <select name="marital_status" value={formData.marital_status} onChange={handleInputChange} className={drawerInputCls}>
                       <option>Single</option><option>Married</option><option>Divorced</option><option>Widowed</option>
                     </select>
                   </div>
-                  {/* Living Arrangement */}
-                  <div>
-                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5">Living Arrangement</label>
+                  <div className="interview-create-field">
+                    <label className="interview-create-label">Living Arrangement</label>
                     <select name="living_arrangement" value={formData.living_arrangement} onChange={handleInputChange} className={drawerInputCls}>
                       <option>With Family</option><option>PG/Hostel</option><option>Rented Alone</option><option>Shared Apartment</option><option>Own House</option>
                     </select>
                   </div>
-                  {/* Qualification — searchable grouped */}
-                  <div className="col-span-2 grid grid-cols-[1fr_auto] gap-3 items-start">
+                  <div className="interview-create-field span-2" style={{ display: 'grid', gridTemplateColumns: '1fr 140px', gap: 12, alignItems: 'start' }}>
                     <div>
-                      <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5">Highest Qualification <span className="text-red-400">*</span></label>
+                      <label className="interview-create-label">Highest Qualification <span className="req">*</span></label>
                       <div className="relative" ref={qualRef}>
                         <input
                           value={qualSearch !== '' ? qualSearch : formData.qualification}
                           onChange={e => { const val = e.target.value; setQualSearch(val); setQualOpen(true); setFormData(prev => ({ ...prev, qualification: val, qualificationLevel: '' })); if (errors.qualification && val) setErrors(prev => ({ ...prev, qualification: '' })); }}
                           onFocus={() => { setQualSearch(''); setQualOpen(true); }}
                           placeholder="Type to search e.g. MBA, BA, ITI..."
-                          className={errors.qualification ? drawerInputCls + ' border-red-400' : drawerInputCls}
+                          className={getInputClasses('qualification')}
                         />
                         {formData.qualificationLevel && (
-                          <div className="absolute right-3 top-1/2 -translate-y-1/2 bg-indigo-100 text-indigo-700 text-[10px] font-black px-2 py-0.5 rounded-full pointer-events-none">{formData.qualificationLevel}</div>
+                          <div className="interview-create-qual-badge">{formData.qualificationLevel}</div>
                         )}
                         {qualOpen && filteredQualGroups.length > 0 && (
-                          <div className="absolute left-0 right-0 top-full mt-1 bg-white border border-slate-200 rounded-xl shadow-xl z-30 max-h-56 overflow-y-auto">
+                          <div className="interview-create-qual-dropdown">
                             {filteredQualGroups.map(group => (
                               <div key={group.level}>
-                                <div className="px-3 py-1.5 text-[10px] font-black text-slate-400 uppercase tracking-wider bg-slate-50 border-b border-slate-100 sticky top-0">{group.level}</div>
+                                <div className="interview-create-qual-group-label">{group.level}</div>
                                 {group.entries.map(entry => (
-                                  <button type="button" key={entry} onClick={() => selectQualification(entry, group.level)}
-                                    className="w-full text-left px-4 py-2.5 text-sm text-slate-700 hover:bg-indigo-50 hover:text-indigo-700 transition-colors">
+                                  <button type="button" key={entry} onClick={() => selectQualification(entry, group.level)} className="interview-create-qual-option">
                                     {entry}
                                   </button>
                                 ))}
@@ -5652,10 +5824,10 @@ const CreateInterviewModal = ({ onClose, onInterviewCreated, jobOpeningOptions, 
                           </div>
                         )}
                       </div>
-                      {errors.qualification && <p className="text-xs text-red-500 mt-1">{errors.qualification}</p>}
+                      {errors.qualification && <p className="interview-create-error">{errors.qualification}</p>}
                     </div>
-                    <div className="w-36">
-                      <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5">Status</label>
+                    <div>
+                      <label className="interview-create-label">Status</label>
                       <select name="qualification_status" value={formData.qualification_status || ''} onChange={handleInputChange} className={drawerInputCls}>
                         <option value="">Select...</option>
                         <option value="Pursuing">Pursuing</option>
@@ -5663,13 +5835,12 @@ const CreateInterviewModal = ({ onClose, onInterviewCreated, jobOpeningOptions, 
                       </select>
                     </div>
                   </div>
-                  {/* Banking experience toggle */}
-                  <div className="col-span-2">
-                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5">Banking Experience?</label>
-                    <div className="flex gap-2">
+                  <div className="interview-create-field span-2">
+                    <label className="interview-create-label">Banking Experience?</label>
+                    <div className="interview-create-toggle-group">
                       {['Yes', 'No'].map(opt => (
-                        <label key={opt} className={`flex-1 flex items-center justify-center py-2.5 rounded-xl border-2 cursor-pointer transition-all font-bold text-sm ${formData.banking_experience === opt ? 'bg-slate-800 border-slate-800 text-white' : 'bg-white border-slate-200 text-slate-500 hover:border-slate-400'}`}>
-                          <input type="radio" name="banking_experience" value={opt} checked={formData.banking_experience === opt} onChange={handleInputChange} className="hidden" />
+                        <label key={opt} className={`interview-create-toggle-btn${formData.banking_experience === opt ? ' active' : ''}`}>
+                          <input type="radio" name="banking_experience" value={opt} checked={formData.banking_experience === opt} onChange={handleInputChange} />
                           {opt}
                         </label>
                       ))}
@@ -5678,31 +5849,26 @@ const CreateInterviewModal = ({ onClose, onInterviewCreated, jobOpeningOptions, 
                 </div>
               </div>
 
-              {/* ── Professional Details ── */}
-              <div className="bg-white border border-slate-200 rounded-2xl shadow-sm">
-                <div className="px-4 py-3 border-b border-slate-100 bg-gradient-to-r from-blue-50 to-slate-50 flex items-center gap-2">
-                  <span className="text-base">💼</span>
-                  <span className="text-xs font-black text-blue-700 uppercase tracking-wider">Professional Details</span>
-                </div>
-                <div className="p-4 space-y-3">
-                  {/* Role */}
-                  <div>
-                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5">Role</label>
+              <div className="interview-create-section">
+                <div className="interview-create-section-head">Professional Details</div>
+                <div className="interview-create-section-body" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                  <div className="interview-create-field">
+                    <label className="interview-create-label">Role</label>
                     <SearchableSelect
                       name="job_opening"
                       value={formData.job_opening}
                       onChange={handleInputChange}
                       options={jobOpeningOptions}
                       placeholder="Select role..."
+                      variant="dark"
                     />
                   </div>
-                  {/* Work Experience toggle */}
-                  <div>
-                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5">Work Experience</label>
-                    <div className="flex gap-2 p-1 bg-white border border-slate-200 rounded-xl mb-2">
+                  <div className="interview-create-field">
+                    <label className="interview-create-label">Work Experience</label>
+                    <div className="interview-create-segmented">
                       {['fresher', 'experienced'].map(type => (
                         <button type="button" key={type} onClick={() => setFormData(prev => ({ ...prev, experience_type: type }))}
-                          className={`flex-1 py-2 text-xs font-black rounded-lg transition-all capitalize ${formData.experience_type === type ? 'bg-slate-900 text-white shadow' : 'text-slate-500 hover:text-slate-800'}`}>
+                          className={`interview-create-segmented-btn${formData.experience_type === type ? ' active' : ''}`}>
                           {type}
                         </button>
                       ))}
@@ -5710,46 +5876,44 @@ const CreateInterviewModal = ({ onClose, onInterviewCreated, jobOpeningOptions, 
                   </div>
 
                   {formData.experience_type === 'experienced' && (
-                    <div className="bg-blue-50/50 border border-blue-100 rounded-xl p-4 space-y-4">
-                      <div>
-                        <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">
-                          Experience Duration — <span className="text-indigo-700 font-black">{expLabel}</span>
-                        </label>
-                        <div className="grid grid-cols-2 gap-3">
-                          <div>
-                            <label className="block text-[11px] text-slate-500 mb-1">Years</label>
+                    <div className="interview-create-nested">
+                      <div className="interview-create-field">
+                        <label className="interview-create-label">Experience Duration — <span style={{ color: '#93c5fd' }}>{expLabel}</span></label>
+                        <div className="interview-create-grid-2">
+                          <div className="interview-create-field">
+                            <label className="interview-create-label" style={{ textTransform: 'none', fontSize: 12 }}>Years</label>
                             <select value={formData.yearsExpNum} onChange={e => setFormData(prev => ({ ...prev, yearsExpNum: parseInt(e.target.value) || 0 }))} className={drawerInputCls}>
                               {Array.from({ length: 31 }, (_, i) => <option key={i} value={i}>{i} yr{i !== 1 ? 's' : ''}</option>)}
                             </select>
                           </div>
-                          <div>
-                            <label className="block text-[11px] text-slate-500 mb-1">Months</label>
+                          <div className="interview-create-field">
+                            <label className="interview-create-label" style={{ textTransform: 'none', fontSize: 12 }}>Months</label>
                             <select value={formData.monthsExpNum} onChange={e => setFormData(prev => ({ ...prev, monthsExpNum: parseInt(e.target.value) || 0 }))} className={drawerInputCls}>
                               {Array.from({ length: 12 }, (_, i) => <option key={i} value={i}>{i} mo</option>)}
                             </select>
                           </div>
                         </div>
                       </div>
-                      <div>
-                        <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">No. of Companies Worked</label>
+                      <div className="interview-create-field">
+                        <label className="interview-create-label">No. of Companies Worked</label>
                         <input type="number" min="1" value={formData.numCompanies} onChange={handleNumCompaniesChange} className={drawerInputCls} placeholder="e.g. 2" />
                       </div>
                       {formData.companies.map((comp, idx) => (
-                        <div key={idx} className="bg-white border border-slate-200 rounded-xl p-3 space-y-2">
-                          <div className="text-xs font-black text-slate-500 uppercase tracking-wider">Company #{idx + 1}</div>
-                          <div className="grid grid-cols-3 gap-2">
-                            <input value={comp.name || ''} onChange={e => handleCompanyChange(idx, 'name', e.target.value)} placeholder="Company Name" className="bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-2 text-xs text-slate-900 outline-none focus:border-indigo-400 w-full" />
-                            <input value={comp.duration || ''} onChange={e => handleCompanyChange(idx, 'duration', e.target.value)} placeholder="Duration" className="bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-2 text-xs text-slate-900 outline-none focus:border-indigo-400 w-full" />
-                            <input value={comp.salary || ''} onChange={e => handleCompanyChange(idx, 'salary', e.target.value)} placeholder="Last CTC" className="bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-2 text-xs text-slate-900 outline-none focus:border-indigo-400 w-full" />
+                        <div key={idx} className="interview-create-company-card">
+                          <div className="interview-create-company-title">Company #{idx + 1}</div>
+                          <div className="interview-create-company-grid">
+                            <input value={comp.name || ''} onChange={e => handleCompanyChange(idx, 'name', e.target.value)} placeholder="Company Name" className="interview-create-input" />
+                            <input value={comp.duration || ''} onChange={e => handleCompanyChange(idx, 'duration', e.target.value)} placeholder="Duration" className="interview-create-input" />
+                            <input value={comp.salary || ''} onChange={e => handleCompanyChange(idx, 'salary', e.target.value)} placeholder="Last CTC" className="interview-create-input" />
                           </div>
                         </div>
                       ))}
-                      <div>
-                        <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">Proof of Experience (Check all available)</label>
-                        <div className="flex gap-3 flex-wrap">
-                          {[['salarySlip', '💰 Salary Slip'], ['bankStatement', '🏦 Bank Statement'], ['expLetter', '📄 Exp. Letter']].map(([doc, lbl]) => (
-                            <label key={doc} className={`flex items-center gap-2 px-3 py-2 rounded-xl border-2 cursor-pointer transition-all text-xs font-bold ${formData.documents[doc] ? 'bg-blue-600 border-blue-600 text-white' : 'bg-white border-slate-200 text-slate-600 hover:border-blue-300'}`}>
-                              <input type="checkbox" checked={formData.documents[doc]} onChange={() => handleDocChange(doc)} className="hidden" />
+                      <div className="interview-create-field">
+                        <label className="interview-create-label">Proof of Experience</label>
+                        <div className="interview-create-check-group">
+                          {[['salarySlip', 'Salary Slip'], ['bankStatement', 'Bank Statement'], ['expLetter', 'Exp. Letter']].map(([doc, lbl]) => (
+                            <label key={doc} className={`interview-create-check-btn${formData.documents[doc] ? ' active' : ''}`}>
+                              <input type="checkbox" checked={formData.documents[doc]} onChange={() => handleDocChange(doc)} />
                               {lbl}
                             </label>
                           ))}
@@ -5760,28 +5924,24 @@ const CreateInterviewModal = ({ onClose, onInterviewCreated, jobOpeningOptions, 
                 </div>
               </div>
 
-              {/* ── Salary Information ── */}
-              <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
-                <div className="px-4 py-3 border-b border-slate-100 bg-gradient-to-r from-emerald-50 to-slate-50 flex items-center gap-2">
-                  <span className="text-base">💵</span>
-                  <span className="text-xs font-black text-emerald-700 uppercase tracking-wider">Salary Information</span>
-                </div>
-                <div className="p-4 grid grid-cols-1 gap-3">
+              <div className="interview-create-section">
+                <div className="interview-create-section-head">Salary Information</div>
+                <div className="interview-create-section-body" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
                   {[
                     { label: 'Last Salary (Monthly CTC)', name: 'old_salary' },
                     { label: 'Salary Expectation (Monthly CTC)', name: 'offer_salary' },
                     { label: 'Final Offered Salary (fill after offer)', name: 'monthly_salary_offered' }
                   ].map(({ label, name }) => (
-                    <div key={name}>
-                      <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5">{label}</label>
-                      <div className="relative">
-                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm font-bold pointer-events-none">₹</span>
+                    <div key={name} className="interview-create-field">
+                      <label className="interview-create-label">{label}</label>
+                      <div className="interview-create-currency">
+                        <span className="symbol">₹</span>
                         <input
                           type="number"
                           name={name}
                           value={formData[name]}
                           onChange={handleInputChange}
-                          className={drawerInputCls + ' pl-7'}
+                          className={drawerInputCls}
                           placeholder="0"
                           min="0"
                         />
@@ -5795,72 +5955,57 @@ const CreateInterviewModal = ({ onClose, onInterviewCreated, jobOpeningOptions, 
           )}
         </>)}
 
-        {/* ── Step 2: Attachments ── */}
         {formStep === 2 && (
-          <div className="space-y-4">
-            <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-4 flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-emerald-100 flex items-center justify-center text-emerald-600 text-lg">✓</div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            <div className="interview-create-success-banner">
+              <div className="icon">✓</div>
               <div>
-                <div className="text-sm font-black text-emerald-800">Candidate Saved Successfully</div>
-                <div className="text-xs text-emerald-600 mt-0.5">Now upload any supporting documents</div>
+                <div className="title">Candidate Saved Successfully</div>
+                <div className="sub">Now upload any supporting documents</div>
               </div>
             </div>
 
-            <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
-              <div className="px-4 py-3 border-b border-slate-100 bg-gradient-to-r from-amber-50 to-slate-50 flex items-center gap-2">
-                <span className="text-base">📎</span>
-                <span className="text-xs font-black text-amber-700 uppercase tracking-wider">Attachments</span>
-                <span className="ml-auto text-[10px] font-bold text-slate-400">{attachments.length} file{attachments.length !== 1 ? 's' : ''}</span>
+            <div className="interview-create-section">
+              <div className="interview-create-section-head" style={{ justifyContent: 'space-between' }}>
+                <span>Attachments</span>
+                <span style={{ fontSize: 11, color: '#4a5570' }}>{attachments.length} file{attachments.length !== 1 ? 's' : ''}</span>
               </div>
-              <div className="p-4 space-y-3">
-                <p className="text-xs text-slate-500">Upload offer letters, previous company documents, or any other relevant files. You can add multiple files one by one.</p>
+              <div className="interview-create-section-body" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                <p style={{ margin: 0, fontSize: 12, color: '#6b7a99' }}>Upload offer letters, previous company documents, or any other relevant files. You can add multiple files one by one.</p>
                 <input type="file" ref={fileInputRef} onChange={handleFileUpload} className="hidden" />
                 <button
                   type="button"
                   onClick={() => fileInputRef.current?.click()}
                   disabled={uploading}
-                  className="w-full py-3 rounded-xl border-2 border-dashed border-slate-300 hover:border-indigo-400 hover:bg-indigo-50 text-slate-500 hover:text-indigo-600 text-sm font-bold transition-all flex items-center justify-center gap-2"
+                  className="interview-create-upload"
                 >
                   {uploading ? (
-                    <><svg className="animate-spin w-4 h-4" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"/></svg> Uploading...</>
+                    <><svg className="animate-spin" style={{ width: 16, height: 16 }} viewBox="0 0 24 24" fill="none"><circle style={{ opacity: 0.25 }} cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path style={{ opacity: 0.75 }} fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"/></svg> Uploading...</>
                   ) : (
                     <><Upload size={16}/> Choose File to Upload</>
                   )}
                 </button>
 
-                {/* Attachment list */}
-                {attachments.length > 0 && (
-                  <div className="space-y-2 mt-3">
-                    {attachments.map((att, idx) => (
-                      <div key={att.id} className="group flex items-center gap-3 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 hover:border-slate-300 transition-all">
-                        <span className="text-xs font-black text-slate-400 w-5">{idx + 1}.</span>
-                        <div className="flex-1 min-w-0">
-                          <div className="text-sm font-bold text-slate-700 truncate">{att.original_name || att.file_name}</div>
-                          <div className="text-[10px] text-slate-400">
-                            {att.file_size ? `${(att.file_size / 1024).toFixed(1)} KB` : ''}
-                            {att.uploaded_at ? ` • ${new Date(att.uploaded_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', timeZone: 'Asia/Kolkata' })}` : ''}
-                          </div>
-                        </div>
-                        <a
-                          href={API.interviews.getAttachmentDownloadUrl(createdInterviewId, att.id)}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-indigo-500 hover:text-indigo-700 p-1"
-                          title="Download"
-                        >
-                          <Download size={14}/>
-                        </a>
-                        <button
-                          onClick={() => handleDeleteAttachment(att.id)}
-                          className="text-slate-300 hover:text-red-500 p-1 opacity-0 group-hover:opacity-100 transition-opacity"
-                          title="Delete"
-                        >
-                          <Trash2 size={14}/>
-                        </button>
+                {attachments.length > 0 && attachments.map((att, idx) => (
+                  <div key={att.id} className="interview-create-attachment">
+                    <span className="idx">{idx + 1}.</span>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div className="name" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{att.original_name || att.file_name}</div>
+                      <div className="meta">
+                        {att.file_size ? `${(att.file_size / 1024).toFixed(1)} KB` : ''}
+                        {att.uploaded_at ? ` • ${new Date(att.uploaded_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', timeZone: 'Asia/Kolkata' })}` : ''}
                       </div>
-                    ))}
+                    </div>
+                    <div className="actions">
+                      <a href={API.interviews.getAttachmentDownloadUrl(createdInterviewId, att.id)} target="_blank" rel="noopener noreferrer" title="Download">
+                        <Download size={14}/>
+                      </a>
+                      <button type="button" onClick={() => handleDeleteAttachment(att.id)} title="Delete">
+                        <Trash2 size={14}/>
+                      </button>
+                    </div>
                   </div>
-                )}
+                ))}
               </div>
             </div>
           </div>
@@ -5868,43 +6013,39 @@ const CreateInterviewModal = ({ onClose, onInterviewCreated, jobOpeningOptions, 
 
         </div>
 
-        {/* ── Footer ── */}
         {formStep === 1 && !duplicateMatch && formData.mobile_number.length >= 10 && (
-          <div className="p-4 border-t border-slate-200 bg-white rounded-b-2xl shrink-0">
+          <div className="interview-create-footer">
             <button
               type="submit"
               form="create-interview-drawer"
               disabled={loading || !canSubmit}
-              className={`w-full py-3.5 rounded-2xl font-black text-sm transition-all shadow-lg flex items-center justify-center gap-2 ${(canSubmit && !loading) ? 'bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-500 hover:to-blue-500 text-white shadow-indigo-600/25' : 'bg-slate-100 text-slate-400 cursor-not-allowed'}`}
+              className="interview-create-btn-primary"
             >
               {loading ? (
                 <>
-                  <svg className="animate-spin w-4 h-4" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"/></svg>
+                  <svg className="animate-spin" style={{ width: 16, height: 16 }} viewBox="0 0 24 24" fill="none"><circle style={{ opacity: 0.25 }} cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path style={{ opacity: 0.75 }} fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"/></svg>
                   Saving Candidate...
                 </>
               ) : (
                 <>
                   <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/></svg>
-                  Save &amp; Continue →
+                  Save &amp; Continue
                 </>
               )}
             </button>
           </div>
         )}
         {formStep === 2 && (
-          <div className="p-4 border-t border-slate-200 bg-white rounded-b-2xl shrink-0">
-            <button
-              type="button"
-              onClick={handleFinish}
-              className="w-full py-3.5 rounded-2xl font-black text-sm transition-all shadow-lg flex items-center justify-center gap-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white shadow-emerald-600/25"
-            >
+          <div className="interview-create-footer">
+            <button type="button" onClick={handleFinish} className="interview-create-btn-success">
               <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
               Done
             </button>
           </div>
         )}
       </div>
-    </div>
+    </>,
+    document.body
   );
 };
 

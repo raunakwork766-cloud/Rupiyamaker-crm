@@ -635,13 +635,13 @@ const EmployeeActivity = ({ employeeId, employeeData, refreshTrigger }) => {
     if (loading) {
         return (
             <div className="flex items-center justify-center h-32">
-                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2" style={{ borderColor: '#3b82f6' }}></div>
             </div>
         );
     }
 
     return (
-        <div className="space-y-4 bg-white p-4 rounded-lg">
+        <div className="space-y-4 p-4 rounded-lg" style={{ background: 'transparent' }}>
             {/* Header */}
             <div className="flex items-center justify-between">
                 <h3 className="text-xl font-semibold text-black flex items-center">

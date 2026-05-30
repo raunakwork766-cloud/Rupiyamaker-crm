@@ -1,14 +1,34 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from "react";
-import { ThumbsUp, MessageCircle, User, AlertCircle, Loader, Image, FileText, X, ChevronLeft, ChevronRight, MoreHorizontal, CornerDownRight, Trash2 } from "lucide-react";
+import { ThumbsUp, MessageCircle, User, AlertCircle, Loader, Image, FileText, X, ChevronLeft, ChevronRight, MoreHorizontal, CornerDownRight, Trash2, CheckCircle2, Clock } from "lucide-react";
 import { hasPermission, canEditPost, canDeletePost, canDeleteComment, getUserPermissions, getUserId } from '../utils/permissions';
 import { buildApiUrl, buildMediaUrl } from '../config/api';
 import { feedsAPI } from '../services/api';
 import { formatDateTime } from '../utils/dateUtils';
+import useNavbarPageSearch from '../hooks/useNavbarPageSearch';
 
 // Helper function to format date and time in IST timezone
 function formatDate(dateString, isLocalTime = false) {
   return formatDateTime(dateString);
 }
+
+const FEED_UPLOAD_MAX_BYTES = 50 * 1024 * 1024;
+
+const isFeedImageFile = (file) => {
+  if (!file) return false;
+  if (file.type?.startsWith('image/')) return true;
+  return /\.(jpe?g|png|gif|webp|bmp|heic|heif)$/i.test(file.name || '');
+};
+
+const isFeedAllowedUpload = (file) => isFeedImageFile(file) || file.type === 'application/pdf';
+
+const extractFeedImageUrls = (files = []) =>
+  files.filter((f) => {
+    const fileType = (f.file_type || '').toLowerCase();
+    const filePath = (f.file_path || f.filename || '').toLowerCase();
+    return fileType.startsWith('image') || /\.(jpe?g|png|gif|webp|bmp|heic|heif)$/i.test(filePath);
+  }).map((f) => buildMediaUrl(f.file_path));
+
+const feedImageClassName = 'block w-auto h-auto max-w-full max-h-[354px] sm:max-h-[430px] object-contain';
 // Recursive flatten for comments and replies (all levels)
 function flattenComments(comments, parentAuthor = null, level = 0) {
   const result = [];
@@ -423,16 +443,35 @@ export default function FeedPage({ user }) {
   const [showImageViewer, setShowImageViewer] = useState(false);
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const [viewerImages, setViewerImages] = useState([]);
+  const [viewerFeed, setViewerFeed] = useState(null);
   const [showPostModal, setShowPostModal] = useState(false);
   const [selectedPost, setSelectedPost] = useState(null);
   const fileInputRef = useRef(null);
   const commentInputRef = useRef(null);
+  const viewerCommentInputRef = useRef(null);
   const [commentTexts, setCommentTexts] = useState({});
   const [replyBoxState, setReplyBoxState] = useState(null);
   const [replyText, setReplyText] = useState("");
   const [expandedComments, setExpandedComments] = useState(new Set());
   const [likingComments, setLikingComments] = useState(new Set()); // Track which comments are being liked
   const [likeDebounce, setLikeDebounce] = useState(new Set()); // Prevent rapid clicking
+  const [expandedPosts, setExpandedPosts] = useState(new Set()); // Track which post texts are expanded
+  const [feedSearchQuery, setFeedSearchQuery] = useState('');
+  useNavbarPageSearch(setFeedSearchQuery);
+
+  const visibleFeeds = useMemo(() => {
+    const query = feedSearchQuery.trim().toLowerCase();
+    if (!query) return feeds;
+    return feeds.filter((feed) => {
+      const authorName = (feed.author || feed.creator_name || '').toLowerCase();
+      const text = (feed.text || '').toLowerCase();
+      const commentText = (feed.comments || [])
+        .map((c) => `${c.text || ''} ${c.author || c.user_name || ''}`)
+        .join(' ')
+        .toLowerCase();
+      return authorName.includes(query) || text.includes(query) || commentText.includes(query);
+    });
+  }, [feeds, feedSearchQuery]);
 
   // Permissions
   const userId = getUserId();
@@ -451,6 +490,12 @@ export default function FeedPage({ user }) {
   const userName = localStorage.getItem('userName') || (user ? `${user.first_name} ${user.last_name}` : "User");
 
   useEffect(() => { loadFeeds(); }, []);
+
+  useEffect(() => {
+    if (!viewerFeed) return;
+    const updated = feeds.find((f) => f.id === viewerFeed.id);
+    if (updated) setViewerFeed(updated);
+  }, [feeds, viewerFeed?.id]);
 
   const loadFeeds = useCallback(async () => {
     try {
@@ -537,7 +582,7 @@ export default function FeedPage({ user }) {
         return {
           id: feed.id || feed._id,
           text: feed.content || '',
-          images: feed.files ? feed.files.filter(f => f.file_type?.startsWith('image')).map(f => buildMediaUrl(f.file_path)) : [],
+          images: extractFeedImageUrls(feed.files),
           files: feed.files ? feed.files.filter(f => !f.file_type?.startsWith('image')) : [],
           author: feed.creator_name || 'Unknown User',
           authorId: feed.created_by,
@@ -551,11 +596,6 @@ export default function FeedPage({ user }) {
       });
 
       setFeeds(transformedFeeds);
-      
-      // Load comments for each feed separately to ensure they're properly fetched
-      for (const feed of transformedFeeds) {
-        await loadCommentsForFeed(feed.id);
-      }
     } catch (error) {
       setError(`Failed to load feeds: ${error.message}`);
     } finally {
@@ -645,17 +685,37 @@ export default function FeedPage({ user }) {
   }, []);
 
   const handleFileSelect = useCallback((e) => {
-    const files = Array.from(e.target.files);
-    const validTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'application/pdf'];
-    const validFiles = files.filter(file => validTypes.includes(file.type) && file.size <= 10 * 1024 * 1024);
-    const newFiles = validFiles.map(file => ({
+    const files = Array.from(e.target.files || []);
+    const accepted = [];
+    const rejected = [];
+
+    files.forEach((file) => {
+      if (!isFeedAllowedUpload(file)) {
+        rejected.push(`${file.name}: unsupported file type`);
+        return;
+      }
+      if (file.size > FEED_UPLOAD_MAX_BYTES) {
+        rejected.push(`${file.name}: exceeds 50MB limit`);
+        return;
+      }
+      accepted.push(file);
+    });
+
+    if (rejected.length > 0) {
+      setError(rejected.join(' | '));
+    }
+
+    const newFiles = accepted.map(file => ({
       file,
-      preview: file.type.startsWith('image/') ? URL.createObjectURL(file) : null,
-      type: file.type.startsWith('image/') ? 'image' : 'pdf',
+      preview: isFeedImageFile(file) ? URL.createObjectURL(file) : null,
+      type: isFeedImageFile(file) ? 'image' : 'pdf',
       name: file.name,
       size: file.size
     }));
-    setSelectedFiles(prev => [...prev, ...newFiles]);
+    if (newFiles.length > 0) {
+      setSelectedFiles(prev => [...prev, ...newFiles]);
+    }
+    e.target.value = '';
   }, []);
 
   const removeFile = useCallback((index) => {
@@ -675,15 +735,18 @@ export default function FeedPage({ user }) {
     });
   }, []);
 
-  const openImageViewer = useCallback((images, startIndex) => {
+  const openImageViewer = useCallback((feed, images, startIndex = 0) => {
+    setViewerFeed(feed);
     setViewerImages(images);
     setCurrentImageIndex(startIndex);
     setShowImageViewer(true);
+    setExpandedComments(new Set());
   }, []);
   
   const closeImageViewer = useCallback(() => {
     setShowImageViewer(false);
     setViewerImages([]);
+    setViewerFeed(null);
     setCurrentImageIndex(0);
   }, []);
   
@@ -692,15 +755,17 @@ export default function FeedPage({ user }) {
 
   // Post Modal logic
   const openPostModal = (feed) => {
+    if (feed.images && feed.images.length > 0) {
+      openImageViewer(feed, feed.images, 0);
+      return;
+    }
     setSelectedPost(feed);
     setShowPostModal(true);
-    setCurrentImageIndex(0); // Reset to show first image
-    setExpandedComments(new Set()); // Reset expanded comments - always start collapsed
-    // Focus on comment input after modal is rendered
+    setCurrentImageIndex(0);
+    setExpandedComments(new Set());
     setTimeout(() => {
       if (commentInputRef.current) {
         commentInputRef.current.focus();
-        // Scroll to the comment input
         commentInputRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
       }
     }, 100);
@@ -736,14 +801,20 @@ export default function FeedPage({ user }) {
       formData.append('content', message.trim());
       formData.append('user_id', currentUserId);
       selectedFiles.forEach((fileObj) => {
-        formData.append('files', fileObj.file);
+        formData.append('files', fileObj.file, fileObj.file.name || fileObj.name || 'upload');
       });
-      const response = await fetch(buildApiUrl('feeds/'), {
+      const response = await fetch(buildApiUrl(`feeds/?user_id=${encodeURIComponent(currentUserId)}`), {
         method: 'POST',
+        headers: {
+          Authorization: `Bearer ${localStorage.getItem('token') || ''}`,
+        },
         body: formData
       });
       if (!response.ok) {
         const errorData = await response.text();
+        if (response.status === 504) {
+          throw new Error('Upload timed out. Try a smaller file or retry in a moment.');
+        }
         throw new Error(errorData || 'Failed to create post');
       }
       await response.json();
@@ -1359,8 +1430,9 @@ export default function FeedPage({ user }) {
   }
 
   return (
-    <div className="min-h-screen bg-black">
-      <div className="container mx-auto px-2 sm:px-4 pt-2 sm:pt-4 pb-4 sm:pb-8 max-w-4xl">
+    <FeedPageLayout userId={userId} feeds={feeds}>
+      <>
+      <div className="w-full px-2 sm:px-4 pt-2 sm:pt-4 pb-4 sm:pb-8">
         {canCreatePost && (
           <div className="bg-white rounded-lg shadow-sm border border-gray-800 mb-4 sm:mb-6">
             <div className="p-3 sm:p-4 border-b border-gray-800">
@@ -1465,7 +1537,7 @@ export default function FeedPage({ user }) {
                             <img
                               src={fileObj.preview}
                               alt="Preview"
-                              className="w-full h-24 sm:h-32 object-cover rounded-lg"
+                              className="w-full h-auto max-h-48 object-contain rounded-lg bg-gray-100"
                             />
                           ) : (
                             <div className="w-full h-24 sm:h-32 bg-gray-800 rounded-lg flex items-center justify-center">
@@ -1536,45 +1608,51 @@ export default function FeedPage({ user }) {
           </div>
         )}
 
-        {feeds.length === 0 && !loading && !error && (
+        {visibleFeeds.length === 0 && !loading && !error && (
           <div className="text-center py-6 sm:py-8 text-gray-400 text-sm sm:text-base px-4">
-            No posts yet. Be the first to share something!
+            {feedSearchQuery.trim() ? 'No posts match your search.' : 'No posts yet. Be the first to share something!'}
           </div>
         )}
 
-        <div className="flex flex-col gap-3 sm:gap-6">
-          {feeds.map((feed) => {
+        <div className="flex flex-col gap-3">
+          {visibleFeeds.map((feed) => {
             const currentUserId = getUserId() || localStorage.getItem('userId');
             const postForPermission = {
               ...feed,
               created_by: feed.created_by || feed.authorId || feed.creator_id || (feed.creator && feed.creator.id)
             };
             const userCanDeletePost = canDeletePost(userPermissions, postForPermission, currentUserId);
+            const imgCount = feed.images?.length || 0;
+            const authorName = feed.author || feed.creator_name || 'User';
+            const initials = authorName.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
 
             return (
               <div
                 key={feed.id}
-                className="bg-white rounded-lg shadow-sm border border-gray-800 h-full flex flex-col"
+                className="bg-white rounded-xl overflow-hidden flex flex-col"
+                style={{ boxShadow: '0 1px 3px rgba(0,0,0,0.12), 0 1px 2px rgba(0,0,0,0.08)' }}
               >
-                {/* Post Header */}
-                <div className="flex items-center justify-between p-4">
-                  <div className="flex items-center space-x-3">
-                    <div className="w-10 h-10 bg-gradient-to-r from-purple-600 to-blue-600 rounded-full flex items-center justify-center">
-                      <User className="w-6 h-6 text-black" />
+                {/* ── Post Header ── */}
+                <div className="flex items-center justify-between px-4 pt-3 pb-2">
+                  <div className="flex items-center gap-3">
+                    {/* Avatar */}
+                    <div className="w-10 h-10 rounded-full flex-shrink-0 overflow-hidden bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center">
+                      {feed.author_photo ? (
+                        <img src={feed.author_photo} alt={authorName} className="w-full h-full object-cover" onError={e => e.target.style.display='none'} />
+                      ) : (
+                        <span className="text-white text-sm font-bold">{initials}</span>
+                      )}
                     </div>
                     <div>
-                      <div className="font-semibold text-black">{feed.author || feed.creator_name}</div>
-                      <div className="text-sm text-black">{feed.timestamp}</div>
+                      <p className="font-semibold text-gray-900 text-[15px] leading-tight">{authorName}</p>
+                      <p className="text-xs text-gray-400 leading-tight mt-0.5">{feed.timestamp}</p>
                     </div>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <button className="w-8 h-8 flex items-center justify-center text-gray-400 hover:bg-gray-800 rounded-full">
-                      <MoreHorizontal className="w-5 h-5" />
-                    </button>
+                  <div className="flex items-center gap-1">
                     {userCanDeletePost && (
                       <button
                         onClick={() => deletePost(feed.id)}
-                        className="w-8 h-8 flex items-center justify-center text-gray-400 hover:text-red-500 hover:bg-gray-800 rounded-full"
+                        className="w-8 h-8 flex items-center justify-center text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-full transition-colors"
                         title="Delete Post"
                       >
                         <Trash2 className="w-4 h-4" />
@@ -1583,65 +1661,142 @@ export default function FeedPage({ user }) {
                   </div>
                 </div>
 
-                {/* Post Content */}
-                <div className="px-4 pb-3">
-                  <p className="text-black whitespace-pre-wrap bg-white font-bold text-lg">{feed.text}</p>
-                </div>
-
-                {/* Post Images - Full Width */}
-                {feed.images && feed.images.length > 0 && (
-                  <div className="pb-3 bg-white">
-                    <div className={`${feed.images.length === 1 ? 'bg-black' : 'grid gap-1 grid-cols-2'}`}>
-                      {feed.images.slice(0, Math.min(4, feed.images.length)).map((image, index) => (
-                        <div
-                          key={index}
-                          className="relative cursor-pointer"
-                          onClick={() => openImageViewer(feed.images, index)}
+                {/* ── Post Text with Read More ── */}
+                {feed.text && (() => {
+                  const isExpanded = expandedPosts.has(feed.id);
+                  const lines = feed.text.split('\n');
+                  const needsTruncate = lines.length > 5 || feed.text.length > 300;
+                  const displayText = (!needsTruncate || isExpanded)
+                    ? feed.text
+                    : lines.slice(0, 5).join('\n').slice(0, 300);
+                  return (
+                    <div className="px-4 pb-3">
+                      <p className="text-gray-800 text-[15px] leading-snug whitespace-pre-wrap">
+                        {displayText}
+                        {needsTruncate && !isExpanded && '…'}
+                      </p>
+                      {needsTruncate && (
+                        <button
+                          onClick={() => setExpandedPosts(prev => {
+                            const next = new Set(prev);
+                            isExpanded ? next.delete(feed.id) : next.add(feed.id);
+                            return next;
+                          })}
+                          className="text-[13px] font-semibold text-gray-500 hover:text-gray-700 mt-0.5"
                         >
-                          <img
-                            src={image}
-                            alt={`Post image ${index + 1}`}
-                            className={`w-full ${
-                              feed.images.length === 1 ? 'h-[500px] sm:h-[600px] object-contain' : 'h-80 sm:h-96 object-cover'
-                            }`}
-                          />
-                          {index === 3 && feed.images.length > 4 && (
-                            <div className="absolute inset-0 bg-black bg-opacity-70 flex items-center justify-center">
-                              <span className="text-white text-2xl font-bold">
-                                +{feed.images.length - 4}
-                              </span>
-                            </div>
-                          )}
-                        </div>
-                      ))}
+                          {isExpanded ? 'See less' : 'See more'}
+                        </button>
+                      )}
                     </div>
+                  );
+                })()}
+
+                {/* ── Post Images — compact preview (full image on click) ── */}
+                {imgCount > 0 && (
+                  <div className="w-full">
+                    {imgCount === 1 && (
+                      <div
+                        className="relative w-full cursor-pointer flex justify-center bg-gray-100"
+                        onClick={() => openImageViewer(feed, feed.images, 0)}
+                      >
+                        <img src={feed.images[0]} alt="Post" className={feedImageClassName} loading="lazy" decoding="async" />
+                      </div>
+                    )}
+                    {imgCount === 2 && (
+                      <div className="flex flex-col gap-0.5 bg-gray-100">
+                        {feed.images.map((img, i) => (
+                          <div
+                            key={i}
+                            className="relative cursor-pointer flex justify-center bg-gray-100"
+                            onClick={() => openImageViewer(feed, feed.images, i)}
+                          >
+                            <img src={img} alt={`Post ${i + 1}`} className={feedImageClassName} loading="lazy" decoding="async" />
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    {imgCount === 3 && (
+                      <div className="flex flex-col gap-0.5 bg-gray-100">
+                        {feed.images.map((img, i) => (
+                          <div
+                            key={i}
+                            className="relative cursor-pointer flex justify-center bg-gray-100"
+                            onClick={() => openImageViewer(feed, feed.images, i)}
+                          >
+                            <img src={img} alt={`Post ${i + 1}`} className={feedImageClassName} loading="lazy" decoding="async" />
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    {imgCount >= 4 && (
+                      <div className="flex flex-col gap-0.5 bg-gray-100">
+                        {feed.images.slice(0, 4).map((img, i) => (
+                          <div
+                            key={i}
+                            className="relative cursor-pointer flex justify-center bg-gray-100"
+                            onClick={() => openImageViewer(feed, feed.images, i)}
+                          >
+                            <img src={img} alt={`Post ${i + 1}`} className={feedImageClassName} loading="lazy" decoding="async" />
+                            {i === 3 && imgCount > 4 && (
+                              <div className="absolute inset-0 bg-black/55 flex items-center justify-center">
+                                <span className="text-white text-3xl font-bold">+{imgCount - 4}</span>
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 )}
 
-                {/* Post Actions */}
-                <div className="border-t px-4 py-2 bg-white">
-                  <div className="flex items-center justify-around border-gray-200 pt-3">
+                {/* ── Reaction & Comment Count Row ── */}
+                {((feed.likes > 0) || (feed.comments?.length > 0)) && (
+                  <div className="flex items-center justify-between px-4 pt-2 pb-1">
+                    {feed.likes > 0 && (
+                      <div className="flex items-center gap-1.5">
+                        <span className="w-5 h-5 rounded-full bg-blue-500 flex items-center justify-center flex-shrink-0">
+                          <ThumbsUp className="w-3 h-3 text-white fill-white" />
+                        </span>
+                        <span className="text-sm text-gray-500">{feed.likes}</span>
+                      </div>
+                    )}
+                    {feed.comments?.length > 0 && (
+                      <button
+                        onClick={() => openPostModal(feed)}
+                        className="text-sm text-gray-500 hover:underline ml-auto"
+                      >
+                        {feed.comments.length} comment{feed.comments.length !== 1 ? 's' : ''}
+                      </button>
+                    )}
+                  </div>
+                )}
+
+                {/* ── Action Bar ── */}
+                <div className="border-t border-gray-100 mx-1">
+                  <div className="flex items-center">
                     {canLike && (
                       <button
                         onClick={() => toggleLike(feed.id)}
-                        className={`flex-1 flex items-center justify-center py-2 px-4 rounded-lg transition-colors ${feed.liked
-                          ? 'text-blue-400'
-                          : 'text-gray-700 hover:bg-gray-100'
-                          }`}
+                        className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg mx-0.5 my-1 text-sm font-semibold transition-colors ${
+                          feed.liked
+                            ? 'text-blue-600 bg-blue-50 hover:bg-blue-100'
+                            : 'text-gray-600 hover:bg-gray-100'
+                        }`}
                       >
-                        <ThumbsUp className={`w-5 h-5 mr-2 ${feed.liked ? 'fill-blue-400' : ''}`} />
-                        Like
-                        <span className="ml-2 text-sm font-semibold">{feed.likes || 0}</span>
+                        <ThumbsUp className={`w-[18px] h-[18px] transition-all ${feed.liked ? 'fill-blue-600 text-blue-600 scale-110' : ''}`} />
+                        <span>{feed.liked ? 'Liked' : 'Like'}</span>
                       </button>
+                    )}
+                    {canLike && canComment && (
+                      <div className="w-px h-6 bg-gray-200 flex-shrink-0" />
                     )}
                     {canComment && (
                       <button
                         onClick={() => openPostModal(feed)}
-                        className="flex-1 flex items-center justify-center py-2 px-4 text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
+                        className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg mx-0.5 my-1 text-sm font-semibold text-gray-600 hover:bg-gray-100 transition-colors"
                       >
-                        <MessageCircle className="w-5 h-5 mr-2" />
-                        Comment
-                        <span className="ml-2 text-sm font-semibold">{feed.comments?.length || 0}</span>
+                        <MessageCircle className="w-[18px] h-[18px]" />
+                        <span>Comment</span>
                       </button>
                     )}
                   </div>
@@ -1652,41 +1807,188 @@ export default function FeedPage({ user }) {
         </div>
       </div>
 
-      {/* Image Viewer Modal */}
-      {showImageViewer && (
-        <div className="fixed inset-0 bg-transparent bg-opacity-30 flex items-center justify-center z-50 backdrop-blur-sm">
-          <div className="relative w-full h-full flex items-center justify-center">
+      {/* Facebook-style Photo Viewer — image left, comments/likes right */}
+      {showImageViewer && viewerFeed && viewerImages.length > 0 && (
+        <div className="fixed inset-0 z-[100] bg-black flex flex-col lg:flex-row">
+          {/* Left: full image area */}
+          <div className="relative flex-1 min-h-[42vh] lg:min-h-0 bg-black flex items-center justify-center">
             <button
+              type="button"
               onClick={closeImageViewer}
-              className="fixed top-4 right-4 w-12 h-12 bg-gray-800 bg-opacity-80 text-white rounded-full flex items-center justify-center hover:bg-red-600 hover:text-white transition-all duration-200 z-50 shadow-lg border border-gray-600 transform hover:scale-110"
-              title="Close image viewer"
+              className="absolute top-4 left-4 z-30 w-10 h-10 rounded-full bg-black/60 text-white flex items-center justify-center hover:bg-black/80 transition-colors"
+              title="Close"
             >
-              <X className="w-6 h-6" />
+              <X className="w-5 h-5" />
             </button>
+
             {viewerImages.length > 1 && (
               <>
                 <button
+                  type="button"
                   onClick={prevImage}
-                  className="absolute left-4 w-10 h-10 bg-gray-800 bg-opacity-50 text-white rounded-full flex items-center justify-center hover:bg-opacity-70 z-10"
+                  className="absolute left-3 sm:left-5 top-1/2 -translate-y-1/2 z-20 w-10 h-10 sm:w-11 sm:h-11 rounded-full bg-white/90 text-gray-900 flex items-center justify-center hover:bg-white shadow-lg"
                 >
                   <ChevronLeft className="w-6 h-6" />
                 </button>
                 <button
+                  type="button"
                   onClick={nextImage}
-                  className="absolute right-4 w-10 h-10 bg-gray-800 bg-opacity-50 text-white rounded-full flex items-center justify-center hover:bg-opacity-70 z-10"
+                  className="absolute right-3 sm:right-5 top-1/2 -translate-y-1/2 z-20 w-10 h-10 sm:w-11 sm:h-11 rounded-full bg-white/90 text-gray-900 flex items-center justify-center hover:bg-white shadow-lg"
                 >
                   <ChevronRight className="w-6 h-6" />
                 </button>
+                <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-20 bg-black/60 text-white text-sm px-3 py-1 rounded-full">
+                  {currentImageIndex + 1} / {viewerImages.length}
+                </div>
               </>
             )}
+
             <img
               src={viewerImages[currentImageIndex]}
-              alt="Full size"
-              className="max-w-[95vw] max-h-[90vh] object-contain"
+              alt="Post"
+              className="max-w-full max-h-full w-auto h-auto object-contain select-none"
+              draggable={false}
             />
-            {viewerImages.length > 1 && (
-              <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 text-white">
-                {currentImageIndex + 1} of {viewerImages.length}
+          </div>
+
+          {/* Right: post details + comments sidebar */}
+          <div className="w-full lg:w-[380px] xl:w-[420px] flex-shrink-0 bg-white flex flex-col max-h-[58vh] lg:max-h-full border-t lg:border-t-0 lg:border-l border-gray-200">
+            {/* Post header */}
+            <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 flex-shrink-0">
+              <div className="flex items-center gap-3 min-w-0">
+                <div className="w-10 h-10 rounded-full flex-shrink-0 overflow-hidden bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center">
+                  <span className="text-white text-sm font-bold">
+                    {(viewerFeed.author || viewerFeed.creator_name || 'U').split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase()}
+                  </span>
+                </div>
+                <div className="min-w-0">
+                  <p className="font-semibold text-gray-900 text-[15px] truncate">{viewerFeed.author || viewerFeed.creator_name}</p>
+                  <p className="text-xs text-gray-500">{viewerFeed.timestamp}</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={closeImageViewer}
+                className="lg:hidden w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-600"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Post text */}
+            {viewerFeed.text && (
+              <div className="px-4 py-3 border-b border-gray-100 flex-shrink-0 max-h-32 overflow-y-auto">
+                <p className="text-[15px] text-gray-800 whitespace-pre-wrap leading-snug">{viewerFeed.text}</p>
+              </div>
+            )}
+
+            {/* Reactions summary */}
+            {((viewerFeed.likes > 0) || (viewerFeed.comments?.length > 0)) && (
+              <div className="flex items-center justify-between px-4 py-2 border-b border-gray-100 flex-shrink-0">
+                {viewerFeed.likes > 0 && (
+                  <div className="flex items-center gap-1.5">
+                    <span className="w-5 h-5 rounded-full bg-blue-500 flex items-center justify-center">
+                      <ThumbsUp className="w-3 h-3 text-white fill-white" />
+                    </span>
+                    <span className="text-sm text-gray-600">{viewerFeed.likes}</span>
+                  </div>
+                )}
+                {viewerFeed.comments?.length > 0 && (
+                  <span className="text-sm text-gray-500 ml-auto">
+                    {viewerFeed.comments.length} comment{viewerFeed.comments.length !== 1 ? 's' : ''}
+                  </span>
+                )}
+              </div>
+            )}
+
+            {/* Like / Comment actions */}
+            <div className="border-b border-gray-100 flex-shrink-0">
+              <div className="flex items-center px-1">
+                {canLike && (
+                  <button
+                    type="button"
+                    onClick={() => toggleLike(viewerFeed.id)}
+                    className={`flex-1 flex items-center justify-center gap-2 py-2.5 mx-0.5 my-1 text-sm font-semibold rounded-lg transition-colors ${
+                      viewerFeed.liked ? 'text-blue-600 bg-blue-50 hover:bg-blue-100' : 'text-gray-600 hover:bg-gray-100'
+                    }`}
+                  >
+                    <ThumbsUp className={`w-[18px] h-[18px] ${viewerFeed.liked ? 'fill-blue-600 text-blue-600' : ''}`} />
+                    {viewerFeed.liked ? 'Liked' : 'Like'}
+                  </button>
+                )}
+                {canLike && canComment && <div className="w-px h-6 bg-gray-200" />}
+                {canComment && (
+                  <button
+                    type="button"
+                    onClick={() => viewerCommentInputRef.current?.focus()}
+                    className="flex-1 flex items-center justify-center gap-2 py-2.5 mx-0.5 my-1 text-sm font-semibold text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+                  >
+                    <MessageCircle className="w-[18px] h-[18px]" />
+                    Comment
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* Comments list */}
+            <div className="flex-1 overflow-y-auto px-4 py-3 min-h-0">
+              {viewerFeed.comments?.length > 0 ? (
+                <CommentList
+                  comments={viewerFeed.comments}
+                  onLike={(commentId, parentId) => handleLikeComment(viewerFeed.id, commentId, parentId)}
+                  onShowReplyBox={handleShowReplyBox}
+                  onDeleteComment={handleDeleteComment}
+                  replyBoxState={replyBoxState && replyBoxState.feedId === viewerFeed.id ? replyBoxState : null}
+                  replyText={replyText}
+                  setReplyText={setReplyText}
+                  handleReply={handleReply}
+                  userName={userName}
+                  userId={userId}
+                  feedId={viewerFeed.id}
+                  setReplyBoxState={setReplyBoxState}
+                  expandedComments={expandedComments}
+                  setExpandedComments={setExpandedComments}
+                  likingComments={likingComments}
+                />
+              ) : (
+                <p className="text-sm text-gray-400 text-center py-6">No comments yet. Be the first!</p>
+              )}
+            </div>
+
+            {/* Comment input — sticky bottom */}
+            {canComment && (
+              <div className="border-t border-gray-200 px-4 py-3 flex items-center gap-2 flex-shrink-0 bg-white">
+                <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center flex-shrink-0">
+                  <User className="w-4 h-4 text-white" />
+                </div>
+                <div className="flex-1 bg-gray-100 rounded-full px-4 py-2 border border-gray-200">
+                  <input
+                    ref={viewerCommentInputRef}
+                    type="text"
+                    placeholder="Write a comment..."
+                    value={commentTexts[viewerFeed.id] || ''}
+                    onChange={(e) => setCommentTexts((prev) => ({ ...prev, [viewerFeed.id]: e.target.value }))}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && (commentTexts[viewerFeed.id] || '').trim()) {
+                        handleComment(viewerFeed.id, commentTexts[viewerFeed.id]);
+                        setCommentTexts((prev) => ({ ...prev, [viewerFeed.id]: '' }));
+                      }
+                    }}
+                    className="w-full bg-transparent outline-none text-gray-900 placeholder-gray-400 text-sm"
+                  />
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if ((commentTexts[viewerFeed.id] || '').trim()) {
+                      handleComment(viewerFeed.id, commentTexts[viewerFeed.id]);
+                      setCommentTexts((prev) => ({ ...prev, [viewerFeed.id]: '' }));
+                    }
+                  }}
+                  className="px-3 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 text-sm font-semibold flex-shrink-0"
+                >
+                  Post
+                </button>
               </div>
             )}
           </div>
@@ -1841,6 +2143,124 @@ export default function FeedPage({ user }) {
         </div>
       )}
 
+      </>
+    </FeedPageLayout>
+  );
+}
+
+// ── Right-panel widget: My Tasks ──
+function MyTasksWidget({ userId }) {
+  const [tasks, setTasks] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (!userId) { setLoading(false); return; }
+    const token = localStorage.getItem('token');
+    fetch(`/api/tasks/?assigned_to=${encodeURIComponent(userId)}&user_id=${encodeURIComponent(userId)}`, {
+      headers: { 'Authorization': `Bearer ${token}` }
+    })
+      .then(r => r.ok ? r.json() : null)
+      .then(data => {
+        if (!data) return;
+        const items = data.items || data.tasks || data || [];
+        setTasks(Array.isArray(items) ? items : []);
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, [userId]);
+
+  const counts = useMemo(() => {
+    const ongoing = tasks.filter(t => ['pending','in_progress','assigned'].includes((t.status||'').toLowerCase())).length;
+    const assisting = tasks.filter(t => (t.role||'') === 'assisting').length;
+    const setByMe = tasks.filter(t => String(t.created_by||t.creator_id) === String(userId) && String(t.assigned_to) !== String(userId)).length;
+    return { ongoing, assisting, setByMe };
+  }, [tasks, userId]);
+
+  return (
+    <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
+      <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
+        <span className="font-bold text-gray-800 text-sm">My Tasks</span>
+        <button className="w-6 h-6 flex items-center justify-center rounded-full bg-blue-500 hover:bg-blue-600 text-white transition-colors">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M12 5v14M5 12h14" strokeLinecap="round"/></svg>
+        </button>
+      </div>
+      {loading ? (
+        <div className="px-4 py-3 text-xs text-gray-400">Loading…</div>
+      ) : (
+        <ul className="divide-y divide-gray-50">
+          {[
+            { label: 'Ongoing', count: counts.ongoing },
+            { label: 'Assisting', count: counts.assisting },
+            { label: 'Set by me', count: counts.setByMe },
+          ].map(row => (
+            <li key={row.label} className="flex items-center justify-between px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 transition-colors">
+              <span>{row.label}</span>
+              <span className="font-semibold text-gray-900">{row.count}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+// ── Right-panel widget: Popular Posts ──
+function PopularPostsWidget({ feeds }) {
+  const popular = useMemo(() => {
+    return [...feeds]
+      .sort((a, b) => ((b.likeCount||0) + (b.commentCount||0)) - ((a.likeCount||0) + (a.commentCount||0)))
+      .slice(0, 3);
+  }, [feeds]);
+
+  return (
+    <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
+      <div className="px-4 py-3 border-b border-gray-100">
+        <span className="font-bold text-gray-800 text-sm">Popular Posts</span>
+      </div>
+      {popular.length === 0 ? (
+        <div className="px-4 py-3 text-xs text-gray-400">No posts yet.</div>
+      ) : (
+        <ul className="divide-y divide-gray-50">
+          {popular.map(post => {
+            const authorName = post.author || post.creator_name || 'User';
+            const initials = authorName.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
+            return (
+              <li key={post.id} className="flex items-start gap-3 px-4 py-3 hover:bg-gray-50 transition-colors">
+                <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white text-xs font-bold flex-shrink-0 overflow-hidden">
+                  {post.author_photo
+                    ? <img src={post.author_photo} alt={authorName} className="w-full h-full object-cover" onError={e => e.target.style.display='none'} />
+                    : initials}
+                </div>
+                <div className="min-w-0">
+                  <p className="text-xs font-semibold text-gray-800 leading-tight">{authorName}</p>
+                  <p className="text-xs text-gray-500 truncate mt-0.5">{post.text?.slice(0, 60) || '(media post)'}</p>
+                  <div className="flex items-center gap-2 mt-1 text-[11px] text-gray-400">
+                    <span>👍 {post.likeCount||0}</span>
+                    <span>💬 {post.commentCount||0}</span>
+                  </div>
+                </div>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+// ── 2-column Bitrix-style wrapper ──
+function FeedPageLayout({ userId, feeds, children }) {
+  return (
+    <div className="h-screen bg-black flex gap-0 overflow-hidden">
+      {/* Main feed column — scrollable */}
+      <div className="flex-1 min-w-0 overflow-y-auto">
+        {children}
+      </div>
+      {/* Right panel — static, no scroll */}
+      <div className="hidden lg:flex flex-col gap-4 w-[260px] shrink-0 px-3 pt-3 pb-6">
+        <MyTasksWidget userId={userId} />
+        <PopularPostsWidget feeds={feeds} />
+      </div>
     </div>
   );
 }

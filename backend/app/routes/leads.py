@@ -40,7 +40,7 @@ from app.schemas.lead_schemas import (
     ReportingOption,
     ShareLinkCreate, ShareLinkInDB, PublicLeadFormUpdate
 )
-from app.utils.permission_helpers import is_super_admin_permission
+from app.utils.permission_helpers import is_super_admin_permission, has_super_admin_permissions
 from app.utils.performance_cache import (
     cached_response, cache_user_permissions, get_cached_user_permissions,
     cache_leads_list, get_cached_leads_list, performance_monitor, invalidate_cache_pattern
@@ -2360,6 +2360,48 @@ async def update_lead(
     
     # Final safety check: ensure we have something to update after all processing
     final_update_data = {k: v for k, v in update_dict.items() if v is not None}
+
+    # Source Name (campaign_name): only Super Admin may change on existing leads
+    if "campaign_name" in final_update_data:
+        requester_is_super_admin = any(is_super_admin_permission(perm) for perm in permissions)
+        if not requester_is_super_admin:
+            requester_is_super_admin = await is_admin(user_id, users_db, roles_db)
+        if not requester_is_super_admin:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Only Super Admin can change Source Name after lead creation"
+            )
+        final_update_data["campaignName"] = final_update_data["campaign_name"]
+
+    # Mandatory remark validation when changing status/sub-status
+    new_status = final_update_data.get("status")
+    new_sub_status = final_update_data.get("sub_status")
+    status_change_remark = final_update_data.get("status_change_remark")
+
+    status_changing = new_status is not None and new_status != lead.get("status")
+    sub_status_changing = new_sub_status is not None and new_sub_status != lead.get("sub_status")
+
+    if status_changing or sub_status_changing:
+        requires_remark = False
+        if sub_status_changing and new_sub_status:
+            target_status = new_status if new_status is not None else lead.get("status")
+            requires_remark = await leads_db.requires_remark_for_target(
+                target_status,
+                new_sub_status,
+                check_sub=True
+            )
+        elif status_changing:
+            requires_remark = await leads_db.requires_remark_for_target(
+                new_status,
+                None,
+                check_sub=False
+            )
+
+        if requires_remark and (not status_change_remark or not str(status_change_remark).strip()):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Remark is required when changing to this status"
+            )
     
     # Super admin: handle override_created_by_id on existing leads
     if "override_created_by_id" in final_update_data:
@@ -2369,8 +2411,14 @@ async def update_lead(
             override_user = await users_db.get_user(final_update_data["override_created_by_id"])
             if override_user:
                 override_name = f"{override_user.get('first_name', '')} {override_user.get('last_name', '')}".strip()
+                override_role_name = "Unknown Role"
+                if override_user.get("role_id"):
+                    override_role = await roles_db.get_role(override_user.get("role_id"))
+                    if override_role:
+                        override_role_name = override_role.get("name", "Unknown Role")
                 final_update_data["created_by"] = final_update_data["override_created_by_id"]
                 final_update_data["created_by_name"] = override_name or "Unknown User"
+                final_update_data["created_by_role"] = override_role_name
         del final_update_data["override_created_by_id"]
     
     # Super admin: handle override_created_at on existing leads
@@ -3046,6 +3094,9 @@ async def get_lead_notes(
     # Get notes
     notes = await leads_db.get_lead_notes(lead_id, skip, limit)
     
+    permissions = await get_user_permissions(user_id, users_db, roles_db)
+    requester_is_super_admin = has_super_admin_permissions(permissions) or await is_admin(user_id, users_db, roles_db)
+    
     # Convert ObjectIds to strings and enhance with user info
     enhanced_notes = []
     for note in notes:
@@ -3057,18 +3108,14 @@ async def get_lead_notes(
             if creator:
                 note_dict["creator_name"] = f"{creator.get('first_name', '')} {creator.get('last_name', '')}"
         
-        # Check if user can edit/delete this note
-        permissions = await get_user_permissions(user_id, users_db, roles_db)
-        
-        # User can edit if they created the note or have edit permission
-        can_edit = note.get("created_by") == user_id or any(
+        # User can edit/delete own notes; Super Admin can manage any remark
+        can_edit = note.get("created_by") == user_id or requester_is_super_admin or any(
             perm["page"] == "leads" and ("create" in perm["actions"] or "*" in perm["actions"])
             for perm in permissions
         )
         note_dict["can_edit"] = can_edit
         
-        # User can delete if they created the note or have delete permission
-        can_delete = note.get("created_by") == user_id or any(
+        can_delete = note.get("created_by") == user_id or requester_is_super_admin or any(
             perm["page"] == "leads" and ("delete" in perm["actions"] or "*" in perm["actions"])
             for perm in permissions
         )
@@ -3112,18 +3159,19 @@ async def update_note(
             detail="Note does not belong to this lead"
         )
     
-    # Check if user can edit this note (creator or has edit permission)
+    # Check if user can edit this note (creator, Super Admin, or leads edit permission)
     permissions = await get_user_permissions(user_id, users_db, roles_db)
-    can_edit = note.get("created_by") == user_id or any(
+    requester_is_super_admin = has_super_admin_permissions(permissions) or await is_admin(user_id, users_db, roles_db)
+    can_edit = note.get("created_by") == user_id or requester_is_super_admin or any(
         perm["page"] == "leads" and ("create" in perm["actions"] or "*" in perm["actions"])
         for perm in permissions
     )
     
-    # if not can_edit:
-    #     raise HTTPException(
-    #         status_code=status.HTTP_403_FORBIDDEN,
-    #         detail="You don't have permission to edit this note"
-    #     )
+    if not can_edit:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You don't have permission to edit this note"
+        )
     
     # Update note
     update_dict = {k: v for k, v in note_update.dict().items() if v is not None}
@@ -3173,9 +3221,10 @@ async def delete_note(
             detail="Note does not belong to this lead"
         )
     
-    # Check if user can delete this note (creator or has delete permission)
+    # Check if user can delete this note (creator, Super Admin, or leads delete permission)
     permissions = await get_user_permissions(user_id, users_db, roles_db)
-    can_delete = note.get("created_by") == user_id or any(
+    requester_is_super_admin = has_super_admin_permissions(permissions) or await is_admin(user_id, users_db, roles_db)
+    can_delete = note.get("created_by") == user_id or requester_is_super_admin or any(
         perm["page"] == "leads" and ("delete" in perm["actions"] or "*" in perm["actions"])
         for perm in permissions
     )
@@ -4017,8 +4066,20 @@ async def update_status(
             detail=f"Status with ID {status_id} not found"
         )
     
-    # Update status — include all fields (even False/0/None explicitly set)
-    update_dict = {k: v for k, v in status_update.dict().items() if v is not None}
+    # Update status — include explicitly set fields (including boolean False)
+    if hasattr(status_update, "model_dump"):
+        fields_set = status_update.model_fields_set
+        raw = status_update.model_dump(exclude_unset=True)
+    else:
+        fields_set = status_update.__fields_set__
+        raw = status_update.dict(exclude_unset=True)
+
+    update_dict = {}
+    for key, value in raw.items():
+        if value is not None:
+            update_dict[key] = value
+        elif key in fields_set and isinstance(value, bool):
+            update_dict[key] = value
     
     update_dict['updated_at'] = get_ist_now()
     print(update_dict)

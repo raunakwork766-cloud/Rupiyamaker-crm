@@ -28,6 +28,7 @@ const ACTION_LABELS = {
     leave_setting:        'Leave Setting',
     leave_management:     'Leave Management',
     update_attendance:    'Update Attendance',
+    view_salary:          'View Salary Column',
     create_app:           'Create App',
     edit_app:             'Edit App',
     share_app:            'Share App',
@@ -69,7 +70,7 @@ const allPermissions = {
     'interview': ['show', 'view_team', 'view_all', 'interview_setting', 'delete'],
     'employees': ['show', 'view_team', 'view_all', 'add_employee', 'reset_password', 'lock_role', 'delete'],
     'leaves': ['show', 'view_team', 'view_all', 'leave_setting', 'delete'],
-    'attendance': ['show', 'view_team', 'view_all', 'leave_management', 'update_attendance'],
+    'attendance': ['show', 'view_team', 'view_all', 'leave_management', 'update_attendance', 'view_salary'],
     'dialer_report': ['show'],
     'offer_letter': ['show'],
     'apps': ['show', 'create_app', 'edit_app', 'share_app'],
@@ -174,44 +175,71 @@ const getPermissionsCount = (permissions) => {
     return total;
 };
 
+// HubSpot-style light theme palette
+const RC = {
+    page: '#ffffff',
+    pageAlt: '#f5f8fa',
+    header: '#ffffff',
+    text: '#33475b',
+    textMuted: '#516f90',
+    textLight: '#99acc2',
+    border: '#cbd6e2',
+    borderLight: '#eaf0f6',
+    accent: '#ff7a59',
+    accentSoft: '#fff1ee',
+    success: '#00bda5',
+    successBg: '#e5f8f6',
+    hover: '#f5f8fa',
+    rowEven: '#ffffff',
+    rowOdd: '#fafbfc',
+    stickyEven: '#ffffff',
+    stickyOdd: '#f5f8fa',
+    moduleHeader: '#f5f8fa',
+    actionHeader: '#ffffff',
+    permOn: '#e5f8f6',
+    permHover: '#d0f0eb',
+    modal: '#ffffff',
+    overlay: 'rgba(45, 62, 80, 0.55)',
+};
+
 // Column left offsets for sticky positioning
 const COL = { name: 0, dept: 200, report: 320, perms: 440, sa: 520 };
 const COL_OFFSETS = [COL.name, COL.dept, COL.report, COL.perms];
 
 // Style helpers
 const thFixed = () => ({
-    position: 'sticky', left: COL.name, zIndex: 60, background: '#000', color: '#fff',
+    position: 'sticky', left: COL.name, zIndex: 60, background: RC.header, color: RC.text,
     padding: '12px 16px', fontWeight: '700', fontSize: '11px', textTransform: 'uppercase',
-    letterSpacing: '0.5px', borderBottom: '2px solid #333', borderRight: '2px solid #444',
+    letterSpacing: '0.5px', borderBottom: `2px solid ${RC.border}`, borderRight: `2px solid ${RC.border}`,
     whiteSpace: 'nowrap', textAlign: 'left', cursor: 'pointer', minWidth: '200px', userSelect: 'none',
 });
 const thSticky = (colIndex) => ({
-    position: 'sticky', left: COL_OFFSETS[colIndex], zIndex: 60, background: '#000', color: '#fff',
+    position: 'sticky', left: COL_OFFSETS[colIndex], zIndex: 60, background: RC.header, color: RC.text,
     padding: '12px 16px', fontWeight: '700', fontSize: '11px', textTransform: 'uppercase',
-    letterSpacing: '0.5px', borderBottom: '2px solid #333',
-    borderRight: colIndex === 3 ? '3px solid #444' : '1px solid #222',
+    letterSpacing: '0.5px', borderBottom: `2px solid ${RC.border}`,
+    borderRight: colIndex === 3 ? `3px solid ${RC.border}` : `1px solid ${RC.borderLight}`,
     whiteSpace: 'nowrap', textAlign: colIndex === 3 ? 'center' : 'left',
     cursor: 'pointer', minWidth: colIndex === 1 || colIndex === 2 ? '120px' : colIndex === 3 ? '80px' : '70px',
     userSelect: 'none',
 });
 const thSA = () => ({
-    position: 'sticky', left: COL.sa, zIndex: 60, background: '#000', color: '#ffd700',
+    position: 'sticky', left: COL.sa, zIndex: 60, background: RC.header, color: RC.accent,
     padding: '12px 10px', fontWeight: '700', fontSize: '11px', textTransform: 'uppercase',
-    letterSpacing: '0.5px', borderBottom: '2px solid #333', borderRight: '3px solid #ffd70044',
+    letterSpacing: '0.5px', borderBottom: `2px solid ${RC.border}`, borderRight: `3px solid ${RC.accentSoft}`,
     whiteSpace: 'nowrap', textAlign: 'center', minWidth: '70px', userSelect: 'none',
 });
 const tdFixed = () => ({
     position: 'sticky', left: COL.name, zIndex: 10, padding: '10px 16px',
-    borderRight: '2px solid #333', background: '#050505', minWidth: '200px', maxWidth: '260px',
+    borderRight: `2px solid ${RC.border}`, background: RC.stickyEven, minWidth: '200px', maxWidth: '260px',
 });
 const tdSticky = (colIndex, rowBg) => ({
     position: 'sticky', left: COL_OFFSETS[colIndex], zIndex: 10, padding: '10px 16px',
-    borderRight: colIndex === 3 ? '3px solid #333' : '1px solid #222',
-    background: rowBg || '#000', whiteSpace: 'nowrap',
+    borderRight: colIndex === 3 ? `3px solid ${RC.border}` : `1px solid ${RC.borderLight}`,
+    background: rowBg || RC.rowEven, whiteSpace: 'nowrap',
 });
 const tdSA = (rowBg) => ({
     position: 'sticky', left: COL.sa, zIndex: 10, padding: '6px 10px', textAlign: 'center',
-    borderRight: '3px solid #1a1400', background: rowBg || '#000',
+    borderRight: `3px solid ${RC.borderLight}`, background: rowBg || RC.rowEven,
 });
 
 export default function RoleCompare({ embedded = false }) {
@@ -484,10 +512,10 @@ export default function RoleCompare({ embedded = false }) {
 
         // Build action column headers
         const actionHeaders = permissionModules.map(mod =>
-            mod.actions.map(a => `<th style="background:#111;color:#aaa;padding:6px 4px;font-size:10px;border:1px solid #222;white-space:nowrap;text-align:center;min-width:56px;">${ACTION_LABELS[a] || a}</th>`).join('')
+            mod.actions.map(a => `<th style="background:#fff;color:#516f90;padding:6px 4px;font-size:10px;border:1px solid #eaf0f6;white-space:nowrap;text-align:center;min-width:56px;">${ACTION_LABELS[a] || a}</th>`).join('')
         ).join('');
         const moduleHeaders = permissionModules.map((mod, i) =>
-            `<th colspan="${mod.actions.length}" style="background:#0a0a0a;color:#ffd700;padding:10px 8px;font-size:10px;font-weight:700;text-transform:uppercase;${i > 0 ? 'border-left:3px solid #ffd700;' : ''}border-bottom:1px solid #222;text-align:center;white-space:nowrap;">${mod.label}</th>`
+            `<th colspan="${mod.actions.length}" style="background:#f5f8fa;color:#ff7a59;padding:10px 8px;font-size:10px;font-weight:700;text-transform:uppercase;${i > 0 ? 'border-left:3px solid #ff7a59;' : ''}border-bottom:1px solid #cbd6e2;text-align:center;white-space:nowrap;">${mod.label}</th>`
         ).join('');
 
         const rows = sortedRoles.map((role, ri) => {
@@ -496,23 +524,23 @@ export default function RoleCompare({ embedded = false }) {
             const cells = permissionModules.map((mod, mi) =>
                 mod.actions.map((action, ai) => {
                     const has = checkRolePerm(role, mod, action);
-                    return `<td style="text-align:center;padding:8px 4px;${ai === 0 && mi > 0 ? 'border-left:3px solid #1a1400;' : 'border-left:1px solid #111;'}background:${has ? '#001a00' : 'transparent'};">${has ? '<span style="color:#00e676;font-size:14px;font-weight:700;">✓</span>' : '<span style="color:#222;font-size:12px;">·</span>'}</td>`;
+                    return `<td style="text-align:center;padding:8px 4px;${ai === 0 && mi > 0 ? 'border-left:3px solid #fff1ee;' : 'border-left:1px solid #eaf0f6;'}background:${has ? '#e5f8f6' : 'transparent'};">${has ? '<span style="color:#00bda5;font-size:14px;font-weight:700;">✓</span>' : '<span style="color:#cbd6e2;font-size:12px;">·</span>'}</td>`;
                 }).join('')
             ).join('');
-            return `<tr style="border-bottom:1px solid #1a1a1a;background:${ri % 2 === 0 ? '#000' : '#050505'};">
-                <td style="padding:10px 16px;border-right:2px solid #1a1a1a;background:#050505;min-width:200px;max-width:260px;">
+            return `<tr style="border-bottom:1px solid #eaf0f6;background:${ri % 2 === 0 ? '#ffffff' : '#fafbfc'};">
+                <td style="padding:10px 16px;border-right:2px solid #cbd6e2;background:#ffffff;min-width:200px;max-width:260px;">
                     <span style="display:flex;align-items:center;gap:8px;">
-                        <span style="width:8px;height:8px;border-radius:50%;background:${superAdmin ? '#ffd700' : '#fff'};flex-shrink:0;display:inline-block;"></span>
-                        <span style="font-weight:600;color:#fff;font-size:12px;">${role.name}</span>
-                        ${superAdmin ? '<span style="background:#ffd700;color:#000;font-size:8px;font-weight:800;padding:1px 5px;border-radius:4px;">SA</span>' : ''}
+                        <span style="width:8px;height:8px;border-radius:50%;background:${superAdmin ? '#ff7a59' : '#cbd6e2'};flex-shrink:0;display:inline-block;"></span>
+                        <span style="font-weight:600;color:#33475b;font-size:12px;">${role.name}</span>
+                        ${superAdmin ? '<span style="background:#ff7a59;color:#fff;font-size:8px;font-weight:800;padding:1px 5px;border-radius:4px;">SA</span>' : ''}
                     </span>
                 </td>
-                <td style="padding:10px 16px;border-right:1px solid #111;white-space:nowrap;">
-                    ${role.department_id ? `<span style="background:#111;border:1px solid #333;color:#ccc;padding:2px 8px;border-radius:4px;font-size:11px;">${getDeptNameLocal(role.department_id)}</span>` : '<span style="color:#444;">-</span>'}
+                <td style="padding:10px 16px;border-right:1px solid #eaf0f6;white-space:nowrap;">
+                    ${role.department_id ? `<span style="background:#f5f8fa;border:1px solid #cbd6e2;color:#516f90;padding:2px 8px;border-radius:4px;font-size:11px;">${getDeptNameLocal(role.department_id)}</span>` : '<span style="color:#99acc2;">-</span>'}
                 </td>
-                <td style="padding:10px 16px;border-right:1px solid #111;white-space:nowrap;color:#aaa;font-size:11px;">${getReportNamesLocal(role)}</td>
-                <td style="padding:10px 16px;border-right:1px solid #111;text-align:center;">
-                    <span style="background:${permCount > 0 ? '#1a2600' : '#111'};color:${permCount > 0 ? '#7fff00' : '#444'};font-weight:700;padding:2px 8px;border-radius:4px;font-size:11px;">${permCount}</span>
+                <td style="padding:10px 16px;border-right:1px solid #eaf0f6;white-space:nowrap;color:#516f90;font-size:11px;">${getReportNamesLocal(role)}</td>
+                <td style="padding:10px 16px;border-right:1px solid #eaf0f6;text-align:center;">
+                    <span style="background:${permCount > 0 ? '#e5f8f6' : '#f5f8fa'};color:${permCount > 0 ? '#00bda5' : '#99acc2'};font-weight:700;padding:2px 8px;border-radius:4px;font-size:11px;">${permCount}</span>
                 </td>
                 ${cells}
             </tr>`;
@@ -526,9 +554,9 @@ export default function RoleCompare({ embedded = false }) {
 <title>Roles & Permissions - ${new Date().toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata' })}</title>
 <style>
 *{margin:0;padding:0;box-sizing:border-box;}
-body{font-family:'Segoe UI',Tahoma,Geneva,Verdana,sans-serif;background:#000;color:#fff;padding:20px;}
+body{font-family:'Segoe UI',Tahoma,Geneva,Verdana,sans-serif;background:#f5f8fa;color:#33475b;padding:20px;}
 h1{font-size:1.6rem;font-weight:800;margin-bottom:4px;}
-p.sub{color:#555;font-size:0.8rem;margin-bottom:20px;}
+p.sub{color:#516f90;font-size:0.8rem;margin-bottom:20px;}
 .wrapper{overflow-x:auto;}
 table{border-collapse:collapse;font-size:12px;min-width:max-content;width:100%;}
 thead th{position:sticky;top:0;z-index:10;}
@@ -541,17 +569,17 @@ thead th{position:sticky;top:0;z-index:10;}
 <table>
 <thead>
 <tr>
-<th style="background:#000;color:#fff;padding:12px 16px;font-weight:700;font-size:11px;text-transform:uppercase;letter-spacing:0.5px;border-bottom:2px solid #333;border-right:2px solid #333;white-space:nowrap;min-width:200px;">Role Name</th>
-<th style="background:#000;color:#fff;padding:12px 16px;font-weight:700;font-size:11px;text-transform:uppercase;letter-spacing:0.5px;border-bottom:2px solid #333;border-right:1px solid #222;white-space:nowrap;min-width:120px;">Department</th>
-<th style="background:#000;color:#fff;padding:12px 16px;font-weight:700;font-size:11px;text-transform:uppercase;letter-spacing:0.5px;border-bottom:2px solid #333;border-right:1px solid #222;white-space:nowrap;min-width:120px;">Reports To</th>
-<th style="background:#000;color:#fff;padding:12px 16px;font-weight:700;font-size:11px;text-transform:uppercase;letter-spacing:0.5px;border-bottom:2px solid #333;border-right:1px solid #222;white-space:nowrap;min-width:80px;">Perms</th>
+<th style="background:#f5f8fa;color:#516f90;padding:12px 16px;font-weight:700;font-size:11px;text-transform:uppercase;letter-spacing:0.5px;border-bottom:2px solid #cbd6e2;border-right:2px solid #cbd6e2;white-space:nowrap;min-width:200px;">Role Name</th>
+<th style="background:#f5f8fa;color:#516f90;padding:12px 16px;font-weight:700;font-size:11px;text-transform:uppercase;letter-spacing:0.5px;border-bottom:2px solid #cbd6e2;border-right:1px solid #eaf0f6;white-space:nowrap;min-width:120px;">Department</th>
+<th style="background:#f5f8fa;color:#516f90;padding:12px 16px;font-weight:700;font-size:11px;text-transform:uppercase;letter-spacing:0.5px;border-bottom:2px solid #cbd6e2;border-right:1px solid #eaf0f6;white-space:nowrap;min-width:120px;">Reports To</th>
+<th style="background:#f5f8fa;color:#516f90;padding:12px 16px;font-weight:700;font-size:11px;text-transform:uppercase;letter-spacing:0.5px;border-bottom:2px solid #cbd6e2;border-right:1px solid #eaf0f6;white-space:nowrap;min-width:80px;">Perms</th>
 ${moduleHeaders}
 </tr>
 <tr>
-<th style="background:#000;border-top:1px solid #222;border-bottom:1px solid #222;"></th>
-<th style="background:#000;border-top:1px solid #222;border-bottom:1px solid #222;"></th>
-<th style="background:#000;border-top:1px solid #222;border-bottom:1px solid #222;"></th>
-<th style="background:#000;border-top:1px solid #222;border-bottom:1px solid #222;"></th>
+<th style="background:#fff;border-top:1px solid #eaf0f6;border-bottom:1px solid #eaf0f6;"></th>
+<th style="background:#fff;border-top:1px solid #eaf0f6;border-bottom:1px solid #eaf0f6;"></th>
+<th style="background:#fff;border-top:1px solid #eaf0f6;border-bottom:1px solid #eaf0f6;"></th>
+<th style="background:#fff;border-top:1px solid #eaf0f6;border-bottom:1px solid #eaf0f6;"></th>
 ${actionHeaders}
 </tr>
 </thead>
@@ -574,9 +602,9 @@ ${actionHeaders}
 
     if (loading) {
         return (
-            <div style={{ background: '#000', minHeight: embedded ? '300px' : '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <div style={{ textAlign: 'center', color: '#fff' }}>
-                    <div style={{ width: '40px', height: '40px', border: '3px solid #333', borderTop: '3px solid #fff', borderRadius: '50%', animation: 'spin 1s linear infinite', margin: '0 auto 16px' }}></div>
+            <div style={{ background: RC.pageAlt, minHeight: embedded ? '300px' : '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <div style={{ textAlign: 'center', color: RC.text }}>
+                    <div style={{ width: '40px', height: '40px', border: `3px solid ${RC.border}`, borderTop: `3px solid ${RC.accent}`, borderRadius: '50%', animation: 'spin 1s linear infinite', margin: '0 auto 16px' }}></div>
                     <p>Loading roles...</p>
                     <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
                 </div>
@@ -585,32 +613,32 @@ ${actionHeaders}
     }
 
     return (
-        <div style={{ background: '#000', height: embedded ? 'auto' : '100vh', minHeight: embedded ? '400px' : undefined, color: '#fff', fontFamily: 'Segoe UI, sans-serif', display: 'flex', flexDirection: 'column' }}>
+        <div style={{ background: RC.page, height: embedded ? 'auto' : '100vh', minHeight: embedded ? '400px' : undefined, color: RC.text, fontFamily: 'Segoe UI, sans-serif', display: 'flex', flexDirection: 'column' }}>
             {/* Lock Roles Modal */}
             {lockRolesModal && (
-                <div style={{ position: 'fixed', inset: 0, background: '#000c', zIndex: 9998, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                <div style={{ position: 'fixed', inset: 0, background: RC.overlay, zIndex: 9998, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
                     onClick={() => setLockRolesModal(null)}>
-                    <div style={{ background: '#111', border: '2px solid #f59e0b', borderRadius: '14px', width: '460px', maxWidth: '95vw', maxHeight: '80vh', display: 'flex', flexDirection: 'column', boxShadow: '0 16px 64px #000e' }}
+                    <div style={{ background: RC.modal, border: `2px solid ${RC.accent}`, borderRadius: '3px', width: '460px', maxWidth: '95vw', maxHeight: '80vh', display: 'flex', flexDirection: 'column', boxShadow: '0 16px 64px #000e' }}
                         onClick={e => e.stopPropagation()}>
 
                         {/* Modal header */}
-                        <div style={{ padding: '20px 22px 14px', borderBottom: '1px solid #222' }}>
+                        <div style={{ padding: '20px 22px 14px', borderBottom: `1px solid ${RC.borderLight}` }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '6px' }}>
                                 <span style={{ fontSize: '22px' }}>🔒</span>
                                 <div>
-                                    <h2 style={{ color: '#f59e0b', fontWeight: '800', fontSize: '1rem', margin: 0 }}>Lock Roles</h2>
-                                    <p style={{ color: '#666', fontSize: '11px', margin: 0 }}>for <strong style={{ color: '#ccc' }}>{lockRolesModal.roleName}</strong></p>
+                                    <h2 style={{ color: RC.accent, fontWeight: '800', fontSize: '1rem', margin: 0 }}>Lock Roles</h2>
+                                    <p style={{ color: '#666', fontSize: '11px', margin: 0 }}>for <strong style={{ color: RC.textMuted }}>{lockRolesModal.roleName}</strong></p>
                                 </div>
                                 <button onClick={() => setLockRolesModal(null)} style={{ marginLeft: 'auto', background: 'transparent', border: 'none', color: '#555', fontSize: '20px', cursor: 'pointer', lineHeight: 1 }}>×</button>
                             </div>
                             <p style={{ color: '#666', fontSize: '11px', margin: '4px 0 10px', lineHeight: '1.5' }}>
-                                Selected roles will be <strong style={{ color: '#f59e0b' }}>hidden</strong> from the role dropdown in Employee forms, and employees with those roles <strong style={{ color: '#f59e0b' }}>cannot be viewed</strong> by users of this role.
+                                Selected roles will be <strong style={{ color: RC.accent }}>hidden</strong> from the role dropdown in Employee forms, and employees with those roles <strong style={{ color: RC.accent }}>cannot be viewed</strong> by users of this role.
                             </p>
                             <input
                                 value={lockRolesModal.searchTxt}
                                 onChange={e => setLockRolesModal(p => ({ ...p, searchTxt: e.target.value }))}
                                 placeholder="Search roles to lock…"
-                                style={{ width: '100%', background: '#000', border: '1px solid #333', color: '#fff', padding: '6px 12px', borderRadius: '7px', fontSize: '12px', outline: 'none', boxSizing: 'border-box' }}
+                                style={{ width: '100%', background: RC.page, border: `1px solid ${RC.border}`, color: RC.text, padding: '6px 12px', borderRadius: '7px', fontSize: '12px', outline: 'none', boxSizing: 'border-box' }}
                                 autoFocus
                             />
                         </div>
@@ -629,16 +657,16 @@ ${actionHeaders}
                                     return (
                                         <div key={rid}
                                             onClick={() => setLockRolesModal(p => ({ ...p, selectedIds: locked ? p.selectedIds.filter(x => x !== rid) : [...p.selectedIds, rid] }))}
-                                            style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '9px 20px', cursor: 'pointer', background: locked ? '#200d00' : 'transparent', borderLeft: locked ? '3px solid #f59e0b' : '3px solid transparent', transition: 'background 0.15s' }}
-                                            onMouseEnter={e => { if (!locked) e.currentTarget.style.background = '#1a1a1a'; }}
+                                            style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '9px 20px', cursor: 'pointer', background: locked ? RC.accentSoft : 'transparent', borderLeft: locked ? `3px solid ${RC.accent}` : '3px solid transparent', transition: 'background 0.15s' }}
+                                            onMouseEnter={e => { if (!locked) e.currentTarget.style.background = RC.hover; }}
                                             onMouseLeave={e => { if (!locked) e.currentTarget.style.background = 'transparent'; }}
                                         >
                                             {/* Checkbox */}
-                                            <div style={{ width: '17px', height: '17px', border: `2px solid ${locked ? '#f59e0b' : '#444'}`, borderRadius: '4px', background: locked ? '#f59e0b' : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                                                {locked && <span style={{ color: '#000', fontSize: '11px', fontWeight: '900' }}>✓</span>}
+                                            <div style={{ width: '17px', height: '17px', border: `2px solid ${locked ? RC.accent : RC.border}`, borderRadius: '4px', background: locked ? RC.accent : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                                                {locked && <span style={{ color: '#fff', fontSize: '11px', fontWeight: '900' }}>✓</span>}
                                             </div>
-                                            <span style={{ color: locked ? '#fff' : '#bbb', fontSize: '13px', fontWeight: locked ? '700' : '400' }}>{r.name}</span>
-                                            {r.permissions?.some(p => p.page === '*') && <span style={{ background: '#ffd700', color: '#000', fontSize: '8px', fontWeight: '800', padding: '1px 5px', borderRadius: '3px' }}>SA</span>}
+                                            <span style={{ color: locked ? RC.text : RC.textMuted, fontSize: '13px', fontWeight: locked ? '700' : '400' }}>{r.name}</span>
+                                            {r.permissions?.some(p => p.page === '*') && <span style={{ background: RC.accent, color: '#fff', fontSize: '8px', fontWeight: '800', padding: '1px 5px', borderRadius: '3px' }}>SA</span>}
                                             {locked && <span style={{ marginLeft: 'auto', fontSize: '13px' }}>🔒</span>}
                                         </div>
                                     );
@@ -647,14 +675,14 @@ ${actionHeaders}
                         </div>
 
                         {/* Footer */}
-                        <div style={{ padding: '14px 22px', borderTop: '1px solid #222', display: 'flex', alignItems: 'center', gap: '10px' }}>
+                        <div style={{ padding: '14px 22px', borderTop: `1px solid ${RC.borderLight}`, display: 'flex', alignItems: 'center', gap: '10px' }}>
                             <span style={{ color: '#666', fontSize: '12px', flex: 1 }}>
                                 {lockRolesModal.selectedIds.length > 0
-                                    ? <><strong style={{ color: '#f59e0b' }}>{lockRolesModal.selectedIds.length}</strong> role(s) will be locked</>
+                                    ? <><strong style={{ color: RC.accent }}>{lockRolesModal.selectedIds.length}</strong> role(s) will be locked</>
                                     : 'No roles locked'}
                             </span>
                             <button onClick={() => setLockRolesModal(null)}
-                                style={{ background: 'transparent', border: '1px solid #444', color: '#aaa', padding: '7px 18px', borderRadius: '7px', cursor: 'pointer', fontSize: '12px', fontWeight: '600' }}>
+                                style={{ background: 'transparent', border: '1px solid #444', color: RC.textMuted, padding: '7px 18px', borderRadius: '7px', cursor: 'pointer', fontSize: '12px', fontWeight: '600' }}>
                                 Cancel
                             </button>
                             {lockRolesModal.hasLockPermission && (
@@ -680,9 +708,9 @@ ${actionHeaders}
                                 saveLockRoles(lockRolesModal.roleId, lockRolesModal.selectedIds, role?.locked_roles || []);
                                 setLockRolesModal(null);
                             }}
-                                style={{ background: '#f59e0b', border: '2px solid #f59e0b', color: '#000', padding: '7px 20px', borderRadius: '7px', cursor: 'pointer', fontWeight: '800', fontSize: '12px' }}
-                                onMouseEnter={e => { e.currentTarget.style.background = '#d97706'; e.currentTarget.style.borderColor = '#d97706'; }}
-                                onMouseLeave={e => { e.currentTarget.style.background = '#f59e0b'; e.currentTarget.style.borderColor = '#f59e0b'; }}>
+                                style={{ background: RC.accent, border: `2px solid ${RC.accent}`, color: '#fff', padding: '7px 20px', borderRadius: '7px', cursor: 'pointer', fontWeight: '800', fontSize: '12px' }}
+                                onMouseEnter={e => { e.currentTarget.style.background = '#ff8f73'; e.currentTarget.style.borderColor = '#ff8f73'; }}
+                                onMouseLeave={e => { e.currentTarget.style.background = RC.accent; e.currentTarget.style.borderColor = RC.accent; }}>
                                 🔒 Save
                             </button>
                         </div>
@@ -705,13 +733,13 @@ ${actionHeaders}
             )}
 
             {/* Header */}
-            <div style={{ background: '#0a0a0a', borderBottom: '1px solid #222', padding: '12px 20px', display: 'flex', alignItems: 'center', gap: '10px', flexShrink: 0, flexWrap: 'wrap' }}>
+            <div style={{ background: RC.pageAlt, borderBottom: `1px solid ${RC.border}`, padding: '12px 20px', display: 'flex', alignItems: 'center', gap: '10px', flexShrink: 0, flexWrap: 'wrap' }}>
                 {!embedded && (
                 <button
                     onClick={() => navigate('/settings')}
-                    style={{ background: 'transparent', border: '2px solid #444', color: '#fff', padding: '7px 14px', borderRadius: '8px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px', fontWeight: '600', fontSize: '0.85rem', transition: 'all 0.2s', whiteSpace: 'nowrap' }}
-                    onMouseEnter={e => { e.currentTarget.style.borderColor = '#fff'; e.currentTarget.style.background = '#111'; }}
-                    onMouseLeave={e => { e.currentTarget.style.borderColor = '#444'; e.currentTarget.style.background = 'transparent'; }}
+                    style={{ background: 'transparent', border: `1px solid ${RC.border}`, color: RC.textMuted, padding: '7px 14px', borderRadius: '3px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px', fontWeight: '600', fontSize: '0.85rem', transition: 'all 0.2s', whiteSpace: 'nowrap' }}
+                    onMouseEnter={e => { e.currentTarget.style.borderColor = RC.accent; e.currentTarget.style.background = RC.hover; }}
+                    onMouseLeave={e => { e.currentTarget.style.borderColor = RC.border; e.currentTarget.style.background = 'transparent'; }}
                 >
                     <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ width: '15px', height: '15px' }}>
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
@@ -732,26 +760,26 @@ ${actionHeaders}
                     value={search}
                     onChange={e => setSearch(e.target.value)}
                     placeholder="Search roles..."
-                    style={{ background: '#111', border: '1px solid #333', color: '#fff', padding: '7px 12px', borderRadius: '8px', width: '180px', fontSize: '0.83rem', outline: 'none' }}
+                    style={{ background: RC.page, border: `1px solid ${RC.border}`, color: RC.text, padding: '7px 12px', borderRadius: '3px', width: '180px', fontSize: '0.83rem', outline: 'none' }}
                 />
 
                 {/* Compare Selector */}
                 <div ref={compareRef} style={{ position: 'relative' }}>
                     <button
                         onClick={() => setCompareOpen(p => !p)}
-                        style={{ background: compareFilter.length > 0 ? '#1a2600' : '#111', border: `2px solid ${compareFilter.length > 0 ? '#7fff00' : '#444'}`, color: compareFilter.length > 0 ? '#7fff00' : '#ccc', padding: '7px 14px', borderRadius: '8px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '7px', fontWeight: '700', fontSize: '0.83rem', whiteSpace: 'nowrap' }}
+                        style={{ background: compareFilter.length > 0 ? RC.successBg : RC.page, border: `2px solid ${compareFilter.length > 0 ? RC.success : RC.border}`, color: compareFilter.length > 0 ? RC.success : RC.textMuted, padding: '7px 14px', borderRadius: '8px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '7px', fontWeight: '700', fontSize: '0.83rem', whiteSpace: 'nowrap' }}
                         title="Select roles to compare"
                     >
                         🔍 Compare Roles {compareFilter.length > 0 && `(${compareFilter.length})`}
                     </button>
                     {compareOpen && (
-                        <div style={{ position: 'absolute', top: 'calc(100% + 6px)', right: 0, background: '#111', border: '1px solid #333', borderRadius: '10px', width: '260px', maxHeight: '340px', display: 'flex', flexDirection: 'column', zIndex: 999, boxShadow: '0 8px 32px #000a' }}>
-                            <div style={{ padding: '10px 12px', borderBottom: '1px solid #222', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <div style={{ position: 'absolute', top: 'calc(100% + 6px)', right: 0, background: RC.page, border: `1px solid ${RC.border}`, borderRadius: '3px', width: '260px', maxHeight: '340px', display: 'flex', flexDirection: 'column', zIndex: 999, boxShadow: '0 8px 32px #000a' }}>
+                            <div style={{ padding: '10px 12px', borderBottom: `1px solid ${RC.borderLight}`, display: 'flex', alignItems: 'center', gap: '8px' }}>
                                 <input
                                     value={compareSearch}
                                     onChange={e => setCompareSearch(e.target.value)}
                                     placeholder="Filter roles…"
-                                    style={{ flex: 1, background: '#000', border: '1px solid #333', color: '#fff', padding: '5px 10px', borderRadius: '6px', fontSize: '12px', outline: 'none' }}
+                                    style={{ flex: 1, background: RC.page, border: `1px solid ${RC.border}`, color: RC.text, padding: '5px 10px', borderRadius: '3px', fontSize: '12px', outline: 'none' }}
                                 />
                                 {compareFilter.length > 0 && (
                                     <button onClick={() => setCompareFilter([])} style={{ background: 'transparent', border: 'none', color: '#f66', fontSize: '11px', cursor: 'pointer', whiteSpace: 'nowrap' }}>Clear all</button>
@@ -765,15 +793,15 @@ ${actionHeaders}
                                         const selected = compareFilter.includes(rid);
                                         return (
                                             <div key={rid} onClick={() => setCompareFilter(prev => selected ? prev.filter(x => x !== rid) : [...prev, rid])}
-                                                style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '7px 14px', cursor: 'pointer', background: selected ? '#1a2600' : 'transparent', borderLeft: selected ? '3px solid #7fff00' : '3px solid transparent' }}
-                                                onMouseEnter={e => { if (!selected) e.currentTarget.style.background = '#1a1a1a'; }}
+                                                style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '7px 14px', cursor: 'pointer', background: selected ? RC.successBg : 'transparent', borderLeft: selected ? `3px solid ${RC.success}` : '3px solid transparent' }}
+                                                onMouseEnter={e => { if (!selected) e.currentTarget.style.background = RC.hover; }}
                                                 onMouseLeave={e => { if (!selected) e.currentTarget.style.background = 'transparent'; }}
                                             >
-                                                <div style={{ width: '16px', height: '16px', border: `2px solid ${selected ? '#7fff00' : '#444'}`, borderRadius: '4px', background: selected ? '#7fff00' : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                                                    {selected && <span style={{ color: '#000', fontSize: '10px', fontWeight: '900' }}>✓</span>}
+                                                <div style={{ width: '16px', height: '16px', border: `2px solid ${selected ? RC.success : RC.border}`, borderRadius: '4px', background: selected ? RC.success : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                                                    {selected && <span style={{ color: '#fff', fontSize: '10px', fontWeight: '900' }}>✓</span>}
                                                 </div>
-                                                <span style={{ color: selected ? '#fff' : '#ccc', fontSize: '12px' }}>{r.name}</span>
-                                                {r.permissions?.some(p => p.page === '*') && <span style={{ background: '#ffd700', color: '#000', fontSize: '8px', fontWeight: '800', padding: '1px 4px', borderRadius: '3px', marginLeft: 'auto' }}>SA</span>}
+                                                <span style={{ color: selected ? RC.text : RC.textMuted, fontSize: '12px' }}>{r.name}</span>
+                                                {r.permissions?.some(p => p.page === '*') && <span style={{ background: RC.accent, color: '#fff', fontSize: '8px', fontWeight: '800', padding: '1px 4px', borderRadius: '3px', marginLeft: 'auto' }}>SA</span>}
                                             </div>
                                         );
                                     })}
@@ -785,9 +813,9 @@ ${actionHeaders}
                 {/* Download Button */}
                 <button
                     onClick={handleDownload}
-                    style={{ background: '#111', border: '2px solid #ffd700', color: '#ffd700', padding: '7px 14px', borderRadius: '8px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '7px', fontWeight: '700', fontSize: '0.83rem', transition: 'all 0.2s', whiteSpace: 'nowrap' }}
-                    onMouseEnter={e => { e.currentTarget.style.background = '#ffd700'; e.currentTarget.style.color = '#000'; }}
-                    onMouseLeave={e => { e.currentTarget.style.background = '#111'; e.currentTarget.style.color = '#ffd700'; }}
+                    style={{ background: RC.page, border: `2px solid ${RC.accent}`, color: RC.accent, padding: '7px 14px', borderRadius: '3px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '7px', fontWeight: '700', fontSize: '0.83rem', transition: 'all 0.2s', whiteSpace: 'nowrap' }}
+                    onMouseEnter={e => { e.currentTarget.style.background = RC.accent; e.currentTarget.style.color = '#fff'; }}
+                    onMouseLeave={e => { e.currentTarget.style.background = RC.page; e.currentTarget.style.color = RC.accent; }}
                     title="Download comparison as HTML"
                 >
                     <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ width: '15px', height: '15px' }}>
@@ -819,15 +847,15 @@ ${actionHeaders}
                             <th rowSpan={2} style={thSA()}>SA</th>
                             {permissionModules.map((mod, i) => (
                                 <th key={i} colSpan={mod.actions.length} style={{
-                                    background: '#0a0a0a',
-                                    color: '#ffd700',
+                                    background: RC.moduleHeader,
+                                    color: RC.accent,
                                     padding: '8px 8px 4px',
                                     fontWeight: '700',
                                     fontSize: '10px',
                                     textTransform: 'uppercase',
                                     letterSpacing: '0.5px',
-                                    borderLeft: i > 0 ? '3px solid #ffd700' : 'none',
-                                    borderBottom: '1px solid #333',
+                                    borderLeft: i > 0 ? `3px solid ${RC.accent}` : 'none',
+                                    borderBottom: `1px solid ${RC.border}`,
                                     whiteSpace: 'nowrap',
                                     textAlign: 'center',
                                 }}>
@@ -840,13 +868,13 @@ ${actionHeaders}
                             {permissionModules.map((mod, mi) =>
                                 mod.actions.map((action, ai) => (
                                     <th key={`${mi}-${ai}`} style={{
-                                        background: '#111',
-                                        color: '#aaa',
+                                        background: RC.actionHeader,
+                                        color: RC.textMuted,
                                         padding: '4px 6px 6px',
                                         fontWeight: '600',
                                         fontSize: '10px',
-                                        borderLeft: ai === 0 && mi > 0 ? '3px solid #ffd700' : '1px solid #1a1a1a',
-                                        borderBottom: '2px solid #333',
+                                        borderLeft: ai === 0 && mi > 0 ? `3px solid ${RC.accent}` : `1px solid ${RC.borderLight}`,
+                                        borderBottom: `2px solid ${RC.border}`,
                                         whiteSpace: 'nowrap',
                                         textAlign: 'center',
                                         minWidth: '56px',
@@ -861,7 +889,7 @@ ${actionHeaders}
                         {sortedRoles.length === 0 && (
                             <tr>
                                 <td colSpan={4 + permissionModules.reduce((s, m) => s + m.actions.length, 0)}
-                                    style={{ textAlign: 'center', padding: '40px', color: '#555', background: '#000' }}>
+                                    style={{ textAlign: 'center', padding: '40px', color: RC.textLight, background: RC.page }}>
                                     {search ? 'No roles match your search.' : 'No roles found.'}
                                 </td>
                             </tr>
@@ -872,57 +900,57 @@ ${actionHeaders}
 
                             return (
                                 <tr key={role._id || role.id}
-                                    style={{ borderBottom: '1px solid #1a1a1a', background: ri % 2 === 0 ? '#000' : '#050505' }}
+                                    style={{ borderBottom: `1px solid ${RC.borderLight}`, background: ri % 2 === 0 ? RC.rowEven : RC.rowOdd }}
                                     onMouseEnter={e => {
-                                        e.currentTarget.style.background = '#0d0d0d';
-                                        e.currentTarget.querySelectorAll('td[data-sticky]').forEach(td => td.style.background = '#0d0d0d');
+                                        e.currentTarget.style.background = RC.hover;
+                                        e.currentTarget.querySelectorAll('td[data-sticky]').forEach(td => td.style.background = RC.hover);
                                     }}
                                     onMouseLeave={e => {
-                                        const bg = ri % 2 === 0 ? '#000' : '#050505';
+                                        const bg = ri % 2 === 0 ? RC.rowEven : RC.rowOdd;
                                         e.currentTarget.style.background = bg;
-                                        e.currentTarget.querySelectorAll('td[data-sticky]').forEach(td => td.style.background = ri % 2 === 0 ? '#050505' : '#060606');
+                                        e.currentTarget.querySelectorAll('td[data-sticky]').forEach(td => td.style.background = ri % 2 === 0 ? RC.stickyEven : RC.stickyOdd);
                                     }}
                                 >
                                     {/* Role Name */}
-                                    <td data-sticky="true" style={{ ...tdFixed(), background: ri % 2 === 0 ? '#050505' : '#060606' }}>
+                                    <td data-sticky="true" style={{ ...tdFixed(), background: ri % 2 === 0 ? RC.stickyEven : RC.stickyOdd }}>
                                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                                             {saving.has(role.id || role._id) ? (
-                                                <div style={{ width: '8px', height: '8px', borderRadius: '50%', border: '2px solid #ffd700', borderTop: '2px solid transparent', animation: 'spin 0.7s linear infinite', flexShrink: 0 }} />
+                                                <div style={{ width: '8px', height: '8px', borderRadius: '50%', border: `2px solid ${RC.accent}`, borderTop: '2px solid transparent', animation: 'spin 0.7s linear infinite', flexShrink: 0 }} />
                                             ) : (
-                                                <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: isSuperAdmin ? '#ffd700' : '#fff', flexShrink: 0 }}></div>
+                                                <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: isSuperAdmin ? RC.accent : RC.border, flexShrink: 0 }}></div>
                                             )}
-                                            <span style={{ fontWeight: '600', color: '#fff', fontSize: '12px' }}>{role.name}</span>
+                                            <span style={{ fontWeight: '600', color: RC.text, fontSize: '12px' }}>{role.name}</span>
                                             {isSuperAdmin && (
-                                                <span style={{ background: '#ffd700', color: '#000', fontSize: '8px', fontWeight: '800', padding: '1px 5px', borderRadius: '4px' }}>SA</span>
+                                                <span style={{ background: RC.accent, color: '#fff', fontSize: '8px', fontWeight: '800', padding: '1px 5px', borderRadius: '4px' }}>SA</span>
                                             )}
                                         </div>
                                     </td>
                                     {/* Department */}
-                                    <td data-sticky="true" style={tdSticky(1, ri % 2 === 0 ? '#050505' : '#060606')}>
+                                    <td data-sticky="true" style={tdSticky(1, ri % 2 === 0 ? RC.stickyEven : RC.stickyOdd)}>
                                         {role.department_id ? (
-                                            <span style={{ background: '#111', border: '1px solid #333', color: '#ccc', padding: '2px 8px', borderRadius: '4px', fontSize: '11px' }}>
+                                            <span style={{ background: RC.actionHeader, border: '1px solid #333', color: RC.textMuted, padding: '2px 8px', borderRadius: '4px', fontSize: '11px' }}>
                                                 {getDeptName(role.department_id)}
                                             </span>
-                                        ) : <span style={{ color: '#444' }}>-</span>}
+                                        ) : <span style={{ color: RC.textLight }}>-</span>}
                                     </td>
                                     {/* Reports To */}
-                                    <td data-sticky="true" style={tdSticky(2, ri % 2 === 0 ? '#050505' : '#060606')}>
-                                        <span style={{ color: '#aaa', fontSize: '11px' }}>{getReportNames(role)}</span>
+                                    <td data-sticky="true" style={tdSticky(2, ri % 2 === 0 ? RC.stickyEven : RC.stickyOdd)}>
+                                        <span style={{ color: RC.textMuted, fontSize: '11px' }}>{getReportNames(role)}</span>
                                     </td>
                                     {/* Perm Count */}
-                                    <td data-sticky="true" style={{ ...tdSticky(3, ri % 2 === 0 ? '#050505' : '#060606'), textAlign: 'center' }}>
-                                        <span style={{ background: permCount > 0 ? '#1a2600' : '#111', color: permCount > 0 ? '#7fff00' : '#444', fontWeight: '700', padding: '2px 8px', borderRadius: '4px', fontSize: '11px' }}>
+                                    <td data-sticky="true" style={{ ...tdSticky(3, ri % 2 === 0 ? RC.stickyEven : RC.stickyOdd), textAlign: 'center' }}>
+                                        <span style={{ background: permCount > 0 ? RC.successBg : RC.pageAlt, color: permCount > 0 ? RC.success : RC.textLight, fontWeight: '700', padding: '2px 8px', borderRadius: '4px', fontSize: '11px' }}>
                                             {permCount}
                                         </span>
                                     </td>
                                     {/* SA Toggle */}
-                                    <td data-sticky="true" style={{ ...tdSA(ri % 2 === 0 ? '#050505' : '#060606') }}>
+                                    <td data-sticky="true" style={{ ...tdSA(ri % 2 === 0 ? RC.stickyEven : RC.stickyOdd) }}>
                                         <div
                                             onClick={() => toggleSuperAdmin(role.id || role._id, isSuperAdmin)}
                                             title={isSuperAdmin ? 'Remove Super Admin' : 'Grant Super Admin'}
-                                            style={{ display: 'inline-flex', alignItems: 'center', cursor: 'pointer', position: 'relative', width: '40px', height: '22px', borderRadius: '11px', background: isSuperAdmin ? '#ffd700' : '#333', transition: 'background 0.25s', border: isSuperAdmin ? '1.5px solid #b8a000' : '1.5px solid #555', flexShrink: 0 }}
+                                            style={{ display: 'inline-flex', alignItems: 'center', cursor: 'pointer', position: 'relative', width: '40px', height: '22px', borderRadius: '11px', background: isSuperAdmin ? RC.accent : RC.border, transition: 'background 0.25s', border: isSuperAdmin ? `1.5px solid ${RC.accent}` : `1.5px solid ${RC.border}`, flexShrink: 0 }}
                                         >
-                                            <div style={{ position: 'absolute', left: isSuperAdmin ? '20px' : '2px', width: '16px', height: '16px', borderRadius: '50%', background: isSuperAdmin ? '#000' : '#888', transition: 'left 0.25s', boxShadow: '0 1px 4px #0008' }} />
+                                            <div style={{ position: 'absolute', left: isSuperAdmin ? '20px' : '2px', width: '16px', height: '16px', borderRadius: '50%', background: isSuperAdmin ? '#fff' : '#fff', transition: 'left 0.25s', boxShadow: '0 1px 4px #0008' }} />
                                         </div>
                                     </td>
                                     {/* Permission cells */}
@@ -944,53 +972,53 @@ ${actionHeaders}
                                                     style={{
                                                         textAlign: 'center',
                                                         padding: '7px 4px',
-                                                        borderLeft: ai === 0 && mi > 0 ? '3px solid #1a1400' : '1px solid #111',
+                                                        borderLeft: ai === 0 && mi > 0 ? `3px solid ${RC.accentSoft}` : `1px solid ${RC.borderLight}`,
                                                         background: action === 'lock_role'
-                                                            ? ((role.locked_roles || []).length > 0 ? '#200d00' : 'transparent')
-                                                            : has ? '#001a00' : 'transparent',
+                                                            ? ((role.locked_roles || []).length > 0 ? RC.accentSoft : 'transparent')
+                                                            : has ? RC.permOn : 'transparent',
                                                         cursor: isLocked ? 'not-allowed' : 'pointer',
                                                         transition: 'background 0.15s',
                                                         opacity: isLocked ? 0.38 : 1,
                                                     }}
                                                     onMouseEnter={e => {
                                                         if (isLocked) return;
-                                                        e.currentTarget.style.background = action === 'lock_role' ? '#2a1200' : (has ? '#002a00' : '#181800');
-                                                        e.currentTarget.style.outline = `1px solid ${action === 'lock_role' ? '#f59e0b66' : '#ffd70066'}`;
+                                                        e.currentTarget.style.background = action === 'lock_role' ? RC.accentSoft : (has ? RC.permHover : RC.hover);
+                                                        e.currentTarget.style.outline = `1px solid ${action === 'lock_role' ? RC.accent + '66' : RC.success + '66'}`;
                                                     }}
                                                     onMouseLeave={e => {
                                                         e.currentTarget.style.background = action === 'lock_role'
-                                                            ? ((role.locked_roles || []).length > 0 ? '#200d00' : 'transparent')
-                                                            : (has ? '#001a00' : 'transparent');
+                                                            ? ((role.locked_roles || []).length > 0 ? RC.accentSoft : 'transparent')
+                                                            : (has ? RC.permOn : 'transparent');
                                                         e.currentTarget.style.outline = 'none';
                                                     }}
                                                 >
                                                     {action === 'lock_role' ? (
                                                         (role.locked_roles || []).length > 0
-                                                            ? <span style={{ color: '#f59e0b', fontSize: '11px', fontWeight: '700' }}>🔒 {role.locked_roles.length}</span>
-                                                            : <span style={{ color: '#444', fontSize: '13px' }}>🔓</span>
+                                                            ? <span style={{ color: RC.accent, fontSize: '11px', fontWeight: '700' }}>🔒 {role.locked_roles.length}</span>
+                                                            : <span style={{ color: RC.textLight, fontSize: '13px' }}>🔓</span>
                                                     ) : has ? (
                                                         /* Enabled — green filled checkbox */
                                                         <span style={{
                                                             display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
                                                             width: '18px', height: '18px', borderRadius: '4px',
-                                                            background: '#00c853', border: '1.5px solid #00e676',
-                                                            color: '#000', fontSize: '11px', fontWeight: '900',
-                                                            boxShadow: '0 0 6px #00c85366',
+                                                            background: RC.success, border: `1.5px solid ${RC.success}`,
+                                                            color: '#fff', fontSize: '11px', fontWeight: '900',
+                                                            boxShadow: `0 0 6px ${RC.success}66`,
                                                         }}>✓</span>
                                                     ) : isLocked ? (
                                                         /* Locked (show not enabled) — dim padlock */
                                                         <span style={{
                                                             display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
                                                             width: '18px', height: '18px', borderRadius: '4px',
-                                                            border: '1.5px solid #333', color: '#444', fontSize: '10px',
-                                                            background: '#0a0a0a',
+                                                            border: `1.5px solid ${RC.border}`, color: RC.textLight, fontSize: '10px',
+                                                            background: RC.pageAlt,
                                                         }}>🔒</span>
                                                     ) : (
                                                         /* Disabled — hollow white checkbox (classic unchecked look) */
                                                         <span style={{
                                                             display: 'inline-block',
                                                             width: '18px', height: '18px', borderRadius: '4px',
-                                                            border: '1.5px solid #aaa', background: '#fff',
+                                                            border: `1.5px solid ${RC.border}`, background: '#fff',
                                                         }} />
                                                     )}
                                                 </td>

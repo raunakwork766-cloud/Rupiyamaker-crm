@@ -18,8 +18,8 @@ if (Test-Path "rupiyamaker-UI\crm\.env") {
 
 Write-Host ""
 Write-Host "Development environment configured!" -ForegroundColor Green
-Write-Host "Backend will run on: https://rupiyamaker.com:8049" -ForegroundColor Cyan
-Write-Host "Frontend will run on: https://raunakcrm.bhoomitechzone.us:4521" -ForegroundColor Cyan
+Write-Host "Backend will run on: https://crm.fixyourfinance.ai/api" -ForegroundColor Cyan
+Write-Host "Frontend will run on: https://crm.fixyourfinance.ai" -ForegroundColor Cyan
 Write-Host ""
 Write-Host "To start the application:" -ForegroundColor Yellow
 Write-Host "1. Backend: cd backend; python -m app" -ForegroundColor White

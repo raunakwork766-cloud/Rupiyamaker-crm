@@ -4,6 +4,7 @@ import { checkForDirectLeadView, handleDirectLeadViewOnMount } from '../utils/le
 import { setupPermissionRefreshListeners } from '../utils/immediatePermissionRefresh.js';
 import { leadEvents } from '../utils/auth';
 import useModalHistory from '../hooks/useModalHistory';
+import useNavbarPageSearch from '../hooks/useNavbarPageSearch';
 import { getCurrentIST, formatDateIST, formatTimeIST, formatDateTimeIST, formatShortDateIST, convertToIST } from '../utils/timezoneUtils';
 import { getISTDateYMD, toISTDateYMD, getISTTimestamp } from '../utils/dateUtils';
 
@@ -76,6 +77,7 @@ function useDebounce(value, delay) {
   }
 })();
 import { message } from 'antd';
+import LeadSidePanel from './LeadSidePanel';
 import { 
     AboutSection,
     HowToProcessSection,
@@ -401,6 +403,7 @@ const LeadCRM = memo(function LeadCRM({ user, selectedLoanType: initialLoanType,
     const [selectedStatus, setSelectedStatus] = useState('all');
     const [selectedSubStatus, setSelectedSubStatus] = useState('all');
     const [searchTerm, setSearchTerm] = useState('');
+    useNavbarPageSearch(setSearchTerm);
     // ⚡ PERFORMANCE: Debounced search term to prevent excessive filtering
     const debouncedSearchTerm = useDebounce(searchTerm, 300);
     const [currentUserRole, setCurrentUserRole] = useState(null);
@@ -1453,6 +1456,15 @@ const LeadCRM = memo(function LeadCRM({ user, selectedLoanType: initialLoanType,
     const [searchableSubStatuses, setSearchableSubStatuses] = useState([]);
     const [showStatusChangePopup, setShowStatusChangePopup] = useState(false);
     const [statusChangeInfo, setStatusChangeInfo] = useState({ customLeadId: '', newStatus: '' });
+    const [showStatusRemarkModal, setShowStatusRemarkModal] = useState(false);
+    const [statusRemarkText, setStatusRemarkText] = useState('');
+    const [pendingStatusUpdate, setPendingStatusUpdate] = useState(null);
+    const [statusRemarkSubmitting, setStatusRemarkSubmitting] = useState(false);
+    const [sidePanelRefreshToken, setSidePanelRefreshToken] = useState(0);
+
+    const bumpSidePanelRefresh = useCallback(() => {
+        setSidePanelRefreshToken((prev) => prev + 1);
+    }, []);
 
     // Obligation dirty state tracking
     const [hasUnsavedObligationChanges, setHasUnsavedObligationChanges] = useState(false);
@@ -2004,6 +2016,9 @@ const LeadCRM = memo(function LeadCRM({ user, selectedLoanType: initialLoanType,
                     updated.alternative_phone = value;
                 } else if (field === 'dataCode') {
                     updated.data_code = value;
+                } else if (field === 'campaign_name' || field === 'campaignName') {
+                    updated.campaign_name = value;
+                    updated.campaignName = value;
                 } else if (field === 'productName') {
                     updated.loan_type = value;
                     updated.loan_type_name = value;
@@ -2077,6 +2092,10 @@ const LeadCRM = memo(function LeadCRM({ user, selectedLoanType: initialLoanType,
                         ...(field === 'dataCode' && {
                             data_code: value
                         }),
+                        ...((field === 'campaign_name' || field === 'campaignName') && {
+                            campaign_name: value,
+                            campaignName: value
+                        }),
                         ...(field === 'productName' && {
                             loan_type: value,
                             loan_type_name: value
@@ -2127,6 +2146,10 @@ const LeadCRM = memo(function LeadCRM({ user, selectedLoanType: initialLoanType,
                         }),
                         ...(field === 'dataCode' && {
                             data_code: value
+                        }),
+                        ...((field === 'campaign_name' || field === 'campaignName') && {
+                            campaign_name: value,
+                            campaignName: value
                         }),
                         ...(field === 'productName' && {
                             loan_type: value,
@@ -2179,6 +2202,10 @@ const LeadCRM = memo(function LeadCRM({ user, selectedLoanType: initialLoanType,
                         ...(field === 'dataCode' && {
                             data_code: value
                         }),
+                        ...((field === 'campaign_name' || field === 'campaignName') && {
+                            campaign_name: value,
+                            campaignName: value
+                        }),
                         ...(field === 'productName' && {
                             loan_type: value,
                             loan_type_name: value
@@ -2223,11 +2250,16 @@ const LeadCRM = memo(function LeadCRM({ user, selectedLoanType: initialLoanType,
                     pinCode: 'pincode',
                     alternateNumber: 'alternative_phone',
                     dataCode: 'data_code',
+                    campaignName: 'campaign_name',
                     productName: 'loan_type'
                 };
 
                 const apiField = apiFieldMap[field] || field;
+                if (field === 'campaign_name' || field === 'campaignName') {
+                    updateData = { campaign_name: value, campaignName: value };
+                } else {
                 updateData = { [apiField]: value };
+                }
 
                 // For certain fields, also update related fields
                 if (field === 'customerName') {
@@ -2452,33 +2484,46 @@ const LeadCRM = memo(function LeadCRM({ user, selectedLoanType: initialLoanType,
     const createAboutSectionHandler = (lead) => async (updatedLeadObject) => {
         console.log('🔍 createAboutSectionHandler called');
         console.log('  - updatedLeadObject:', updatedLeadObject);
-        console.log('  - lead (current):', {
-            pincode: lead.pincode,
-            city: lead.city,
-            dynamic_fields: lead.dynamic_fields
-        });
 
-        // Find what fields have changed by comparing with current lead
-        const changes = {};
-        Object.keys(updatedLeadObject).forEach(key => {
-            if (updatedLeadObject[key] !== lead[key]) {
-                console.log(`  - Change detected for ${key}:`, {
-                    old: lead[key],
-                    new: updatedLeadObject[key]
-                });
-                changes[key] = updatedLeadObject[key];
-            }
-        });
+        if (updatedLeadObject?._localOnly) {
+            const { _localOnly, ...patch } = updatedLeadObject;
+            const leadId = lead?._id;
+            const campaignValue = patch.campaign_name ?? patch.campaignName;
+            const mergePatch = (item) => {
+                if (!item || item._id !== leadId) return item;
+                return {
+                    ...item,
+                    ...patch,
+                    ...(campaignValue != null ? {
+                        campaign_name: campaignValue,
+                        campaignName: campaignValue,
+                    } : {}),
+                };
+            };
+            setSelectedLead(prev => mergePatch(prev));
+            setEditedLeads(leads => leads.map(mergePatch));
+            setLeads(leads => leads.map(mergePatch));
+            setFilteredLeads(leads => leads.map(mergePatch));
+            return true;
+        }
 
-        console.log('  - Final changes to apply:', changes);
+        const normalizeField = (key) => {
+            if (key === 'campaignName') return 'campaign_name';
+            if (key === 'dataCode') return 'data_code';
+            return key;
+        };
 
-        // Apply each change through the proper handler (skip success messages since AboutSection shows its own)
-        for (const [field, value] of Object.entries(changes)) {
+        // AboutSection already validates changes; apply payload (dedupe normalized field names)
+        const appliedFields = new Set();
+        for (const [rawField, value] of Object.entries(updatedLeadObject || {})) {
+            const field = normalizeField(rawField);
+            if (appliedFields.has(field)) continue;
+            appliedFields.add(field);
             console.log(`  - Calling handleSelectedLeadFieldChange for ${field}:`, value);
             await handleSelectedLeadFieldChange(field, value, true);
         }
 
-        return true; // Indicate success
+        return true;
     };
 
     const createHowToProcessHandler = (lead) => async (updatedLeadObject) => {
@@ -5620,6 +5665,186 @@ const LeadCRM = memo(function LeadCRM({ user, selectedLoanType: initialLoanType,
         setStatusSearchTerm(''); // Reset search term when opening dropdown
     };
 
+    // Check if target status/sub-status requires a mandatory remark (from Settings → Status Management)
+    const normalizeStatusLabel = useCallback((name) => (name || '').trim().toLowerCase(), []);
+
+    const findStatusConfig = useCallback((statusName) => {
+        if (!statusName || !allStatusObjects?.length) return null;
+        const target = normalizeStatusLabel(statusName);
+        return allStatusObjects.find(s => normalizeStatusLabel(s.name) === target) || null;
+    }, [allStatusObjects, normalizeStatusLabel]);
+
+    const checkRemarkRequired = useCallback((statusName, subStatusName = null) => {
+        const statusObj = findStatusConfig(statusName);
+        if (!statusObj) return false;
+
+        // Parent/main status toggle applies to any sub-status under it
+        if (statusObj.requires_remark_on_change) return true;
+
+        if (subStatusName) {
+            const targetSub = normalizeStatusLabel(subStatusName);
+            const subStatuses = statusObj.sub_statuses || [];
+            for (const sub of subStatuses) {
+                const subName = typeof sub === 'string' ? sub : sub.name;
+                if (normalizeStatusLabel(subName) === targetSub) {
+                    return typeof sub === 'object' && !!sub.requires_remark_on_change;
+                }
+            }
+        }
+
+        return false;
+    }, [findStatusConfig, normalizeStatusLabel]);
+
+    const performHierarchicalStatusUpdate = async ({
+        lead,
+        rowIdx,
+        updatePayload,
+        mainStatusName,
+        selectedValue,
+        currentLeadIsNotALead,
+        newStatusIsNotALead,
+        parentStatus,
+        shouldSetFileSentToLogin
+    }) => {
+        const response = await fetch(`${apiBaseUrl}/leads/${lead._id}?user_id=${userId}`, {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${localStorage.getItem('token')}`
+            },
+            body: JSON.stringify(updatePayload)
+        });
+
+        if (!response.ok) {
+            let errorMessage = 'Failed to update status. Please try again.';
+            try {
+                const errorData = await response.json();
+                if (errorData?.detail) {
+                    errorMessage = typeof errorData.detail === 'string'
+                        ? errorData.detail
+                        : errorMessage;
+                }
+            } catch (_) {}
+            throw new Error(errorMessage);
+        }
+
+        const updatedLeads = [...filteredLeads];
+        const shouldUpdateCreatedAt = currentLeadIsNotALead && !newStatusIsNotALead;
+        const updatedLeadData = {
+            ...updatedLeads[rowIdx === 'header' ? filteredLeads.findIndex(l => l._id === lead._id) : rowIdx],
+            status: mainStatusName,
+            sub_status: selectedValue,
+            parent_status: parentStatus,
+            file_sent_to_login: shouldSetFileSentToLogin,
+            ...(shouldUpdateCreatedAt && updatePayload.created_at && {
+                created_at: updatePayload.created_at
+            })
+        };
+
+        if (rowIdx === 'header') {
+            const idx = filteredLeads.findIndex(l => l._id === lead._id);
+            if (idx !== -1) {
+                updatedLeads[idx] = updatedLeadData;
+            }
+        } else {
+            updatedLeads[rowIdx] = updatedLeadData;
+        }
+
+        setFilteredLeads(updatedLeads);
+
+        const allLeadsUpdated = leads.map(l =>
+            l._id === lead._id ? {
+                ...l,
+                status: mainStatusName,
+                sub_status: selectedValue,
+                parent_status: parentStatus,
+                file_sent_to_login: shouldSetFileSentToLogin,
+                ...(shouldUpdateCreatedAt && updatePayload.created_at && {
+                    created_at: updatePayload.created_at
+                })
+            } : l
+        );
+        setLeads(allLeadsUpdated);
+        setEditedLeads(allLeadsUpdated);
+        setFilteredLeads(allLeadsUpdated);
+
+        if (rowIdx === 'header' && selectedLead && selectedLead._id === lead._id) {
+            setSelectedLead({
+                ...selectedLead,
+                status: mainStatusName,
+                sub_status: selectedValue,
+                parent_status: parentStatus,
+                file_sent_to_login: shouldSetFileSentToLogin,
+                ...(shouldUpdateCreatedAt && updatePayload.created_at && {
+                    created_at: updatePayload.created_at
+                })
+            });
+
+            setFilteredLeadsData(prev =>
+                prev.map(l => l._id === lead._id ? {
+                    ...l,
+                    status: mainStatusName,
+                    sub_status: selectedValue,
+                    parent_status: parentStatus,
+                    file_sent_to_login: shouldSetFileSentToLogin,
+                    ...(shouldUpdateCreatedAt && updatePayload.created_at && {
+                        created_at: updatePayload.created_at
+                    })
+                } : l)
+            );
+        }
+
+        const successMessage = shouldUpdateCreatedAt
+            ? `Status updated to ${selectedValue} (Main: ${mainStatusName}) - Lead creation date updated`
+            : `Status updated to ${selectedValue} (Main: ${mainStatusName})`;
+
+        message.success(successMessage);
+        handleCloseStatusDropdown();
+        bumpSidePanelRefresh();
+    };
+
+    const handleStatusRemarkSubmit = async () => {
+        const remark = statusRemarkText.trim();
+        if (!remark) {
+            message.error('Remark is required for this status change');
+            return;
+        }
+
+        const pending = pendingStatusUpdate;
+        if (!pending) return;
+
+        setStatusRemarkSubmitting(true);
+        try {
+            const updatePayload = {
+                ...pending.updatePayload,
+                status_change_remark: remark
+            };
+
+            if (pending.type === 'hierarchical') {
+                await performHierarchicalStatusUpdate({
+                    ...pending,
+                    updatePayload
+                });
+            } else {
+                await updateDirectLeadStatus(
+                    pending.leadId,
+                    updatePayload.status,
+                    updatePayload.sub_status ?? null,
+                    { skipRemarkCheck: true, updateData: updatePayload }
+                );
+            }
+
+            setShowStatusRemarkModal(false);
+            setPendingStatusUpdate(null);
+            setStatusRemarkText('');
+        } catch (error) {
+            message.error(error.message || 'Failed to update status. Please try again.');
+            handleCloseStatusDropdown();
+        } finally {
+            setStatusRemarkSubmitting(false);
+        }
+    };
+
     // Handle status change from dropdown - supports hierarchical navigation and sub-status selection
     const handleStatusChange = async (rowIdx, selectedItem, isMainStatus = false) => {
         // Permission check - block status change if user doesn't have permission
@@ -5731,115 +5956,40 @@ const LeadCRM = memo(function LeadCRM({ user, selectedLoanType: initialLoanType,
                         const istDate = getCurrentIST();
                         updatePayload.created_at = istDate.toISOString();
                     }
-                    
-                    const response = await fetch(`${apiBaseUrl}/leads/${lead._id}?user_id=${userId}`, {
-                        method: 'PUT',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'Authorization': `Bearer ${localStorage.getItem('token')}`
-                        },
-                        body: JSON.stringify(updatePayload)
-                    });
 
-                    if (response.ok) {
-                        
-                        // Update local state immediately for instant UI feedback
-                        const updatedLeads = [...filteredLeads];
-                        const shouldUpdateCreatedAt = currentLeadIsNotALead && !newStatusIsNotALead;
-                        const updatedLeadData = { 
-                            ...updatedLeads[rowIdx === 'header' ? filteredLeads.findIndex(l => l._id === lead._id) : rowIdx], 
-                            status: mainStatusName,
-                            sub_status: selectedValue,
-                            parent_status: parentStatus,
-                            file_sent_to_login: shouldSetFileSentToLogin,
-                            ...(shouldUpdateCreatedAt && updatePayload.created_at && { 
-                                created_at: updatePayload.created_at 
-                            })
-                        };
-                        
-                        // Update the array
-                        if (rowIdx === 'header') {
-                            const idx = filteredLeads.findIndex(l => l._id === lead._id);
-                            if (idx !== -1) {
-                                updatedLeads[idx] = updatedLeadData;
-                            }
-                        } else {
-                            updatedLeads[rowIdx] = updatedLeadData;
-                        }
-                        
-                        setFilteredLeads(updatedLeads);
-
-                        // Also update main leads state
-                        const allLeadsUpdated = leads.map(l =>
-                            l._id === lead._id ? { 
-                                ...l, 
-                                status: mainStatusName, 
-                                sub_status: selectedValue,
-                                parent_status: parentStatus,
-                                file_sent_to_login: shouldSetFileSentToLogin,
-                                ...(shouldUpdateCreatedAt && updatePayload.created_at && { 
-                                    created_at: updatePayload.created_at 
-                                })
-                            } : l
-                        );
-                        setLeads(allLeadsUpdated);
-                        
-                        // Update editedLeads for consistency
-                        setEditedLeads(allLeadsUpdated);
-                        
-                        // Update filteredLeads to refresh the table display
-                        setFilteredLeads(allLeadsUpdated);
-                        
-                        // ✅ CRITICAL: Update selectedLead if this is the header dropdown
-                        if (rowIdx === 'header' && selectedLead && selectedLead._id === lead._id) {
-                            setSelectedLead({
-                                ...selectedLead,
-                                status: mainStatusName,
-                                sub_status: selectedValue,
-                                parent_status: parentStatus,
-                                file_sent_to_login: shouldSetFileSentToLogin,
-                                ...(shouldUpdateCreatedAt && updatePayload.created_at && { 
-                                    created_at: updatePayload.created_at 
-                                })
-                            });
-                            
-                            // Force update filteredLeadsData to trigger re-render in table
-                            setFilteredLeadsData(prev => 
-                                prev.map(l => l._id === lead._id ? {
-                                    ...l,
-                                    status: mainStatusName,
-                                    sub_status: selectedValue,
-                                    parent_status: parentStatus,
-                                    file_sent_to_login: shouldSetFileSentToLogin,
-                                    ...(shouldUpdateCreatedAt && updatePayload.created_at && { 
-                                        created_at: updatePayload.created_at 
-                                    })
-                                } : l)
-                            );
-                        }
-                        
-                        // Immediately update status counts to reflect the change
-                        // Status counts will update automatically via memoized statusCounts
-                        
-                        const successMessage = shouldUpdateCreatedAt 
-                            ? `Status updated to ${selectedValue} (Main: ${mainStatusName}) - Lead creation date updated`
-                            : `Status updated to ${selectedValue} (Main: ${mainStatusName})`;
-                        
-                        message.success(successMessage);
-                        
-                        // Close the dropdown and reset state
+                    if (checkRemarkRequired(mainStatusName, selectedValue)) {
+                        setPendingStatusUpdate({
+                            type: 'hierarchical',
+                            lead,
+                            rowIdx,
+                            updatePayload,
+                            mainStatusName,
+                            selectedValue,
+                            currentLeadIsNotALead,
+                            newStatusIsNotALead,
+                            parentStatus,
+                            shouldSetFileSentToLogin
+                        });
+                        setStatusRemarkText('');
+                        setShowStatusRemarkModal(true);
                         handleCloseStatusDropdown();
-                        
-                        // NO NEED TO RELOAD - we already updated the UI immediately
-                        
                         return;
-                    } else {
-                        const errorData = await response.json();
-                        throw new Error(`API Error: ${response.status}`);
                     }
+                    
+                    await performHierarchicalStatusUpdate({
+                        lead,
+                        rowIdx,
+                        updatePayload,
+                        mainStatusName,
+                        selectedValue,
+                        currentLeadIsNotALead,
+                        newStatusIsNotALead,
+                        parentStatus,
+                        shouldSetFileSentToLogin
+                    });
+                    return;
                 } catch (error) {
-                    message.error('Failed to update status. Please try again.');
-                    // Close dropdown even on error to reset visual state
+                    message.error(error.message || 'Failed to update status. Please try again.');
                     handleCloseStatusDropdown();
                 }
             }
@@ -5863,7 +6013,9 @@ const LeadCRM = memo(function LeadCRM({ user, selectedLoanType: initialLoanType,
     };
 
     // Helper function for direct status updates (without sub-status)
-    const updateDirectLeadStatus = async (leadId, statusValue, subStatusValue = null) => {
+    const updateDirectLeadStatus = async (leadId, statusValue, subStatusValue = null, options = {}) => {
+        const { skipRemarkCheck = false, updateData: overrideUpdateData = null } = options;
+
         // Permission check - block status update if user doesn't have permission
         if (!canUpdateStatus() && !canRollbackLoginStatus()) {
             message.error('You do not have permission to change status');
@@ -5891,21 +6043,37 @@ const LeadCRM = memo(function LeadCRM({ user, selectedLoanType: initialLoanType,
                 (subStatusValue && status.toLowerCase() === subStatusValue.toLowerCase())
             );
             
-            const updateData = { 
+            const updateData = overrideUpdateData || { 
                 status: statusValue,
                 parent_status: parentStatus
             };
             
-            if (subStatusValue) {
-                updateData.sub_status = subStatusValue;
+            if (!overrideUpdateData) {
+                if (subStatusValue) {
+                    updateData.sub_status = subStatusValue;
+                }
+                updateData.file_sent_to_login = shouldSetFileSentToLogin;
+                if (currentLeadIsNotALead && !newStatusIsNotALead) {
+                    updateData.created_at = getISTTimestamp();
+                }
             }
-            
-            // Always set file_sent_to_login explicitly (true or false) based on new status
-            updateData.file_sent_to_login = shouldSetFileSentToLogin;
-            
-            // If changing from "NOT A LEAD" to another status, update created date
-            if (currentLeadIsNotALead && !newStatusIsNotALead) {
-                updateData.created_at = getISTTimestamp();
+
+            const remarkTargetSub = updateData.sub_status ?? subStatusValue;
+            const needsRemark = checkRemarkRequired(
+                updateData.status || statusValue,
+                remarkTargetSub || null
+            );
+
+            if (!skipRemarkCheck && needsRemark && !updateData.status_change_remark?.trim()) {
+                setPendingStatusUpdate({
+                    type: 'direct',
+                    leadId,
+                    updatePayload: updateData
+                });
+                setStatusRemarkText('');
+                setShowStatusRemarkModal(true);
+                handleCloseStatusDropdown();
+                return;
             }
 
             // Update lead status via API
@@ -5982,13 +6150,23 @@ const LeadCRM = memo(function LeadCRM({ user, selectedLoanType: initialLoanType,
                     : 'Status updated successfully';
                 
                 message.success(successMessage);
+                bumpSidePanelRefresh();
                 
                 // NO NEED TO RELOAD - UI is already updated immediately
             } else {
-                throw new Error('Failed to update status');
+                let errorMessage = 'Failed to update status';
+                try {
+                    const errorData = await response.json();
+                    if (errorData?.detail) {
+                        errorMessage = typeof errorData.detail === 'string'
+                            ? errorData.detail
+                            : errorMessage;
+                    }
+                } catch (_) {}
+                throw new Error(errorMessage);
             }
         } catch (error) {
-            message.error('Failed to update status');
+            message.error(error.message || 'Failed to update status');
             // Close dropdown even on error to reset visual state
             handleCloseStatusDropdown();
         }
@@ -6591,7 +6769,9 @@ const LeadCRM = memo(function LeadCRM({ user, selectedLoanType: initialLoanType,
         );
 
         return (
-            <div className={activeTab === 1 ? 'h-full overflow-hidden bg-black text-white text-base flex flex-col' : 'h-full overflow-hidden bg-black text-white text-base flex flex-col'} style={activeTab === 1 ? {fontSize:'90%'} : {}}>
+            <div className="h-[calc(100dvh-3.5rem)] sm:h-[calc(100dvh-4rem)] overflow-hidden bg-black text-white text-base flex flex-col" style={activeTab === 1 ? {fontSize:'90%'} : {}}>
+                <div className="flex flex-1 min-h-0 w-full overflow-hidden">
+                    <div className="flex flex-col flex-1 min-w-0 min-h-0 overflow-hidden">
                 {/* Header */}
                 <div className="flex items-center gap-2 px-2 sm:px-3 lg:px-4 py-0.5 bg-black shadow-lg w-full">
                     <div className="flex items-center gap-1.5 flex-wrap">
@@ -6911,8 +7091,8 @@ const LeadCRM = memo(function LeadCRM({ user, selectedLoanType: initialLoanType,
                 </div>
 
                 {/* Section Content */}
-                <div className={activeTab === 1 ? 'flex-1 min-h-0 w-full overflow-hidden' : 'flex flex-1 min-h-0 overflow-hidden'}>
-                    <div className={activeTab === 1 ? 'w-full h-full' : 'flex-1 overflow-y-auto overflow-x-hidden scrollbar-hide px-2 sm:px-3 lg:px-4 py-3'}>
+                <div className={activeTab === 1 ? 'flex-1 min-h-0 w-full overflow-hidden' : 'flex-1 min-h-0 overflow-hidden'}>
+                    <div className={activeTab === 1 ? 'w-full h-full' : 'h-full overflow-y-auto overflow-x-hidden scrollbar-hide px-2 sm:px-3 lg:px-4 py-3'}>
                         {sectionData.map((section, idx) => (
                             <div key={idx} className={activeTab === 1 ? 'w-full h-full' : 'mb-6 w-full'}>
                                 {section.label && (
@@ -6960,17 +7140,10 @@ const LeadCRM = memo(function LeadCRM({ user, selectedLoanType: initialLoanType,
                             </div>
                         ))}
                     </div>
-                    {/* Remark - Persistent Right Panel */}
+                </div>
+                    </div>
                     {activeTab === 0 && (
-                        <div className="w-80 flex-shrink-0 flex flex-col border-l border-[#03B0F5]/20 overflow-hidden h-full" style={{background:'#fff'}}>
-                            <div className="px-3 py-2 border-b border-[#03B0F5]/20 flex items-center gap-2 flex-shrink-0" style={{background:'linear-gradient(90deg,#eef8ff 0%,#f0f4ff 100%)'}}>
-                                <svg className="w-3.5 h-3.5 text-[#03B0F5]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" /></svg>
-                                <h3 className="text-xs font-bold text-[#03B0F5] uppercase tracking-wide">Remarks</h3>
-                            </div>
-                            <div className="flex-1 min-h-0 overflow-hidden">
-                                <RemarkSection leadData={selectedLead} />
-                            </div>
-                        </div>
+                        <LeadSidePanel leadData={selectedLead} refreshToken={sidePanelRefreshToken} />
                     )}
                 </div>
 
@@ -7104,27 +7277,22 @@ const LeadCRM = memo(function LeadCRM({ user, selectedLoanType: initialLoanType,
     }
 
     return (
-        <div className="h-full overflow-y-auto bg-black text-white font-sans">
-            <div className="relative z-10 px-6 py-8 space-y-10 bg-black">
+        <div className="lead-crm-page bg-black text-white font-sans">
+            <div className="lead-crm-shell">
                 {/* Error Banner */}
                 {error && (
-                    <div className="bg-red-600 text-white p-4 mb-6 rounded-xl shadow-lg flex items-center justify-between">
-                        <div className="flex items-center">
-                            <XCircle className="w-6 h-6 mr-2" />
-                            <p className="font-bold">{error}</p>
-
-                            {/* Retry button - only show for permission errors */}
+                    <div className="lead-crm-alert error flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                            <XCircle className="w-5 h-5 shrink-0" />
+                            <p className="font-semibold">{error}</p>
                             {error.includes('permission') && (
                                 <button
                                     onClick={() => {
-                                        // Clear permission cache and retry
                                         localStorage.removeItem('userPermissions');
                                         localStorage.removeItem('userRoleId');
                                         setError('');
                                         setPermissions({});
                                         setPermissionsLoading(true);
-
-                                        // Reload permissions and leads
                                         loadPermissions()
                                             .then(perms => {
                                                 if (perms && hasLeadsPermission('show')) {
@@ -7132,7 +7300,7 @@ const LeadCRM = memo(function LeadCRM({ user, selectedLoanType: initialLoanType,
                                                 }
                                             });
                                     }}
-                                    className="ml-4 px-4 py-2 bg-white text-red-600 rounded hover:bg-gray-200 transition"
+                                    className="lead-crm-btn lead-crm-btn-primary ml-2"
                                 >
                                     Retry
                                 </button>
@@ -7140,7 +7308,7 @@ const LeadCRM = memo(function LeadCRM({ user, selectedLoanType: initialLoanType,
                         </div>
                         <button
                             onClick={() => setError('')}
-                            className="text-white hover:text-red-200"
+                            className="text-red-200 hover:text-white"
                         >
                             <X className="w-5 h-5" />
                         </button>
@@ -7149,42 +7317,37 @@ const LeadCRM = memo(function LeadCRM({ user, selectedLoanType: initialLoanType,
 
                 {/* Loading Indicator */}
                 {permissionsLoading && (
-                    <div className="bg-blue-600 text-white p-4 mb-6 rounded-xl shadow-lg flex items-center">
-                        <div className="animate-spin mr-2 h-5 w-5 border-2 border-white rounded-full border-t-transparent"></div>
-                        <p className="font-bold">Loading permissions...</p>
+                    <div className="lead-crm-alert info">
+                        <div className="lead-crm-kpi-loading"></div>
+                        <p className="font-semibold">Loading permissions...</p>
                     </div>
                 )}
 
                 {/* Status Cards - Dynamic from Settings */}
                 {(() => {
                     const cardGradients = [
-                        { gradient: 'from-blue-500 to-cyan-400',     shadow: 'shadow-blue-500/25' },
-                        { gradient: 'from-green-500 to-green-400',   shadow: 'shadow-green-500/25' },
-                        { gradient: 'from-orange-500 to-amber-400',  shadow: 'shadow-orange-500/25' },
-                        { gradient: 'from-red-500 to-pink-400',      shadow: 'shadow-red-500/25' },
-                        { gradient: 'from-purple-500 to-violet-400', shadow: 'shadow-purple-500/25' },
-                        { gradient: 'from-teal-500 to-cyan-400',     shadow: 'shadow-teal-500/25' },
-                        { gradient: 'from-indigo-500 to-blue-400',   shadow: 'shadow-indigo-500/25' },
-                        { gradient: 'from-pink-500 to-rose-400',     shadow: 'shadow-pink-500/25' },
-                        { gradient: 'from-gray-500 to-gray-400',     shadow: 'shadow-gray-500/25' },
-                        { gradient: 'from-yellow-500 to-amber-400',  shadow: 'shadow-yellow-500/25' },
+                        'linear-gradient(to right, #3b82f6, #22d3ee)',
+                        'linear-gradient(to right, #22c55e, #4ade80)',
+                        'linear-gradient(to right, #f97316, #fbbf24)',
+                        'linear-gradient(to right, #ef4444, #f472b6)',
+                        'linear-gradient(to right, #a855f7, #8b5cf6)',
+                        'linear-gradient(to right, #14b8a6, #22d3ee)',
+                        'linear-gradient(to right, #6366f1, #60a5fa)',
+                        'linear-gradient(to right, #ec4899, #fb7185)',
+                        'linear-gradient(to right, #6b7280, #9ca3af)',
+                        'linear-gradient(to right, #eab308, #fbbf24)',
                     ];
-                    // Insert "Login" card right after "ACTIVE LEADS"
-                    const loginCard = {
-                        key: '__LOGIN__',
-                        name: 'Login',
-                        gradient: 'from-emerald-500 to-green-400',
-                        shadow: 'shadow-emerald-500/25',
-                    };
+                    const loginGradient = 'linear-gradient(to right, #10b981, #4ade80)';
                     return (
                         <div className="flex flex-nowrap gap-3 mb-6 overflow-x-auto pb-1">
                             {allStatusObjects.map((status, index) => {
-                                const { gradient, shadow } = cardGradients[index % cardGradients.length];
                                 const isActiveLeads = status.name && status.name.toUpperCase() === 'ACTIVE LEADS';
+                                const bgStyle = { background: cardGradients[index % cardGradients.length] };
                                 return (
                                     <React.Fragment key={index}>
                                         <div
-                                            className={`flex-1 min-w-[120px] px-4 py-3 rounded-xl bg-gradient-to-r ${gradient} shadow-lg ${shadow} cursor-pointer hover:scale-105 hover:shadow-xl transition-all duration-150 select-none`}
+                                            className="flex-1 min-w-[120px] px-4 py-3 rounded-xl shadow-lg cursor-pointer hover:scale-105 hover:shadow-xl transition-all duration-150 select-none"
+                                            style={bgStyle}
                                             onClick={() => setActiveCardModal(status.name)}
                                         >
                                             <div className="flex items-center justify-between gap-2">
@@ -7198,7 +7361,8 @@ const LeadCRM = memo(function LeadCRM({ user, selectedLoanType: initialLoanType,
                                         </div>
                                         {isActiveLeads && (
                                             <div
-                                                className={`flex-1 min-w-[120px] px-4 py-3 rounded-xl bg-gradient-to-r ${loginCard.gradient} shadow-lg ${loginCard.shadow} cursor-pointer hover:scale-105 hover:shadow-xl transition-all duration-150 select-none`}
+                                                className="flex-1 min-w-[120px] px-4 py-3 rounded-xl shadow-lg cursor-pointer hover:scale-105 hover:shadow-xl transition-all duration-150 select-none"
+                                                style={{ background: loginGradient }}
                                                 onClick={() => setActiveCardModal('__LOGIN__')}
                                             >
                                                 <div className="flex items-center justify-between gap-2">
@@ -7220,21 +7384,7 @@ const LeadCRM = memo(function LeadCRM({ user, selectedLoanType: initialLoanType,
 
                 {/* Status Card Overview Modal */}
                 {activeCardModal && (() => {
-                    const cardGradients = [
-                        'from-blue-500 to-cyan-400',
-                        'from-green-500 to-green-400',
-                        'from-orange-500 to-amber-400',
-                        'from-red-500 to-pink-400',
-                        'from-purple-500 to-violet-400',
-                        'from-teal-500 to-cyan-400',
-                        'from-indigo-500 to-blue-400',
-                        'from-pink-500 to-rose-400',
-                        'from-gray-500 to-gray-400',
-                        'from-yellow-500 to-amber-400',
-                    ];
                     const isLoginModal = activeCardModal === '__LOGIN__';
-                    const cardIdx = isLoginModal ? -1 : allStatusObjects.findIndex(s => s.name === activeCardModal);
-                    const cardGradient = isLoginModal ? 'from-emerald-500 to-green-400' : cardGradients[(cardIdx >= 0 ? cardIdx : 0) % cardGradients.length];
                     const breakdown = isLoginModal ? (() => {
                         const currentUserId = localStorage.getItem('userId') || localStorage.getItem('user_id');
                         const allLeads = Array.isArray(filteredLeadsData) ? filteredLeadsData : [];
@@ -7251,31 +7401,27 @@ const LeadCRM = memo(function LeadCRM({ user, selectedLoanType: initialLoanType,
                     })() : getSubStatusBreakdown(activeCardModal);
                     return (
                         <div
-                            className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/70"
+                            className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/70 p-4"
                             onClick={() => setActiveCardModal(null)}
                         >
                             <div
-                                className="bg-[#111827] rounded-2xl shadow-2xl w-full max-w-xl mx-4 max-h-[80vh] overflow-hidden flex flex-col"
+                                className="lead-crm-overview-modal"
                                 onClick={e => e.stopPropagation()}
                             >
-                                {/* Header */}
-                                <div className={`bg-gradient-to-r ${cardGradient} px-5 py-4 flex items-center justify-between`}>
-                                    <div className="flex items-center gap-2">
-                                        <span className="text-white font-bold text-base uppercase tracking-wide">{isLoginModal ? 'LOGIN' : activeCardModal} Overview</span>
-                                    </div>
-                                    <button onClick={() => setActiveCardModal(null)} className="text-white hover:text-gray-200 transition">
+                                <div className="lead-crm-overview-modal-header">
+                                    <h3>{isLoginModal ? 'Login' : activeCardModal} Overview</h3>
+                                    <button type="button" onClick={() => setActiveCardModal(null)} className="text-gray-500 hover:text-gray-800">
                                         <X className="w-5 h-5" />
                                     </button>
                                 </div>
-                                {/* Table */}
                                 <div className="overflow-auto flex-1">
-                                    <table className="w-full">
+                                    <table className="lead-crm-overview-table w-full">
                                         <thead>
-                                            <tr className="border-b border-gray-700">
-                                                <th className="text-left py-3 px-5 text-gray-400 text-xs font-semibold uppercase tracking-wider">SUB-STATUS</th>
-                                                <th className="text-right py-3 px-5 text-gray-300 text-xs font-semibold uppercase tracking-wider">TOTAL LEADS</th>
-                                                <th className="text-right py-3 px-5 text-red-400 text-xs font-semibold uppercase tracking-wider">NO REVIEW</th>
-                                                <th className="text-right py-3 px-5 text-yellow-400 text-xs font-semibold uppercase tracking-wider">PENDING MY</th>
+                                            <tr>
+                                                <th className="text-left">Sub-Status</th>
+                                                <th className="text-right">Total Leads</th>
+                                                <th className="text-right">No Review</th>
+                                                <th className="text-right">Pending My</th>
                                             </tr>
                                         </thead>
                                         <tbody>
@@ -7285,11 +7431,11 @@ const LeadCRM = memo(function LeadCRM({ user, selectedLoanType: initialLoanType,
                                                 </tr>
                                             ) : (
                                                 breakdown.map((row, i) => (
-                                                    <tr key={i} className="border-b border-gray-800 hover:bg-gray-800/50 transition">
-                                                        <td className="py-3 px-5 text-white font-bold uppercase text-sm">{row.subStatus}</td>
-                                                        <td className="py-3 px-5 text-white font-bold text-right">{row.total}</td>
-                                                        <td className="py-3 px-5 text-red-400 font-bold text-right">{row.noReview}</td>
-                                                        <td className="py-3 px-5 text-yellow-400 font-bold text-right">{row.pendingMy}</td>
+                                                    <tr key={i}>
+                                                        <td className="font-bold uppercase">{row.subStatus}</td>
+                                                        <td className="text-right font-bold">{row.total}</td>
+                                                        <td className="text-right font-bold text-red-600">{row.noReview}</td>
+                                                        <td className="text-right font-bold text-amber-600">{row.pendingMy}</td>
                                                     </tr>
                                                 ))
                                             )}
@@ -7301,53 +7447,49 @@ const LeadCRM = memo(function LeadCRM({ user, selectedLoanType: initialLoanType,
                     );
                 })()}
 
-                {/* Sections Loading Indicator */}
                 {loadingLeads && (
-                    <div className="bg-gradient-to-r from-blue-600 to-cyan-600 text-white p-3 mb-6 rounded-xl shadow-lg flex items-center">
-                        <div className="animate-spin mr-3 h-4 w-4 border-2 border-white rounded-full border-t-transparent"></div>
+                    <div className="lead-crm-alert info mb-3 shrink-0">
+                        <div className="lead-crm-kpi-loading"></div>
                         <p className="font-medium">Loading leads and preparing sections...</p>
                     </div>
                 )}
 
                 {/* Table Section */}
-                <div className="overflow-auto rounded-xl sticky-table-container">
-                    {/* Unified Controls Row - Select, Filter, Search and Results Indicator */}
-                    <div className="flex items-center justify-between gap-4 mb-4 mt-5">
-                        <div className="flex items-center gap-3">
-                            {/* Select Button - Show for users with delete permission or Super Admin */}
+                <div className="lead-crm-table-panel">
+                    <div className="lead-crm-toolbar">
+                        <div className="lead-crm-toolbar-left">
                             {(canDeleteLeads() || isSuperAdmin()) && !checkboxVisible ? (
                                 <button
-                                    className="bg-[#03B0F5] text-white px-5 py-3 rounded-lg font-bold shadow hover:bg-[#0280b5] transition text-base"
+                                    type="button"
+                                    className="lead-crm-btn lead-crm-btn-primary"
                                     onClick={handleShowCheckboxes}
                                 >
-                                    {checkedRows.length > 0
-                                        ? `Select (${checkedRows.length})`
-                                        : "Select"}
+                                    {checkedRows.length > 0 ? `Select (${checkedRows.length})` : 'Select'}
                                 </button>
                             ) : (canDeleteLeads() || isSuperAdmin()) && checkboxVisible ? (
-                                <div className="flex items-center gap-6 bg-gray-900 rounded-lg p-3">
-                                    <label className="flex items-center cursor-pointer text-[#03B0F5] font-bold">
+                                <div className="lead-crm-select-bar">
+                                    <label>
                                         <input
                                             type="checkbox"
-                                            className="accent-blue-500 mr-2 cursor-pointer"
+                                            className="accent-blue-500 cursor-pointer"
                                             checked={allRowsChecked}
                                             onChange={handleSelectAll}
-                                            style={{ width: 18, height: 18 }}
+                                            style={{ width: 16, height: 16 }}
                                         />
                                         Select All
                                     </label>
-                                    <span className="text-white font-semibold">
-                                        {checkedRows.length} row{checkedRows.length !== 1 ? "s" : ""} selected
-                                    </span>
+                                    <span>{checkedRows.length} row{checkedRows.length !== 1 ? 's' : ''} selected</span>
                                     <button
-                                        className="px-3 py-1 bg-red-600 text-white rounded font-bold hover:bg-red-700 transition"
+                                        type="button"
+                                        className="lead-crm-btn lead-crm-btn-danger"
                                         onClick={handleDeleteSelected}
                                         disabled={checkedRows.length === 0}
                                     >
                                         Delete ({checkedRows.length})
                                     </button>
                                     <button
-                                        className="px-3 py-1 bg-gray-600 text-white rounded font-bold hover:bg-gray-700 transition"
+                                        type="button"
+                                        className="lead-crm-btn lead-crm-btn-muted"
                                         onClick={handleCancelSelection}
                                     >
                                         Cancel
@@ -7355,181 +7497,111 @@ const LeadCRM = memo(function LeadCRM({ user, selectedLoanType: initialLoanType,
                                 </div>
                             ) : null}
 
-                            {/* Search Results Indicator */}
                             {(searchTerm || getActiveFilterCount() > 0) && (
-                                <div className="text-base text-gray-300 bg-[#1b2230] px-4 py-3 rounded-lg border border-gray-600">
+                                <div className="lead-crm-results-chip">
                                     {filteredLeadsData.length} of {leads.length} leads
                                     {searchTerm && (
-                                        <span className="ml-2">
-                                            matching "<span className="text-cyan-400 font-semibold">{searchTerm}</span>"
+                                        <span>
+                                            {' '}matching <strong>"{searchTerm}"</strong>
                                         </span>
                                     )}
                                 </div>
                             )}
                         </div>
 
-                        <div className="flex items-center gap-3">
-                            {/* Secondary Data Loading Indicator */}
+                        <div className="lead-crm-toolbar-right">
                             {(loadingLoanTypes || loadingQuestions) && (
                                 <div className="flex items-center gap-2 text-gray-400 text-sm">
-                                    <div className="animate-spin h-4 w-4 border-2 border-gray-400 rounded-full border-t-transparent"></div>
+                                    <div className="lead-crm-kpi-loading"></div>
                                     <span>Loading filters...</span>
                                 </div>
                             )}
-                            
-                            {/* Filter Button - Optimized with smooth transitions */}
+
                             <button
-                                className={`px-5 py-3 rounded-lg font-bold shadow-lg transition-all duration-200 ease-in-out relative flex items-center gap-3 text-base transform hover:scale-105 active:scale-95 ${getActiveFilterCount() > 0
-                                    ? 'bg-orange-500 text-white hover:bg-orange-600 hover:shadow-orange-500/50'
-                                    : 'bg-gray-600 text-white hover:bg-gray-700 hover:shadow-gray-600/50'
-                                    }`}
+                                type="button"
+                                className={`lead-crm-btn lead-crm-btn-filter ${getActiveFilterCount() > 0 ? 'active' : ''}`}
                                 onClick={() => setShowFilterPopup(true)}
-                                style={{ willChange: 'transform, background-color, box-shadow' }}
                             >
-                                <svg
-                                    className="w-5 h-5 transition-transform duration-200"
-                                    fill="none"
-                                    stroke="currentColor"
-                                    viewBox="0 0 24 24"
-                                >
-                                    <path
-                                        strokeLinecap="round"
-                                        strokeLinejoin="round"
-                                        strokeWidth="2"
-                                        d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z"
-                                    />
-                                </svg>
+                                <Filter className="w-4 h-4" />
                                 Filter
                                 {getActiveFilterCount() > 0 && (
-                                    <span 
-                                        className="absolute -top-2 -right-2 bg-red-500 text-white text-sm rounded-full h-6 w-6 flex items-center justify-center transition-all duration-200 animate-pulse"
-                                        style={{ willChange: 'transform' }}
-                                    >
-                                        {getActiveFilterCount()}
-                                    </span>
+                                    <span className="lead-crm-filter-badge">{getActiveFilterCount()}</span>
                                 )}
                             </button>
-
-                            {/* Search Box - Optimized with smooth transitions */}
-                            <div className="relative w-[320px]">
-                                <input
-                                    type="text"
-                                    placeholder="Search leads (use spaces for multiple terms)..."
-                                    value={searchTerm}
-                                    onChange={(e) => setSearchTerm(e.target.value)}
-                                    className="w-full py-3 pl-10 pr-10 bg-[#1b2230] text-gray-300 rounded-lg border border-gray-700 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500 focus:ring-opacity-50 text-base placeholder-gray-500 transition-all duration-200 ease-in-out"
-                                    style={{ willChange: 'border-color, box-shadow' }}
-                                />
-                                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                                    <svg
-                                        className="w-5 h-5 text-gray-500 transition-colors duration-200"
-                                        fill="none"
-                                        stroke="currentColor"
-                                        viewBox="0 0 24 24"
-                                    >
-                                        <path
-                                            strokeLinecap="round"
-                                            strokeLinejoin="round"
-                                            strokeWidth="2"
-                                            d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
-                                        ></path>
-                                    </svg>
-                                </div>
-                                {searchTerm && (
-                                    <button
-                                        onClick={() => setSearchTerm('')}
-                                        className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-gray-200 transition-all duration-150 hover:scale-110"
-                                        style={{ willChange: 'transform' }}
-                                    >
-                                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path>
-                                        </svg>
-                                    </button>
-                                )}
-                            </div>
                         </div>
                     </div>
 
-                    <div className="w-full bg-black" style={{ marginLeft: 0 }}>
-                        <div className="relative">
-                            {/* Horizontal scroll buttons */}
-                            {canScrollLeft && (
-                                <button
-                                    onClick={() => scrollTable('left')}
-                                    className="absolute left-2 top-1/2 transform -translate-y-1/2 z-50 text-white p-4 rounded-full shadow-lg transition-all duration-200 opacity-20 hover:opacity-100"
-                                    style={{ backgroundColor: 'rgba(37, 99, 235, 1)' }}
-                                    onMouseEnter={(e) => e.target.style.backgroundColor = 'rgba(29, 78, 216, 1)'}
-                                    onMouseLeave={(e) => e.target.style.backgroundColor = 'rgba(37, 99, 235, 1)'}
-                                    aria-label="Scroll left"
-                                >
-                                    <ChevronLeft className="w-9 h-9" />
-                                </button>
-                            )}
-                            
-                            {canScrollRight && (
-                                <button
-                                    onClick={() => scrollTable('right')}
-                                    className="absolute right-2 top-1/2 transform -translate-y-1/2 z-50 text-white p-4 rounded-full shadow-lg transition-all duration-200 opacity-20 hover:opacity-100"
-                                    style={{ backgroundColor: 'rgba(37, 99, 235, 1)' }}
-                                    onMouseEnter={(e) => e.target.style.backgroundColor = 'rgba(29, 78, 216, 1)'}
-                                    onMouseLeave={(e) => e.target.style.backgroundColor = 'rgba(37, 99, 235, 1)'}
-                                    aria-label="Scroll right"
-                                >
-                                    <ChevronRight className="w-9 h-9" />
-                                </button>
-                            )}
-                            
-                            <div 
-                                ref={tableScrollRef}
-                                className="bg-black rounded-lg overflow-x-auto max-h-[calc(100vh-200px)] overflow-y-auto"
-                                onScroll={updateScrollButtons}
+                    <div className="lead-crm-table-wrap">
+                        {canScrollLeft && (
+                            <button
+                                type="button"
+                                onClick={() => scrollTable('left')}
+                                className="lead-crm-scroll-btn left"
+                                aria-label="Scroll left"
                             >
-                                {/* Table with sticky header - improved sticky positioning */}
-                                <table className="min-w-[1600px] w-full bg-black relative">
-                                <thead 
-                                    className="bg-white sticky top-0 z-50 shadow-lg border-b-2 border-gray-200"
-                                >
-                                        <tr>
-                                            {(canDeleteLeads() || isSuperAdmin()) && checkboxVisible && (
-                                                <th className="bg-white py-3 px-4 text-blue-600 font-bold sticky top-0 z-50 shadow-sm border-b border-gray-200">
-                                                    <input
-                                                        type="checkbox"
-                                                        className="accent-blue-500 cursor-pointer"
-                                                        checked={allRowsChecked}
-                                                        onChange={handleSelectAll}
-                                                    />
-                                                </th>
-                                            )}
-                                            {columns.map((col, idx) => (
-                                                <th
-                                                    key={idx}
-                                                    className={`bg-white px-4 py-3 text-md font-extrabold text-[#03b0f5] uppercase tracking-wider sticky top-0 z-50 shadow-sm border-b border-gray-200 ${col.key !== "index" && col.key !== "status" ? "cursor-pointer select-none hover:bg-gray-50" : ""} ${col.className || ""}`}
-                                                    onClick={col.key !== "index" && col.key !== "status" ? () => handleSort(col.key) : undefined}
-                                                >
-                                                    <div className="flex items-center gap-1">
-                                                        <span>{col.label}</span>
-                                                        {col.key !== "index" && col.key !== "status" && (
-                                                            <span className="text-xs">
-                                                                {sortConfig.key === col.key
-                                                                    ? (sortConfig.direction === 'asc' ? ' ↑' : ' ↓')
-                                                                    : ' ↕'}
-                                                            </span>
-                                                        )}
-                                                    </div>
-                                                </th>
-                                            ))}
-                                        </tr>
-                                    </thead>
-                                    <tbody className="bg-black">
+                                <ChevronLeft className="w-6 h-6" />
+                            </button>
+                        )}
+
+                        {canScrollRight && (
+                            <button
+                                type="button"
+                                onClick={() => scrollTable('right')}
+                                className="lead-crm-scroll-btn right"
+                                aria-label="Scroll right"
+                            >
+                                <ChevronRight className="w-6 h-6" />
+                            </button>
+                        )}
+
+                        <div
+                            ref={tableScrollRef}
+                            className="lead-crm-table-scroll"
+                            onScroll={updateScrollButtons}
+                        >
+                            <table className="lead-crm-table">
+                                <thead>
+                                    <tr>
+                                        {(canDeleteLeads() || isSuperAdmin()) && checkboxVisible && (
+                                            <th>
+                                                <input
+                                                    type="checkbox"
+                                                    className="accent-blue-500 cursor-pointer"
+                                                    checked={allRowsChecked}
+                                                    onChange={handleSelectAll}
+                                                />
+                                            </th>
+                                        )}
+                                        {columns.map((col, idx) => (
+                                            <th
+                                                key={idx}
+                                                className={`${col.key !== 'index' && col.key !== 'status' ? 'sortable' : ''} ${col.className || ''}`}
+                                                onClick={col.key !== 'index' && col.key !== 'status' ? () => handleSort(col.key) : undefined}
+                                            >
+                                                <div className="flex items-center gap-1">
+                                                    <span>{col.label}</span>
+                                                    {col.key !== 'index' && col.key !== 'status' && (
+                                                        <span className="text-xs opacity-70">
+                                                            {sortConfig.key === col.key
+                                                                ? (sortConfig.direction === 'asc' ? '↑' : '↓')
+                                                                : '↕'}
+                                                        </span>
+                                                    )}
+                                                </div>
+                                            </th>
+                                        ))}
+                                    </tr>
+                                </thead>
+                                <tbody>
                                     {loadingLeads ? (
                                         <tr>
                                             <td
                                                 colSpan={((canDeleteLeads() || isSuperAdmin()) && checkboxVisible) ? columns.length + 1 : columns.length}
-                                                className="py-20 text-center text-gray-400 text-lg bg-black"
+                                                className="empty-cell"
                                             >
                                                 <div className="flex items-center justify-center gap-3">
-                                                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
-                                                    <span className="text-xl font-semibold">Loading Leads...</span>
+                                                    <div className="lead-crm-kpi-loading"></div>
+                                                    <span>Loading leads...</span>
                                                 </div>
                                             </td>
                                         </tr>
@@ -7537,11 +7609,11 @@ const LeadCRM = memo(function LeadCRM({ user, selectedLoanType: initialLoanType,
                                         <tr>
                                             <td
                                                 colSpan={((canDeleteLeads() || isSuperAdmin()) && checkboxVisible) ? columns.length + 1 : columns.length}
-                                                className="py-20 text-center text-gray-400 text-lg bg-black"
+                                                className="empty-cell"
                                             >
                                                 {searchTerm || getActiveFilterCount() > 0
-                                                    ? "No leads match your search or filter criteria."
-                                                    : "No leads available."}
+                                                    ? 'No leads match your search or filter criteria.'
+                                                    : 'No leads available.'}
                                             </td>
                                         </tr>
                                     ) : (
@@ -7557,13 +7629,9 @@ const LeadCRM = memo(function LeadCRM({ user, selectedLoanType: initialLoanType,
                                                     <tr
                                                         ref={el => (rowRefs.current[rowIdx] = el)}
                                                         data-leadid={lead._id}
-                                                        className={`
-                                                        border-b border-gray-800 hover:bg-gray-900/50 transition
-                                                        ${lead.file_sent_to_login ? 'bg-gray-900/30' : 'bg-black'}
-                                                        ${checkedRows.includes(rowIdx) ? "bg-blue-900/20" : ""}
-                                                    `}
+                                                        className={`lead-crm-row ${lead.file_sent_to_login ? 'sent-login' : ''} ${checkedRows.includes(rowIdx) ? 'selected' : ''}`}
                                                         onClick={() => !((canDeleteLeads() || isSuperAdmin()) && checkboxVisible) && handleRowClick(rowIdx, lead)}
-                                                        style={{ cursor: ((canDeleteLeads() || isSuperAdmin()) && checkboxVisible) ? "default" : "pointer" }}
+                                                        style={{ cursor: ((canDeleteLeads() || isSuperAdmin()) && checkboxVisible) ? 'default' : 'pointer' }}
                                                     >
                                                         {(canDeleteLeads() || isSuperAdmin()) && checkboxVisible && (
                                                             <td className="py-2 px-4 whitespace-nowrap">
@@ -8161,7 +8229,6 @@ const LeadCRM = memo(function LeadCRM({ user, selectedLoanType: initialLoanType,
                                     )}
                                 </tbody>
                             </table>
-                            </div>
                         </div>
                     </div>
                 </div>
@@ -9824,6 +9891,65 @@ const LeadCRM = memo(function LeadCRM({ user, selectedLoanType: initialLoanType,
                                     Apply Filters
                                 </button>
                             </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Mandatory Remark Modal for Status Change */}
+            {showStatusRemarkModal && (
+                <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[9999]">
+                    <div className="bg-[#1b2230] border border-gray-600 rounded-lg p-6 w-[440px] max-w-[90vw]">
+                        <div className="flex justify-between items-center mb-4">
+                            <h2 className="text-xl font-semibold text-white">Remark Required</h2>
+                            <button
+                                onClick={() => {
+                                    if (statusRemarkSubmitting) return;
+                                    setShowStatusRemarkModal(false);
+                                    setPendingStatusUpdate(null);
+                                    setStatusRemarkText('');
+                                    handleCloseStatusDropdown();
+                                }}
+                                className="text-gray-400 hover:text-white text-2xl"
+                            >
+                                ×
+                            </button>
+                        </div>
+
+                        <p className="text-gray-300 text-sm mb-4">
+                            This status requires a remark before it can be applied.
+                        </p>
+
+                        <textarea
+                            value={statusRemarkText}
+                            onChange={(e) => setStatusRemarkText(e.target.value)}
+                            placeholder="Enter remark (required)"
+                            rows={4}
+                            className="w-full mb-4 px-3 py-2 rounded border border-gray-500 bg-gray-900 text-white placeholder-gray-500 focus:outline-none focus:border-amber-500"
+                            autoFocus
+                        />
+
+                        <div className="flex justify-end gap-2">
+                            <button
+                                onClick={() => {
+                                    if (statusRemarkSubmitting) return;
+                                    setShowStatusRemarkModal(false);
+                                    setPendingStatusUpdate(null);
+                                    setStatusRemarkText('');
+                                    handleCloseStatusDropdown();
+                                }}
+                                disabled={statusRemarkSubmitting}
+                                className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition disabled:opacity-50"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                onClick={handleStatusRemarkSubmit}
+                                disabled={statusRemarkSubmitting || !statusRemarkText.trim()}
+                                className="px-4 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                                {statusRemarkSubmitting ? 'Saving...' : 'Save & Update Status'}
+                            </button>
                         </div>
                     </div>
                 </div>

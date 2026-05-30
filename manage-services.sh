@@ -96,8 +96,8 @@ help() {
     echo "  save     - Save current PM2 configuration"
     echo ""
     echo -e "${YELLOW}Service URLs:${NC}"
-    echo "  Backend:  https://rupiyamaker.com:8049"
-    echo "  Frontend: https://rupiyamaker.com/"
+    echo "  Backend:  https://crm.fixyourfinance.ai/api"
+    echo "  Frontend: https://crm.fixyourfinance.ai/"
     echo ""
 }
 

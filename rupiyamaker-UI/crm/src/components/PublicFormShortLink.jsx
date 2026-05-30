@@ -6,7 +6,7 @@ const API_BASE_URL = '/api';
 /**
  * Resolves a short form link code (e.g. /f/xK9mP2) and transparently
  * redirects to the public login form.  The shared URL stays clean:
- *   https://rupiyamaker.com/f/xK9mP2
+ *   https://crm.fixyourfinance.ai/f/xK9mP2
  */
 export default function PublicFormShortLink() {
   const { code } = useParams();

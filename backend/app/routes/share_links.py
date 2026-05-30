@@ -111,7 +111,7 @@ async def shorten_url(url: str = Query(..., description="URL to shorten")):
 
 # ---------------------------------------------------------------------------
 # Custom short-form links  (no IP / port / domain exposed)
-# Short URL pattern: https://rupiyamaker.com/f/{code}
+# Short URL pattern: https://crm.fixyourfinance.ai/f/{code}
 # ---------------------------------------------------------------------------
 
 def _random_code(length: int = 7) -> str:
@@ -154,7 +154,8 @@ async def create_form_short_link(
     }
     await col.insert_one(doc)
 
-    short_url = f"https://rupiyamaker.com/f/{code}"
+    from app.config import Config
+    short_url = f"{Config.BASE_URL.rstrip('/')}/f/{code}"
     return {"code": code, "short_url": short_url}
 
 

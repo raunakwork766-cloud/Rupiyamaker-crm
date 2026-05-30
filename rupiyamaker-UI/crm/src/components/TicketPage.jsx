@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useCallback, Suspense, lazy } from "react";
 import {
-  TicketIcon, Plus, Search, CheckSquare, X, Trash2
+  Plus
 } from 'lucide-react';
 import API from "../services/api";
 import { toast } from "react-toastify";
@@ -8,6 +8,7 @@ import { formatDateTime } from '../utils/dateUtils';
 import { getUserPermissions, hasPermission, isSuperAdmin } from '../utils/permissions';
 import useTabWithHistory from '../hooks/useTabWithHistory';
 import useModalHistory from '../hooks/useModalHistory';
+import useNavbarPageSearch from '../hooks/useNavbarPageSearch';
 
 // API base URL - Always use API proxy
 const API_BASE_URL = '/api';
@@ -34,56 +35,73 @@ const breakMessage = (message, maxLen = 41) => {
   return lines;
 };
 
-// Loading skeleton component for instant UI feedback
-const TicketSkeleton = () => (
-  <tr className="border-b-[3px] border-white">
-    <td className="py-3 px-3">
-      <div className="h-4 bg-gray-600 rounded animate-pulse"></div>
-    </td>
-    <td className="py-3 px-3">
-      <div className="h-4 bg-gray-600 rounded animate-pulse"></div>
-    </td>
-    <td className="py-3 px-3">
-      <div className="h-4 bg-gray-600 rounded animate-pulse"></div>
-    </td>
-    <td className="py-3 px-3">
-      <div className="h-4 bg-gray-600 rounded animate-pulse"></div>
-    </td>
-    <td className="py-3 px-3">
-      <div className="h-4 bg-gray-600 rounded animate-pulse"></div>
-    </td>
-    <td className="py-3 px-3">
-      <div className="h-4 bg-gray-600 rounded animate-pulse"></div>
-    </td>
-  </tr>
-);
-
 // Main component with optimizations
 export default function TicketPage() {
-  // CSS styles for sticky headers
-  const stickyHeaderStyles = `
-    .sticky-table-container {
-      max-height: 600px;
-      overflow-y: auto;
-      overflow-x: auto;
-      border-radius: 12px;
-    }
-    
-    .sticky-header {
-      position: sticky;
-      top: 0;
-      background: white;
-      // z-index: 10;
-      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-    }
-    
-    .sticky-th {
-      position: sticky;
-      top: 0;
-      background: white;
-      // z-index: 10;
-      border-bottom: 2px solid #e5e7eb;
-    }
+  const ticketPageStyles = `
+    .task-page-container { padding: 0; max-width: 100%; background: #000; min-height: 100vh; font-family: -apple-system, BlinkMacSystemFont, 'Lexend Deca', sans-serif; color: #e2e8f0; }
+    .task-top-bar { display: flex; justify-content: space-between; align-items: flex-start; padding: 20px 24px 0; border-bottom: 1px solid #1f1f27; background: #000; }
+    .task-top-bar-left h1 { font-size: 22px; font-weight: 700; color: #f0f0f5; margin: 0 0 2px; line-height: 1.2; }
+    .task-top-bar-left p { font-size: 13px; color: #6b7a99; margin: 0 0 12px; }
+    .task-top-bar-right { display: flex; gap: 8px; align-items: center; padding-top: 4px; }
+    .task-btn-secondary { background: #1a1a24; color: #c8d0e0; border: 1px solid #2a2a3a; padding: 7px 14px; border-radius: 3px; font-size: 13px; font-weight: 500; cursor: pointer; transition: background 0.15s, border-color 0.15s; white-space: nowrap; }
+    .task-btn-secondary:hover { background: #22222e; border-color: #3a3a50; }
+    .task-btn-create { background: #3b82f6; color: #fff; border: none; padding: 7px 14px; border-radius: 3px; font-size: 13px; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 6px; transition: background 0.15s; white-space: nowrap; }
+    .task-btn-create:hover { background: #2563eb; }
+    .task-view-toggle-bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 24px; background: #000; border-bottom: 1px solid #1f1f27; flex-wrap: wrap; }
+    .task-view-toggle-group { display: flex; gap: 0; flex-wrap: wrap; flex: 0 1 auto; min-width: 0; }
+    .task-view-toggle-btn { padding: 12px 16px; border: none; background: transparent; font-size: 13px; font-weight: 600; color: #6b7a99; cursor: pointer; border-bottom: 3px solid transparent; transition: color 0.15s, border-color 0.15s; white-space: nowrap; }
+    .task-view-toggle-btn:hover { color: #c8d0e0; }
+    .task-view-toggle-btn.active { color: #f97316; font-weight: 800; border-bottom-color: #f97316; }
+    .task-filter-dropdown { padding: 6px 28px 6px 10px; border-radius: 3px; border: 1px solid #2a2a3a; background-color: #1a1a24; color: #c8d0e0; font-size: 13px; font-weight: 500; appearance: none; min-height: 32px; background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="%236b7a99" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>'); background-repeat: no-repeat; background-position: right 8px center; cursor: pointer; outline: none; }
+    .task-filter-dropdown:focus { border-color: #3b82f6; }
+    .task-filter-dropdown-assign { min-width: 140px; }
+    .task-search-box--in-bar { position: relative; width: 260px; min-width: 200px; flex-shrink: 0; }
+    .task-search-box--in-bar input { background: #1a1a24; border: 1px solid #2a2a3a; border-radius: 3px; padding: 6px 14px 6px 32px; color: #c8d0e0; font-size: 13px; width: 100%; outline: none; transition: border-color 0.15s; box-sizing: border-box; }
+    .task-search-box--in-bar input::placeholder { color: #4a5570; }
+    .task-search-box--in-bar input:focus { border-color: #3b82f6; box-shadow: 0 0 0 2px rgba(59,130,246,0.15); }
+    .task-search-box--in-bar svg { position: absolute; left: 9px; top: 50%; transform: translateY(-50%); color: #4a5570; }
+    .task-toolbar-right { display: flex; align-items: center; justify-content: flex-end; gap: 8px; margin-left: auto; flex-shrink: 0; flex-wrap: wrap; }
+    .task-select-controls { display: flex; align-items: center; gap: 8px; }
+    .task-select-controls label { display: flex; align-items: center; cursor: pointer; color: #c8d0e0; font-size: 13px; gap: 5px; }
+    .task-select-controls span { color: #6b7a99; font-size: 13px; }
+    .task-select-btn-del { padding: 5px 12px; background: #1a0a0a; color: #f87171; border: 1px solid #7f1d1d; border-radius: 3px; font-size: 13px; cursor: pointer; }
+    .task-select-btn-del:hover { background: #2a0f0f; }
+    .task-select-btn-cancel { padding: 5px 12px; background: #1a1a24; color: #6b7a99; border: 1px solid #2a2a3a; border-radius: 3px; font-size: 13px; cursor: pointer; }
+    .task-select-btn-cancel:hover { background: #22222e; }
+    .task-data-table-header { background: #ffffff; border-top: 1px solid #e5e7eb; border-bottom: 2px solid #e5e7eb; display: flex; padding: 12px 24px; align-items: center; box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1); }
+    .task-th { color: #03b0f5; font-weight: 800; font-size: 11px; text-transform: uppercase; letter-spacing: 0.6px; text-align: left; flex: 1; }
+    .task-th.number { flex: 0 0 36px; }
+    .task-th.created { flex: 1.2; }
+    .task-th.subject { flex: 2; }
+    .task-th.record { flex: 1.5; }
+    .task-th.assigned { flex: 1.5; }
+    .task-th.status { flex: 0 0 100px; }
+    .task-data-table-body { display: flex; flex-direction: column; }
+    .task-row { background: #000; border-bottom: 1px solid #1a1a22; display: flex; padding: 11px 24px; align-items: center; cursor: pointer; transition: background 0.1s; animation: taskSlideIn 0.2s ease-out; }
+    .task-row:hover { background: #13131c; }
+    .task-td { font-size: 13px; color: #ffffff; font-weight: 600; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding-right: 12px; }
+    .task-td.number { flex: 0 0 36px; color: #ffffff; font-size: 12px; font-weight: 600; }
+    .task-td.created { flex: 1.2; }
+    .task-td.subject { flex: 2; font-weight: 700; color: #ffffff; }
+    .task-td.record { flex: 1.5; white-space: normal; line-height: 1.4; }
+    .task-td.assigned { flex: 1.5; }
+    .task-td.status { flex: 0 0 100px; }
+    .task-status-badge { display: inline-flex; align-items: center; padding: 3px 8px; border-radius: 2px; font-size: 11px; font-weight: 600; }
+    .task-sts-pending { background: #1a1a24; color: #6b7a99; border: 1px solid #2a2a3a; }
+    .task-sts-complete { background: #0a2a22; color: #34d399; border: 1px solid #064e3b; }
+    .task-sts-failed { background: #1a0a0a; color: #f87171; border: 1px solid #7f1d1d; }
+    .task-created-meta-col { display: flex; flex-direction: column; gap: 1px; }
+    .task-created-meta-name { font-weight: 600; color: #ffffff; font-size: 12px; white-space: nowrap; text-overflow: ellipsis; overflow: hidden; }
+    .task-created-meta-date { font-size: 11px; color: #ffffff; font-weight: 500; }
+    .task-empty-state { display: flex; flex-direction: column; justify-content: center; align-items: center; padding: 80px 20px; text-align: center; }
+    .task-empty-state-title { font-size: 17px; font-weight: 700; color: #c8d0e0; margin: 0 0 6px; }
+    .task-empty-state-sub { font-size: 14px; color: #4a5570; margin: 0; }
+    .task-loading-spinner { display: flex; flex-direction: column; justify-content: center; align-items: center; padding: 80px 20px; }
+    .task-loading-spinner .spinner { width: 32px; height: 32px; border: 3px solid #1a1a24; border-top-color: #3b82f6; border-radius: 50%; animation: taskSpin 0.7s linear infinite; margin-bottom: 12px; }
+    @keyframes taskSpin { to { transform: rotate(360deg); } }
+    .task-error-banner { margin: 0 24px 16px; padding: 12px 16px; background: #1a0a0a; border: 1px solid #7f1d1d; border-radius: 3px; color: #f87171; }
+    .task-modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); display: flex; justify-content: center; align-items: center; z-index: 1000; backdrop-filter: blur(4px); }
+    @keyframes taskSlideIn { from { opacity: 0; } to { opacity: 1; } }
   `;
 
   // State management - grouped for better performance
@@ -93,6 +111,7 @@ export default function TicketPage() {
   const [isInitialLoad, setIsInitialLoad] = useState(true);
   const [error, setError] = useState(null);
   const [search, setSearch] = useState("");
+  useNavbarPageSearch(setSearch);
   const [activeFilter, setActiveFilter] = useTabWithHistory('status', 'open', { localStorageKey: 'ticketActiveFilter' });
   const [assignmentFilter, setAssignmentFilter] = useTabWithHistory('assignment', 'me', { localStorageKey: 'ticketAssignmentFilter' });
   const [selectedTicket, setSelectedTicket] = useState(null);
@@ -1233,302 +1252,215 @@ export default function TicketPage() {
     setActiveFilter(filterKey);
   }, []);
 
+  const getTicketStatusBadge = (status) => {
+    const s = (status || 'open').toLowerCase();
+    if (s === 'closed') return { cls: 'task-status-badge task-sts-complete', label: 'Closed' };
+    if (s === 'failed') return { cls: 'task-status-badge task-sts-failed', label: 'Failed' };
+    return { cls: 'task-status-badge task-sts-pending', label: 'Open' };
+  };
+
+  const isAllFilter = activeFilter === 'all';
+  const canDeleteTickets = permissions.delete || isSuperAdmin(getUserPermissions());
+  const canViewTeam = permissions.junior || permissions.all || isSuperAdmin(getUserPermissions());
+  const canViewAll = permissions.all || isSuperAdmin(getUserPermissions());
+
   return (
     <>
-      <style>{stickyHeaderStyles}</style>
-      <div
-        className="min-h-screen bg-black text-white font-sans pb-4 p-4"
-        style={{ zoom: 0.97, MozTransform: "scale(0.97)" }}
-      >
-      {/* Top bar */}
-      <div className="flex justify-between items-center px-8 pt-8">
-        <div className="flex items-center gap-3">
-          {/* Select Button - Positioned on the left side */}
-          {(() => {
-            const isSuperAdminUser = isSuperAdmin(getUserPermissions());
-            const canDelete = permissions.delete || isSuperAdminUser;
-            console.log('🔘 ===== DELETE BUTTON VISIBILITY CHECK =====');
-            console.log('🔘 permissions.delete:', permissions.delete);
-            console.log('🔘 isSuperAdmin:', isSuperAdminUser);
-            console.log('🔘 canDelete (final):', canDelete);
-            console.log('🔘 Full permissions state:', permissions);
-            return canDelete;
-          })() && (
-            <div className="flex items-center gap-3">
-              {!showCheckboxes ? (
-                <button
-                  className="bg-[#03B0F5] text-white px-5 py-3 rounded-lg font-bold shadow hover:bg-[#0280b5] transition text-base"
-                  onClick={handleShowCheckboxes}
-                >
-                  {selectedRows.length > 0 ? `Selected (${selectedRows.length})` : "Select"}
-                </button>
-              ) : (
-                <div className="flex items-center gap-6 bg-gray-900 rounded-lg p-3">
-                  <label className="flex items-center cursor-pointer text-[#03B0F5] font-bold">
-                    <input
-                      type="checkbox"
-                      className="accent-blue-500 mr-2"
-                      checked={selectAll}
-                      onChange={(e) => handleSelectAll(e.target.checked)}
-                      style={{ width: 18, height: 18 }}
-                    />
-                    Select All
-                  </label>
-                  <span className="text-white font-semibold">
-                    {selectedRows.length} row{selectedRows.length !== 1 ? "s" : ""} selected
-                  </span>
-                  <button
-                    className="px-3 py-1 bg-red-600 text-white rounded font-bold hover:bg-red-700 transition"
-                    onClick={handleDeleteSelected}
-                    disabled={selectedRows.length === 0}
-                  >
-                    Delete ({selectedRows.length})
-                  </button>
-                  <button
-                    className="px-3 py-1 bg-gray-600 text-white rounded font-bold hover:bg-gray-700 transition"
-                    onClick={handleCancelSelection}
-                  >
-                    Cancel
-                  </button>
+      <style>{ticketPageStyles}</style>
+      <div className="task-page-container">
+        <div className="task-top-bar">
+          <div className="task-top-bar-left">
+            <h1>Tickets</h1>
+            <p>{filteredTickets.length} record{filteredTickets.length !== 1 ? 's' : ''}</p>
+          </div>
+          <div className="task-top-bar-right">
+            {canDeleteTickets && !showCheckboxes && (
+              <button className="task-btn-secondary" onClick={handleShowCheckboxes}>Select</button>
+            )}
+            {showCheckboxes && (
+              <div className="task-select-controls">
+                <label>
+                  <input type="checkbox" checked={selectAll} onChange={(e) => handleSelectAll(e.target.checked)} style={{ width: 14, height: 14, accentColor: '#3b82f6' }} />
+                  Select All
+                </label>
+                <span>{selectedRows.length} selected</span>
+                <button className="task-select-btn-del" onClick={handleDeleteSelected} disabled={selectedRows.length === 0}>Delete ({selectedRows.length})</button>
+                <button className="task-select-btn-cancel" onClick={handleCancelSelection}>Cancel</button>
+              </div>
+            )}
+            <button className="task-btn-create" onClick={openCreateModal}>
+              <Plus size={15} />
+              Create ticket
+            </button>
+          </div>
+        </div>
+
+        <div className="task-view-toggle-bar">
+          <div className="task-view-toggle-group">
+            {FILTERS_WITH_COUNTS.map((f) => (
+              <button
+                key={f.key}
+                className={`task-view-toggle-btn${activeFilter === f.key ? ' active' : ''}`}
+                onClick={() => handleFilterChange(f.key)}
+              >
+                {f.label}
+                {f.count > 0 && <span style={{ marginLeft: 5, fontSize: 11, color: activeFilter === f.key ? '#f97316' : '#6b7a99' }}>{f.count}</span>}
+              </button>
+            ))}
+          </div>
+          <div className="task-toolbar-right">
+            <div className="task-search-box--in-bar">
+              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+              <input
+                type="text"
+                placeholder="Search subject, details, assign..."
+                value={search}
+                onChange={handleSearchChange}
+              />
+            </div>
+            <select
+              className="task-filter-dropdown task-filter-dropdown-assign"
+              value={
+                (assignmentFilter === 'all' && !canViewAll)
+                || (assignmentFilter === 'team' && !canViewTeam)
+                  ? 'me'
+                  : assignmentFilter
+              }
+              onChange={(e) => setAssignmentFilter(e.target.value)}
+            >
+              <option value="me">My Tickets</option>
+              {canViewTeam && <option value="team">Team Tickets</option>}
+              {canViewAll && <option value="all">All Tickets</option>}
+            </select>
+          </div>
+        </div>
+
+        {error && (
+          <div className="task-error-banner">
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <p style={{ flex: 1, margin: 0, fontSize: 13 }}>{error}</p>
+              <button onClick={handleRefresh} style={{ background: '#f87171', color: '#fff', border: 'none', padding: '4px 10px', borderRadius: 3, fontSize: 12, cursor: 'pointer' }}>Retry</button>
+            </div>
+          </div>
+        )}
+
+        {isLoading && tickets.length === 0 && (
+          <div className="task-loading-spinner">
+            <div className="spinner" />
+            <p style={{ color: '#60a5fa', fontSize: 16, fontWeight: 700 }}>Loading tickets...</p>
+          </div>
+        )}
+
+        {(!isLoading || tickets.length > 0) && (
+          <div>
+            <div className="task-data-table-header">
+              {showCheckboxes && canDeleteTickets && (
+                <div className="task-th" style={{ flex: '0 0 36px' }}>
+                  <input type="checkbox" checked={selectAll} onChange={(e) => handleSelectAll(e.target.checked)} style={{ width: 16, height: 16, accentColor: '#3b82f6' }} />
                 </div>
               )}
-            </div>
-          )}
-        </div>
-        <div className="flex items-center gap-3">
-          {/* Create Ticket Button - Positioned on the right side */}
-          <button
-            className="bg-[#03B0F5] hover:bg-[#0299d4] text-white text-base font-bold px-6 py-2 rounded-lg shadow focus:outline-none transition"
-            onClick={openCreateModal}
-          >
-            Create Ticket
-          </button>
-        </div>
-      </div>
-
-      {/* Filters — Row 1: status pills | Row 2: search */}
-      <div className="px-7 mt-4 mb-6">
-            {/* Row 0: assignment filter */}
-            <div className="flex flex-wrap items-center gap-3 mb-3">
-              <div style={{ display: 'flex', background: '#1a1a1a', border: '1px solid #333', borderRadius: 30, padding: 3, gap: 2 }}>
-              {[
-                { key: 'me', label: '👤 My', visible: true },
-                { key: 'team', label: '👥 Team', visible: permissions.junior || permissions.all || isSuperAdmin(getUserPermissions()) },
-                { key: 'all', label: '📋 All', visible: permissions.all || isSuperAdmin(getUserPermissions()) },
-              ].filter((tab) => tab.visible).map((tab) => (
-                <button
-                  key={tab.key}
-                  onClick={() => setAssignmentFilter(tab.key)}
-                  style={{
-                    padding: '6px 16px',
-                    border: 'none',
-                    borderRadius: 20,
-                    fontSize: 12,
-                    fontWeight: 700,
-                    cursor: 'pointer',
-                    background: assignmentFilter === tab.key ? '#00aaff' : 'transparent',
-                    color: assignmentFilter === tab.key ? '#fff' : '#666',
-                    boxShadow: assignmentFilter === tab.key ? '0 2px 8px rgba(0,170,255,0.3)' : 'none',
-                    transition: 'all 0.2s',
-                  }}
-                >
-                  {tab.label}
-                </button>
-              ))}
-              </div>
+              <div className="task-th number">#</div>
+              <div className="task-th created">DATE & TIME</div>
+              <div className="task-th created">CREATED BY</div>
+              <div className="task-th subject">SUBJECT</div>
+              <div className="task-th record">TICKET DETAILS</div>
+              <div className="task-th assigned">ASSIGN</div>
+              {isAllFilter && <div className="task-th status">STATUS</div>}
             </div>
 
-            {/* Row 1: status filter pills */}
-            <div className="flex flex-wrap items-center gap-3 mb-3">
-              {FILTERS_WITH_COUNTS.map((f) => (
-                <button
-                  key={f.key}
-                  onClick={() => handleFilterChange(f.key)}
-                  className={`flex items-center gap-2 px-5 py-2 rounded-full font-bold text-base shadow transition-all duration-200 ${
-                    activeFilter === f.key
-                      ? "bg-[#03B0F5] text-white shadow-lg"
-                      : "bg-white text-[#03B0F5] hover:bg-blue-50"
-                  }`}
-                  style={{ minWidth: 120, justifyContent: "center", fontSize: "1.05rem" }}
-                >
-                  {f.label}
-                  <span className={`ml-2 px-2 py-0.5 rounded-full text-xs font-bold ${
-                    f.count > 0 ? "bg-[#222] text-white" : "bg-[#eee] text-[#03B0F5]"
-                  }`}>
-                    {f.count}
-                  </span>
-                </button>
-              ))}
-            </div>
-            {/* Row 2: search bar right-aligned */}
-            <div className="flex items-center justify-end">
-              <div className="flex items-center gap-2 bg-[#232a36] border-2 border-[#03B0F5] rounded-full px-4 py-2 shadow">
-                <Search className="text-[#03B0F5] shrink-0" size={18} />
-                <input
-                  className="bg-transparent text-[#eee] font-medium focus:outline-none w-64 placeholder-gray-400 text-base"
-                  placeholder="Search by subject, created by, assign..."
-                  value={search}
-                  onChange={handleSearchChange}
-                />
-              </div>
-            </div>
-          </div>
-
-      {/* Table */}
-      <div className="overflow-x-auto px-2 sticky-table-container">
-        {isLoading ? (
-          <div className="flex justify-center py-8">
-            <div className="bg-[#181e29] rounded-xl shadow p-5 text-center font-bold text-[#03B0F5]">
-              Loading tickets...
-            </div>
-          </div>
-        ) : error ? (
-          <div className="flex justify-center py-8">
-            <div className="bg-[#181e29] rounded-xl shadow p-5 text-center font-bold text-red-500">
-              {error}
-            </div>
-          </div>
-        ) : (
-          <table className="min-w-[616px] w-full rounded-xl overflow-hidden">
-            <thead className="sticky-header">
-              <tr className="bg-white text-[#03B0F5]">
-                {(permissions.delete || isSuperAdmin(getUserPermissions())) && showCheckboxes && (
-                  <th className="py-1 px-3 text-left text-lg font-extrabold sticky-th">
-                    <input
-                      type="checkbox"
-                      checked={selectAll}
-                      onChange={(e) => handleSelectAll(e.target.checked)}
-                      className="rounded border-gray-300"
-                    />
-                  </th>
-                )}
-                <th className="py-1 px-4 text-left text-lg font-extrabold sticky-th">#</th>
-                <th className="py-1 px-3 text-left text-lg font-extrabold sticky-th">DATE & TIME</th>
-                <th className="py-1 px-3 text-left text-lg font-extrabold sticky-th">CREATED BY</th>
-                <th className="py-1 px-3 text-left text-lg font-extrabold sticky-th">SUBJECT</th>
-                <th className="py-1 px-3 text-left text-lg font-extrabold sticky-th">TICKET DETAILS</th>
-                <th className="py-1 px-3 text-left text-lg font-extrabold sticky-th">ASSIGN</th>
-              </tr>
-            </thead>
-            <tbody>
+            <div className="task-data-table-body">
               {filteredTickets.length === 0 ? (
-                <tr>
-                  <td
-                    colSpan={(permissions.delete || isSuperAdmin(getUserPermissions())) && showCheckboxes ? 7 : 6}
-                    className="bg-[#181e29] rounded-xl shadow p-5 text-center font-bold text-[#03B0F5]"
-                  >
-                    {isLoading ? (
-                      "Loading tickets..."
-                    ) : tickets.length === 0 ? (
-                      <div>
-                        <div className="mb-2">No tickets available.</div>
-                        <div className="text-sm text-gray-400">
-                          {error ? "There was an error loading tickets." : "Create your first ticket using the 'Create Ticket' button above."}
+                <div className="task-empty-state">
+                  <p className="task-empty-state-title">{isLoading ? 'Loading tickets…' : 'No tickets found.'}</p>
+                  {!isLoading && (
+                    <p className="task-empty-state-sub">
+                      {tickets.length === 0 ? "Create your first ticket using the 'Create ticket' button." : 'Try changing filters or search.'}
+                    </p>
+                  )}
+                </div>
+              ) : (
+                filteredTickets.map((ticket, index) => {
+                  const statusBadge = getTicketStatusBadge(ticket.status);
+                  const detailsLines = breakMessage(ticket.description, 41);
+                  const detailsPreview = detailsLines.slice(0, 2).join(' ');
+                  const detailsText = detailsLines.length > 2 ? `${detailsPreview}...` : detailsPreview;
+
+                  return (
+                    <div
+                      key={ticket._id || ticket.id}
+                      className={`task-row${preventDuplicateModal || modalLoading || lastClickedTicketId === ticket.id ? ' opacity-50 cursor-not-allowed' : ''}`}
+                      onClick={(e) => {
+                        if (showCheckboxes && e.target.type === 'checkbox') return;
+                        handleRowClick(ticket);
+                      }}
+                    >
+                      {showCheckboxes && canDeleteTickets && (
+                        <div className="task-td" style={{ flex: '0 0 36px' }} onClick={(e) => e.stopPropagation()}>
+                          <input
+                            type="checkbox"
+                            checked={selectedRows.includes(ticket.id || ticket._id)}
+                            onChange={(e) => {
+                              e.stopPropagation();
+                              handleRowSelect(ticket.id || ticket._id, e.target.checked);
+                            }}
+                            style={{ width: 16, height: 16, accentColor: '#3b82f6' }}
+                          />
+                        </div>
+                      )}
+                      <div className="task-td number">{index + 1}</div>
+                      <div className="task-td created">
+                        <div className="task-created-meta-col">
+                          <span className="task-created-meta-name">{ticket.created_at ? formatDateTime(ticket.created_at) : 'N/A'}</span>
                         </div>
                       </div>
-                    ) : (
-                      `No tickets match your current filter "${activeFilter}" or search criteria.`
-                    )}
-                  </td>
-                </tr>
-              ) : (
-                filteredTickets.map((ticket, index) => (
-                  <tr
-                    key={ticket._id}
-                    className={`border-b border-gray-800 hover:bg-[#1a222e] transition align-top cursor-pointer ${
-                      preventDuplicateModal || modalLoading || lastClickedTicketId === ticket.id 
-                        ? 'opacity-50 cursor-not-allowed' 
-                        : ''
-                    }`}
-                    onClick={(e) => {
-                      // Don't open popup if clicking on checkbox or in selection mode
-                      if (showCheckboxes && e.target.type === 'checkbox') {
-                        return;
-                      }
-                      handleRowClick(ticket);
-                    }}
-                  >
-                    {(permissions.delete || isSuperAdmin(getUserPermissions())) && showCheckboxes && (
-                      <td 
-                        className="py-3 px-3 text-md text-left"
-                        onClick={(e) => e.stopPropagation()}
-                      >
-                        <input
-                          type="checkbox"
-                          checked={selectedRows.includes(ticket.id || ticket._id)}
-                          onChange={(e) => {
-                            e.stopPropagation();
-                            handleRowSelect(ticket.id || ticket._id, e.target.checked);
-                          }}
-                          onClick={(e) => e.stopPropagation()}
-                          className="rounded border-gray-300"
-                        />
-                      </td>
-                    )}
-                    <td className="py-3 text-md font-bold px-3 text-left">{index + 1}</td>
-                    <td className="py-3 px-3 text-md font-bold text-left">
-                      {ticket.created_at ? formatDateTime(ticket.created_at) : 'N/A'}
-                    </td>
-                    <td className="py-3 px-3 text-md font-bold text-left">{ticket.created_by_name || "Unknown"}</td>
-                    <td className="py-3 px-3 text-md font-extrabold text-left">{ticket.subject}</td>
-                    <td className="py-3 px-3 text-md font-bold whitespace-pre-line text-left">
-                      {(() => {
-                        const lines = breakMessage(ticket.description, 41);
-                        const maxLines = 2;
-                        if (lines.length <= maxLines) {
-                          return lines.map((line, idx) => (
-                            <div key={idx}>{line}</div>
-                          ));
-                        } else {
-                          return [
-                            ...lines.slice(0, maxLines - 1).map((line, idx) => (
-                              <div key={idx}>{line}</div>
-                            )),
-                            <div key="ellipsis">{lines[maxLines - 1]}...</div>
-                          ];
-                        }
-                      })()}
-                    </td>
-                    <td className="py-3 px-3 text-base font-bold text-left">
-                      {ticket.assigned_users_details && ticket.assigned_users_details.length > 0 
-                        ? ticket.assigned_users_details.map(user => user.name).join(", ")
-                        : "Unassigned"}
-                    </td>
-                  </tr>
-                ))
+                      <div className="task-td created">
+                        <div className="task-created-meta-col">
+                          <span className="task-created-meta-name">{ticket.created_by_name || 'Unknown'}</span>
+                        </div>
+                      </div>
+                      <div className="task-td subject">{ticket.subject}</div>
+                      <div className="task-td record">{detailsText}</div>
+                      <div className="task-td assigned">
+                        {ticket.assigned_users_details && ticket.assigned_users_details.length > 0
+                          ? ticket.assigned_users_details.map((user) => user.name).join(', ')
+                          : 'Unassigned'}
+                      </div>
+                      {isAllFilter && (
+                        <div className="task-td status">
+                          <span className={statusBadge.cls}>{statusBadge.label}</span>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })
               )}
-            </tbody>
-          </table>
+            </div>
+          </div>
         )}
       </div>
 
-      {/* Pagination removed - showing all tickets at once */}
-
-      {/* Render EditTicket when a ticket is selected */}
       {selectedTicket && (
-        <div className="fixed inset-0 z-[1000] flex items-center bg-transparent justify-center" style={{ backdropFilter: "blur(3px)" }}>
-          <div className="w-full max-w-xl mx-auto">
-            <EditTicket
-              ticket={selectedTicket}
-              onSave={handleSaveTicket}
-              onClose={handleCancelEdit}
-            />
-          </div>
+        <div className="task-modal-overlay">
+          <EditTicket
+            ticket={selectedTicket}
+            onSave={handleSaveTicket}
+            onClose={handleCancelEdit}
+          />
         </div>
       )}
 
-      {/* Modal Popup for CreateTicket */}
       {showCreateModal && (
-        <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-transparent bg-opacity-40 backdrop-blur-sm">
-          <div className="w-full min-w-md mx-auto">
-            <CreateTicket
-              onClose={closeCreateModal}
-              onSubmit={handleCreateTicket}
-            />
+        <Suspense fallback={
+          <div className="task-modal-overlay">
+            <div className="task-loading-spinner"><div className="spinner" /></div>
           </div>
-        </div>
+        }>
+          <CreateTicket
+            onClose={closeCreateModal}
+            onSubmit={handleCreateTicket}
+          />
+        </Suspense>
       )}
-    </div>
     </>
   );
 }

@@ -33,6 +33,9 @@ class UserUpdate(BaseModel):
     password: Optional[str] = None
     otp_required: Optional[bool] = None  # Toggle OTP requirement
     profile_photo: Optional[str] = None  # Profile photo path
+    experience_years: Optional[int] = None
+    experience_months: Optional[int] = None
+    experience_companies: Optional[List[str]] = None
     
 class UserInDB(UserBase):
     id: str = Field(alias="_id")
@@ -102,6 +105,9 @@ class EmployeeCreate(BaseModel):
     current_city: Optional[str] = None
     highest_qualification: Optional[str] = None
     experience_level: Optional[str] = None  # Fresher, Experienced
+    experience_years: Optional[int] = None
+    experience_months: Optional[int] = None
+    experience_companies: Optional[List[str]] = None
     
     # Employment Details - Enhanced
     employee_id: Optional[str] = None  # Auto-generated or provided
@@ -128,6 +134,7 @@ class EmployeeCreate(BaseModel):
     # Address Information (structured format)
     permanent_address: Optional[EmployeeAddress] = None
     current_address: Optional[EmployeeAddress] = None
+    address_property_type: Optional[str] = "owned"
     
     # Legacy and compatibility fields
     profile_photo: Optional[str] = None
@@ -177,6 +184,9 @@ class EmployeeUpdate(BaseModel):
     current_city: Optional[str] = None
     highest_qualification: Optional[str] = None
     experience_level: Optional[str] = None
+    experience_years: Optional[int] = None
+    experience_months: Optional[int] = None
+    experience_companies: Optional[List[str]] = None
     
     # Employment Details - Enhanced
     employee_id: Optional[str] = None
@@ -203,6 +213,7 @@ class EmployeeUpdate(BaseModel):
     # Address Information
     permanent_address: Optional[EmployeeAddress] = None
     current_address: Optional[EmployeeAddress] = None
+    address_property_type: Optional[str] = None
     
     # Legacy and compatibility fields
     profile_photo: Optional[str] = None
@@ -286,6 +297,9 @@ class EmployeeInDB(BaseModel):
     current_city: Optional[str] = None
     highest_qualification: Optional[str] = None
     experience_level: Optional[str] = None
+    experience_years: Optional[int] = None
+    experience_months: Optional[int] = None
+    experience_companies: Optional[List[str]] = None
     
     # Employment Details
     employee_id: Optional[str] = None
@@ -312,6 +326,7 @@ class EmployeeInDB(BaseModel):
     # Address Information
     permanent_address: Optional[EmployeeAddress] = None
     current_address: Optional[EmployeeAddress] = None
+    address_property_type: Optional[str] = "owned"
     
     # Legacy and compatibility fields
     profile_photo: Optional[str] = None
@@ -384,6 +399,9 @@ class ComprehensiveEmployeeInDB(EmployeeInDB):
     aadhaar_number: Optional[str] = None
     highest_qualification: Optional[str] = None
     experience_level: Optional[str] = None
+    experience_years: Optional[int] = None
+    experience_months: Optional[int] = None
+    experience_companies: Optional[List[str]] = None
     monthly_target: Optional[float] = None
     incentive: Optional[str] = None
     work_email: Optional[EmailStr] = None
@@ -392,6 +410,7 @@ class ComprehensiveEmployeeInDB(EmployeeInDB):
     salary_bank_name: Optional[str] = None
     emergency_contact_relationship: Optional[str] = None
     current_city: Optional[str] = None  # Separate from address city
+    address_property_type: Optional[str] = None
     
     class Config:
         allow_population_by_field_name = True

@@ -32,11 +32,12 @@ class FeedsDB:
         await self.collection.create_index([("created_by", 1)])
         await self.collection.create_index([("created_at", -1)])  # For timeline sorting
         
-        self.likes_collection.create_index([("feed_id", 1)])
-        self.likes_collection.create_index([("feed_id", 1), ("user_id", 1)], unique=True)  # Prevent duplicate likes
+        await self.likes_collection.create_index([("feed_id", 1)])
+        await self.likes_collection.create_index([("feed_id", 1), ("user_id", 1)], unique=True)  # Prevent duplicate likes
         
-        self.comments_collection.create_index([("feed_id", 1)])
-        self.comments_collection.create_index([("created_at", -1)])  # For chronological sorting
+        await self.comments_collection.create_index([("feed_id", 1)])
+        await self.comments_collection.create_index([("feed_id", 1), ("created_at", -1)])
+        await self.comments_collection.create_index([("created_at", -1)])  # For chronological sorting
 
         # Ensure media directory exists
         self.media_root = Path("media")
@@ -215,6 +216,19 @@ class FeedsDB:
         })
         
         return like is not None
+
+    async def get_user_liked_post_ids(self, post_ids: List[str], user_id: str) -> set:
+        """Return post IDs liked by a user in one query."""
+        valid_post_ids = [post_id for post_id in post_ids if ObjectId.is_valid(post_id)]
+        if not valid_post_ids or not ObjectId.is_valid(user_id):
+            return set()
+
+        cursor = self.likes_collection.find(
+            {"feed_id": {"$in": valid_post_ids}, "user_id": user_id},
+            {"feed_id": 1}
+        )
+        likes = await cursor.to_list(None)
+        return {like.get("feed_id") for like in likes if like.get("feed_id")}
         
     async def add_comment(self, comment_data: dict) -> str:
         """Add a comment to a post"""
@@ -274,6 +288,26 @@ class FeedsDB:
         print(f"Fetched {len(all_comments)} comments for post {post_id}")
         
         return all_comments
+
+    async def get_comments_for_posts(self, post_ids: List[str]) -> Dict[str, List[dict]]:
+        """Get comments for several posts in one query, grouped by feed_id."""
+        valid_post_ids = [post_id for post_id in post_ids if ObjectId.is_valid(post_id)]
+        if not valid_post_ids:
+            return {}
+
+        cursor = self.comments_collection.find(
+            {"feed_id": {"$in": valid_post_ids}}
+        ).sort("created_at", -1)
+        comments = await cursor.to_list(None)
+
+        grouped_comments: Dict[str, List[dict]] = {post_id: [] for post_id in valid_post_ids}
+        for comment in comments:
+            comment["_id"] = str(comment["_id"])
+            feed_id = comment.get("feed_id")
+            if feed_id in grouped_comments:
+                grouped_comments[feed_id].append(comment)
+
+        return grouped_comments
         
     async def update_comment(self, comment_id: str, update_fields: dict) -> bool:
         """Update a comment"""

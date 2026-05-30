@@ -196,6 +196,53 @@ const StatusManagementTab = ({
         }
     };
 
+    const handleToggleRemark = async (status) => {
+        const id = status._id || status.id;
+        const nextValue = !status.requires_remark_on_change;
+        setSavingId(id + '_remark');
+        try {
+            const ok = await updateStatus(id, {
+                requires_remark_on_change: nextValue
+            });
+            if (!ok) {
+                console.error('Failed to update mandatory remark setting');
+            }
+        } finally {
+            setSavingId(null);
+        }
+    };
+
+    const handleToggleSubRemark = async (status, sub, index) => {
+        const id = status._id || status.id;
+        setSavingId(`${id}_subremark_${index}`);
+        try {
+            const currentSubStatuses = [...(status.sub_statuses || [])];
+            const existing = currentSubStatuses[index];
+            const subName = typeof existing === 'string' ? existing : existing?.name;
+            if (!subName) return;
+
+            if (typeof existing === 'object') {
+                currentSubStatuses[index] = {
+                    ...existing,
+                    requires_remark_on_change: !existing.requires_remark_on_change
+                };
+            } else {
+                currentSubStatuses[index] = {
+                    name: subName,
+                    reassignment_period: 0,
+                    is_manager_permission_required: false,
+                    requires_remark_on_change: true
+                };
+            }
+            const ok = await updateStatus(id, { sub_statuses: currentSubStatuses });
+            if (!ok) {
+                console.error('Failed to update sub-status mandatory remark setting');
+            }
+        } finally {
+            setSavingId(null);
+        }
+    };
+
     const handleReassignSave = async (status) => {
         const id = status._id || status.id;
         const val = reassignEdits[id];
@@ -223,28 +270,19 @@ const StatusManagementTab = ({
     };
 
     return (
-        <div className="p-6 bg-gray-900 text-white">
-            <h2 className="text-2xl font-bold mb-4 text-white">Status Management</h2>
-
-            {/* ── Inner Tab Bar ──────────────────────────────────────────── */}
-            <div className="flex gap-1 mb-4 border-b border-gray-700 pb-1">
+        <div className="hs-card hs-subpanel">
+            <div className="hs-inner-tabs">
                 <button
+                    type="button"
                     onClick={() => setActiveInnerTab('statuses')}
-                    className={`flex items-center gap-2 px-4 py-2 rounded-t text-sm font-semibold transition-colors ${
-                        activeInnerTab === 'statuses'
-                            ? 'bg-gray-800 text-white border-b-2 border-blue-500'
-                            : 'text-gray-400 hover:text-gray-200'
-                    }`}
+                    className={`hs-inner-tab ${activeInnerTab === 'statuses' ? 'active' : ''}`}
                 >
                     <Edit className="w-4 h-4" /> Statuses
                 </button>
                 <button
+                    type="button"
                     onClick={() => setActiveInnerTab('permissionRoles')}
-                    className={`flex items-center gap-2 px-4 py-2 rounded-t text-sm font-semibold transition-colors ${
-                        activeInnerTab === 'permissionRoles'
-                            ? 'bg-gray-800 text-white border-b-2 border-blue-500'
-                            : 'text-gray-400 hover:text-gray-200'
-                    }`}
+                    className={`hs-inner-tab ${activeInnerTab === 'permissionRoles' ? 'active' : ''}`}
                 >
                     <Shield className="w-4 h-4" /> Reassignment Permission
                 </button>
@@ -254,7 +292,7 @@ const StatusManagementTab = ({
             {activeInnerTab === 'statuses' && (<>
 
             {/* ── Cooldown Period Section ────────────────────────────────── */}
-            <div className="mb-6 p-4 bg-gray-800 border border-gray-600 rounded-lg">
+            <div className="mb-6 p-4 bg-white border border-gray-200 rounded-lg" style={{ borderColor: "#cbd6e2" }}>
                 <div className="flex items-center gap-2 mb-3">
                     <svg className="w-4 h-4 text-amber-400" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.415-1.415L11 9.586V6z" clipRule="evenodd"/></svg>
                     <span className="text-amber-400 font-bold text-sm uppercase tracking-wider">Cooldown Period</span>
@@ -271,7 +309,7 @@ const StatusManagementTab = ({
                             onBlur={handleCooldownSave}
                             onKeyDown={e => e.key === 'Enter' && handleCooldownSave()}
                             disabled={cooldownSaving || !cooldownLoaded}
-                            className="w-20 text-center px-2 py-1.5 rounded border border-gray-500 bg-black text-white text-sm disabled:opacity-50 focus:border-amber-400 outline-none"
+                            className="w-20 text-center px-2 py-1.5 rounded border border-gray-300 bg-white text-gray-800 text-sm disabled:opacity-50 focus:border-amber-400 outline-none"
                             placeholder="24"
                         />
                         <span className="text-gray-300 text-sm font-medium">hours</span>
@@ -293,7 +331,7 @@ const StatusManagementTab = ({
                 <select
                     value={selectedDepartment}
                     onChange={e => setSelectedDepartment(e.target.value)}
-                    className="px-3 py-2 rounded border border-gray-600 bg-black text-white"
+                    className="px-3 py-2 rounded border border-gray-300 bg-white text-gray-800"
                 >
                     <option value="">Select Department</option>
                     <option value="leads">Leads</option>
@@ -312,15 +350,16 @@ const StatusManagementTab = ({
             </div>
             
             <div className="overflow-x-auto">
-                <table className="min-w-full bg-black text-white border border-gray-700 rounded">
+                <table className="min-w-full bg-white text-gray-800 border border-gray-200 rounded hs-table">
                     <thead>
-                        <tr className="bg-gray-800">
+                        <tr className="bg-gray-50">
                             <th className="px-4 py-2 text-left">Status Name</th>
                             <th className="px-4 py-2 text-left">Department</th>
                             <th className="px-4 py-2 text-center">Order</th>
                             <th className="px-4 py-2 text-left">Color</th>
                             <th className="px-4 py-2 text-center">Reassign (days)</th>
                             <th className="px-4 py-2 text-center">Manager Approval</th>
+                            <th className="px-4 py-2 text-center">Mandatory Remark</th>
                             {selectedDepartment === 'login' && (
                                 <th className="px-4 py-2 text-center">Category</th>
                             )}
@@ -389,7 +428,7 @@ const StatusManagementTab = ({
                                                     onChange={e => setReassignEdits(prev => ({...prev, [id]: e.target.value}))}
                                                     onBlur={() => handleReassignSave(status)}
                                                     onKeyDown={e => e.key === 'Enter' && handleReassignSave(status)}
-                                                    className="w-16 text-center px-1 py-0.5 rounded border border-gray-600 bg-black text-white text-sm disabled:opacity-50"
+                                                    className="w-16 text-center px-1 py-0.5 rounded border border-gray-300 bg-white text-gray-800 text-sm disabled:opacity-50"
                                                 />
                                                 {isSaving && <span className="text-xs text-gray-400">...</span>}
                                             </div>
@@ -408,6 +447,28 @@ const StatusManagementTab = ({
                                                 title={isOn ? 'Required — click to disable' : 'Not Required — click to enable'}
                                                 className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none disabled:opacity-50 ${
                                                     isOn ? 'bg-green-500' : 'bg-gray-600'
+                                                }`}
+                                            >
+                                                <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${
+                                                    isOn ? 'translate-x-6' : 'translate-x-1'
+                                                }`}/>
+                                            </button>
+                                        );
+                                    })()}
+                                </td>
+                                <td className="px-4 py-3 text-center">
+                                    {(() => {
+                                        const id = status._id || status.id;
+                                        const isSaving = savingId === id + '_remark';
+                                        const isOn = !!status.requires_remark_on_change;
+                                        return (
+                                            <button
+                                                type="button"
+                                                onClick={() => handleToggleRemark(status)}
+                                                disabled={isSaving}
+                                                title={isOn ? 'Remark required — click to disable' : 'Remark not required — click to enable'}
+                                                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none disabled:opacity-50 ${
+                                                    isOn ? 'bg-amber-500' : 'bg-gray-600'
                                                 }`}
                                             >
                                                 <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${
@@ -477,9 +538,29 @@ const StatusManagementTab = ({
                                                                 {typeof sub === 'object' && sub.is_manager_permission_required && (
                                                                     <span className="text-xs px-1 py-0.5 bg-green-700 text-white rounded" title="Manager Permission Required">M</span>
                                                                 )}
+                                                                {typeof sub === 'object' && sub.requires_remark_on_change && (
+                                                                    <span className="text-xs px-1 py-0.5 bg-amber-700 text-white rounded" title="Mandatory Remark Required">R</span>
+                                                                )}
                                                             </div>
                                                         </div>
-                                                        <div className="flex gap-1">
+                                                        <div className="flex gap-1 items-center">
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => handleToggleSubRemark(status, sub, index)}
+                                                                disabled={savingId === `${status._id || status.id}_subremark_${index}`}
+                                                                title={
+                                                                    typeof sub === 'object' && sub.requires_remark_on_change
+                                                                        ? 'Remark required — click to disable'
+                                                                        : 'Remark not required — click to enable'
+                                                                }
+                                                                className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus:outline-none disabled:opacity-50 ${
+                                                                    typeof sub === 'object' && sub.requires_remark_on_change ? 'bg-amber-500' : 'bg-gray-600'
+                                                                }`}
+                                                            >
+                                                                <span className={`inline-block h-3 w-3 transform rounded-full bg-white shadow transition-transform ${
+                                                                    typeof sub === 'object' && sub.requires_remark_on_change ? 'translate-x-5' : 'translate-x-1'
+                                                                }`}/>
+                                                            </button>
                                                             {typeof sub === 'object' && (
                                                                 <button
                                                                     className="text-blue-400 hover:text-blue-300 p-1"
@@ -587,6 +668,7 @@ const StatusManagementTab = ({
                                 const order = orderValue === '' ? 1 : parseInt(orderValue, 10);
                                 const reassignmentPeriod = reassignmentPeriodValue === '' ? 0 : parseInt(reassignmentPeriodValue, 10);
                                 const isManagerPermissionRequired = e.target.isManagerPermissionRequired?.checked || false;
+                                const requiresRemarkOnChange = e.target.requiresRemarkOnChange?.checked || false;
                                 
                                 if (!name) return;
                                 
@@ -598,6 +680,7 @@ const StatusManagementTab = ({
                                     is_active: true,
                                     reassignment_period: reassignmentPeriod,
                                     is_manager_permission_required: isManagerPermissionRequired,
+                                    requires_remark_on_change: requiresRemarkOnChange,
                                     description: null // Add description field as shown in API response
                                 };
                                 
@@ -619,13 +702,13 @@ const StatusManagementTab = ({
                                 defaultValue={editingStatus?.name || ''}
                                 placeholder="Status Name"
                                 required
-                                className="w-full mb-4 px-3 py-2 rounded border border-gray-600 bg-black text-white"
+                                className="w-full mb-4 px-3 py-2 rounded border border-gray-300 bg-white text-gray-800"
                             />
                             <input
                                 name="color"
                                 type="color"
                                 defaultValue={editingStatus?.color || '#6B7280'}
-                                className="w-full mb-4 px-3 py-2 rounded border border-gray-600 bg-black text-white"
+                                className="w-full mb-4 px-3 py-2 rounded border border-gray-300 bg-white text-gray-800"
                             />
                             <input
                                 name="order"
@@ -633,7 +716,7 @@ const StatusManagementTab = ({
                                 defaultValue={editingStatus?.order || ''}
                                 placeholder="Order"
                                 min="1"
-                                className="w-full mb-4 px-3 py-2 rounded border border-gray-600 bg-black text-white"
+                                className="w-full mb-4 px-3 py-2 rounded border border-gray-300 bg-white text-gray-800"
                             />
                             <input
                                 name="reassignmentPeriod"
@@ -641,7 +724,7 @@ const StatusManagementTab = ({
                                 defaultValue={editingStatus?.reassignment_period || ''}
                                 placeholder="Reassignment Period (in days)"
                                 min="0"
-                                className="w-full mb-4 px-3 py-2 rounded border border-gray-600 bg-black text-white"
+                                className="w-full mb-4 px-3 py-2 rounded border border-gray-300 bg-white text-gray-800"
                             />
                             <div className="flex items-center mb-4">
                                 <input
@@ -653,6 +736,18 @@ const StatusManagementTab = ({
                                 />
                                 <label htmlFor="isManagerPermissionRequired" className="text-white">
                                     Manager approval required
+                                </label>
+                            </div>
+                            <div className="flex items-center mb-4">
+                                <input
+                                    name="requiresRemarkOnChange"
+                                    type="checkbox"
+                                    id="requiresRemarkOnChange"
+                                    defaultChecked={editingStatus?.requires_remark_on_change || false}
+                                    className="mr-2 h-4 w-4"
+                                />
+                                <label htmlFor="requiresRemarkOnChange" className="text-white">
+                                    Mandatory remark on status change
                                 </label>
                             </div>
                         </form>
@@ -714,6 +809,7 @@ const StatusManagementTab = ({
                                 const reassignmentPeriodValue = e.target.reassignmentPeriod.value.trim();
                                 const reassignmentPeriod = reassignmentPeriodValue === '' ? 0 : parseInt(reassignmentPeriodValue, 10);
                                 const isManagerPermissionRequired = e.target.isManagerPermissionRequired?.checked || false;
+                                const requiresRemarkOnChange = e.target.requiresRemarkOnChange?.checked || false;
                                 if (!name) return;
                                 
                                 if (subStatusModalType === 'add') {
@@ -730,7 +826,8 @@ const StatusManagementTab = ({
                                             const newSubStatus = {
                                                 name: trimmedName,
                                                 reassignment_period: reassignmentPeriod,
-                                                is_manager_permission_required: isManagerPermissionRequired
+                                                is_manager_permission_required: isManagerPermissionRequired,
+                                                requires_remark_on_change: requiresRemarkOnChange
                                             };
                                             currentSubStatuses.push(newSubStatus);
                                         }
@@ -755,14 +852,16 @@ const StatusManagementTab = ({
                                                 ...existingSubStatus,
                                                 name: name,
                                                 reassignment_period: reassignmentPeriod,
-                                                is_manager_permission_required: isManagerPermissionRequired
+                                                is_manager_permission_required: isManagerPermissionRequired,
+                                                requires_remark_on_change: requiresRemarkOnChange
                                             };
                                         } else {
                                             // Convert string to object
                                             currentSubStatuses[editIndex] = {
                                                 name: name,
                                                 reassignment_period: reassignmentPeriod,
-                                                is_manager_permission_required: isManagerPermissionRequired
+                                                is_manager_permission_required: isManagerPermissionRequired,
+                                                requires_remark_on_change: requiresRemarkOnChange
                                             };
                                         }
                                         const ok = await updateStatus(selectedStatus._id || selectedStatus.id, {
@@ -782,7 +881,7 @@ const StatusManagementTab = ({
                                     placeholder="Enter sub-status names (one per line)"
                                     required
                                     rows="5"
-                                    className="w-full mb-4 px-3 py-2 rounded border border-gray-600 bg-black text-white"
+                                    className="w-full mb-4 px-3 py-2 rounded border border-gray-300 bg-white text-gray-800"
                                 />
                             ) : (
                                 <input
@@ -794,7 +893,7 @@ const StatusManagementTab = ({
                                     }
                                     placeholder="Sub-Status Name"
                                     required
-                                    className="w-full mb-4 px-3 py-2 rounded border border-gray-600 bg-black text-white"
+                                    className="w-full mb-4 px-3 py-2 rounded border border-gray-300 bg-white text-gray-800"
                                 />
                             )}
                             <input
@@ -807,7 +906,7 @@ const StatusManagementTab = ({
                                 }
                                 placeholder="Reassignment Period (in days)"
                                 min="0"
-                                className="w-full mb-4 px-3 py-2 rounded border border-gray-600 bg-black text-white"
+                                className="w-full mb-4 px-3 py-2 rounded border border-gray-300 bg-white text-gray-800"
                             />
                             <div className="flex items-center mb-4">
                                 <input
@@ -823,6 +922,22 @@ const StatusManagementTab = ({
                                 />
                                 <label htmlFor="subStatusManagerPermissionRequired" className="text-white">
                                     Manager approval required
+                                </label>
+                            </div>
+                            <div className="flex items-center mb-4">
+                                <input
+                                    name="requiresRemarkOnChange"
+                                    type="checkbox"
+                                    id="subStatusRequiresRemarkOnChange"
+                                    defaultChecked={
+                                        typeof editingSubStatus === 'object'
+                                            ? editingSubStatus?.requires_remark_on_change || false
+                                            : false
+                                    }
+                                    className="mr-2 h-4 w-4"
+                                />
+                                <label htmlFor="subStatusRequiresRemarkOnChange" className="text-white">
+                                    Mandatory remark on status change
                                 </label>
                             </div>
                         </form>
@@ -858,7 +973,7 @@ const StatusManagementTab = ({
 
             {/* ═══════ Permission Roles Tab ═══════ */}
             {activeInnerTab === 'permissionRoles' && (
-                <div className="bg-gray-800 rounded-lg border border-gray-700 overflow-hidden">
+                <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
                     <div className="p-4 border-b border-gray-700">
                         <h3 className="text-lg font-semibold flex items-center gap-2">
                             <Shield className="w-5 h-5 text-blue-400" />
@@ -880,7 +995,7 @@ const StatusManagementTab = ({
                                         placeholder="Search roles..."
                                         value={permRoleSearch}
                                         onChange={e => setPermRoleSearch(e.target.value)}
-                                        className="w-full pl-8 pr-3 py-2 bg-gray-900 border border-gray-600 rounded text-sm text-white placeholder-gray-500 focus:outline-none focus:border-blue-500"
+                                        className="w-full pl-8 pr-3 py-2 bg-white border border-gray-300 rounded text-sm text-gray-800 placeholder-gray-500 focus:outline-none focus:border-blue-500"
                                     />
                                 </div>
                             </div>
@@ -984,7 +1099,7 @@ const StatusManagementTab = ({
                                                 placeholder="Search employees..."
                                                 value={permEmpSearch}
                                                 onChange={e => setPermEmpSearch(e.target.value)}
-                                                className="w-full pl-8 pr-3 py-2 bg-gray-900 border border-gray-600 rounded text-sm text-white placeholder-gray-500 focus:outline-none focus:border-blue-500"
+                                                className="w-full pl-8 pr-3 py-2 bg-white border border-gray-300 rounded text-sm text-gray-800 placeholder-gray-500 focus:outline-none focus:border-blue-500"
                                             />
                                         </div>
                                     </div>

@@ -13,6 +13,7 @@ import EmployeeDetails from './EmployeeDetails';
 import { formatDate, formatDateTime, getISTTimestamp } from '../utils/dateUtils';
 import useTabWithHistory from '../hooks/useTabWithHistory';
 import useModalHistory from '../hooks/useModalHistory';
+import useNavbarPageSearch from '../hooks/useNavbarPageSearch';
 
 // Import both old and new permission systems for compatibility
 import { hasPermission, getUserPermissions } from '../utils/permissions';
@@ -32,6 +33,22 @@ import { getMediaUrl, getProfilePictureUrlWithCacheBusting } from '../utils/medi
 import OrgChartView from '../components/hrms/OrgChartView';
 
 const { confirm } = Modal;
+
+const SUPER_ADMIN_ROLE_ID = "685292be8d7cdc3a71c4829b";
+
+const isLoginEnabled = (employee) => {
+    if (!employee) return false;
+    const value = employee.login_enabled;
+    if (value === false || value === 'false' || value === 0 || value === '0') return false;
+    return true;
+};
+
+const isOtpRequired = (employee) => {
+    if (!employee) return false;
+    const value = employee.otp_required;
+    if (value === true || value === 'true' || value === 1 || value === '1') return true;
+    return false;
+};
 
 // CSS Styles for the toggle switches
 const toggleStyles = `
@@ -99,6 +116,16 @@ const toggleStyles = `
   .switch .state.mixed {
     color: #58a6ff;
   }
+
+  .switch.switch-mixed input[type="checkbox"] {
+    background: #2563eb;
+    box-shadow: inset 0 0 0 2px rgba(37, 99, 235, 0.55), 0 0 10px rgba(37, 99, 235, 0.25);
+  }
+
+  .switch.switch-mixed input[type="checkbox"]::before {
+    transform: translateX(11px);
+    width: 18px;
+  }
   
   /* Disabled toggle styles */
   .switch input[type="checkbox"]:disabled {
@@ -139,6 +166,10 @@ const toggleStyles = `
     overflow-y: auto;
     overflow-x: auto;
   }
+
+  .hrms-employees-page .table-container {
+    max-height: none;
+  }
   
   /* Fixed widths for first 3 columns - NOT sticky, scroll away normally */
   .table-container table thead th:first-child,
@@ -159,8 +190,29 @@ const toggleStyles = `
     min-width: 110px;
   }
   
-  /* Sticky fourth column (Employee Name) - Sticks at left edge (left: 0) */
-  .table-container table thead th:nth-child(4) {
+  /* Sticky fourth column (Employee Name) - dark theme under HRMS page */
+  .hrms-employees-page .table-container table thead th:nth-child(4) {
+    position: sticky !important;
+    left: 0 !important;
+    top: 0 !important;
+    z-index: 30 !important;
+    background: #ffffff !important;
+    color: #03b0f5 !important;
+    width: 200px;
+    min-width: 200px;
+  }
+  
+  .hrms-employees-page .table-container table tbody td:nth-child(4) {
+    position: sticky !important;
+    left: 0 !important;
+    z-index: 2 !important;
+    background: #000 !important;
+    width: 200px;
+    min-width: 200px;
+  }
+  
+  /* Legacy sticky column for other pages */
+  .table-container:not(.hrms-table-wrap) table thead th:nth-child(4) {
     position: sticky !important;
     left: 0 !important;
     top: 0 !important;
@@ -169,7 +221,7 @@ const toggleStyles = `
     min-width: 200px;
   }
   
-  .table-container table tbody td:nth-child(4) {
+  .table-container:not(.hrms-table-wrap) table tbody td:nth-child(4) {
     position: sticky !important;
     left: 0 !important;
     background: rgb(0, 0, 0) !important;
@@ -177,20 +229,20 @@ const toggleStyles = `
     min-width: 200px;
   }
   
-  /* Uppercase styling for table data - comprehensive coverage */
-  .table-container table tbody td {
+  /* Uppercase styling for table data - exclude HRMS employees page */
+  .table-container:not(.hrms-table-wrap) table tbody td {
     text-transform: uppercase !important;
   }
   
-  .table-container table tbody td * {
+  .table-container:not(.hrms-table-wrap) table tbody td * {
     text-transform: uppercase !important;
   }
   
-  .table-container table tbody td span {
+  .table-container:not(.hrms-table-wrap) table tbody td span {
     text-transform: uppercase !important;
   }
   
-  .table-container table tbody td div {
+  .table-container:not(.hrms-table-wrap) table tbody td div {
     text-transform: uppercase !important;
   }
   
@@ -203,6 +255,71 @@ const toggleStyles = `
   .table-container table tbody td .state.mixed {
     text-transform: none !important;
   }
+`;
+
+const hrmsEmployeesPageStyles = `
+  .hrms-employees-page { padding: 0; max-width: 100%; background: #000; height: calc(100vh - 64px); max-height: calc(100vh - 64px); overflow: hidden; display: flex; flex-direction: column; font-family: -apple-system, BlinkMacSystemFont, 'Lexend Deca', sans-serif; color: #e2e8f0; }
+  .hrms-employees-page .task-top-bar { display: flex; justify-content: space-between; align-items: flex-start; padding: 20px 24px 0; border-bottom: 1px solid #1f1f27; background: #000; flex-shrink: 0; }
+  .hrms-employees-page .task-top-bar-left h1 { font-size: 22px; font-weight: 700; color: #f0f0f5; margin: 0 0 2px; line-height: 1.2; }
+  .hrms-employees-page .task-top-bar-left p { font-size: 13px; color: #6b7a99; margin: 0 0 12px; }
+  .hrms-employees-page .task-top-bar-right { display: flex; gap: 8px; align-items: center; padding-top: 4px; flex-wrap: wrap; }
+  .hrms-employees-page .task-btn-create { background: #3b82f6; color: #fff; border: none; padding: 7px 14px; border-radius: 3px; font-size: 13px; font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; transition: background 0.15s; white-space: nowrap; }
+  .hrms-employees-page .task-btn-create:hover { background: #2563eb; }
+  .hrms-employees-page .task-btn-secondary { background: #1a1a24; color: #c8d0e0; border: 1px solid #2a2a3a; padding: 7px 14px; border-radius: 3px; font-size: 13px; font-weight: 500; cursor: pointer; transition: background 0.15s, border-color 0.15s; white-space: nowrap; display: inline-flex; align-items: center; gap: 6px; position: relative; }
+  .hrms-employees-page .task-btn-secondary:hover { background: #22222e; border-color: #3a3a50; }
+  .hrms-employees-page .task-btn-secondary.active-filter { background: #1e3a5f; border-color: #3b82f6; color: #93c5fd; }
+  .hrms-employees-page .task-filter-badge { position: absolute; top: -6px; right: -6px; background: #3b82f6; color: #fff; font-size: 10px; font-weight: 700; border-radius: 10px; min-width: 18px; height: 18px; display: flex; align-items: center; justify-content: center; padding: 0 4px; }
+  .hrms-employees-page .task-view-toggle-bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 24px; background: #000; border-bottom: 1px solid #1f1f27; flex-wrap: wrap; flex-shrink: 0; }
+  .hrms-employees-page .task-view-toggle-group { display: flex; gap: 0; flex-wrap: wrap; flex: 0 1 auto; min-width: 0; overflow-x: auto; scrollbar-width: none; }
+  .hrms-employees-page .task-view-toggle-group::-webkit-scrollbar { display: none; }
+  .hrms-employees-page .task-view-toggle-btn { padding: 12px 16px; border: none; background: transparent; font-size: 13px; font-weight: 600; color: #6b7a99; cursor: pointer; border-bottom: 3px solid transparent; transition: color 0.15s, border-color 0.15s; white-space: nowrap; }
+  .hrms-employees-page .task-view-toggle-btn:hover { color: #c8d0e0; }
+  .hrms-employees-page .task-view-toggle-btn.active { color: #f97316; font-weight: 800; border-bottom-color: #f97316; }
+  .hrms-employees-page .task-search-box--in-bar { position: relative; width: 260px; min-width: 200px; flex-shrink: 0; }
+  .hrms-employees-page .task-search-box--in-bar input { background: #1a1a24; border: 1px solid #2a2a3a; border-radius: 3px; padding: 6px 32px 6px 32px; color: #c8d0e0; font-size: 13px; width: 100%; outline: none; transition: border-color 0.15s; box-sizing: border-box; }
+  .hrms-employees-page .task-search-box--in-bar input::placeholder { color: #4a5570; }
+  .hrms-employees-page .task-search-box--in-bar input:focus { border-color: #3b82f6; box-shadow: 0 0 0 2px rgba(59,130,246,0.15); }
+  .hrms-employees-page .task-search-box--in-bar .search-icon { position: absolute; left: 9px; top: 50%; transform: translateY(-50%); color: #4a5570; pointer-events: none; }
+  .hrms-employees-page .task-search-box--in-bar .search-clear { position: absolute; right: 8px; top: 50%; transform: translateY(-50%); color: #4a5570; background: none; border: none; cursor: pointer; padding: 2px; display: flex; align-items: center; }
+  .hrms-employees-page .task-search-box--in-bar .search-clear:hover { color: #c8d0e0; }
+  .hrms-employees-page .task-toolbar-right { display: flex; align-items: center; justify-content: flex-end; gap: 8px; margin-left: auto; flex-shrink: 0; flex-wrap: wrap; }
+  .hrms-employees-page .hrms-page-content { padding: 0 24px 24px; flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
+  .hrms-employees-page .hrms-page-content--chart { padding: 0; overflow: hidden; display: flex; flex-direction: column; min-height: 0; }
+  .hrms-employees-page .hrms-page-content--chart > * { flex: 1; min-height: 0; }
+  .hrms-employees-page .hrms-table-outer { position: relative; flex: 1; min-height: 0; display: flex; flex-direction: column; }
+  .hrms-employees-page .hrms-table-wrap { flex: 1; min-height: 0; overflow: auto; max-height: none; border-top: 1px solid #1f1f27; background: #000; -webkit-overflow-scrolling: touch; }
+  .hrms-employees-page .table-container.hrms-table-wrap { max-height: none; flex: 1; min-height: 0; }
+  .hrms-employees-page .hrms-table { width: 100%; border-collapse: separate; border-spacing: 0; min-width: 1200px; text-align: left; }
+  .hrms-employees-page .hrms-table thead { background: #ffffff; border-bottom: 2px solid #e5e7eb; position: relative; z-index: 20; }
+  .hrms-employees-page .hrms-table-th { position: sticky; top: 0; z-index: 25; background: #ffffff !important; color: #03b0f5 !important; font-size: 13px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em; padding: 12px 16px; text-align: left; border-bottom: 1px solid #e5e7eb; white-space: nowrap; box-shadow: 0 1px 0 #e5e7eb, 0 4px 8px rgba(0, 0, 0, 0.12); }
+  .hrms-employees-page .hrms-table tbody { position: relative; z-index: 1; }
+  .hrms-employees-page .hrms-table tbody td { padding: 11px 16px; font-size: 13px; color: #ffffff; font-weight: 600; vertical-align: middle; background: #000; text-transform: none !important; position: relative; z-index: 1; }
+  .hrms-employees-page .hrms-table tbody tr.hrms-table-row { background: #000; border-bottom: 1px solid #1a1a22; cursor: pointer; transition: background 0.1s; }
+  .hrms-employees-page .hrms-table tbody tr.hrms-table-row:hover td { background: #13131c; }
+  .hrms-employees-page .hrms-table tbody td * { text-transform: none !important; }
+  .hrms-employees-page .hrms-table tbody td.hrms-name-cell { padding: 11px 16px; font-weight: 700; color: #ffffff; vertical-align: middle; }
+  .hrms-employees-page .cell-name-wrap { display: flex; align-items: center; gap: 12px; min-width: 0; }
+  .hrms-employees-page .cell-avatar { width: 52px; height: 44px; border-radius: 4px; background: #1a1a24; border: 1px solid #2a2a3a; color: #93c5fd; display: flex; align-items: center; justify-content: center; font-size: 16px; font-weight: 700; flex-shrink: 0; overflow: hidden; box-shadow: inset 0 0 0 1px rgba(255,255,255,0.04); }
+  .hrms-employees-page .cell-avatar img { width: 100%; height: 100%; object-fit: cover; border-radius: 3px; display: block; }
+  .hrms-employees-page .cell-avatar .cell-avatar-fallback { width: 100%; height: 100%; align-items: center; justify-content: center; }
+  .hrms-employees-page .cell-name-text { min-width: 0; line-height: 1.3; }
+  .hrms-employees-page .table-container table thead th:nth-child(4) { background: #ffffff !important; color: #03b0f5 !important; left: 0; z-index: 30 !important; box-shadow: 2px 0 4px rgba(0, 0, 0, 0.06), 0 4px 8px rgba(0, 0, 0, 0.12); }
+  .hrms-employees-page .table-container table tbody td:nth-child(4) { background: #000 !important; z-index: 2 !important; }
+  .hrms-employees-page .table-container table tbody tr:hover td:nth-child(4) { background: #13131c !important; }
+  .hrms-employees-page .hrms-action-btn { background: #1a0a0a; color: #f87171; border: 1px solid #7f1d1d; border-radius: 3px; padding: 5px 8px; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; transition: background 0.15s; }
+  .hrms-employees-page .hrms-action-btn:hover:not(:disabled) { background: #2a0f0f; }
+  .hrms-employees-page .hrms-action-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+  .hrms-employees-page .warning-scroll-btn { position: absolute; top: 50%; transform: translateY(-50%); z-index: 50; background: #1e3a5f; color: #fff; border: 1px solid #3b82f6; padding: 8px; border-radius: 50%; opacity: 0.35; transition: opacity 0.15s; cursor: pointer; display: flex; align-items: center; justify-content: center; }
+  .hrms-employees-page .warning-scroll-btn:hover { opacity: 1; }
+  .hrms-employees-page .warning-scroll-btn.left { left: 8px; }
+  .hrms-employees-page .warning-scroll-btn.right { right: 8px; }
+  .hrms-employees-page .task-loading-spinner { display: flex; flex-direction: column; justify-content: center; align-items: center; padding: 80px 20px; }
+  .hrms-employees-page .task-loading-spinner .spinner { width: 32px; height: 32px; border: 3px solid #1a1a24; border-top-color: #3b82f6; border-radius: 50%; animation: hrmsSpin 0.7s linear infinite; margin-bottom: 12px; }
+  .hrms-employees-page .task-loading-spinner p { color: #6b7a99; font-size: 14px; margin: 0; }
+  .hrms-employees-page .task-empty-state { display: flex; flex-direction: column; justify-content: center; align-items: center; padding: 80px 20px; text-align: center; }
+  .hrms-employees-page .task-empty-state-title { font-size: 17px; font-weight: 700; color: #c8d0e0; margin: 0 0 6px; }
+  .hrms-employees-page .task-empty-state-sub { font-size: 14px; color: #4a5570; margin: 0; }
+  @keyframes hrmsSpin { to { transform: rotate(360deg); } }
 `;
 
 // Add styles to head
@@ -317,7 +434,9 @@ const AllEmployees = () => {
     const [activeTab, setActiveTab] = useTabWithHistory('status', 'active', { localStorageKey: 'allEmployeesTab' });
     const [employees, setEmployees] = useState([]);
     const [employeeCounts, setEmployeeCounts] = useState({ active: 0, inactive: 0 });
+    const [orgChartSyncVersion, setOrgChartSyncVersion] = useState(0);
     const [searchTerm, setSearchTerm] = useState('');
+    useNavbarPageSearch(setSearchTerm);
 
     // Filter popup states (matching LeadCRM structure) - Enhanced for multiple selections
     const [showFilterPopup, setShowFilterPopup] = useState(false);
@@ -582,7 +701,9 @@ const AllEmployees = () => {
                     ...employee,
                     employee_status: normalizedStatus,
                     department_name: employee.department_name || '-',
-                    role_name: employee.role_name || '-'
+                    role_name: employee.role_name || '-',
+                    login_enabled: isLoginEnabled(employee),
+                    otp_required: isOtpRequired(employee),
                 };
             });
 
@@ -619,10 +740,12 @@ const AllEmployees = () => {
                 inactive: allEmployeesProcessed.filter(e => e.employee_status === 'inactive').length,
             });
             setEmployees(sortedEmployees);
+            recomputeMasterStates(sortedEmployees);
         } catch (error) {
             console.error('❌ Error fetching employees:', error);
             message.error('Failed to fetch employees. Please check your connection.');
             setEmployees([]);
+            recomputeMasterStates([]);
         } finally {
             setLoading(false);
         }
@@ -1142,7 +1265,6 @@ const AllEmployees = () => {
         const employeeId = employee._id;
 
         // 🔒 Super Admin Protection: Never allow toggling Super Admin users
-        const SUPER_ADMIN_ROLE_ID = "685292be8d7cdc3a71c4829b";
         if (employee.role_id === SUPER_ADMIN_ROLE_ID) {
             message.error('⛔ Cannot modify login access for Super Admin users!');
             return;
@@ -1153,16 +1275,14 @@ const AllEmployees = () => {
             await hrmsService.updateLoginEnabled(employeeId, isEnabled);
             console.log('Login enabled updated to:', isEnabled);
             // If login is disabled, cascade disable OTP requirement only (not employee status)
-            if (!isEnabled) {
-                // Disable OTP requirement if it was enabled
-                if (employee.otp_required) {
-                    await hrmsService.updateOTPRequired(employeeId, false);
-                    await hrmsService.logEmployeeActivity(employeeId, {
-                        action: 'otp_disabled',
-                        description: 'OTP requirement disabled due to login access removal',
-                        timestamp: getISTTimestamp()
-                    });
-                }
+            const shouldDisableOtp = !isEnabled && isOtpRequired(employee);
+            if (shouldDisableOtp) {
+                await hrmsService.updateOTPRequired(employeeId, false);
+                await hrmsService.logEmployeeActivity(employeeId, {
+                    action: 'otp_disabled',
+                    description: 'OTP requirement disabled due to login access removal',
+                    timestamp: getISTTimestamp()
+                });
             }
 
             // Log activity for login status change
@@ -1180,7 +1300,11 @@ const AllEmployees = () => {
             setEmployees(prevEmployees =>
                 prevEmployees.map(emp =>
                     emp._id === employeeId
-                        ? { ...emp, login_enabled: isEnabled }
+                        ? {
+                            ...emp,
+                            login_enabled: isEnabled,
+                            ...(shouldDisableOtp ? { otp_required: false } : {}),
+                        }
                         : emp
                 )
             );
@@ -1195,7 +1319,6 @@ const AllEmployees = () => {
         const employeeId = employee._id;
 
         // 🔒 Super Admin Protection: Never allow toggling Super Admin users
-        const SUPER_ADMIN_ROLE_ID = "685292be8d7cdc3a71c4829b";
         if (employee.role_id === SUPER_ADMIN_ROLE_ID) {
             message.error('⛔ Cannot modify status for Super Admin users!');
             return;
@@ -1223,7 +1346,7 @@ const AllEmployees = () => {
             // If status is set to inactive, cascade disable login and OTP
             if (!isActive) {
                 // Disable login if it was enabled
-                if (employee.login_enabled) {
+                if (isLoginEnabled(employee)) {
                     await hrmsService.updateLoginEnabled(employeeId, false);
                     await hrmsService.logEmployeeActivity(employeeId, {
                         action: 'login_disabled',
@@ -1233,7 +1356,7 @@ const AllEmployees = () => {
                 }
 
                 // Disable OTP requirement if it was enabled
-                if (employee.otp_required) {
+                if (isOtpRequired(employee)) {
                     await hrmsService.updateOTPRequired(employeeId, false);
                     await hrmsService.logEmployeeActivity(employeeId, {
                         action: 'otp_disabled',
@@ -1253,6 +1376,12 @@ const AllEmployees = () => {
             // Show toast notification
             message.success(`Employee status updated to ${newStatus}`);
 
+            setEmployeeCounts(prev => ({
+                active: isActive ? prev.active + 1 : Math.max(0, prev.active - 1),
+                inactive: isActive ? Math.max(0, prev.inactive - 1) : prev.inactive + 1,
+            }));
+            setOrgChartSyncVersion(v => v + 1);
+
             // Update local state without fetching all employees again
             // This preserves scroll position and prevents page reload
             if (newStatus === activeTab) {
@@ -1260,7 +1389,11 @@ const AllEmployees = () => {
                 setEmployees(prevEmployees =>
                     prevEmployees.map(emp =>
                         emp._id === employeeId
-                            ? { ...emp, employee_status: newStatus }
+                            ? {
+                                ...emp,
+                                employee_status: newStatus,
+                                ...(!isActive ? { login_enabled: false, otp_required: false } : {}),
+                            }
                             : emp
                     )
                 );
@@ -1277,12 +1410,9 @@ const AllEmployees = () => {
         }
     };
 
-    // Compute master status state
-    const computeMasterStatusState = () => {
-
-        // Filter out super admins from the calculation
-        const SUPER_ADMIN_ROLE_ID = "685292be8d7cdc3a71c4829b";
-        const nonSuperAdminEmployees = employees.filter(emp => emp.role_id !== SUPER_ADMIN_ROLE_ID);
+    // Compute master status state (only on full fetch / bulk actions — not per-row toggles)
+    const computeMasterStatusState = (employeeList = employees) => {
+        const nonSuperAdminEmployees = employeeList.filter(emp => emp.role_id !== SUPER_ADMIN_ROLE_ID);
 
         if (nonSuperAdminEmployees.length === 0) {
             setMasterStatusState({ checked: false, label: 'Off' });
@@ -1301,21 +1431,19 @@ const AllEmployees = () => {
     };
 
     // Compute master access state
-    const computeMasterAccessState = () => {
-        // Filter out super admins from the calculation
-        const SUPER_ADMIN_ROLE_ID = "685292be8d7cdc3a71c4829b";
-        const nonSuperAdminEmployees = employees.filter(emp => emp.role_id !== SUPER_ADMIN_ROLE_ID);
+    const computeMasterAccessState = (employeeList = employees) => {
+        const toggleableEmployees = employeeList.filter(emp => emp.role_id !== SUPER_ADMIN_ROLE_ID);
 
-        if (nonSuperAdminEmployees.length === 0) {
+        if (toggleableEmployees.length === 0) {
             setMasterAccessState({ checked: false, label: 'Off' });
             return;
         }
 
-        const accessCount = nonSuperAdminEmployees.filter(emp => emp.login_enabled).length;
+        const accessCount = toggleableEmployees.filter(emp => isLoginEnabled(emp)).length;
 
         if (accessCount === 0) {
             setMasterAccessState({ checked: false, label: 'Off' });
-        } else if (accessCount === nonSuperAdminEmployees.length) {
+        } else if (accessCount === toggleableEmployees.length) {
             setMasterAccessState({ checked: true, label: 'On' });
         } else {
             setMasterAccessState({ checked: false, label: 'Mixed' });
@@ -1323,25 +1451,29 @@ const AllEmployees = () => {
     };
 
     // Compute master OTP state
-    const computeMasterOTPState = () => {
-        // Filter out super admins from the calculation
-        const SUPER_ADMIN_ROLE_ID = "685292be8d7cdc3a71c4829b";
-        const nonSuperAdminEmployees = employees.filter(emp => emp.role_id !== SUPER_ADMIN_ROLE_ID);
+    const computeMasterOTPState = (employeeList = employees) => {
+        const toggleableEmployees = employeeList.filter(emp => emp.role_id !== SUPER_ADMIN_ROLE_ID);
 
-        if (nonSuperAdminEmployees.length === 0) {
+        if (toggleableEmployees.length === 0) {
             setMasterOTPState({ checked: false, label: 'Off' });
             return;
         }
 
-        const otpCount = nonSuperAdminEmployees.filter(emp => emp.otp_required === true).length;
+        const otpCount = toggleableEmployees.filter(emp => isOtpRequired(emp)).length;
 
         if (otpCount === 0) {
             setMasterOTPState({ checked: false, label: 'Off' });
-        } else if (otpCount === nonSuperAdminEmployees.length) {
+        } else if (otpCount === toggleableEmployees.length) {
             setMasterOTPState({ checked: true, label: 'On' });
         } else {
             setMasterOTPState({ checked: false, label: 'Mixed' });
         }
+    };
+
+    const recomputeMasterStates = (employeeList) => {
+        computeMasterStatusState(employeeList);
+        computeMasterAccessState(employeeList);
+        computeMasterOTPState(employeeList);
     };
 
     // Handle master status toggle - SIMPLIFIED FOR TESTING
@@ -1503,15 +1635,6 @@ const AllEmployees = () => {
         };
     };
 
-    // Update master states when employees change
-    useEffect(() => {
-        console.log('🔄 useEffect triggered - employees changed, count:', employees.length);
-        console.log('🔄 canEditEmployees:', canEditEmployees);
-        computeMasterStatusState();
-        computeMasterAccessState();
-        computeMasterOTPState();
-    }, [employees]);
-
     const handleEmployeeUpdateInDetails = async (updatedEmployeeData) => {
         console.log('🔄 AllEmployees: handleEmployeeUpdateInDetails called with:', updatedEmployeeData);
         console.log('🔄 AllEmployees: Current selectedEmployeeForDetails:', selectedEmployeeForDetails);
@@ -1608,327 +1731,161 @@ const AllEmployees = () => {
                     onEmployeeUpdate={handleEmployeeUpdateInDetails}
                 />
             ) : (
-                <div style={{
-                    padding: '2rem',
-                    background: 'black',
-                    color: '#c9d1d9',
-                    fontFamily: 'Arial, sans-serif',
-                    minHeight: '100vh'
-                }}>
-                    <div style={{ background: 'black', borderRadius: '8px', padding: '1.5rem' }}>
-                        <div style={{
-                            display: 'flex',
-                            justifyContent: 'flex-end',
-                            alignItems: 'center',
-                            marginBottom: '1rem'
-                        }}>
+                <div className="hrms-employees-page task-page-container">
+                    <style>{hrmsEmployeesPageStyles}</style>
+                    <div className="task-top-bar">
+                        <div className="task-top-bar-left">
+                            <h1>Employees</h1>
+                            <p>{employees.length} employee{employees.length !== 1 ? 's' : ''}</p>
+                        </div>
+                        <div className="task-top-bar-right">
                             {canAddEmployee() && (
-                                <Button
-                                    style={{
-                                        background: '#58a6ff',
-                                        color: '#fff',
-                                        border: 'none',
-                                        padding: '0.5rem 1rem',
-                                        borderRadius: '8px',
-                                        fontSize: '1rem',
-                                        cursor: 'pointer',
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        gap: '0.5rem'
-                                    }}
-                                    icon={<PlusOutlined />}
-                                    onClick={() => showEmployeeForm()}
-                                >
+                                <button type="button" className="task-btn-create" onClick={() => showEmployeeForm()}>
                                     + Add Employee
-                                </Button>
+                                </button>
                             )}
                         </div>
+                    </div>
 
-                        {/* Header with tabs and search/filter (matching LeadCRM style) */}
-                        <div className="flex justify-between items-center mb-6 px-2">
-                            {/* Left side - Tabs */}
-                            <div style={{
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: '6px',
-                                background: '#111827',
-                                borderRadius: '10px',
-                                padding: '4px',
-                                border: '1px solid #1f2937'
-                            }}>
-                                {/* Active Employees Tab */}
-                                <button
-                                    onClick={() => handleTabChange('active')}
-                                    style={{
-                                        display: 'flex', alignItems: 'center', gap: '8px',
-                                        padding: '7px 16px',
-                                        cursor: 'pointer',
-                                        color: activeTab === 'active' ? '#fff' : '#6b7280',
-                                        background: activeTab === 'active' ? '#2563eb' : 'transparent',
-                                        border: 'none',
-                                        borderRadius: '7px',
-                                        fontSize: '0.875rem',
-                                        fontWeight: activeTab === 'active' ? 600 : 400,
-                                        transition: 'all 0.2s ease',
-                                        whiteSpace: 'nowrap',
-                                        boxShadow: activeTab === 'active' ? '0 1px 4px rgba(37,99,235,0.4)' : 'none',
-                                    }}
-                                    className={`tab ${activeTab === 'active' ? 'active' : ''}`}
-                                >
-                                    ✓ Active Employees
-                                    <span style={{
-                                        display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                                        minWidth: '22px', height: '22px', padding: '0 6px',
-                                        borderRadius: '11px',
-                                        fontSize: '0.75rem', fontWeight: 700,
-                                        background: activeTab === 'active' ? 'rgba(255,255,255,0.2)' : '#1f2937',
-                                        color: activeTab === 'active' ? '#fff' : '#9ca3af',
-                                    }}>
-                                        {employeeCounts.active}
-                                    </span>
+                    <div className="task-view-toggle-bar">
+                        <div className="task-view-toggle-group">
+                                <button type="button" onClick={() => handleTabChange('active')} className={`task-view-toggle-btn${activeTab === 'active' ? ' active' : ''}`}>
+                                    Active ({employeeCounts.active})
                                 </button>
-
-                                {/* Inactive Employees Tab */}
-                                <button
-                                    onClick={() => handleTabChange('inactive')}
-                                    style={{
-                                        display: 'flex', alignItems: 'center', gap: '8px',
-                                        padding: '7px 16px',
-                                        cursor: 'pointer',
-                                        color: activeTab === 'inactive' ? '#fff' : '#6b7280',
-                                        background: activeTab === 'inactive' ? '#dc2626' : 'transparent',
-                                        border: 'none',
-                                        borderRadius: '7px',
-                                        fontSize: '0.875rem',
-                                        fontWeight: activeTab === 'inactive' ? 600 : 400,
-                                        transition: 'all 0.2s ease',
-                                        whiteSpace: 'nowrap',
-                                        boxShadow: activeTab === 'inactive' ? '0 1px 4px rgba(220,38,38,0.4)' : 'none',
-                                    }}
-                                    className={`tab ${activeTab === 'inactive' ? 'active' : ''}`}
-                                >
-                                    ✕ Inactive Employees
-                                    <span style={{
-                                        display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                                        minWidth: '22px', height: '22px', padding: '0 6px',
-                                        borderRadius: '11px',
-                                        fontSize: '0.75rem', fontWeight: 700,
-                                        background: activeTab === 'inactive' ? 'rgba(255,255,255,0.2)' : '#1f2937',
-                                        color: activeTab === 'inactive' ? '#fff' : '#9ca3af',
-                                    }}>
-                                        {employeeCounts.inactive}
-                                    </span>
+                                <button type="button" onClick={() => handleTabChange('inactive')} className={`task-view-toggle-btn${activeTab === 'inactive' ? ' active' : ''}`}>
+                                    Inactive ({employeeCounts.inactive})
                                 </button>
-
-                                {/* Org Chart Tab */}
-                                <button
-                                    onClick={() => handleTabChange('chart')}
-                                    style={{
-                                        display: 'flex', alignItems: 'center', gap: '7px',
-                                        padding: '7px 16px',
-                                        cursor: 'pointer',
-                                        color: activeTab === 'chart' ? '#fff' : '#6b7280',
-                                        background: activeTab === 'chart' ? '#6366f1' : 'transparent',
-                                        border: 'none',
-                                        borderRadius: '7px',
-                                        fontSize: '0.875rem',
-                                        fontWeight: activeTab === 'chart' ? 600 : 400,
-                                        transition: 'all 0.2s ease',
-                                        whiteSpace: 'nowrap',
-                                        boxShadow: activeTab === 'chart' ? '0 1px 4px rgba(99,102,241,0.4)' : 'none',
-                                    }}
-                                    className={`tab ${activeTab === 'chart' ? 'active' : ''}`}
-                                >
-                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                                        <rect x="3" y="3" width="6" height="6" rx="1"/>
-                                        <rect x="15" y="3" width="6" height="6" rx="1"/>
-                                        <rect x="9" y="15" width="6" height="6" rx="1"/>
-                                        <line x1="6" y1="9" x2="6" y2="12"/>
-                                        <line x1="18" y1="9" x2="18" y2="12"/>
-                                        <line x1="6" y1="12" x2="18" y2="12"/>
-                                        <line x1="12" y1="12" x2="12" y2="15"/>
-                                    </svg>
+                                <button type="button" onClick={() => handleTabChange('chart')} className={`task-view-toggle-btn${activeTab === 'chart' ? ' active' : ''}`}>
                                     Org Chart
                                 </button>
                             </div>
 
-                            {/* Right side - Filter and Search (matching LeadCRM) — hidden on chart view */}
                             {activeTab !== 'chart' && (
-                            <div className="flex items-center gap-3">
-                                {/* Filter Button (matching LeadCRM) */}
-                                <button
-                                    className={`px-5 py-3 rounded-lg font-bold shadow transition relative flex items-center gap-3 text-base ${getActiveFilterCount() > 0
-                                        ? 'bg-orange-500 text-white hover:bg-orange-600'
-                                        : 'bg-gray-600 text-white hover:bg-gray-700'
-                                        }`}
-                                    onClick={() => setShowFilterPopup(true)}
-                                >
-                                    <svg
-                                        className="w-5 h-5"
-                                        fill="none"
-                                        stroke="currentColor"
-                                        viewBox="0 0 24 24"
-                                    >
-                                        <path
-                                            strokeLinecap="round"
-                                            strokeLinejoin="round"
-                                            strokeWidth="2"
-                                            d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z"
-                                        />
-                                    </svg>
-                                    Filter
-                                    {getActiveFilterCount() > 0 && (
-                                        <span className="absolute -top-2 -right-2 bg-red-500 text-white text-sm rounded-full h-6 w-6 flex items-center justify-center">
-                                            {getActiveFilterCount()}
-                                        </span>
-                                    )}
-                                </button>
-
-                                {/* Search Box (matching LeadCRM) */}
-                                <div className="relative w-[320px]">
+                            <div className="task-toolbar-right">
+                                <div className="task-search-box--in-bar">
+                                    <Search size={14} className="search-icon" />
                                     <input
                                         type="text"
                                         placeholder="Search employees..."
                                         value={searchTerm}
                                         onChange={(e) => setSearchTerm(e.target.value)}
-                                        className="w-full py-3 pl-10 pr-4 bg-[#1b2230] text-gray-300 rounded-lg focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 text-base placeholder-gray-500"
                                     />
-                                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                                        <svg
-                                            className="w-5 h-5 text-gray-500"
-                                            fill="none"
-                                            stroke="currentColor"
-                                            viewBox="0 0 24 24"
-                                        >
-                                            <path
-                                                strokeLinecap="round"
-                                                strokeLinejoin="round"
-                                                strokeWidth="2"
-                                                d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
-                                            ></path>
-                                        </svg>
-                                    </div>
                                     {searchTerm && (
-                                        <button
-                                            onClick={() => setSearchTerm('')}
-                                            className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-gray-300"
-                                        >
-                                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path>
-                                            </svg>
+                                        <button type="button" className="search-clear" onClick={() => setSearchTerm('')} aria-label="Clear search">
+                                            <X size={14} />
                                         </button>
                                     )}
                                 </div>
+                                <button
+                                    type="button"
+                                    className={`task-btn-secondary${getActiveFilterCount() > 0 ? ' active-filter' : ''}`}
+                                    onClick={() => setShowFilterPopup(true)}
+                                >
+                                    <Filter size={14} />
+                                    Filter
+                                    {getActiveFilterCount() > 0 && (
+                                        <span className="task-filter-badge">{getActiveFilterCount()}</span>
+                                    )}
+                                </button>
                             </div>
                             )}
                         </div>
 
+                    <div className={`hrms-page-content${activeTab === 'chart' ? ' hrms-page-content--chart' : ''}`}>
                         {/* ── Chart View Tab ── */}
                         {activeTab === 'chart' ? (
-                            <OrgChartView />
+                            <OrgChartView
+                                onStatusChange={handleEmployeeStatusChange}
+                                superAdminRoleId={SUPER_ADMIN_ROLE_ID}
+                                statusSyncVersion={orgChartSyncVersion}
+                            />
                         ) : loading ? (
-                            <div className="text-center py-20" style={{ background: 'black', color: '#c9d1d9' }}>
-                                <div className="flex items-center justify-center gap-3">
-                                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
-                                    <span className="text-xl font-semibold text-gray-400">Loading Employees...</span>
-                                </div>
+                            <div className="task-loading-spinner">
+                                <div className="spinner" />
+                                <p>Loading employees...</p>
                             </div>
                         ) : employees.length > 0 ? (
-                            <div className="relative">
-                                {/* Horizontal scroll buttons */}
+                            <div className="relative hrms-table-outer">
                                 {canScrollLeft && (
                                     <button
+                                        type="button"
                                         onClick={() => scrollTable('left')}
-                                        className="absolute left-2 top-1/2 transform -translate-y-1/2 text-white p-4 rounded-full shadow-lg transition-all duration-200 opacity-20 hover:opacity-100"
-                                        style={{
-                                            backgroundColor: 'rgba(37, 99, 235, 1)',
-                                            zIndex: 9999
-                                        }}
-                                        onMouseEnter={(e) => e.target.style.backgroundColor = 'rgba(29, 78, 216, 1)'}
-                                        onMouseLeave={(e) => e.target.style.backgroundColor = 'rgba(37, 99, 235, 1)'}
+                                        className="warning-scroll-btn left"
                                         aria-label="Scroll left"
                                     >
-                                        <ChevronLeft className="w-9 h-9" />
+                                        <ChevronLeft size={18} />
                                     </button>
                                 )}
 
                                 {canScrollRight && (
                                     <button
+                                        type="button"
                                         onClick={() => scrollTable('right')}
-                                        className="absolute right-2 top-1/2 transform -translate-y-1/2 text-white p-4 rounded-full shadow-lg transition-all duration-200 opacity-20 hover:opacity-100"
-                                        style={{
-                                            backgroundColor: 'rgba(37, 99, 235, 1)',
-                                            zIndex: 9999
-                                        }}
-                                        onMouseEnter={(e) => e.target.style.backgroundColor = 'rgba(29, 78, 216, 1)'}
-                                        onMouseLeave={(e) => e.target.style.backgroundColor = 'rgba(37, 99, 235, 1)'}
+                                        className="warning-scroll-btn right"
                                         aria-label="Scroll right"
                                     >
-                                        <ChevronRight className="w-9 h-9" />
+                                        <ChevronRight size={18} />
                                     </button>
                                 )}
 
                                 <div
                                     ref={tableScrollRef}
-                                    className="table-container rounded-lg bg-black overflow-auto"
+                                    className="table-container hrms-table-wrap overflow-auto"
                                     onScroll={updateScrollButtons}
                                 >
-                                    <table className="min-w-full w-full bg-black" style={{ borderCollapse: 'collapse' }}>
-                                        <thead className="bg-white sticky-header">
+                                    <table className="hrms-table min-w-full w-full">
+                                        <thead>
                                             <tr>
-                                                <th className="bg-white px-4 py-3 text-md font-extrabold text-[#03b0f5] uppercase tracking-wider">
+                                                <th className="hrms-table-th">
                                                     #
                                                 </th>
-                                                <th className="bg-white px-4 py-3 text-md text-nowrap font-extrabold text-[#03b0f5] uppercase tracking-wider">
+                                                <th className="hrms-table-th text-nowrap">
                                                     Employee ID
                                                 </th>
-                                                <th className="bg-white px-4 py-3 text-md text-nowrap font-extrabold text-[#03b0f5] uppercase tracking-wider">
+                                                <th className="hrms-table-th text-nowrap">
                                                     Joining Date
                                                 </th>
-                                                <th className="bg-white px-4 py-3 text-md text-nowrap font-extrabold text-[#03b0f5] uppercase tracking-wider">
+                                                <th className="hrms-table-th text-nowrap">
                                                     Employee Name
                                                 </th>
-                                                <th className="bg-white px-4 py-3 text-md text-nowrap font-extrabold text-[#03b0f5] uppercase tracking-wider">
+                                                <th className="hrms-table-th text-nowrap">
                                                     Gender
                                                 </th>
-                                                <th className="bg-white px-4 py-3 text-md text-nowrap font-extrabold text-[#03b0f5] uppercase tracking-wider">
+                                                <th className="hrms-table-th text-nowrap">
                                                     Designation
                                                 </th>
-                                                <th className="bg-white px-4 py-3 text-md text-nowrap font-extrabold text-[#03b0f5] uppercase tracking-wider">
+                                                <th className="hrms-table-th text-nowrap">
                                                     Department
                                                 </th>
-                                                <th className="bg-white px-4 py-3 text-md text-nowrap font-extrabold text-[#03b0f5] uppercase tracking-wider">
+                                                <th className="hrms-table-th text-nowrap">
                                                     Role
                                                 </th>
-                                                <th className="bg-white px-4 py-3 text-md text-nowrap font-extrabold text-[#03b0f5] uppercase tracking-wider">
+                                                <th className="hrms-table-th text-nowrap">
                                                     Highest Qualification
                                                 </th>
-                                                <th className="bg-white px-4 py-3 text-md text-nowrap font-extrabold text-[#03b0f5] uppercase tracking-wider">
+                                                <th className="hrms-table-th text-nowrap">
                                                     Current City
                                                 </th>
-                                                <th className="bg-white px-4 py-3 text-md text-nowrap font-extrabold text-[#03b0f5] uppercase tracking-wider">
+                                                <th className="hrms-table-th text-nowrap">
                                                     Experience
                                                 </th>
-                                                <th className="bg-white px-4 py-3 text-md font-extrabold text-[#03b0f5] uppercase tracking-wider">
+                                                <th className="hrms-table-th">
                                                     <div className="th-flex">
                                                         <span>Status</span>
                                                         <div
-                                                            className="switch"
+                                                            className={`switch${masterStatusState.label === 'Mixed' ? ' switch-mixed' : ''}`}
                                                             onClick={(e) => {
                                                                 e.stopPropagation();
-                                                                if (canEditEmployees) {
-                                                                    console.log('🔄 Master Status Toggle clicked!');
-                                                                    handleMasterStatusToggle();
-                                                                }
+                                                                if (canEditEmployees) handleMasterStatusToggle();
                                                             }}
                                                             style={{ cursor: canEditEmployees ? 'pointer' : 'not-allowed' }}
                                                         >
                                                             <input
                                                                 type="checkbox"
                                                                 checked={masterStatusState.label === 'On'}
-                                                                onChange={() => { }} // Prevent default checkbox behavior
+                                                                onChange={() => {}}
                                                                 disabled={!canEditEmployees}
-                                                                style={{ pointerEvents: 'none' }} // Disable direct clicks on checkbox
+                                                                style={{ pointerEvents: 'none' }}
                                                             />
                                                             <span className={`state ${masterStatusState.label.toLowerCase()}`}>
                                                                 {masterStatusState.label}
@@ -1936,26 +1893,23 @@ const AllEmployees = () => {
                                                         </div>
                                                     </div>
                                                 </th>
-                                                <th className="bg-white px-4 py-3 text-md font-extrabold text-[#03b0f5] uppercase tracking-wider">
+                                                <th className="hrms-table-th">
                                                     <div className="th-flex">
                                                         <span>Login</span>
                                                         <div
-                                                            className="switch"
+                                                            className={`switch${masterAccessState.label === 'Mixed' ? ' switch-mixed' : ''}`}
                                                             onClick={(e) => {
                                                                 e.stopPropagation();
-                                                                if (canEditEmployees) {
-                                                                    console.log('🔄 Master Access Toggle clicked!');
-                                                                    handleMasterAccessToggle();
-                                                                }
+                                                                if (canEditEmployees) handleMasterAccessToggle();
                                                             }}
                                                             style={{ cursor: canEditEmployees ? 'pointer' : 'not-allowed' }}
                                                         >
                                                             <input
                                                                 type="checkbox"
                                                                 checked={masterAccessState.label === 'On'}
-                                                                onChange={() => { }} // Prevent default checkbox behavior
+                                                                onChange={() => {}}
                                                                 disabled={!canEditEmployees}
-                                                                style={{ pointerEvents: 'none' }} // Disable direct clicks on checkbox
+                                                                style={{ pointerEvents: 'none' }}
                                                             />
                                                             <span className={`state ${masterAccessState.label.toLowerCase()}`}>
                                                                 {masterAccessState.label}
@@ -1963,26 +1917,23 @@ const AllEmployees = () => {
                                                         </div>
                                                     </div>
                                                 </th>
-                                                <th className="bg-white px-4 py-3 text-md text-nowrap font-extrabold text-[#03b0f5] uppercase tracking-wider">
+                                                <th className="hrms-table-th text-nowrap">
                                                     <div className="th-flex">
                                                         <span>OTP Required</span>
                                                         <div
-                                                            className="switch"
+                                                            className={`switch${masterOTPState.label === 'Mixed' ? ' switch-mixed' : ''}`}
                                                             onClick={(e) => {
                                                                 e.stopPropagation();
-                                                                if (canEditEmployees) {
-                                                                    console.log('🔄 Master OTP Toggle clicked!');
-                                                                    handleMasterOTPToggle();
-                                                                }
+                                                                if (canEditEmployees) handleMasterOTPToggle();
                                                             }}
                                                             style={{ cursor: canEditEmployees ? 'pointer' : 'not-allowed' }}
                                                         >
                                                             <input
                                                                 type="checkbox"
                                                                 checked={masterOTPState.label === 'On'}
-                                                                onChange={() => { }} // Prevent default checkbox behavior
+                                                                onChange={() => {}}
                                                                 disabled={!canEditEmployees}
-                                                                style={{ pointerEvents: 'none' }} // Disable direct clicks on checkbox
+                                                                style={{ pointerEvents: 'none' }}
                                                             />
                                                             <span className={`state ${masterOTPState.label.toLowerCase()}`}>
                                                                 {masterOTPState.label}
@@ -1990,12 +1941,12 @@ const AllEmployees = () => {
                                                         </div>
                                                     </div>
                                                 </th>
-                                                <th className="bg-white px-4 py-3 text-md font-extrabold text-[#03b0f5] uppercase tracking-wider">
+                                                <th className="hrms-table-th">
                                                     Actions
                                                 </th>
                                             </tr>
                                         </thead>
-                                        <tbody className="bg-black">
+                                        <tbody>
                                             {employees.filter(employee => {
                                                 // NOTE: Locked-role employees are NOT hidden — they remain visible
                                                 // but cannot be opened (blocked in handleRowClick)
@@ -2038,24 +1989,23 @@ const AllEmployees = () => {
                                             }).map((employee, index) => {
                                                 const joinDate = formatJoiningDate(employee.joining_date);
                                                 const isActive = employee.employee_status === 'active';
-                                                const loginEnabled = employee.login_enabled;
-                                                const otpRequired = employee.otp_required === true;
-                                                const SUPER_ADMIN_ROLE_ID = "685292be8d7cdc3a71c4829b";
+                                                const loginEnabled = isLoginEnabled(employee);
+                                                const otpRequired = isOtpRequired(employee);
                                                 const isSuperAdminEmployee = employee.role_id === SUPER_ADMIN_ROLE_ID;
 
                                                 return (
                                                     <tr
                                                         key={employee._id}
                                                         onClick={(e) => handleRowClick(employee, e)}
-                                                        className="hover:bg-gray-900/50 transition cursor-pointer"
+                                                        className="hrms-table-row"
                                                     >
-                                                        <td className="text-md font-semibold py-2 px-4 whitespace-nowrap text-white">
+                                                        <td>
                                                             {index + 1}
                                                         </td>
-                                                        <td className="text-md font-semibold py-2 px-4 whitespace-nowrap text-white">
+                                                        <td>
                                                             {employee.employee_id ? employee.employee_id : 'No ID'}
                                                         </td>
-                                                        <td className="text-md font-semibold py-2 px-4 whitespace-nowrap text-white">
+                                                        <td>
                                                             {joinDate !== '-' ? (
                                                                 <>
                                                                     <span>{joinDate.formatted}</span>
@@ -2066,50 +2016,48 @@ const AllEmployees = () => {
                                                                 '-'
                                                             )}
                                                         </td>
-                                                        <td className="text-md font-semibold py-2 px-4 whitespace-nowrap text-white">
-                                                            <div className="flex items-center gap-3">
-                                                                <div className="w-10 h-10 rounded-md overflow-hidden bg-gradient-to-r from-blue-500 to-purple-600 flex items-center justify-center text-white font-bold text-sm">
+                                                        <td className="hrms-name-cell">
+                                                            <div className="cell-name-wrap">
+                                                                <div className="cell-avatar">
                                                                     {employee.profile_photo ? (
                                                                         <img
                                                                             src={getProfilePictureUrlWithCacheBusting(employee.profile_photo)}
                                                                             alt={`${employee.first_name} ${employee.last_name}`}
-                                                                            className="w-full h-full object-cover"
                                                                             onError={(e) => {
-                                                                                // Fallback to initials if image fails to load
                                                                                 e.target.style.display = 'none';
-                                                                                e.target.nextSibling.style.display = 'flex';
+                                                                                if (e.target.nextSibling) e.target.nextSibling.style.display = 'flex';
                                                                             }}
                                                                         />
                                                                     ) : null}
-                                                                    <span style={{ display: employee.profile_photo ? 'none' : 'flex' }}>
-                                                                        {employee.first_name ? employee.first_name.charAt(0).toUpperCase() : "?"}
+                                                                    <span className="cell-avatar-fallback" style={{ display: employee.profile_photo ? 'none' : 'flex' }}>
+                                                                        {employee.first_name ? employee.first_name.charAt(0).toUpperCase() : '?'}
                                                                     </span>
                                                                 </div>
-                                                                <span>{`${employee.first_name || ''} ${employee.last_name || ''}`}</span>
+                                                                <span className="cell-name-text">{`${employee.first_name || ''} ${employee.last_name || ''}`.trim() || 'Unnamed'}</span>
                                                             </div>
                                                         </td>
-                                                        <td className="text-md font-semibold py-2 px-4 whitespace-nowrap text-white">
+                                                        <td>
                                                             {employee.gender || 'Not Specified'}
                                                         </td>
-                                                        <td className="text-md font-semibold py-2 px-4 whitespace-nowrap text-white">
+                                                        <td>
                                                             {employee.designation || employee.position || 'Not Specified'}
                                                         </td>
-                                                        <td className="text-md font-semibold py-2 px-4 whitespace-nowrap text-white">
+                                                        <td>
                                                             {departments[employee.department_id] || employee.department_name || 'Not Specified'}
                                                         </td>
-                                                        <td className="text-md font-semibold py-2 px-4 whitespace-nowrap text-white">
+                                                        <td>
                                                             {roles[employee.role_id] || employee.role_name || 'Not Specified'}
                                                         </td>
-                                                        <td className="text-md font-semibold py-2 px-4 whitespace-nowrap text-white">
+                                                        <td>
                                                             {employee.highest_qualification || 'Not Specified'}
                                                         </td>
-                                                        <td className="text-md font-semibold py-2 px-4 whitespace-nowrap text-white">
+                                                        <td>
                                                             {employee.current_city || employee.city || 'Not Specified'}
                                                         </td>
-                                                        <td className="text-md font-semibold py-2 px-4 whitespace-nowrap text-white">
+                                                        <td>
                                                             {employee.experience_level || 'Not Specified'}
                                                         </td>
-                                                        <td className="text-md font-semibold py-2 px-4 whitespace-nowrap text-white">
+                                                        <td>
                                                             <label className="switch">
                                                                 <input
                                                                     type="checkbox"
@@ -2132,7 +2080,7 @@ const AllEmployees = () => {
                                                                 </span>
                                                             </label>
                                                         </td>
-                                                        <td className="text-md font-semibold py-2 px-4 whitespace-nowrap text-white">
+                                                        <td>
                                                             <label className="switch">
                                                                 <input
                                                                     type="checkbox"
@@ -2155,7 +2103,7 @@ const AllEmployees = () => {
                                                                 </span>
                                                             </label>
                                                         </td>
-                                                        <td className="text-md font-semibold py-2 px-4 whitespace-nowrap text-white">
+                                                        <td>
                                                             <label className="switch">
                                                                 <input
                                                                     type="checkbox"
@@ -2177,7 +2125,7 @@ const AllEmployees = () => {
                                                                 </span>
                                                             </label>
                                                         </td>
-                                                        <td className="text-md font-semibold py-2 px-4 whitespace-nowrap text-white">
+                                                        <td>
                                                             <div className="flex items-center gap-2">
 
                                                             {(() => {
@@ -2186,6 +2134,8 @@ const AllEmployees = () => {
 
                                                                 return canUserDelete(employee._id) ? (
                                                                     <button
+                                                                        type="button"
+                                                                        className="hrms-action-btn"
                                                                         onClick={(e) => {
                                                                             console.log('🗑️ Delete button clicked!', employee);
                                                                             e.preventDefault();
@@ -2195,21 +2145,9 @@ const AllEmployees = () => {
                                                                             }
                                                                         }}
                                                                         disabled={isSuperAdmin}
-                                                                        className={`rounded-full p-2 transition-all duration-200 flex items-center justify-center ${isSuperAdmin
-                                                                            ? 'text-gray-400 cursor-not-allowed opacity-50'
-                                                                            : 'text-red-500 hover:text-red-700 hover:bg-red-50'
-                                                                            }`}
-                                                                        style={{
-                                                                            backgroundColor: isSuperAdmin
-                                                                                ? 'rgba(156, 163, 175, 0.1)'
-                                                                                : 'rgba(239, 68, 68, 0.1)',
-                                                                            border: isSuperAdmin
-                                                                                ? '1px solid rgba(156, 163, 175, 0.3)'
-                                                                                : '1px solid rgba(239, 68, 68, 0.3)'
-                                                                        }}
-                                                                        title={isSuperAdmin ? "Cannot delete Super Admin" : "Delete Employee"}
+                                                                        title={isSuperAdmin ? 'Cannot delete Super Admin' : 'Delete Employee'}
                                                                     >
-                                                                        <DeleteOutlined style={{ fontSize: '16px' }} />
+                                                                        <DeleteOutlined style={{ fontSize: '14px' }} />
                                                                     </button>
                                                                 ) : null;
                                                             })()}
@@ -2223,10 +2161,11 @@ const AllEmployees = () => {
                                 </div>
                             </div>
                         ) : (
-                            <div className="text-center py-20" style={{ background: 'black', color: '#c9d1d9' }}>
-                                <div className="text-gray-400 text-lg">
-                                    {activeTab === 'active' ? 'No active employees found' : 'No inactive employees found'}
-                                </div>
+                            <div className="task-empty-state">
+                                <p className="task-empty-state-title">
+                                    {activeTab === 'active' ? 'No active employees' : 'No inactive employees'}
+                                </p>
+                                <p className="task-empty-state-sub">Try adjusting your search or filters.</p>
                             </div>
                         )}
                     </div>
@@ -2236,7 +2175,7 @@ const AllEmployees = () => {
                         title={null}
                         open={formVisible}
                         onCancel={handleFormCancel}
-                        width={920}
+                        width={1400}
                         footer={null}
                         destroyOnHidden={true}
                         centered

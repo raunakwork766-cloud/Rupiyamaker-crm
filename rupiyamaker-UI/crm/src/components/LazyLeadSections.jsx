@@ -27,6 +27,7 @@ const TaskComponent = createLazyComponent(() => import('./sections/TaskSectionIn
 const LeadActivity = createLazyComponent(() => import('./LeadActivity'), 'LeadActivity');
 const CopyLeadSection = createLazyComponent(() => import('./sections/CopyLeadSection'), 'CopyLeadSection');
 const RemarkSection = createLazyComponent(() => import('./Remark'), 'RemarkSection');
+const LeadSidePanel = createLazyComponent(() => import('./LeadSidePanel'), 'LeadSidePanel');
 const FileSentToLoginSection = createLazyComponent(() => import('./sections/FileSentToLoginSection'), 'FileSentToLoginSection');
 const ReassignmentPanel = createLazyComponent(() => import('./sections/ReassignmentPanel'), 'ReassignmentPanel');
 const RequestReassignmentButton = createLazyComponent(() => import('./sections/RequestReassignmentButton'), 'RequestReassignmentButton');
@@ -133,6 +134,7 @@ export {
     LeadActivity,
     CopyLeadSection,
     RemarkSection,
+    LeadSidePanel,
     FileSentToLoginSection,
     ReassignmentPanel,
     RequestReassignmentButton,

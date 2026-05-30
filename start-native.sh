@@ -27,7 +27,7 @@ print_message $BLUE "====================================="
 # Configuration
 FRONTEND_PORT=5902
 BACKEND_PORT=8049
-DOMAIN="crm.rupiyamakercrm.online"
+DOMAIN="crm.fixyourfinance.ai"
 PROJECT_DIR="/www/wwwroot/rupiyamaker/RupiyaMe"
 
 # Check if we're in the right directory

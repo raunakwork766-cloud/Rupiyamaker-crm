@@ -16,11 +16,11 @@ from app.database.Users import UsersDB
 from app.database.Roles import RolesDB
 from app.database.Tasks import TasksDB
 from app.database.LoanTypes import LoanTypesDB
-from app.schemas.lead_schemas import LeadBase, LeadCreate, LeadUpdate, LeadInDB, NoteCreate
+from app.schemas.lead_schemas import LeadBase, LeadCreate, LeadUpdate, LeadInDB, NoteCreate, NoteUpdate
 from app.schemas.task_schemas import TaskCreate
 from app.utils.common_utils import ObjectIdStr, convert_object_id
-from app.utils.permissions import check_permission, get_user_capabilities, get_user_permissions, get_user_role
-from app.utils.permission_helpers import is_super_admin_permission
+from app.utils.permissions import check_permission, get_user_capabilities, get_user_permissions, get_user_role, is_admin
+from app.utils.permission_helpers import is_super_admin_permission, has_super_admin_permissions
 from app.utils.performance_cache import (
     cached_response, cache_user_permissions, get_cached_user_permissions,
     performance_monitor, invalidate_cache_pattern, cache_response, get_cached_response
@@ -576,8 +576,12 @@ async def send_lead_to_login_department(
                     
                     print(f"📝 Processing note - original lead_id field: {note_copy.get('lead_id')}")
                     
-                    # Update to reference login lead instead of original lead
-                    note_copy['login_lead_id'] = note_copy.pop('lead_id', lead_id)
+                    # Point copied note at the NEW login lead document (not the original lead id).
+                    # Bugfix: previously `login_lead_id` was set from `pop('lead_id', ...)`, which kept
+                    # the *original* CRM lead id — but get_lead_notes(login) queries by the login lead's _id,
+                    # so copied remarks never appeared in Login CRM.
+                    note_copy.pop('lead_id', None)
+                    note_copy['login_lead_id'] = login_lead_id
                     
                     print(f"📝 After conversion - login_lead_id: {note_copy.get('login_lead_id')}")
                     
@@ -1269,6 +1273,9 @@ async def get_login_lead_notes(
     # Get notes using the LoginLeadsDB method
     notes = await login_leads_db.get_lead_notes(login_lead_id, skip, limit)
     
+    permissions = await get_user_permissions(user_id, users_db, roles_db)
+    requester_is_super_admin = has_super_admin_permissions(permissions) or await is_admin(user_id, users_db, roles_db)
+    
     # Convert ObjectIds to strings and enhance with user info
     enhanced_notes = []
     for note in notes:
@@ -1280,18 +1287,13 @@ async def get_login_lead_notes(
             if creator:
                 note_dict["creator_name"] = f"{creator.get('first_name', '')} {creator.get('last_name', '')}"
         
-        # Check if user can edit/delete this note
-        permissions = await get_user_permissions(user_id, users_db, roles_db)
-        
-        # User can edit if they created the note or have edit permission
-        can_edit = note.get("created_by") == user_id or any(
+        can_edit = note.get("created_by") == user_id or requester_is_super_admin or any(
             perm["page"] in ["leads", "login"] and ("create" in perm["actions"] or "*" in perm["actions"])
             for perm in permissions
         )
         note_dict["can_edit"] = can_edit
         
-        # User can delete if they created the note or have delete permission
-        can_delete = note.get("created_by") == user_id or any(
+        can_delete = note.get("created_by") == user_id or requester_is_super_admin or any(
             perm["page"] in ["leads", "login"] and ("delete" in perm["actions"] or "*" in perm["actions"])
             for perm in permissions
         )
@@ -1300,6 +1302,113 @@ async def get_login_lead_notes(
         enhanced_notes.append(note_dict)
     
     return enhanced_notes
+
+@router.put("/login-leads/{login_lead_id}/notes/{note_id}", response_model=Dict[str, str])
+async def update_login_lead_note(
+    login_lead_id: str,
+    note_id: str,
+    note_update: NoteUpdate,
+    user_id: str = Query(..., description="ID of the user making the request"),
+    login_leads_db = Depends(get_login_leads_db),
+    users_db: UsersDB = Depends(get_users_db),
+    roles_db: RolesDB = Depends(get_roles_db)
+):
+    """Update a note on a login lead"""
+    lead = await login_leads_db.get_login_lead(login_lead_id)
+    if not lead:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Login lead with ID {login_lead_id} not found"
+        )
+
+    note = await login_leads_db.get_note(note_id)
+    if not note:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Note with ID {note_id} not found"
+        )
+
+    if note.get("login_lead_id") != login_lead_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Note does not belong to this login lead"
+        )
+
+    permissions = await get_user_permissions(user_id, users_db, roles_db)
+    requester_is_super_admin = has_super_admin_permissions(permissions) or await is_admin(user_id, users_db, roles_db)
+    can_edit = note.get("created_by") == user_id or requester_is_super_admin or any(
+        perm["page"] in ["leads", "login"] and ("create" in perm["actions"] or "*" in perm["actions"])
+        for perm in permissions
+    )
+
+    if not can_edit:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You don't have permission to edit this note"
+        )
+
+    update_dict = {k: v for k, v in note_update.dict().items() if v is not None}
+    success = await login_leads_db.update_note(note_id, update_dict, user_id)
+
+    if not success:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to update note"
+        )
+
+    return {"message": "Note updated successfully"}
+
+@router.delete("/login-leads/{login_lead_id}/notes/{note_id}", response_model=Dict[str, str])
+async def delete_login_lead_note(
+    login_lead_id: str,
+    note_id: str,
+    user_id: str = Query(..., description="ID of the user making the request"),
+    login_leads_db = Depends(get_login_leads_db),
+    users_db: UsersDB = Depends(get_users_db),
+    roles_db: RolesDB = Depends(get_roles_db)
+):
+    """Delete a note from a login lead"""
+    lead = await login_leads_db.get_login_lead(login_lead_id)
+    if not lead:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Login lead with ID {login_lead_id} not found"
+        )
+
+    note = await login_leads_db.get_note(note_id)
+    if not note:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Note with ID {note_id} not found"
+        )
+
+    if note.get("login_lead_id") != login_lead_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Note does not belong to this login lead"
+        )
+
+    permissions = await get_user_permissions(user_id, users_db, roles_db)
+    requester_is_super_admin = has_super_admin_permissions(permissions) or await is_admin(user_id, users_db, roles_db)
+    can_delete = note.get("created_by") == user_id or requester_is_super_admin or any(
+        perm["page"] in ["leads", "login"] and ("delete" in perm["actions"] or "*" in perm["actions"])
+        for perm in permissions
+    )
+
+    if not can_delete:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You don't have permission to delete this note"
+        )
+
+    success = await login_leads_db.delete_note(note_id, user_id)
+    if not success:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to delete note"
+        )
+
+    return {"message": "Note deleted successfully"}
 
 @router.get("/login-leads/{login_lead_id}/documents", response_model=List[Dict[str, Any]])
 async def get_login_lead_documents(

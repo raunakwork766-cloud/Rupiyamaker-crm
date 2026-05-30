@@ -1,6 +1,11 @@
 import { useState, useEffect, useRef } from "react";
 import { isSuperAdmin, getUserPermissions } from '../../utils/permissions';
 import { formatDateTimeIST } from '../../utils/timezoneUtils';
+import {
+  LEAD_FIELD_LABEL_CLASS,
+  LEAD_FIELD_LABEL_STYLE,
+  LEAD_SECTION_CARD_CLASS,
+} from './leadSectionStyles';
 
 // API base URL - Use proxy in development
 const API_BASE_URL = '/api'; // Always use proxy
@@ -188,14 +193,15 @@ export default function AboutSection({ lead, onSave, canEdit = true }) {
   const [canEditAlternateNumber, setCanEditAlternateNumber] = useState(false);
   const [isUserSuperAdmin, setIsUserSuperAdmin] = useState(false);
   const [canViewDataCode, setCanViewDataCode] = useState(false);
+  // Source Name: only Super Admin may change after lead creation (same rule as Created By / Lead Date)
+  const canEditSourceName = canEdit && isUserSuperAdmin;
   
   // Auto-save feedback state
   const [saveStatus, setSaveStatus] = useState('');
   const [isSaving, setIsSaving] = useState(false);
   
-  // Label styling (matching LoginFormSection)
-  const labelClass = "block font-semibold mb-1 uppercase tracking-wide";
-  const labelStyle = { color: "#374151", fontWeight: 600, fontSize: "11px" };
+  const labelClass = LEAD_FIELD_LABEL_CLASS;
+  const labelStyle = LEAD_FIELD_LABEL_STYLE;
   
   // Validation states
   const [validationErrors, setValidationErrors] = useState({});
@@ -240,6 +246,7 @@ export default function AboutSection({ lead, onSave, canEdit = true }) {
   const campaignTriggerRef = useRef(null);
   const assignInlineDropdownRef = useRef(null);
   const assignInlineTriggerRef = useRef(null);
+  const lastServerCampaignRef = useRef(null);
 
   // Close Campaign/Source dropdown on outside click
   useEffect(() => {
@@ -347,57 +354,32 @@ export default function AboutSection({ lead, onSave, canEdit = true }) {
     createdDate: lead?.created_at || lead?.created_date || "",
   }));
   
-  // Update local state if the lead prop changes from parent
+  // Update local state when switching to a different lead
   useEffect(() => {
-    // For dummy data, ensure we don't crash if lead prop is undefined
-    if (lead) {
-      console.log('📊 AboutSection: Updating fields from lead data:', lead);
-      
-      // CRITICAL FIX: Preserve existing field values when updating from lead
-      // This prevents fields from being cleared when one field is updated
-      setFields(prevFields => {
-        return {
-          id: extractFieldValue('id') || prevFields.id,
-          productName: extractFieldValue('productName') || prevFields.productName,
-          loanTypeId: extractFieldValue('loanTypeId') || prevFields.loanTypeId,
-          loan_type: extractFieldValue('loan_type') || prevFields.loan_type,
-          loan_type_id: extractFieldValue('loan_type_id') || prevFields.loan_type_id,
-          loan_type_name: extractFieldValue('loan_type_name') || prevFields.loan_type_name,
-          campaignName: extractFieldValue('campaignName') || prevFields.campaignName,
-          dataCode: extractFieldValue('dataCode') || prevFields.dataCode,
-          customerName: extractFieldValue('customerName') || prevFields.customerName,
-          mobileNumber: extractFieldValue('mobileNumber') || prevFields.mobileNumber,
-          alternateNumber: extractFieldValue('alternateNumber') || prevFields.alternateNumber,
-          pincode_city: extractFieldValue('pincode_city') || prevFields.pincode_city,
-          createdDate: extractFieldValue('createdDate') || prevFields.createdDate,
-        };
-      });
-      
-      console.log('📊 AboutSection: Fields updated to:', {
-        id: extractFieldValue('id'),
-        productName: extractFieldValue('productName'),
-        campaignName: extractFieldValue('campaignName'),
-        dataCode: extractFieldValue('dataCode'),
-        customerName: extractFieldValue('customerName'),
-        mobileNumber: extractFieldValue('mobileNumber'),
-        alternateNumber: extractFieldValue('alternateNumber'),
-        pincode_city: extractFieldValue('pincode_city'),
-      });
-      
-      // 🔍 Detailed debugging for campaign_name and data_code
-      console.log('🔍 Campaign Name Debug:', {
-        'lead.campaign_name': lead.campaign_name,
-        'lead.campaignName': lead.campaignName,
-        'extracted': extractFieldValue('campaignName')
-      });
-      console.log('🔍 Data Code Debug:', {
-        'lead.data_code': lead.data_code,
-        'lead.dataCode': lead.dataCode,
-        'extracted': extractFieldValue('dataCode')
-      });
-      
-      // Parse assigned to data
-      if (lead.assigned_to) {
+    if (!lead?._id) return;
+    lastServerCampaignRef.current = lead.campaign_name || lead.campaignName || null;
+    setFields({
+      id: extractFieldValue('id'),
+      productName: extractFieldValue('productName'),
+      loanTypeId: extractFieldValue('loanTypeId'),
+      loan_type: extractFieldValue('loan_type'),
+      loan_type_id: extractFieldValue('loan_type_id'),
+      loan_type_name: extractFieldValue('loan_type_name'),
+      campaignName: extractFieldValue('campaignName'),
+      dataCode: extractFieldValue('dataCode'),
+      customerName: extractFieldValue('customerName'),
+      mobileNumber: extractFieldValue('mobileNumber'),
+      alternateNumber: extractFieldValue('alternateNumber'),
+      pincode_city: extractFieldValue('pincode_city'),
+      createdDate: extractFieldValue('createdDate'),
+    });
+  }, [lead?._id]);
+
+  // Parse assignment fields when lead assignment data changes
+  useEffect(() => {
+    if (!lead) return;
+
+    if (lead.assigned_to) {
         let assignedToData = [];
         try {
           console.log('Raw assigned_to data:', lead.assigned_to);
@@ -527,9 +509,8 @@ export default function AboutSection({ lead, onSave, canEdit = true }) {
         if (assignableUsers.length > 0) {
           updateAssignedUsersWithNames(lead.assigned_to, lead.assign_report_to, assignableUsers);
         }
-      }
     }
-  }, [lead]);
+  }, [lead?._id, lead?.assigned_to, lead?.assign_report_to, assignableUsers]);
 
   // Fetch dropdown data on component mount
   useEffect(() => {
@@ -543,10 +524,12 @@ export default function AboutSection({ lead, onSave, canEdit = true }) {
     fetchDepartments();
   }, []);
 
-  // Close dropdowns when clicking outside
+  // Close dropdowns when clicking outside (must match .dropdown-container on each dropdown root)
   useEffect(() => {
     const handleClickOutside = (event) => {
-      if (!event.target.closest('.dropdown-container')) {
+      const inDropdown = event.target.closest('.dropdown-container');
+      const inCampaign = campaignDropdownRef.current?.contains(event.target);
+      if (!inDropdown && !inCampaign) {
         setShowProductDropdown(false);
         setShowCampaignDropdown(false);
         setShowDataCodeDropdown(false);
@@ -800,6 +783,12 @@ export default function AboutSection({ lead, onSave, canEdit = true }) {
       if (hasSuperAdminPermissions) {
         isSuperAdminUser = true;
       }
+    }
+    
+    // Super Admin role name from login payload (covers users whose display title differs)
+    const user = JSON.parse(localStorage.getItem('user') || '{}');
+    if (!isSuperAdminUser && user.role?.name?.toLowerCase() === 'super admin') {
+      isSuperAdminUser = true;
     }
     
     setIsUserSuperAdmin(isSuperAdminUser);
@@ -1216,6 +1205,10 @@ export default function AboutSection({ lead, onSave, canEdit = true }) {
     console.log(`🔍 AboutSection: handleBlur called for field: ${field}, value: ${value}`);
     console.log(`🔍 Current field value: ${fields[field]}`);
     console.log(`🔍 Original lead value: ${getOriginalValue(field)}`);
+
+    if (field === 'campaignName' && !canEditSourceName) {
+      return;
+    }
     
     // Get the original value from the lead data to compare against
     const originalValue = getOriginalValue(field);
@@ -1326,6 +1319,9 @@ export default function AboutSection({ lead, onSave, canEdit = true }) {
         }
       }
       // For all other fields, send minimal payload
+      else if (field === 'campaignName') {
+        updatePayload = { campaign_name: value, campaignName: value };
+      }
       else {
         updatePayload = { [apiField]: value };
       }
@@ -1404,6 +1400,47 @@ export default function AboutSection({ lead, onSave, canEdit = true }) {
     } catch (error) {
       console.error('Error saving createdBy:', error);
       setSaveStatus('❌ Save failed');
+      setTimeout(() => setSaveStatus(''), 5000);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  // Dedicated handler for Source Name dropdown (avoids useEffect overwriting local selection)
+  const handleCampaignSelect = async (campaignName) => {
+    if (!canEditSourceName) return;
+
+    const originalValue = getOriginalValue('campaignName');
+    if (campaignName === originalValue) {
+      setShowCampaignDropdown(false);
+      setCampaignSearchTerm('');
+      return;
+    }
+
+    const updatePayload = { campaign_name: campaignName };
+    setShowCampaignDropdown(false);
+    setCampaignSearchTerm('');
+    setIsSaving(true);
+    setSaveStatus('💾 Saving...');
+
+    try {
+      setFields(prev => ({ ...prev, campaignName }));
+
+      // Always persist via direct API (reliable); then sync parent state without a second PUT
+      await saveToAPI('campaignName', campaignName, updatePayload);
+      lastServerCampaignRef.current = campaignName;
+
+      if (onSave && typeof onSave === 'function') {
+        await onSave({ ...updatePayload, _localOnly: true });
+      }
+
+      setSaveStatus('✅ Saved successfully!');
+      setTimeout(() => setSaveStatus(''), 3000);
+    } catch (error) {
+      console.error('Error saving campaignName:', error);
+      lastServerCampaignRef.current = originalValue;
+      setFields(prev => ({ ...prev, campaignName: originalValue }));
+      setSaveStatus(`❌ Save failed: ${error.message || 'Unknown error'}`);
       setTimeout(() => setSaveStatus(''), 5000);
     } finally {
       setIsSaving(false);
@@ -1511,6 +1548,12 @@ export default function AboutSection({ lead, onSave, canEdit = true }) {
 
         const responseData = await response.json();
         console.log(`✅ AboutSection: Successfully saved ${field} via updatePayload:`, responseData);
+
+        const savedCampaign = responseData?.campaign_name || responseData?.campaignName;
+        if (savedCampaign) {
+          lastServerCampaignRef.current = savedCampaign;
+          setFields(prev => ({ ...prev, campaignName: savedCampaign }));
+        }
         
         // Fetch updated lead data to refresh the UI and keep it in sync
         try {
@@ -1536,7 +1579,7 @@ export default function AboutSection({ lead, onSave, canEdit = true }) {
               loan_type: updatedLeadData.loan_type || prevFields.loan_type,
               loan_type_id: updatedLeadData.loan_type_id || prevFields.loan_type_id,
               loan_type_name: updatedLeadData.loan_type_name || updatedLeadData.loan_type || prevFields.loan_type_name,
-              campaignName: updatedLeadData.campaign_name || prevFields.campaignName,
+              campaignName: savedCampaign || updatedLeadData.campaign_name || updatedLeadData.campaignName || prevFields.campaignName,
               dataCode: updatedLeadData.data_code || prevFields.dataCode,
               customerName: updatedLeadData.name || prevFields.customerName,
               mobileNumber: updatedLeadData.mobile_number || updatedLeadData.phone || prevFields.mobileNumber,
@@ -1833,7 +1876,7 @@ export default function AboutSection({ lead, onSave, canEdit = true }) {
   };
 
   return (
-    <div className="p-4 rounded-xl border border-cyan-300/40 bg-white shadow-md text-[0.9rem] relative overflow-visible">
+    <div className={LEAD_SECTION_CARD_CLASS}>
       <div className="absolute -right-12 -top-10 w-40 h-40 bg-white rounded-full blur-2xl" />
       <div className="absolute -left-16 top-20 w-28 h-28 bg-white rounded-full blur-2xl" />
       
@@ -2032,20 +2075,19 @@ export default function AboutSection({ lead, onSave, canEdit = true }) {
           </div>
           <div className="flex flex-col gap-1">
             <label className={labelClass} style={labelStyle}>SOURCE NAME</label>
-            <div ref={campaignDropdownRef} className="relative w-full">
+            {canEditSourceName ? (
+            <div ref={campaignDropdownRef} className="relative w-full dropdown-container">
               <div
                 ref={campaignTriggerRef}
-                className={`w-full p-2 border border-[#00bcd4] rounded-md text-green-600 text-md font-bold min-h-[40px] flex items-center cursor-pointer transition-all duration-300 hover:border-[#0097a7] ${!canEdit ? 'bg-gray-100 cursor-not-allowed' : 'bg-white'}`}
+                className="w-full p-2 border border-[#00bcd4] rounded-md text-green-600 text-md font-bold min-h-[40px] flex items-center cursor-pointer transition-all duration-300 hover:border-[#0097a7] bg-white"
                 onClick={() => {
-                  if (canEdit) {
-                    setShowProductDropdown(false);
-                    setShowDataCodeDropdown(false);
-                    if (!showCampaignDropdown && campaignTriggerRef.current) {
-                      const rect = campaignTriggerRef.current.getBoundingClientRect();
-                      setCampaignOpenUpward(window.innerHeight - rect.bottom < 280);
-                    }
-                    setShowCampaignDropdown(prev => !prev);
+                  setShowProductDropdown(false);
+                  setShowDataCodeDropdown(false);
+                  if (!showCampaignDropdown && campaignTriggerRef.current) {
+                    const rect = campaignTriggerRef.current.getBoundingClientRect();
+                    setCampaignOpenUpward(window.innerHeight - rect.bottom < 280);
                   }
+                  setShowCampaignDropdown(prev => !prev);
                 }}
               >
                 <span className={fields.campaignName ? 'text-green-600 font-bold' : 'text-gray-400 font-normal text-sm'}>
@@ -2055,7 +2097,7 @@ export default function AboutSection({ lead, onSave, canEdit = true }) {
                   <svg className={`w-5 h-5 text-green-600 transition-transform duration-200 ${showCampaignDropdown ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
                 </div>
               </div>
-              {showCampaignDropdown && canEdit && (
+              {showCampaignDropdown && (
                 <div className={`absolute z-[500] left-0 right-0 bg-white border-2 border-[#00bcd4] rounded-lg shadow-xl overflow-hidden ${campaignOpenUpward ? 'bottom-full mb-1' : 'top-full mt-1'}`}>
                   <div className="p-2 border-b border-gray-100">
                     <div className="relative">
@@ -2077,11 +2119,10 @@ export default function AboutSection({ lead, onSave, canEdit = true }) {
                         <div
                           key={campaign._id}
                           className={`px-3 py-2.5 cursor-pointer text-sm font-medium transition-colors ${fields.campaignName === campaign.name ? 'bg-[#03B0F5] text-white font-bold' : 'hover:bg-[#e0f7fa] text-black'}`}
-                          onClick={() => {
-                            handleChange("campaignName", campaign.name);
-                            handleBlur("campaignName", campaign.name);
-                            setShowCampaignDropdown(false);
-                            setCampaignSearchTerm('');
+                          onMouseDown={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            handleCampaignSelect(campaign.name);
                           }}
                         >
                           {campaign.name}
@@ -2096,6 +2137,16 @@ export default function AboutSection({ lead, onSave, canEdit = true }) {
                 </div>
               )}
             </div>
+            ) : (
+              <div
+                className="w-full p-2 border border-[#00bcd4] rounded-md bg-gray-100 min-h-[40px] flex items-center"
+                title="Only Super Admin can change Source Name after lead creation"
+              >
+                <span className="text-green-600 text-md font-bold">
+                  {fields.campaignName || 'N/A'}
+                </span>
+              </div>
+            )}
           </div>
           {canViewDataCode && (
           <div className="flex flex-col gap-1">

@@ -1,0 +1,465 @@
+/* HubSpot-style Reports UI */
+.hs-reports-page {
+  display: flex;
+  height: calc(100dvh - 4rem);
+  max-height: calc(100dvh - 4rem);
+  background: #eaf0f6;
+  color: #33475b;
+  font-family: 'Lexend Deca', -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+  overflow: hidden;
+}
+
+.hs-reports-sidebar {
+  width: 240px;
+  flex-shrink: 0;
+  background: #fff;
+  border-right: 1px solid #cbd6e2;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.hs-reports-sidebar-head {
+  padding: 20px 20px 16px;
+  border-bottom: 1px solid #eaf0f6;
+}
+
+.hs-reports-sidebar-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0;
+  font-size: 20px;
+  font-weight: 600;
+  color: #33475b;
+  line-height: 1.2;
+}
+
+.hs-reports-sidebar-title svg {
+  color: #0091ae;
+  font-size: 22px;
+}
+
+.hs-reports-sidebar-sub {
+  margin: 6px 0 0;
+  font-size: 12px;
+  color: #516f90;
+  line-height: 1.4;
+}
+
+.hs-reports-sidebar-nav {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px 0 16px;
+}
+
+.hs-reports-group-label {
+  padding: 14px 20px 6px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #516f90;
+}
+
+.hs-reports-nav-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: calc(100% - 16px);
+  margin: 2px 8px;
+  padding: 10px 12px;
+  border: none;
+  border-radius: 3px;
+  background: transparent;
+  color: #33475b;
+  font-size: 14px;
+  font-weight: 500;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.hs-reports-nav-item:hover {
+  background: #eaf0f6;
+  color: #0091ae;
+}
+
+.hs-reports-nav-item.active {
+  background: #e5f5f8;
+  color: #0091ae;
+  font-weight: 600;
+  box-shadow: inset 3px 0 0 #0091ae;
+}
+
+.hs-reports-nav-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  font-size: 15px;
+  flex-shrink: 0;
+}
+
+.hs-reports-nav-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.hs-reports-nav-count {
+  flex-shrink: 0;
+  min-width: 22px;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: 10px;
+  background: #eaf0f6;
+  color: #516f90;
+  font-size: 11px;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.hs-reports-nav-item.active .hs-reports-nav-count {
+  background: #cce5eb;
+  color: #0091ae;
+}
+
+.hs-reports-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  padding: 20px 24px 24px;
+  gap: 16px;
+}
+
+.hs-reports-topbar {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  flex-shrink: 0;
+}
+
+.hs-reports-breadcrumb {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  font-size: 13px;
+  color: #516f90;
+}
+
+.hs-reports-breadcrumb-root {
+  color: #0091ae;
+  font-weight: 500;
+}
+
+.hs-reports-breadcrumb-sep {
+  color: #99acc2;
+}
+
+.hs-reports-breadcrumb-current {
+  color: #33475b;
+  font-weight: 600;
+}
+
+.hs-reports-record-count {
+  margin-left: 4px;
+  color: #516f90;
+  font-weight: 500;
+}
+
+.hs-reports-top-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.hs-reports-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 36px;
+  padding: 0 16px;
+  border-radius: 3px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+  white-space: nowrap;
+}
+
+.hs-reports-btn-secondary {
+  border: 1px solid #cbd6e2;
+  background: #fff;
+  color: #33475b;
+}
+
+.hs-reports-btn-secondary:hover:not(:disabled) {
+  background: #f5f8fa;
+  border-color: #99acc2;
+}
+
+.hs-reports-btn-primary {
+  border: 1px solid #ff7a59;
+  background: #ff7a59;
+  color: #fff;
+}
+
+.hs-reports-btn-primary:hover:not(:disabled) {
+  background: #ff8f73;
+  border-color: #ff8f73;
+}
+
+.hs-reports-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.hs-reports-metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  flex-shrink: 0;
+}
+
+.hs-reports-metric-card {
+  background: #fff;
+  border: 1px solid #cbd6e2;
+  border-radius: 3px;
+  padding: 16px 18px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+}
+
+.hs-reports-metric-value {
+  font-size: 28px;
+  font-weight: 600;
+  line-height: 1.1;
+  color: #33475b;
+}
+
+.hs-reports-metric-label {
+  margin-top: 4px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #516f90;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.hs-reports-metric-card.total .hs-reports-metric-value { color: #0091ae; }
+.hs-reports-metric-card.active .hs-reports-metric-value { color: #00a4bd; }
+.hs-reports-metric-card.completed .hs-reports-metric-value { color: #00865a; }
+.hs-reports-metric-card.pending .hs-reports-metric-value { color: #f5a623; }
+
+.hs-reports-panel {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: #fff;
+  border: 1px solid #cbd6e2;
+  border-radius: 3px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+  overflow: hidden;
+}
+
+.hs-reports-filters {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 14px 16px;
+  border-bottom: 1px solid #eaf0f6;
+  background: #fff;
+  flex-shrink: 0;
+}
+
+.hs-reports-filters-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-right: 4px;
+  font-size: 12px;
+  font-weight: 700;
+  color: #516f90;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.hs-reports-table-wrap {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 0 0 8px;
+}
+
+.hs-reports-table-wrap .ant-spin-nested-loading,
+.hs-reports-table-wrap .ant-spin-container {
+  height: 100%;
+}
+
+/* Ant Design overrides — HubSpot light table */
+.hs-reports-panel .ant-table-wrapper {
+  height: 100%;
+}
+
+.hs-reports-panel .ant-table {
+  background: #fff;
+  color: #33475b;
+  font-size: 13px;
+}
+
+.hs-reports-panel .ant-table-thead > tr > th {
+  background: #f5f8fa !important;
+  color: #516f90 !important;
+  font-size: 11px !important;
+  font-weight: 700 !important;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  border-bottom: 1px solid #cbd6e2 !important;
+  padding: 10px 12px !important;
+}
+
+.hs-reports-panel .ant-table-tbody > tr > td {
+  background: #fff !important;
+  color: #33475b !important;
+  border-bottom: 1px solid #eaf0f6 !important;
+  padding: 10px 12px !important;
+  font-size: 13px !important;
+}
+
+.hs-reports-panel .ant-table-tbody > tr:hover > td {
+  background: #f5f8fa !important;
+}
+
+.hs-reports-panel .ant-table-tbody > tr.ant-table-row-selected > td {
+  background: #e5f5f8 !important;
+}
+
+.hs-reports-panel .ant-select-selector,
+.hs-reports-panel .ant-input,
+.hs-reports-panel .ant-picker {
+  border-color: #cbd6e2 !important;
+  border-radius: 3px !important;
+  font-size: 13px !important;
+}
+
+.hs-reports-panel .ant-select-selector,
+.hs-reports-panel .ant-input,
+.hs-reports-panel .ant-picker,
+.hs-reports-panel .ant-picker-input input {
+  color: #33475b !important;
+}
+
+.hs-reports-panel .ant-pagination {
+  padding: 8px 16px 12px !important;
+  margin: 0 !important;
+}
+
+.hs-reports-panel .ant-pagination-item-active {
+  border-color: #0091ae !important;
+}
+
+.hs-reports-panel .ant-pagination-item-active a {
+  color: #0091ae !important;
+}
+
+.hs-reports-link {
+  color: #0091ae;
+  font-weight: 600;
+}
+
+.hs-reports-subtext {
+  font-size: 12px;
+  color: #516f90;
+}
+
+.hs-reports-amount {
+  color: #00865a;
+  font-weight: 600;
+}
+
+.hs-reports-modal .ant-modal-content {
+  border-radius: 3px;
+  overflow: hidden;
+  padding: 0;
+}
+
+.hs-reports-modal .ant-modal-header {
+  padding: 18px 24px;
+  margin: 0;
+  border-bottom: 1px solid #eaf0f6;
+  background: #fff;
+}
+
+.hs-reports-modal .ant-modal-title {
+  color: #33475b;
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.hs-reports-modal .ant-modal-body {
+  padding: 0 24px 24px;
+  background: #fff;
+}
+
+.hs-reports-modal .ant-tabs-tab {
+  color: #516f90 !important;
+  font-size: 13px !important;
+  font-weight: 600 !important;
+}
+
+.hs-reports-modal .ant-tabs-tab-active .ant-tabs-tab-btn {
+  color: #0091ae !important;
+}
+
+.hs-reports-modal .ant-tabs-ink-bar {
+  background: #0091ae !important;
+}
+
+.hs-reports-modal .ant-descriptions-bordered .ant-descriptions-item-label {
+  background: #f5f8fa !important;
+  color: #516f90 !important;
+  font-weight: 600;
+}
+
+.hs-reports-modal .ant-descriptions-bordered .ant-descriptions-item-content {
+  background: #fff !important;
+  color: #33475b !important;
+}
+
+@media (max-width: 1100px) {
+  .hs-reports-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 900px) {
+  .hs-reports-page {
+    flex-direction: column;
+    height: auto;
+    max-height: none;
+    min-height: calc(100dvh - 4rem);
+  }
+
+  .hs-reports-sidebar {
+    width: 100%;
+    border-right: none;
+    border-bottom: 1px solid #cbd6e2;
+    max-height: 220px;
+  }
+
+  .hs-reports-main {
+    padding: 16px;
+  }
+}

@@ -8,7 +8,7 @@ class Config:
     # Server Configuration
     HOST = os.getenv("HOST", "localhost")
     PORT = int(os.getenv("PORT", "8049"))
-    BASE_URL = os.getenv("BASE_URL", f"http://{HOST}:{PORT}")
+    BASE_URL = os.getenv("BASE_URL", "https://crm.fixyourfinance.ai")
     
     # Database Configuration
     # MONGO_URI = os.getenv("MONGO_URI", "mongodb+srv://raunak:3GqXjkB2Q040w4YG@rupiyamakler.htepor1.mongodb.net/?retryWrites=true&w=majority&appName=rupiyamakler")
@@ -20,5 +20,5 @@ class Config:
     DEBUG = os.getenv("DEBUG", "True").lower() == "true"
     
     # CORS Settings
-    ALLOWED_ORIGINS = os.getenv("ALLOWED_ORIGINS", "https://raunakcrm.bhoomitechzone.us:4521,https://raunakcrm.bhoomitechzone.us:3000").split(",")
+    ALLOWED_ORIGINS = os.getenv("ALLOWED_ORIGINS", "https://crm.fixyourfinance.ai").split(",")
     

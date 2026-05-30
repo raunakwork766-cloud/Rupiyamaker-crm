@@ -26,10 +26,15 @@ import { getProfilePictureUrlWithCacheBusting } from '../../utils/mediaUtils';
   /* Role card */
   .oc3-card {
     background:#0d1117; border:1.5px solid #21262d; border-left-width:3px;
-    border-radius:10px; min-width:160px; max-width:220px; width:max-content;
+    border-radius:10px; min-width:180px; max-width:240px; width:max-content;
     cursor:pointer;
-    transition: border-color .2s, box-shadow .15s, transform .15s;
+    transition: border-color .2s, box-shadow .15s, transform .15s, min-width .2s, max-width .2s;
     user-select:none;
+  }
+  .oc3-card.oc3-card--open {
+    min-width:340px;
+    max-width:380px;
+    width:340px;
   }
   .oc3-card:hover      { border-color:#4493f8 !important; box-shadow:0 0 0 3px rgba(68,147,248,.12); transform:translateY(-1px); }
   .oc3-card.sup        { border-color:rgba(245,158,11,.45) !important; }
@@ -62,6 +67,48 @@ import { getProfilePictureUrlWithCacheBusting } from '../../utils/mediaUtils';
     animation:oc3-pop .18s ease;
   }
   .oc3-av-popup img { width:100%; height:100%; object-fit:cover; display:block; }
+
+  /* Root layout — fill parent and scroll expanded member lists */
+  .oc3-root { display:flex; flex-direction:column; height:100%; min-height:0; background:#000; }
+  .oc3-canvas { flex:1; min-height:0; overflow:auto; -webkit-overflow-scrolling:touch; }
+
+  /* Member row toggle — compact on dark card */
+  .oc3-member-row {
+    display:flex; align-items:flex-start; gap:10px;
+    padding:10px 12px;
+    border-bottom:1px solid #161b22;
+  }
+  .oc3-member-row:nth-child(even) { background:rgba(255,255,255,.025); }
+  .oc3-member-info { flex:1; min-width:0; padding-right:6px; }
+  .oc3-member-name {
+    font-size:.83rem; font-weight:700; color:#e6edf3; margin-bottom:2px;
+    line-height:1.25; word-break:break-word;
+  }
+  .oc3-member-role { font-size:.74rem; color:#a0aec0; margin-bottom:4px; line-height:1.2; }
+  .oc3-member-id {
+    display:inline-block; font-size:.68rem; font-weight:700;
+    color:#60a5fa; background:rgba(96,165,250,.1);
+    border:1px solid rgba(96,165,250,.25); border-radius:4px;
+    padding:1px 6px; font-family:monospace; letter-spacing:.03em;
+  }
+  .oc3-member-toggle {
+    flex-shrink:0; display:flex; flex-direction:column; align-items:center;
+    gap:4px; margin-top:4px; min-width:58px;
+  }
+  .oc3-member-toggle input[type="checkbox"] {
+    width:40px !important; height:22px !important;
+  }
+  .oc3-member-toggle input[type="checkbox"]::before {
+    width:18px !important; height:18px !important;
+  }
+  .oc3-member-toggle input[type="checkbox"]:checked::before {
+    transform:translateX(18px) !important;
+  }
+  .oc3-member-toggle .state {
+    font-size:.68rem !important; min-width:auto !important;
+    text-align:center; line-height:1.1; white-space:nowrap;
+  }
+  .oc3-member-row--inactive { opacity:.55; }
 `;
     document.head.appendChild(s);
 })();
@@ -71,6 +118,24 @@ const isSuper  = (r) => (r.permissions || []).some(p => p.page === '*' || p.acti
 const initials = (f = '', l = '') => `${f[0] || ''}${l[0] || ''}`.toUpperCase() || '?';
 const PALETTE  = ['#818cf8','#a78bfa','#f472b6','#fb923c','#34d399','#60a5fa','#f87171','#2dd4bf','#e879f9'];
 const clr      = (i) => PALETTE[i % PALETTE.length];
+
+const isExplicitlyInactive = (status) => (
+    status === false ||
+    status === 'false' ||
+    status === 'inactive' ||
+    status === 'Inactive' ||
+    status === 0 ||
+    status === '0'
+);
+
+const normalizeEmployeeStatus = (employee) => (
+    isExplicitlyInactive(employee?.employee_status) ? 'inactive' : 'active'
+);
+
+const normalizeEmployee = (employee) => ({
+    ...employee,
+    employee_status: normalizeEmployeeStatus(employee),
+});
 
 /** Build tree: role.reporting_ids contains parent role IDs (this role REPORTS TO them). */
 const buildTree = (roles) => {
@@ -143,35 +208,51 @@ const Av = ({ emp, idx, size }) => {
 };
 
 // ─── Member row in the expanded list ───────────────────────────────────────
-const MemberRow = ({ emp, idx }) => (
-    <div style={{
-        display: 'flex', alignItems: 'center', gap: 11,
-        padding: '10px 12px',
-        borderBottom: '1px solid #161b22',
-        background: idx % 2 ? 'rgba(255,255,255,.025)' : 'transparent',
-    }}>
-        <Av emp={emp} idx={idx} size={52} />
-        <div style={{ minWidth: 0, flex: 1 }}>
-            <div style={{ fontSize: '.83rem', fontWeight: 700, color: '#e6edf3', marginBottom: 1 }}>
-                {`${emp.first_name || ''} ${emp.last_name || ''}`.trim() || '—'}
+const MemberRow = ({ emp, idx, onStatusChange, superAdminRoleId }) => {
+    const isSuperAdminEmployee = String(emp.role_id) === String(superAdminRoleId);
+    const isActive = emp.employee_status === 'active';
+
+    return (
+        <div className={`oc3-member-row${isActive ? '' : ' oc3-member-row--inactive'}`}>
+            <Av emp={emp} idx={idx} size={44} />
+            <div className="oc3-member-info">
+                <div className="oc3-member-name">
+                    {`${emp.first_name || ''} ${emp.last_name || ''}`.trim() || '—'}
+                </div>
+                <div className="oc3-member-role">
+                    {emp.designation || emp.position || '—'}
+                </div>
+                <div className="oc3-member-id">
+                    {String(emp.employee_id || '').padStart(3, '0')}
+                </div>
             </div>
-            <div style={{ fontSize: '.74rem', color: '#a0aec0', marginBottom: 4 }}>
-                {emp.designation || emp.position || '—'}
-            </div>
-            <div style={{
-                display: 'inline-block', fontSize: '.68rem', fontWeight: 700,
-                color: '#60a5fa', background: 'rgba(96,165,250,.1)',
-                border: '1px solid rgba(96,165,250,.25)', borderRadius: 4,
-                padding: '1px 6px', fontFamily: 'monospace', letterSpacing: '.03em',
-            }}>
-                {String(emp.employee_id || '').padStart(3, '0')}
-            </div>
+            <label
+                className="switch oc3-member-toggle"
+                onClick={(e) => e.stopPropagation()}
+                onKeyDown={(e) => e.stopPropagation()}
+            >
+                <input
+                    type="checkbox"
+                    className="toggle-active"
+                    checked={isSuperAdminEmployee ? true : isActive}
+                    disabled={isSuperAdminEmployee}
+                    onChange={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        onStatusChange?.(emp, e.target.checked);
+                    }}
+                    onClick={(e) => e.stopPropagation()}
+                />
+                <span className={`state ${(isSuperAdminEmployee || isActive) ? 'on' : 'off'}`}>
+                    {isSuperAdminEmployee ? '🔒 Active' : (isActive ? 'Active' : 'Inactive')}
+                </span>
+            </label>
         </div>
-    </div>
-);
+    );
+};
 
 // ─── Single role node (recursive) ──────────────────────────────────────────
-const RoleNode = ({ node, allEmployees }) => {
+const RoleNode = ({ node, allEmployees, onStatusChange, superAdminRoleId }) => {
     const { role, children } = node;
     const sup    = isSuper(role);
     const accent = sup ? '#f59e0b' : '#4493f8';
@@ -183,7 +264,7 @@ const RoleNode = ({ node, allEmployees }) => {
 
             {/* ── Role Card ─────────────────────────────────────────── */}
             <div
-                className={`oc3-card${sup ? ' sup' : ''}`}
+                className={`oc3-card${sup ? ' sup' : ''}${open && rEmps.length > 0 ? ' oc3-card--open' : ''}`}
                 style={{ borderLeftColor: accent }}
                 role="button"
                 tabIndex={0}
@@ -231,7 +312,15 @@ const RoleNode = ({ node, allEmployees }) => {
                 {/* Member list — expands inside card on click */}
                 {open && rEmps.length > 0 && (
                     <div className="oc3-mlist">
-                        {rEmps.map((e, i) => <MemberRow key={e._id || i} emp={e} idx={i} />)}
+                        {rEmps.map((e, i) => (
+                            <MemberRow
+                                key={e._id || i}
+                                emp={e}
+                                idx={i}
+                                onStatusChange={onStatusChange}
+                                superAdminRoleId={superAdminRoleId}
+                            />
+                        ))}
                     </div>
                 )}
             </div>
@@ -245,7 +334,12 @@ const RoleNode = ({ node, allEmployees }) => {
                         {children.map(c => (
                             <div key={c.role.id} className="oc3-item">
                                 <div className="oc3-vbar" />
-                                <RoleNode node={c} allEmployees={allEmployees} />
+                                <RoleNode
+                                    node={c}
+                                    allEmployees={allEmployees}
+                                    onStatusChange={onStatusChange}
+                                    superAdminRoleId={superAdminRoleId}
+                                />
                             </div>
                         ))}
                     </div>
@@ -264,7 +358,7 @@ const Stat = ({ num, label }) => (
 );
 
 // ─── Main export ────────────────────────────────────────────────────────────
-const OrgChartView = () => {
+const OrgChartView = ({ onStatusChange, superAdminRoleId, statusSyncVersion = 0 }) => {
     const [roles,     setRoles]     = useState([]);
     const [employees, setEmployees] = useState([]);
     const [loading,   setLoading]   = useState(true);
@@ -277,7 +371,6 @@ const OrgChartView = () => {
         try {
             const [rr, er] = await Promise.all([hrmsService.getRoles(), hrmsService.getAllEmployees()]);
 
-            const INACTIVE = [false, 'false', 'inactive', 'Inactive', 0, '0'];
             setRoles(
                 (Array.isArray(rr?.data) ? rr.data : []).map(r => ({
                     ...r,
@@ -286,7 +379,9 @@ const OrgChartView = () => {
                 }))
             );
             setEmployees(
-                (Array.isArray(er?.data) ? er.data : []).filter(e => !INACTIVE.includes(e.employee_status))
+                (Array.isArray(er?.data) ? er.data : [])
+                    .map(normalizeEmployee)
+                    .filter(e => e.employee_status === 'active')
             );
         } catch {
             setError('Failed to load. Please try again.');
@@ -296,6 +391,12 @@ const OrgChartView = () => {
     }, []);
 
     useEffect(() => { load(); }, [load]);
+
+    useEffect(() => {
+        if (statusSyncVersion > 0) {
+            load();
+        }
+    }, [statusSyncVersion, load]);
 
     const filteredEmps = search.trim()
         ? employees.filter(e => {
@@ -326,7 +427,7 @@ const OrgChartView = () => {
     );
 
     return (
-        <div style={{ background: '#000', minHeight: '100%' }}>
+        <div className="oc3-root">
 
             {/* ── Toolbar ───────────────────────────────────────────── */}
             <div style={{
@@ -378,7 +479,7 @@ const OrgChartView = () => {
             </div>
 
             {/* ── Chart canvas ────────────────────────────────────────── */}
-            <div style={{ overflowX: 'auto', padding: '28px 32px 56px', background: '#000' }}>
+            <div className="oc3-canvas" style={{ padding: '28px 32px 56px', background: '#000' }}>
                 {tree.length === 0 ? (
                     <div style={{ textAlign: 'center', color: '#464f5a', padding: '60px 0' }}>
                         <div style={{ fontSize: '3rem', opacity: .3, marginBottom: 12 }}>🏢</div>
@@ -386,13 +487,23 @@ const OrgChartView = () => {
                     </div>
                 ) : tree.length === 1 ? (
                     <div style={{ display: 'flex', justifyContent: 'center' }}>
-                        <RoleNode node={tree[0]} allEmployees={filteredEmps} />
+                        <RoleNode
+                            node={tree[0]}
+                            allEmployees={filteredEmps}
+                            onStatusChange={onStatusChange}
+                            superAdminRoleId={superAdminRoleId}
+                        />
                     </div>
                 ) : (
                     <div className="oc3-level">
                         {tree.map(n => (
                             <div key={n.role.id} className="oc3-item">
-                                <RoleNode node={n} allEmployees={filteredEmps} />
+                                <RoleNode
+                                    node={n}
+                                    allEmployees={filteredEmps}
+                                    onStatusChange={onStatusChange}
+                                    superAdminRoleId={superAdminRoleId}
+                                />
                             </div>
                         ))}
                     </div>

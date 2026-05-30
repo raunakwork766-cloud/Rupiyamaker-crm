@@ -10,7 +10,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url))
 // Check if running in dev environment (via DEV_PORT env var)
 const isDevEnvironment = process.env.DEV_PORT === '8051';
 const devPort = isDevEnvironment ? 4522 : 4521;
-const backendTarget = isDevEnvironment ? 'https://localhost:8051' : 'https://rupiyamaker.com';
+const backendTarget = isDevEnvironment ? 'https://localhost:8051' : 'http://127.0.0.1:8049';
 
 console.log('🔧 Vite Config:', {
   isDevEnvironment,
@@ -28,15 +28,15 @@ export default defineConfig({
       key: fs.readFileSync(path.resolve(__dirname, 'dev-key.pem')),
       cert: fs.readFileSync(path.resolve(__dirname, 'dev-cert.pem'))
     } : false,
-    allowedHosts: ['rupiyamaker.com', 'localhost', '156.67.111.95'],
+    allowedHosts: ['crm.fixyourfinance.ai', 'localhost', '156.67.111.95'],
     hmr: isDevEnvironment ? {
       protocol: 'wss',
       host: '156.67.111.95',
       port: devPort,
       clientPort: devPort
     } : {
+      // Uses the browser hostname (works before/after DNS for crm.fixyourfinance.ai)
       protocol: 'wss',
-      host: 'rupiyamaker.com',
       port: 443,
       clientPort: 443
     },

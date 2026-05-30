@@ -89,8 +89,22 @@ class UsersDB:
         except:
             return "[Cannot Decrypt - Invalid Format]"
         
+    @staticmethod
+    def normalize_employee_id(employee_id: str) -> str:
+        """Normalize HR employee IDs to RM### format (e.g. 81 -> RM081)."""
+        if employee_id is None:
+            return employee_id
+        raw = str(employee_id).strip().upper()
+        if not raw:
+            return raw
+        numeric_part = raw[2:] if raw.startswith("RM") else raw
+        try:
+            return f"RM{int(numeric_part):03d}"
+        except ValueError:
+            return raw
+
     async def _generate_employee_id(self) -> str:
-        """Generate a unique sequential employee ID (numeric only)"""
+        """Generate a unique sequential employee ID (RM-prefix format)."""
         # Find all existing employee_ids
         employees = self.collection.find(
             {"employee_id": {"$exists": True, "$ne": None}},
@@ -101,11 +115,8 @@ class UsersDB:
         async for emp in employees:
             emp_id = emp.get("employee_id", "")
             if emp_id:
-                # Handle both formats: "RM123" and "123"
-                if emp_id.startswith("RM"):
-                    numeric_part = emp_id[2:]  # Remove "RM" prefix
-                else:
-                    numeric_part = emp_id
+                normalized = self.normalize_employee_id(emp_id)
+                numeric_part = normalized[2:] if normalized.startswith("RM") else normalized
                 
                 try:
                     # Convert to int and track the maximum
@@ -118,8 +129,7 @@ class UsersDB:
         # Generate next ID
         next_id = max_id + 1
         
-        # Format as 3-digit string with leading zeros (no prefix)
-        return f"{next_id:03d}"
+        return f"RM{next_id:03d}"
         
     async def create_user(self, user_data: dict) -> str:
         """Create a new user with timestamps and hashed password"""
@@ -128,8 +138,11 @@ class UsersDB:
             user_data['password'] = self._hash_password(user_data['password'])
             
         # Auto-generate employee ID if not provided and is_employee is True
-        if user_data.get('is_employee', False) and not user_data.get('employee_id'):
-            user_data['employee_id'] = await self._generate_employee_id()
+        if user_data.get('is_employee', False):
+            if user_data.get('employee_id'):
+                user_data['employee_id'] = self.normalize_employee_id(user_data['employee_id'])
+            else:
+                user_data['employee_id'] = await self._generate_employee_id()
             
         user_data["created_at"] = get_ist_now()
         user_data["updated_at"] = user_data["created_at"]
@@ -252,6 +265,9 @@ class UsersDB:
         # Hash password if it's being updated
         if 'password' in update_fields:
             update_fields['password'] = self._hash_password(update_fields['password'])
+
+        if 'employee_id' in update_fields and update_fields['employee_id']:
+            update_fields['employee_id'] = self.normalize_employee_id(update_fields['employee_id'])
             
         update_fields["updated_at"] = get_ist_now()
         result = await self.collection.update_one(
@@ -302,8 +318,33 @@ class UsersDB:
             return {"success": False, "message": "Failed to reset password"}
             
     async def get_user_by_employee_id(self, employee_id: str) -> Optional[dict]:
-        """Get a user by employee ID"""
-        return await self.collection.find_one({"employee_id": employee_id})
+        """Get a user by employee ID (RM### format)."""
+        if not employee_id:
+            return None
+        normalized = self.normalize_employee_id(employee_id)
+        user = await self.collection.find_one({"employee_id": normalized})
+        if user:
+            return user
+        return await self.collection.find_one({"employee_id": str(employee_id).strip().upper()})
+
+    async def resolve_employee(self, identifier: str) -> Optional[dict]:
+        """Resolve employee by MongoDB _id or HR employee_id."""
+        if not identifier:
+            return None
+        raw = str(identifier).strip()
+        if ObjectId.is_valid(raw):
+            user = await self.get_user(raw)
+            if user:
+                return user
+        return await self.get_user_by_employee_id(raw)
+
+    @staticmethod
+    def leave_balance_key(employee: dict) -> str:
+        """Canonical key stored in leave_balances.employee_id."""
+        emp_id = employee.get("employee_id")
+        if emp_id:
+            return UsersDB.normalize_employee_id(emp_id)
+        return str(employee["_id"])
         
     async def delete_user(self, user_id: str) -> bool:
         """Delete a user by ID"""
@@ -384,7 +425,9 @@ class UsersDB:
         employee_data["is_employee"] = True
         
         # Auto-generate employee ID if not provided (same logic as create_user)
-        if not employee_data.get('employee_id'):
+        if employee_data.get('employee_id'):
+            employee_data['employee_id'] = self.normalize_employee_id(employee_data['employee_id'])
+        else:
             employee_data['employee_id'] = await self._generate_employee_id()
         
         # Set default employee status if not provided
@@ -606,6 +649,9 @@ class UsersDB:
             # Check if it's already a bcrypt hash or Fernet encrypted
             if not (password.startswith('$2') or password.startswith('gAAAAAB')):
                 update_fields['password'] = self._hash_password(password)
+
+        if 'employee_id' in update_fields and update_fields['employee_id']:
+            update_fields['employee_id'] = self.normalize_employee_id(update_fields['employee_id'])
         
         # Convert date objects to datetime for MongoDB compatibility
         from datetime import date

@@ -10,7 +10,7 @@ module.exports = {
       exec_mode: 'fork',
       autorestart: true,
       watch: false,
-      max_memory_restart: '1500M',  // Restart if exceeds 1.5GB (4 workers)
+      max_memory_restart: '2000M',  // 4 uvicorn workers (~200MB each) + master process headroom
 
       // === Crash recovery (always restart, never give up) ===
       min_uptime: '30s',                  // Process must stay up 30s to be considered "stable"

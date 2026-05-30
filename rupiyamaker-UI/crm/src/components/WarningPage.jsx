@@ -1,6 +1,10 @@
-import React, { useState, useEffect, memo, useRef } from 'react';
+import React, { useState, useEffect, memo, useRef, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { toISTDateYMD } from '../utils/dateUtils';
 import useTabWithHistory from '../hooks/useTabWithHistory';
+import useNavbarPageSearch from '../hooks/useNavbarPageSearch';
+
+const WARNING_MODAL_Z_INDEX = 10050;
 import { 
   Plus, 
   Edit, 
@@ -51,42 +55,73 @@ import {
 const API_URL = "/api";
 
 const WarningPage = memo(() => {
-  // CSS styles for sticky headers
-  const stickyHeaderStyles = `
-    .sticky-table-container {
-      max-height: 600px;
-      overflow-y: auto;
-      overflow-x: auto;
-      border-radius: 12px;
-    }
-    
-    .sticky-header {
-      position: sticky;
-      top: 0;
-      background: white;
-      z-index: 10;
-      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-    }
-    
-    .sticky-th {
-      position: sticky;
-      top: 0;
-      background: white;
-      z-index: 10;
-      border-bottom: 2px solid #e5e7eb;
-    }
-    
-    .similar-warnings-row:nth-child(even) {
-      background-color: #f9fafb;
-    }
-    
-    .similar-warnings-row:nth-child(odd) {
-      background-color: #ffffff;
-    }
-    
-    .similar-warnings-row:hover {
-      background-color: #f3f4f6 !important;
-    }
+  const warningPageStyles = `
+    .task-page-container { padding: 0; max-width: 100%; background: #000; min-height: 100vh; font-family: -apple-system, BlinkMacSystemFont, 'Lexend Deca', sans-serif; color: #e2e8f0; }
+    .task-top-bar { display: flex; justify-content: space-between; align-items: flex-start; padding: 20px 24px 0; border-bottom: 1px solid #1f1f27; background: #000; }
+    .task-top-bar-left h1 { font-size: 22px; font-weight: 700; color: #f0f0f5; margin: 0 0 2px; line-height: 1.2; }
+    .task-top-bar-left p { font-size: 13px; color: #6b7a99; margin: 0 0 12px; }
+    .task-top-bar-right { display: flex; gap: 8px; align-items: center; padding-top: 4px; flex-wrap: wrap; }
+    .task-btn-secondary { background: #1a1a24; color: #c8d0e0; border: 1px solid #2a2a3a; padding: 7px 14px; border-radius: 3px; font-size: 13px; font-weight: 500; cursor: pointer; transition: background 0.15s, border-color 0.15s; white-space: nowrap; display: inline-flex; align-items: center; gap: 6px; }
+    .task-btn-secondary:hover { background: #22222e; border-color: #3a3a50; }
+    .task-btn-secondary.active-filter { background: #1e3a5f; border-color: #3b82f6; color: #93c5fd; }
+    .task-btn-create { background: #3b82f6; color: #fff; border: none; padding: 7px 14px; border-radius: 3px; font-size: 13px; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 6px; transition: background 0.15s; white-space: nowrap; }
+    .task-btn-create:hover { background: #2563eb; }
+    .task-view-toggle-bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 24px; background: #000; border-bottom: 1px solid #1f1f27; flex-wrap: wrap; }
+    .task-view-toggle-group { display: flex; gap: 0; flex-wrap: wrap; flex: 0 1 auto; min-width: 0; }
+    .task-view-toggle-btn { padding: 12px 16px; border: none; background: transparent; font-size: 13px; font-weight: 600; color: #6b7a99; cursor: pointer; border-bottom: 3px solid transparent; transition: color 0.15s, border-color 0.15s; white-space: nowrap; }
+    .task-view-toggle-btn:hover { color: #c8d0e0; }
+    .task-view-toggle-btn.active { color: #f97316; font-weight: 800; border-bottom-color: #f97316; }
+    .task-search-box--in-bar { position: relative; width: 260px; min-width: 200px; flex-shrink: 0; }
+    .task-search-box--in-bar input { background: #1a1a24; border: 1px solid #2a2a3a; border-radius: 3px; padding: 6px 14px 6px 32px; color: #c8d0e0; font-size: 13px; width: 100%; outline: none; transition: border-color 0.15s; box-sizing: border-box; }
+    .task-search-box--in-bar input::placeholder { color: #4a5570; }
+    .task-search-box--in-bar input:focus { border-color: #3b82f6; box-shadow: 0 0 0 2px rgba(59,130,246,0.15); }
+    .task-search-box--in-bar svg { position: absolute; left: 9px; top: 50%; transform: translateY(-50%); color: #4a5570; pointer-events: none; }
+    .task-toolbar-right { display: flex; align-items: center; justify-content: flex-end; gap: 8px; margin-left: auto; flex-shrink: 0; flex-wrap: wrap; }
+    .task-select-controls { display: flex; align-items: center; gap: 8px; }
+    .task-select-controls label { display: flex; align-items: center; cursor: pointer; color: #c8d0e0; font-size: 13px; gap: 5px; }
+    .task-select-controls span { color: #6b7a99; font-size: 13px; }
+    .task-select-btn-del { padding: 5px 12px; background: #1a0a0a; color: #f87171; border: 1px solid #7f1d1d; border-radius: 3px; font-size: 13px; cursor: pointer; }
+    .task-select-btn-del:hover { background: #2a0f0f; }
+    .task-select-btn-cancel { padding: 5px 12px; background: #1a1a24; color: #6b7a99; border: 1px solid #2a2a3a; border-radius: 3px; font-size: 13px; cursor: pointer; }
+    .task-select-btn-cancel:hover { background: #22222e; }
+    .task-loading-spinner { display: flex; flex-direction: column; justify-content: center; align-items: center; padding: 80px 20px; }
+    .task-loading-spinner .spinner { width: 32px; height: 32px; border: 3px solid #1a1a24; border-top-color: #3b82f6; border-radius: 50%; animation: warningSpin 0.7s linear infinite; margin-bottom: 12px; }
+    @keyframes warningSpin { to { transform: rotate(360deg); } }
+    .task-empty-state { display: flex; flex-direction: column; justify-content: center; align-items: center; padding: 80px 20px; text-align: center; }
+    .task-empty-state-title { font-size: 17px; font-weight: 700; color: #c8d0e0; margin: 0 0 6px; }
+    .task-empty-state-sub { font-size: 14px; color: #4a5570; margin: 0; }
+    .warning-page-content { padding: 0 24px 24px; }
+    .warning-table-scroll { overflow-x: auto; max-height: calc(100vh - 220px); overflow-y: auto; border-top: 1px solid #1f1f27; }
+    .warning-page-table { width: 100%; border-collapse: collapse; min-width: 900px; }
+    .warning-page-table thead { background: #ffffff; position: sticky; top: 0; z-index: 10; box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1); border-bottom: 2px solid #e5e7eb; }
+    .warning-page-table thead th { color: #03b0f5; font-weight: 800; font-size: 13px; text-transform: uppercase; letter-spacing: 0.05em; padding: 12px 16px; text-align: left; border-bottom: 1px solid #e5e7eb; white-space: nowrap; background: #ffffff; }
+    .warning-page-table tbody tr { background: #000; border-bottom: 1px solid #1a1a22; transition: background 0.1s; cursor: pointer; }
+    .warning-page-table tbody tr:hover { background: #13131c; }
+    .warning-page-table tbody td { padding: 11px 16px; font-size: 13px; color: #ffffff; font-weight: 600; }
+    .warning-scroll-btn { position: absolute; top: 50%; transform: translateY(-50%); z-index: 50; background: #1e3a5f; color: #fff; border: 1px solid #3b82f6; padding: 8px; border-radius: 50%; opacity: 0.35; transition: opacity 0.15s; cursor: pointer; }
+    .warning-scroll-btn:hover { opacity: 1; }
+    .warning-scroll-btn.left { left: 8px; }
+    .warning-scroll-btn.right { right: 8px; }
+    .warning-pagination { display: flex; align-items: center; justify-content: space-between; margin-top: 0; padding: 12px 0; border-top: 1px solid #1f1f27; }
+    .warning-pagination-info { color: #6b7a99; font-size: 13px; }
+    .warning-pagination-btns { display: flex; align-items: center; gap: 8px; }
+    .warning-pagination-btn { background: #1a1a24; color: #60a5fa; border: 1px solid #2a2a3a; padding: 6px 14px; border-radius: 3px; font-size: 13px; cursor: pointer; }
+    .warning-pagination-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+    .warning-pagination-btn:hover:not(:disabled) { background: #22222e; }
+    .warning-pagination-page { color: #6b7a99; font-size: 13px; padding: 0 8px; }
+    .warning-mistakes-header { padding: 20px 0 12px; }
+    .warning-mistakes-header h2 { font-size: 15px; font-weight: 700; color: #e2e8f0; margin: 0 0 4px; }
+    .warning-mistakes-header p { font-size: 13px; color: #6b7a99; margin: 0; }
+    .warning-mistakes-badge { display: inline-flex; align-items: center; padding: 2px 8px; background: #1e3a5f; color: #93c5fd; border: 1px solid #3b82f6; border-radius: 999px; font-size: 11px; font-weight: 700; margin-left: 8px; }
+    .warning-mistake-card { background: #000; border: 1px solid #1f1f27; border-radius: 6px; padding: 16px; transition: border-color 0.15s, background 0.15s; cursor: pointer; }
+    .warning-mistake-card:hover { border-color: #3b82f6; background: #13131c; }
+    .warning-mistake-card h3 { font-size: 14px; font-weight: 600; color: #e2e8f0; margin: 0; line-height: 1.3; }
+    .warning-mistake-card p { font-size: 13px; color: #6b7a99; margin: 8px 0 0; line-height: 1.4; }
+    .warning-mistake-card-index { flex-shrink: 0; width: 24px; height: 24px; border-radius: 50%; background: #1e3a5f; color: #93c5fd; border: 1px solid #3b82f6; font-size: 10px; font-weight: 700; display: flex; align-items: center; justify-content: center; }
+    .warning-mistakes-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px; overflow-y: auto; max-height: calc(100vh - 260px); padding-bottom: 8px; }
+    .similar-warnings-row:nth-child(even) { background-color: #000; }
+    .similar-warnings-row:nth-child(odd) { background-color: #000; }
+    .similar-warnings-row:hover { background-color: #13131c !important; }
   `;
 
   // State management
@@ -108,6 +143,7 @@ const WarningPage = memo(() => {
   const [rowsPerPage, setRowsPerPage] = useState(10);
   const [totalWarnings, setTotalWarnings] = useState(0);
   const [searchTerm, setSearchTerm] = useState('');
+  useNavbarPageSearch(setSearchTerm);
   
   // Employee search states
   const [employeeSearchTerm, setEmployeeSearchTerm] = useState('');
@@ -131,6 +167,7 @@ const WarningPage = memo(() => {
   
   // Dialog states
   const [addDialogOpen, setAddDialogOpen] = useState(false);
+  const [addDrawerVisible, setAddDrawerVisible] = useState(false);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [viewDialogOpen, setViewDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
@@ -505,6 +542,20 @@ const WarningPage = memo(() => {
     if (addDialogOpen) {
       loadWarnings();
     }
+  }, [addDialogOpen]);
+
+  useEffect(() => {
+    if (!addDialogOpen) {
+      setAddDrawerVisible(false);
+      return undefined;
+    }
+    const frame = requestAnimationFrame(() => setAddDrawerVisible(true));
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      cancelAnimationFrame(frame);
+      document.body.style.overflow = prevOverflow;
+    };
   }, [addDialogOpen]);
 
   // Listen for warning acknowledgment events (fired by PopWarningModal)
@@ -1183,6 +1234,30 @@ const WarningPage = memo(() => {
     setShowWarningActionDropdown(false);
   };
 
+  const resetAddDialogForm = () => {
+    setFormData({
+      warning_type: '',
+      issued_to: [],
+      penalty_amount: '',
+      warning_message: ''
+    });
+    setSelectedDepartmentForAdd('');
+    setSelectedEmployees([]);
+    setSelectedEmployeeNames([]);
+    setSelectedFiles([]);
+    setSimilarWarnings([]);
+    setShowingSimilarWarnings(false);
+    resetAllSearchStates();
+  };
+
+  const closeAddDialog = useCallback(() => {
+    setAddDrawerVisible(false);
+    window.setTimeout(() => {
+      setAddDialogOpen(false);
+      resetAddDialogForm();
+    }, 280);
+  }, []);
+
   const resetAllSearchStates = () => {
     setEmployeeSearchTerm('');
     setSelectedEmployeeName('');
@@ -1416,19 +1491,7 @@ const WarningPage = memo(() => {
       
       if (successCount === formData.issued_to.length) {
         showNotification(`Successfully created ${successCount} warning(s) for ${successCount} employee(s)`, 'success');
-        setAddDialogOpen(false);
-        setFormData({
-          warning_type: '',
-          issued_to: [],
-          penalty_amount: '',
-          warning_message: ''
-        });
-        setSelectedDepartmentForAdd('');
-        setSelectedEmployees([]);
-        setSelectedEmployeeNames([]);
-        setSimilarWarnings([]);
-        setShowingSimilarWarnings(false);
-        resetAllSearchStates();
+        closeAddDialog();
         loadWarnings();
       } else {
         const failedCount = formData.issued_to.length - successCount;
@@ -1752,6 +1815,9 @@ const WarningPage = memo(() => {
     return 0; // No sorting
   });
 
+  const isMistakesDirectoryView = selectedTab === 1 && (isSuperAdmin() || permissions.can_view_mistakes);
+  const filteredMistakeCount = getFilteredMistakeDirectory().length;
+
   // Get warning type badge style
   const getWarningTypeBadge = (type) => {
     const styles = {
@@ -1766,200 +1832,152 @@ const WarningPage = memo(() => {
   // Error boundary pattern
   if (renderError) {
     return (
-      <div className="min-h-screen bg-black text-white font-sans flex items-center justify-center">
-        <div className="text-center">
-          <h2 className="text-xl font-bold text-red-400 mb-4">Something went wrong</h2>
-          <p className="text-gray-400 mb-4">Please refresh the page to try again.</p>
-          <button 
-            onClick={() => window.location.reload()} 
-            className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
-          >
+      <>
+        <style>{warningPageStyles}</style>
+        <div className="task-page-container" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '100vh' }}>
+        <div className="task-empty-state">
+          <h2 className="task-empty-state-title" style={{ color: '#f87171' }}>Something went wrong</h2>
+          <p className="task-empty-state-sub">Please refresh the page to try again.</p>
+          <button type="button" onClick={() => window.location.reload()} className="task-btn-create" style={{ marginTop: 16 }}>
             Refresh Page
           </button>
         </div>
       </div>
+      </>
     );
   }
 
   try {
     return (
       <>
-        <style>{stickyHeaderStyles}</style>
-        <div className="min-h-screen bg-black text-white font-sans">
-      {/* Background Pattern */}
-      <div
-        className="fixed inset-0 opacity-[0.02] pointer-events-none z-0"
-        style={{
-          backgroundImage: `radial-gradient(circle at 1px 1px, rgba(255,255,255,0.15) 1px, transparent 0)`,
-          backgroundSize: "20px 20px",
-        }}
-      ></div>
-
-      <div className="relative z-10 flex h-screen">
-        <div className="flex-1 overflow-y-auto">
-          <div className="px-6 py-8 space-y-8">
-            {/* Header with Tabs & Action Button */}
-            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-end gap-4">
-              {/* Tab Navigation */}
-              <div className="flex p-1 bg-gray-800/60 rounded-lg w-fit">
-                {isSuperAdmin() ? (
-                  <>
-                    <button
-                      onClick={() => setSelectedTab(0)}
-                      className={`px-5 py-2.5 text-sm font-bold rounded-md transition-all ${selectedTab === 0 ? 'bg-[#03b0f5] text-white shadow-sm' : 'text-gray-400 hover:text-white'}`}
-                    >
-                      Warnings Log
-                    </button>
-                    {/* Mistakes Directory tab — only when explicit view_mistakes permission */}
-                    {permissions.can_view_mistakes && (
-                      <button
-                        onClick={() => setSelectedTab(1)}
-                        className={`px-5 py-2.5 text-sm font-bold rounded-md transition-all ${selectedTab === 1 ? 'bg-[#03b0f5] text-white shadow-sm' : 'text-gray-400 hover:text-white'}`}
-                      >
-                        Mistakes Directory
-                      </button>
-                    )}
-                  </>
-                ) : permissions.can_view_mistakes ? (
-                  <>
-                    <button
-                      onClick={() => setSelectedTab(0)}
-                      className={`px-5 py-2.5 text-sm font-bold rounded-md transition-all ${selectedTab === 0 ? 'bg-[#03b0f5] text-white shadow-sm' : 'text-gray-400 hover:text-white'}`}
-                    >
-                      Warnings Log
-                    </button>
-                    <button
-                      onClick={() => setSelectedTab(1)}
-                      className={`px-5 py-2.5 text-sm font-bold rounded-md transition-all ${selectedTab === 1 ? 'bg-[#03b0f5] text-white shadow-sm' : 'text-gray-400 hover:text-white'}`}
-                    >
-                      Mistakes Directory
-                    </button>
-                  </>
-                ) : isManager() ? (
-                  <>
-                    <button
-                      onClick={() => setSelectedTab(0)}
-                      className={`px-5 py-2.5 text-sm font-bold rounded-md transition-all ${selectedTab === 0 ? 'bg-[#03b0f5] text-white shadow-sm' : 'text-gray-400 hover:text-white'}`}
-                    >
-                      Team Warnings
-                    </button>
-                    <button
-                      onClick={() => setSelectedTab(1)}
-                      className={`px-5 py-2.5 text-sm font-bold rounded-md transition-all ${selectedTab === 1 ? 'bg-[#03b0f5] text-white shadow-sm' : 'text-gray-400 hover:text-white'}`}
-                    >
-                      My Warnings
-                    </button>
-                  </>
-                ) : (
-                  <button
-                    onClick={() => setSelectedTab(0)}
-                    className="px-5 py-2.5 text-sm font-bold rounded-md bg-[#03b0f5] text-white shadow-sm"
-                  >
-                    My Warnings
-                  </button>
-                )}
-              </div>
-
-              {/* Contextual Action Buttons */}
-              <div className="flex flex-wrap gap-3">
-                {/* Show Issue Warning button whenever user has permission */}
-                {permissions.can_issue_warning && (
-                  <button
-                    className="px-5 py-2.5 bg-[#0891b2] hover:bg-[#0e7490] text-white text-sm font-medium rounded-lg shadow-sm transition-all flex items-center gap-2"
-                    onClick={openAddDialog}
-                  >
-                    <Plus className="w-4 h-4" /> Issue New Warning
-                  </button>
-                )}
-                {/* Show Create Mistake Category button when on Mistakes Directory tab */}
-                {permissions.can_create_mistake_category && selectedTab === 1 && (
-                  <button
-                    className="px-5 py-2.5 bg-gray-700 hover:bg-gray-600 text-white text-sm font-medium rounded-lg shadow-sm transition-all flex items-center gap-2"
-                    onClick={() => setCreateMistakeOpen(true)}
-                  >
-                    <FolderPlus className="w-4 h-4" /> Create Mistake Category
-                  </button>
-                )}
-              </div>
+        <style>{warningPageStyles}</style>
+        <div className="task-page-container">
+          <div className="task-top-bar">
+            <div className="task-top-bar-left">
+              <h1>Warnings</h1>
+              <p>
+                {isMistakesDirectoryView
+                  ? `${filteredMistakeCount} categor${filteredMistakeCount !== 1 ? 'ies' : 'y'}`
+                  : `${totalWarnings} record${totalWarnings !== 1 ? 's' : ''}`}
+              </p>
             </div>
+            <div className="task-top-bar-right">
+              {permissions?.can_delete && !showCheckboxes && !isMistakesDirectoryView && (
+                <button className="task-btn-secondary" onClick={handleShowCheckboxes}>Select</button>
+              )}
+              {showCheckboxes && !isMistakesDirectoryView && (
+                <div className="task-select-controls">
+                  <label>
+                    <input type="checkbox" checked={selectAll} onChange={handleSelectAll} style={{ width: 14, height: 14, accentColor: '#3b82f6' }} />
+                    Select All
+                  </label>
+                  <span>{selectedRows.length} selected</span>
+                  <button className="task-select-btn-del" onClick={handleDeleteSelected} disabled={selectedRows.length === 0}>Delete ({selectedRows.length})</button>
+                  <button className="task-select-btn-cancel" onClick={handleCancelSelection}>Cancel</button>
+                </div>
+              )}
+              {permissions.can_create_mistake_category && isMistakesDirectoryView && (
+                <button className="task-btn-secondary" onClick={() => setCreateMistakeOpen(true)}>
+                  <FolderPlus size={15} /> Create category
+                </button>
+              )}
+              {permissions.can_issue_warning && (
+                <button className="task-btn-create" onClick={openAddDialog}>
+                  <Plus size={15} /> Issue warning
+                </button>
+              )}
+            </div>
+          </div>
 
-            {/* Main Content */}
-            <div className="bg-black rounded-xl shadow-lg border border-gray-800 overflow-hidden flex-1 flex flex-col">
-              {/* Tab Content */}
-              <div className="p-6">
-                {loading ? (
-                  <div className="flex items-center justify-center py-12">
-                    <div className="flex flex-col items-center">
-                      <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-cyan-500"></div>
-                      <span className="ml-3 text-cyan-500 font-semibold mt-2">Loading...</span>
-                    </div>
+          <div className="task-view-toggle-bar">
+            <div className="task-view-toggle-group">
+              {isSuperAdmin() ? (
+                <>
+                  <button type="button" className={`task-view-toggle-btn${selectedTab === 0 ? ' active' : ''}`} onClick={() => setSelectedTab(0)}>Warnings Log</button>
+                  {permissions.can_view_mistakes && (
+                    <button type="button" className={`task-view-toggle-btn${selectedTab === 1 ? ' active' : ''}`} onClick={() => setSelectedTab(1)}>Mistakes Directory</button>
+                  )}
+                </>
+              ) : permissions.can_view_mistakes ? (
+                <>
+                  <button type="button" className={`task-view-toggle-btn${selectedTab === 0 ? ' active' : ''}`} onClick={() => setSelectedTab(0)}>Warnings Log</button>
+                  <button type="button" className={`task-view-toggle-btn${selectedTab === 1 ? ' active' : ''}`} onClick={() => setSelectedTab(1)}>Mistakes Directory</button>
+                </>
+              ) : isManager() ? (
+                <>
+                  <button type="button" className={`task-view-toggle-btn${selectedTab === 0 ? ' active' : ''}`} onClick={() => setSelectedTab(0)}>Team Warnings</button>
+                  <button type="button" className={`task-view-toggle-btn${selectedTab === 1 ? ' active' : ''}`} onClick={() => setSelectedTab(1)}>My Warnings</button>
+                </>
+              ) : (
+                <button type="button" className="task-view-toggle-btn active">My Warnings</button>
+              )}
+            </div>
+            <div className="task-toolbar-right">
+              {isMistakesDirectoryView ? (
+                <div className="task-search-box--in-bar">
+                  <Search size={14} />
+                  <input
+                    type="text"
+                    placeholder="Search directory..."
+                    value={mistakeDirectorySearch}
+                    onChange={(e) => setMistakeDirectorySearch(e.target.value)}
+                  />
+                </div>
+              ) : (
+                <>
+                  <div className="task-search-box--in-bar">
+                    <Search size={14} />
+                    <input
+                      type="text"
+                      placeholder="Search employee or mistake..."
+                      value={searchTerm}
+                      onChange={(e) => setSearchTerm(e.target.value)}
+                    />
                   </div>
-                ) : (
-                  <>
+                  <button
+                    type="button"
+                    className={`task-btn-secondary${Object.values(filters).some(f => f && f !== '') ? ' active-filter' : ''}`}
+                    onClick={() => setFilterDialogOpen(true)}
+                  >
+                    <Filter size={14} /> Filters
+                    {Object.values(filters).some(f => f && f !== '') && (
+                      <span style={{ marginLeft: 4, fontSize: 10, fontWeight: 700 }}>On</span>
+                    )}
+                  </button>
+                </>
+              )}
+            </div>
+          </div>
+
+          {loading ? (
+            <div className="task-loading-spinner">
+              <div className="spinner" />
+              <p style={{ color: '#60a5fa', fontSize: 16, fontWeight: 700, margin: 0 }}>Loading warnings...</p>
+            </div>
+          ) : (
+            <div className="warning-page-content">
                     {/* Super Admin / Mistake Directory Access Tabs */}
                     {(isSuperAdmin() || permissions.can_view_mistakes) ? (
                       <>
                         {/* Tab 0: Warnings Log */}
                         {selectedTab === 0 && (
                           <div>
-                            {/* Search and Filter Bar */}
-                            <div className="p-4 border-b border-gray-800 bg-gray-900/50 rounded-t-lg flex flex-wrap gap-4 items-center mb-4">
-                              <div className="relative flex-1 max-w-md">
-                                <Search className="w-4 h-4 text-gray-500 absolute left-3 top-3" />
-                                <input
-                                  type="text"
-                                  placeholder="Search employee or mistake..."
-                                  value={searchTerm}
-                                  onChange={(e) => setSearchTerm(e.target.value)}
-                                  className="w-full pl-9 pr-3 py-2.5 text-sm bg-gray-800 text-gray-300 border border-gray-700 rounded-lg outline-none focus:border-[#03b0f5] transition"
-                                />
-                                {searchTerm && (
-                                  <button onClick={() => setSearchTerm('')} className="absolute right-3 top-3 text-gray-400 hover:text-gray-300">
-                                    <X className="w-4 h-4" />
-                                  </button>
-                                )}
-                              </div>
-                              <div className="flex items-center gap-3">
-                                {/* Select/Delete Controls */}
-                                {permissions?.can_delete && !showCheckboxes ? (
-                                  <button onClick={handleShowCheckboxes} className="bg-gray-700 text-gray-300 px-4 py-2 rounded-lg text-sm font-medium hover:bg-gray-600 transition">Select</button>
-                                ) : permissions?.can_delete && showCheckboxes ? (
-                                  <div className="flex items-center gap-3 bg-gray-800 rounded-lg p-2">
-                                    <label className="flex items-center cursor-pointer text-[#03B0F5] font-bold text-sm">
-                                      <input type="checkbox" className="accent-blue-500 mr-2" checked={selectAll} onChange={handleSelectAll} style={{ width: 16, height: 16 }} />
-                                      All
-                                    </label>
-                                    <span className="text-gray-300 text-sm">{selectedRows.length} selected</span>
-                                    <button className="px-3 py-1 bg-red-600 text-white rounded text-sm font-medium hover:bg-red-700" onClick={handleDeleteSelected} disabled={selectedRows.length === 0}>Delete</button>
-                                    <button className="px-3 py-1 bg-gray-600 text-white rounded text-sm font-medium hover:bg-gray-700" onClick={handleCancelSelection}>Cancel</button>
-                                  </div>
-                                ) : null}
-                                <button
-                                  className={`px-4 py-2 rounded-lg text-sm font-medium transition flex items-center gap-2 ${Object.values(filters).some(f => f && f !== '') ? 'bg-[#03b0f5] text-white' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'}`}
-                                  onClick={() => setFilterDialogOpen(true)}
-                                >
-                                  <Filter className="w-4 h-4" /> Filters
-                                  {Object.values(filters).some(f => f && f !== '') && <span className="bg-white text-[#03b0f5] px-1.5 py-0.5 rounded-full text-[10px] font-bold">On</span>}
-                                </button>
-                              </div>
-                            </div>
-
                             {/* Warnings Table */}
                             <div className="relative">
                               {canScrollLeft && (
-                                <button onClick={() => scrollMainTable('left')} className="absolute left-2 top-1/2 -translate-y-1/2 z-50 text-white p-3 rounded-full shadow-lg opacity-20 hover:opacity-100 transition-all" style={{ backgroundColor: 'rgba(37, 99, 235, 1)' }}>
-                                  <ChevronLeft className="w-7 h-7" />
+                                <button type="button" onClick={() => scrollMainTable('left')} className="warning-scroll-btn left" aria-label="Scroll left">
+                                  <ChevronLeft className="w-5 h-5" />
                                 </button>
                               )}
                               {canScrollRight && (
-                                <button onClick={() => scrollMainTable('right')} className="absolute right-2 top-1/2 -translate-y-1/2 z-50 text-white p-3 rounded-full shadow-lg opacity-20 hover:opacity-100 transition-all" style={{ backgroundColor: 'rgba(37, 99, 235, 1)' }}>
-                                  <ChevronRight className="w-7 h-7" />
+                                <button type="button" onClick={() => scrollMainTable('right')} className="warning-scroll-btn right" aria-label="Scroll right">
+                                  <ChevronRight className="w-5 h-5" />
                                 </button>
                               )}
                               
-                              <div ref={tableScrollRef} className="bg-black rounded-lg overflow-x-auto max-h-[calc(100vh-280px)] overflow-y-auto" onScroll={() => updateScrollButtons(tableScrollRef, setCanScrollLeft, setCanScrollRight)}>
-                                <table className="min-w-full w-full text-left text-sm whitespace-nowrap">
-                                  <thead className="bg-gray-900 border-b border-gray-700 text-gray-400 font-medium sticky top-0 z-10">
+                              <div ref={tableScrollRef} className="warning-table-scroll" onScroll={() => updateScrollButtons(tableScrollRef, setCanScrollLeft, setCanScrollRight)}>
+                                <table className="warning-page-table">
+                                  <thead>
                                     <tr>
                                       {showCheckboxes && (
                                         <th className="py-3 px-4 w-10">
@@ -2058,12 +2076,12 @@ const WarningPage = memo(() => {
 
                             {/* Pagination */}
                             {totalWarnings > rowsPerPage && (
-                              <div className="flex items-center justify-between mt-4 pt-4 border-t border-gray-800">
-                                <div className="text-gray-500 text-sm">Showing {Math.min((page * rowsPerPage) + 1, totalWarnings)} to {Math.min((page + 1) * rowsPerPage, totalWarnings)} of {totalWarnings}</div>
-                                <div className="flex items-center gap-2">
-                                  <button onClick={() => setPage(Math.max(0, page - 1))} disabled={page === 0} className="px-3 py-1.5 bg-gray-700 text-gray-300 rounded text-sm disabled:opacity-50 hover:bg-gray-600 transition">Previous</button>
-                                  <span className="px-3 py-1.5 text-gray-400 text-sm">Page {page + 1} of {Math.ceil(totalWarnings / rowsPerPage)}</span>
-                                  <button onClick={() => setPage(Math.min(Math.ceil(totalWarnings / rowsPerPage) - 1, page + 1))} disabled={page >= Math.ceil(totalWarnings / rowsPerPage) - 1} className="px-3 py-1.5 bg-gray-700 text-gray-300 rounded text-sm disabled:opacity-50 hover:bg-gray-600 transition">Next</button>
+                              <div className="warning-pagination">
+                                <div className="warning-pagination-info">Showing {Math.min((page * rowsPerPage) + 1, totalWarnings)} to {Math.min((page + 1) * rowsPerPage, totalWarnings)} of {totalWarnings}</div>
+                                <div className="warning-pagination-btns">
+                                  <button type="button" onClick={() => setPage(Math.max(0, page - 1))} disabled={page === 0} className="warning-pagination-btn">Previous</button>
+                                  <span className="warning-pagination-page">Page {page + 1} of {Math.ceil(totalWarnings / rowsPerPage)}</span>
+                                  <button type="button" onClick={() => setPage(Math.min(Math.ceil(totalWarnings / rowsPerPage) - 1, page + 1))} disabled={page >= Math.ceil(totalWarnings / rowsPerPage) - 1} className="warning-pagination-btn">Next</button>
                                 </div>
                               </div>
                             )}
@@ -2072,32 +2090,20 @@ const WarningPage = memo(() => {
 
                         {/* Tab 1: Mistakes Directory — only for users with explicit view_mistakes permission */}
                         {selectedTab === 1 && permissions.can_view_mistakes && (
-                          <div className="p-6">
-                            <div className="flex justify-between items-center mb-6">
-                              <div>
-                                <div className="flex items-center gap-3">
-                                  <h2 className="text-lg font-bold text-white">Master Mistakes Directory</h2>
-                                  <span className="px-2.5 py-0.5 bg-[#03b0f5]/20 text-[#03b0f5] text-xs font-black rounded-full border border-[#03b0f5]/30">
-                                    {mistakeTypes.length} Total
-                                  </span>
-                                </div>
-                                <p className="text-sm text-gray-400">Manage all standardized mistake categories used for issuing warnings.</p>
+                          <div>
+                            <div className="warning-mistakes-header">
+                              <div style={{ display: 'flex', alignItems: 'center' }}>
+                                <h2>Master Mistakes Directory</h2>
+                                <span className="warning-mistakes-badge">{mistakeTypes.length} Total</span>
                               </div>
-                              <div className="relative w-80">
-                                <Search className="w-4 h-4 text-gray-500 absolute left-3 top-3" />
-                                <input
-                                  type="text"
-                                  placeholder="Search directory..."
-                                  value={mistakeDirectorySearch}
-                                  onChange={(e) => setMistakeDirectorySearch(e.target.value)}
-                                  className="w-full pl-9 pr-3 py-2.5 text-sm bg-gray-800 text-gray-300 border border-gray-700 rounded-lg outline-none focus:border-[#03b0f5]"
-                                />
-                              </div>
+                              <p>Manage all standardized mistake categories used for issuing warnings.</p>
                             </div>
 
-                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 overflow-y-auto max-h-[calc(100vh-300px)] pr-2">
+                            <div className="warning-mistakes-grid">
                               {getFilteredMistakeDirectory().length === 0 ? (
-                                <div className="col-span-3 text-center py-10 text-gray-500">No mistake categories found</div>
+                                <div className="task-empty-state" style={{ gridColumn: '1 / -1' }}>
+                                  <p className="task-empty-state-title">No mistake categories found</p>
+                                </div>
                               ) : (
                                 getFilteredMistakeDirectory().map((type, index) => {
                                   const title = type.label || type.value || type;
@@ -2105,32 +2111,32 @@ const WarningPage = memo(() => {
                                   return (
                                     <div
                                       key={type.value || index}
-                                      className="border border-gray-700 rounded-lg p-4 hover:border-[#03b0f5] hover:shadow-lg transition-all group bg-gray-900/50 cursor-pointer select-none"
+                                      className="warning-mistake-card"
                                       onDoubleClick={() => setViewMistakeData({ title, description })}
                                       title="Double-click to view full description"
                                     >
-                                      <div className="flex items-start gap-3 mb-2">
-                                        <span className="shrink-0 w-6 h-6 rounded-full bg-[#03b0f5]/20 text-[#03b0f5] text-[10px] font-black flex items-center justify-center border border-[#03b0f5]/30">
-                                          {index + 1}
-                                        </span>
-                                        <h3 className="font-bold text-white text-base leading-tight">{title}</h3>
+                                      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, marginBottom: 8 }}>
+                                        <span className="warning-mistake-card-index">{index + 1}</span>
+                                        <h3>{title}</h3>
                                       </div>
-                                      <p className="text-sm text-gray-400 line-clamp-2 pl-9">{description}</p>
-                                      <div className="mt-4 pt-3 border-t border-gray-800 flex items-center justify-between gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                                        <span className="text-[10px] text-gray-600 italic">Double-click to view</span>
-                                        <div className="flex gap-2">
+                                      <p style={{ paddingLeft: 34 }}>{description}</p>
+                                      <div style={{ marginTop: 12, paddingTop: 10, borderTop: '1px solid #1f1f27', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+                                        <span style={{ fontSize: 10, color: '#4a5570', fontStyle: 'italic' }}>Double-click to view</span>
+                                        <div style={{ display: 'flex', gap: 8 }}>
                                           {permissions.can_edit_mistake_category && (
                                             <button
+                                              type="button"
                                               onClick={(e) => { e.stopPropagation(); openEditMistake(type); }}
-                                              className="text-xs font-medium text-[#03b0f5] hover:underline"
+                                              style={{ fontSize: 12, fontWeight: 500, color: '#60a5fa', background: 'none', border: 'none', cursor: 'pointer' }}
                                             >
                                               Edit
                                             </button>
                                           )}
                                           {(type._id || type.id) && permissions.can_delete_mistake_category && (
                                             <button
+                                              type="button"
                                               onClick={(e) => { e.stopPropagation(); handleDeleteMistakeCategory(type); }}
-                                              className="text-xs font-medium text-red-400 hover:underline"
+                                              style={{ fontSize: 12, fontWeight: 500, color: '#f87171', background: 'none', border: 'none', cursor: 'pointer' }}
                                             >
                                               Delete
                                             </button>
@@ -2153,128 +2159,22 @@ const WarningPage = memo(() => {
                         {/* Tab 0: Team Warnings (for managers) */}
                         {selectedTab === 0 && (
                           <div>
-                            {/* Search and Filter Row */}
-                            <div className="flex items-center justify-between gap-4 mb-6">
-                              <div className="flex items-center gap-3">
-                              </div>
-                              
-                              <div className="flex items-center gap-3">
-                                {/* Select Button / Selection Controls */}
-
-                                {permissions?.can_delete && !showCheckboxes ? (
-                                  <button
-                                    onClick={handleShowCheckboxes}
-                                    className="bg-[#03B0F5] text-white px-5 py-3 rounded-lg font-bold shadow hover:bg-[#0280b5] transition text-base"
-                                  >
-                                    Select
-                                  </button>
-                                ) : permissions?.can_delete && showCheckboxes ? (
-                                  <div className="flex items-center gap-6 bg-gray-900 rounded-lg p-3">
-                                    <label className="flex items-center cursor-pointer text-[#03B0F5] font-bold">
-                                      <input
-                                        type="checkbox"
-                                        className="accent-blue-500 mr-2 cursor-pointer"
-                                        checked={selectAll}
-                                        onChange={handleSelectAll}
-                                        style={{ width: 18, height: 18 }}
-                                      />
-                                      Select All
-                                    </label>
-                                    <span className="text-white font-semibold">
-                                      {selectedRows.length} row{selectedRows.length !== 1 ? "s" : ""} selected
-                                    </span>
-                                    <button
-                                      className="px-3 py-1 bg-red-600 text-white rounded font-bold hover:bg-red-700 transition"
-                                      onClick={handleDeleteSelected}
-                                      disabled={selectedRows.length === 0}
-                                    >
-                                      Delete ({selectedRows.length})
-                                    </button>
-                                    <button
-                                      className="px-3 py-1 bg-gray-600 text-white rounded font-bold hover:bg-gray-700 transition"
-                                      onClick={handleCancelSelection}
-                                    >
-                                      Cancel
-                                    </button>
-                                  </div>
-                                ) : null}
-
-                                <button
-                                  className={`px-4 py-2 rounded hover:bg-gray-700 transition flex items-center gap-2 ${
-                                    Object.values(filters).some(f => f && f !== '') 
-                                      ? 'bg-[#03b0f5] text-white' 
-                                      : 'bg-gray-600 text-white'
-                                  }`}
-                                  onClick={() => setFilterDialogOpen(true)}
-                                >
-                                  <Filter className="w-4 h-4" />
-                                  More Filters
-                                  {Object.values(filters).some(f => f && f !== '') && (
-                                    <span className="bg-white text-[#03b0f5] px-2 py-1 rounded-full text-xs font-bold">
-                                      Active
-                                    </span>
-                                  )}
-                                </button>
-                                
-                                <div className="relative w-[350px]">
-                                  <input
-                                    type="text"
-                                    placeholder="Search by employee, type, department..."
-                                    value={searchTerm}
-                                    onChange={(e) => setSearchTerm(e.target.value)}
-                                    className="w-full py-3 pl-12 pr-4 bg-[#1b2230] text-gray-300 rounded-lg border border-gray-600 focus:outline-none focus:border-[#03b0f5] focus:ring-1 focus:ring-[#03b0f5] text-sm placeholder-gray-500"
-                                  />
-                                  <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-                                    <Search className="w-5 h-5 text-gray-500" />
-                                  </div>
-                                  {searchTerm && (
-                                    <button
-                                      onClick={() => setSearchTerm('')}
-                                      className="absolute inset-y-0 right-0 pr-4 flex items-center text-gray-400 hover:text-gray-300"
-                                    >
-                                      <X className="w-4 h-4" />
-                                    </button>
-                                  )}
-                                </div>
-                              </div>
-                            </div>
-
                             {/* Warnings Table (same as Super Admin) */}
                             <div className="relative">
-                              {/* Horizontal scroll buttons for Manager Team Warnings table */}
                               {canScrollLeft && (
-                                <button
-                                  onClick={() => scrollMainTable('left')}
-                                  className="absolute left-2 top-1/2 transform -translate-y-1/2 z-50 text-white p-4 rounded-full shadow-lg transition-all duration-200 opacity-20 hover:opacity-100"
-                                  style={{ backgroundColor: 'rgba(37, 99, 235, 1)' }}
-                                  onMouseEnter={(e) => e.target.style.backgroundColor = 'rgba(29, 78, 216, 1)'}
-                                  onMouseLeave={(e) => e.target.style.backgroundColor = 'rgba(37, 99, 235, 1)'}
-                                  aria-label="Scroll left"
-                                >
-                                  <ChevronLeft className="w-9 h-9" />
+                                <button type="button" onClick={() => scrollMainTable('left')} className="warning-scroll-btn left" aria-label="Scroll left">
+                                  <ChevronLeft className="w-5 h-5" />
                                 </button>
                               )}
-                              
                               {canScrollRight && (
-                                <button
-                                  onClick={() => scrollMainTable('right')}
-                                  className="absolute right-2 top-1/2 transform -translate-y-1/2 z-50 text-white p-4 rounded-full shadow-lg transition-all duration-200 opacity-20 hover:opacity-100"
-                                  style={{ backgroundColor: 'rgba(37, 99, 235, 1)' }}
-                                  onMouseEnter={(e) => e.target.style.backgroundColor = 'rgba(29, 78, 216, 1)'}
-                                  onMouseLeave={(e) => e.target.style.backgroundColor = 'rgba(37, 99, 235, 1)'}
-                                  aria-label="Scroll right"
-                                >
-                                  <ChevronRight className="w-9 h-9" />
+                                <button type="button" onClick={() => scrollMainTable('right')} className="warning-scroll-btn right" aria-label="Scroll right">
+                                  <ChevronRight className="w-5 h-5" />
                                 </button>
                               )}
                               
-                              <div 
-                                ref={tableScrollRef}
-                                className="bg-black rounded-lg overflow-x-auto max-h-[calc(100vh-280px)] overflow-y-auto"
-                                onScroll={() => updateScrollButtons(tableScrollRef, setCanScrollLeft, setCanScrollRight)}
-                              >
-                              <table className="w-full">
-                                <thead className="bg-gray-900 border-b border-gray-700 text-gray-400 font-medium sticky top-0 z-10">
+                              <div ref={tableScrollRef} className="warning-table-scroll" onScroll={() => updateScrollButtons(tableScrollRef, setCanScrollLeft, setCanScrollRight)}>
+                              <table className="warning-page-table">
+                                <thead>
                                   <tr>
                                     {showCheckboxes && (
                                       <th className="py-3 px-4 w-10">
@@ -2373,28 +2273,12 @@ const WarningPage = memo(() => {
 
                             {/* Pagination */}
                             {totalWarnings > rowsPerPage && (
-                              <div className="flex items-center justify-between mt-6 pt-4 border-t border-gray-700">
-                                <div className="text-gray-400">
-                                  Showing {Math.min((page * rowsPerPage) + 1, totalWarnings)} to {Math.min((page + 1) * rowsPerPage, totalWarnings)} of {totalWarnings} warnings
-                                </div>
-                                <div className="flex items-center gap-2">
-                                  <button
-                                    onClick={() => setPage(Math.max(0, page - 1))}
-                                    disabled={page === 0}
-                                    className="px-3 py-2 bg-gray-600 text-white rounded disabled:opacity-50 hover:bg-gray-700 transition"
-                                  >
-                                    Previous
-                                  </button>
-                                  <span className="px-3 py-2 text-white">
-                                    Page {page + 1} of {Math.ceil(totalWarnings / rowsPerPage)}
-                                  </span>
-                                  <button
-                                    onClick={() => setPage(Math.min(Math.ceil(totalWarnings / rowsPerPage) - 1, page + 1))}
-                                    disabled={page >= Math.ceil(totalWarnings / rowsPerPage) - 1}
-                                    className="px-3 py-2 bg-gray-600 text-white rounded disabled:opacity-50 hover:bg-gray-700 transition"
-                                  >
-                                    Next
-                                  </button>
+                              <div className="warning-pagination">
+                                <div className="warning-pagination-info">Showing {Math.min((page * rowsPerPage) + 1, totalWarnings)} to {Math.min((page + 1) * rowsPerPage, totalWarnings)} of {totalWarnings} warnings</div>
+                                <div className="warning-pagination-btns">
+                                  <button type="button" onClick={() => setPage(Math.max(0, page - 1))} disabled={page === 0} className="warning-pagination-btn">Previous</button>
+                                  <span className="warning-pagination-page">Page {page + 1} of {Math.ceil(totalWarnings / rowsPerPage)}</span>
+                                  <button type="button" onClick={() => setPage(Math.min(Math.ceil(totalWarnings / rowsPerPage) - 1, page + 1))} disabled={page >= Math.ceil(totalWarnings / rowsPerPage) - 1} className="warning-pagination-btn">Next</button>
                                 </div>
                               </div>
                             )}
@@ -2404,111 +2288,22 @@ const WarningPage = memo(() => {
                         {/* Tab 1: My Warnings (for managers) */}
                         {selectedTab === 1 && (
                           <div>
-                            {/* Search Row */}
-                            <div className="flex items-center justify-between gap-4 mb-6">
-                              <div className="flex items-center gap-3">
-                              </div>
-                              
-                              <div className="flex items-center gap-3">
-                                {/* Select Button / Selection Controls */}
-
-                                {permissions?.can_delete && !showCheckboxes ? (
-                                  <button
-                                    onClick={handleShowCheckboxes}
-                                    className="bg-[#03B0F5] text-white px-5 py-3 rounded-lg font-bold shadow hover:bg-[#0280b5] transition text-base"
-                                  >
-                                    Select
-                                  </button>
-                                ) : permissions?.can_delete && showCheckboxes ? (
-                                  <div className="flex items-center gap-6 bg-gray-900 rounded-lg p-3">
-                                    <label className="flex items-center cursor-pointer text-[#03B0F5] font-bold">
-                                      <input
-                                        type="checkbox"
-                                        className="accent-blue-500 mr-2 cursor-pointer"
-                                        checked={selectAll}
-                                        onChange={handleSelectAll}
-                                        style={{ width: 18, height: 18 }}
-                                      />
-                                      Select All
-                                    </label>
-                                    <span className="text-white font-semibold">
-                                      {selectedRows.length} row{selectedRows.length !== 1 ? "s" : ""} selected
-                                    </span>
-                                    <button
-                                      className="px-3 py-1 bg-red-600 text-white rounded font-bold hover:bg-red-700 transition"
-                                      onClick={handleDeleteSelected}
-                                      disabled={selectedRows.length === 0}
-                                    >
-                                      Delete ({selectedRows.length})
-                                    </button>
-                                    <button
-                                      className="px-3 py-1 bg-gray-600 text-white rounded font-bold hover:bg-gray-700 transition"
-                                      onClick={handleCancelSelection}
-                                    >
-                                      Cancel
-                                    </button>
-                                  </div>
-                                ) : null}
-
-                                <div className="relative w-[350px]">
-                                  <input
-                                    type="text"
-                                    placeholder="Search my warnings..."
-                                    value={searchTerm}
-                                    onChange={(e) => setSearchTerm(e.target.value)}
-                                    className="w-full py-3 pl-12 pr-4 bg-[#1b2230] text-gray-300 rounded-lg border border-gray-600 focus:outline-none focus:border-[#03b0f5] focus:ring-1 focus:ring-[#03b0f5] text-sm placeholder-gray-500"
-                                  />
-                                  <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-                                    <Search className="w-5 h-5 text-gray-500" />
-                                  </div>
-                                  {searchTerm && (
-                                    <button
-                                      onClick={() => setSearchTerm('')}
-                                      className="absolute inset-y-0 right-0 pr-4 flex items-center text-gray-400 hover:text-gray-300"
-                                    >
-                                      <X className="w-4 h-4" />
-                                    </button>
-                                  )}
-                                </div>
-                              </div>
-                            </div>
-
                             {/* My Warnings Table */}
                             <div className="relative">
-                              {/* Horizontal scroll buttons for My Warnings table */}
                               {myWarningsCanScrollLeft && (
-                                <button
-                                  onClick={() => scrollMyWarningsTable('left')}
-                                  className="absolute left-2 top-1/2 transform -translate-y-1/2 z-50 text-white p-4 rounded-full shadow-lg transition-all duration-200 opacity-20 hover:opacity-100"
-                                  style={{ backgroundColor: 'rgba(37, 99, 235, 1)' }}
-                                  onMouseEnter={(e) => e.target.style.backgroundColor = 'rgba(29, 78, 216, 1)'}
-                                  onMouseLeave={(e) => e.target.style.backgroundColor = 'rgba(37, 99, 235, 1)'}
-                                  aria-label="Scroll left"
-                                >
-                                  <ChevronLeft className="w-9 h-9" />
+                                <button type="button" onClick={() => scrollMyWarningsTable('left')} className="warning-scroll-btn left" aria-label="Scroll left">
+                                  <ChevronLeft className="w-5 h-5" />
                                 </button>
                               )}
-                              
                               {myWarningsCanScrollRight && (
-                                <button
-                                  onClick={() => scrollMyWarningsTable('right')}
-                                  className="absolute right-2 top-1/2 transform -translate-y-1/2 z-50 text-white p-4 rounded-full shadow-lg transition-all duration-200 opacity-20 hover:opacity-100"
-                                  style={{ backgroundColor: 'rgba(37, 99, 235, 1)' }}
-                                  onMouseEnter={(e) => e.target.style.backgroundColor = 'rgba(29, 78, 216, 1)'}
-                                  onMouseLeave={(e) => e.target.style.backgroundColor = 'rgba(37, 99, 235, 1)'}
-                                  aria-label="Scroll right"
-                                >
-                                  <ChevronRight className="w-9 h-9" />
+                                <button type="button" onClick={() => scrollMyWarningsTable('right')} className="warning-scroll-btn right" aria-label="Scroll right">
+                                  <ChevronRight className="w-5 h-5" />
                                 </button>
                               )}
                               
-                              <div 
-                                ref={myWarningsTableScrollRef}
-                                className="bg-black rounded-lg overflow-x-auto max-h-[calc(100vh-280px)] overflow-y-auto"
-                                onScroll={() => updateScrollButtons(myWarningsTableScrollRef, setMyWarningsCanScrollLeft, setMyWarningsCanScrollRight)}
-                              >
-                              <table className="w-full">
-                                <thead className="bg-gray-900 border-b border-gray-700 text-gray-400 font-medium sticky top-0 z-10">
+                              <div ref={myWarningsTableScrollRef} className="warning-table-scroll" onScroll={() => updateScrollButtons(myWarningsTableScrollRef, setMyWarningsCanScrollLeft, setMyWarningsCanScrollRight)}>
+                              <table className="warning-page-table">
+                                <thead>
                                   <tr>
                                     {showCheckboxes && (
                                       <th className="py-3 px-4 w-10">
@@ -2605,28 +2400,12 @@ const WarningPage = memo(() => {
 
                             {/* Pagination */}
                             {totalWarnings > rowsPerPage && (
-                              <div className="flex items-center justify-between mt-6 pt-4 border-t border-gray-700">
-                                <div className="text-gray-400">
-                                  Showing {Math.min((page * rowsPerPage) + 1, totalWarnings)} to {Math.min((page + 1) * rowsPerPage, totalWarnings)} of {totalWarnings} warnings
-                                </div>
-                                <div className="flex items-center gap-2">
-                                  <button
-                                    onClick={() => setPage(Math.max(0, page - 1))}
-                                    disabled={page === 0}
-                                    className="px-3 py-2 bg-gray-600 text-white rounded disabled:opacity-50 hover:bg-gray-700 transition"
-                                  >
-                                    Previous
-                                  </button>
-                                  <span className="px-3 py-2 text-white">
-                                    Page {page + 1} of {Math.ceil(totalWarnings / rowsPerPage)}
-                                  </span>
-                                  <button
-                                    onClick={() => setPage(Math.min(Math.ceil(totalWarnings / rowsPerPage) - 1, page + 1))}
-                                    disabled={page >= Math.ceil(totalWarnings / rowsPerPage) - 1}
-                                    className="px-3 py-2 bg-gray-600 text-white rounded disabled:opacity-50 hover:bg-gray-700 transition"
-                                  >
-                                    Next
-                                  </button>
+                              <div className="warning-pagination">
+                                <div className="warning-pagination-info">Showing {Math.min((page * rowsPerPage) + 1, totalWarnings)} to {Math.min((page + 1) * rowsPerPage, totalWarnings)} of {totalWarnings} warnings</div>
+                                <div className="warning-pagination-btns">
+                                  <button type="button" onClick={() => setPage(Math.max(0, page - 1))} disabled={page === 0} className="warning-pagination-btn">Previous</button>
+                                  <span className="warning-pagination-page">Page {page + 1} of {Math.ceil(totalWarnings / rowsPerPage)}</span>
+                                  <button type="button" onClick={() => setPage(Math.min(Math.ceil(totalWarnings / rowsPerPage) - 1, page + 1))} disabled={page >= Math.ceil(totalWarnings / rowsPerPage) - 1} className="warning-pagination-btn">Next</button>
                                 </div>
                               </div>
                             )}
@@ -2636,111 +2415,22 @@ const WarningPage = memo(() => {
                     ) : (
                       /* Users with No Warnings Permission: Only My Warnings */
                       <div>
-                        {/* Search Row */}
-                        <div className="flex items-center justify-between gap-4 mb-6">
-                          <div className="flex items-center gap-3">
-                          </div>
-                          
-                          <div className="flex items-center gap-3">
-                            {/* Select Button / Selection Controls */}
-
-                            {permissions?.can_delete && !showCheckboxes ? (
-                              <button
-                                onClick={handleShowCheckboxes}
-                                className="bg-[#03B0F5] text-white px-5 py-3 rounded-lg font-bold shadow hover:bg-[#0280b5] transition text-base"
-                              >
-                                Select
-                              </button>
-                            ) : permissions?.can_delete && showCheckboxes ? (
-                              <div className="flex items-center gap-6 bg-gray-900 rounded-lg p-3">
-                                <label className="flex items-center cursor-pointer text-[#03B0F5] font-bold">
-                                  <input
-                                    type="checkbox"
-                                    className="accent-blue-500 mr-2 cursor-pointer"
-                                    checked={selectAll}
-                                    onChange={handleSelectAll}
-                                    style={{ width: 18, height: 18 }}
-                                  />
-                                  Select All
-                                </label>
-                                <span className="text-white font-semibold">
-                                  {selectedRows.length} row{selectedRows.length !== 1 ? "s" : ""} selected
-                                </span>
-                                <button
-                                  className="px-3 py-1 bg-red-600 text-white rounded font-bold hover:bg-red-700 transition"
-                                  onClick={handleDeleteSelected}
-                                  disabled={selectedRows.length === 0}
-                                >
-                                  Delete ({selectedRows.length})
-                                </button>
-                                <button
-                                  className="px-3 py-1 bg-gray-600 text-white rounded font-bold hover:bg-gray-700 transition"
-                                  onClick={handleCancelSelection}
-                                >
-                                  Cancel
-                                </button>
-                              </div>
-                            ) : null}
-                            
-                            <div className="relative w-[350px]">
-                              <input
-                                type="text"
-                                placeholder="Search my warnings..."
-                                value={searchTerm}
-                                onChange={(e) => setSearchTerm(e.target.value)}
-                                className="w-full py-3 pl-12 pr-4 bg-[#1b2230] text-gray-300 rounded-lg border border-gray-600 focus:outline-none focus:border-[#03b0f5] focus:ring-1 focus:ring-[#03b0f5] text-sm placeholder-gray-500"
-                              />
-                              <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-                                <Search className="w-5 h-5 text-gray-500" />
-                              </div>
-                              {searchTerm && (
-                                <button
-                                  onClick={() => setSearchTerm('')}
-                                  className="absolute inset-y-0 right-0 pr-4 flex items-center text-gray-400 hover:text-gray-300"
-                                >
-                                  <X className="w-4 h-4" />
-                                </button>
-                              )}
-                            </div>
-                          </div>
-                        </div>
-
                         {/* My Warnings Table */}
                         <div className="relative">
-                          {/* Horizontal scroll buttons for User My Warnings table */}
                           {myWarningsCanScrollLeft && (
-                            <button
-                              onClick={() => scrollMyWarningsTable('left')}
-                              className="absolute left-2 top-1/2 transform -translate-y-1/2 z-50 text-white p-4 rounded-full shadow-lg transition-all duration-200 opacity-20 hover:opacity-100"
-                              style={{ backgroundColor: 'rgba(37, 99, 235, 1)' }}
-                              onMouseEnter={(e) => e.target.style.backgroundColor = 'rgba(29, 78, 216, 1)'}
-                              onMouseLeave={(e) => e.target.style.backgroundColor = 'rgba(37, 99, 235, 1)'}
-                              aria-label="Scroll left"
-                            >
-                              <ChevronLeft className="w-9 h-9" />
+                            <button type="button" onClick={() => scrollMyWarningsTable('left')} className="warning-scroll-btn left" aria-label="Scroll left">
+                              <ChevronLeft className="w-5 h-5" />
                             </button>
                           )}
-                          
                           {myWarningsCanScrollRight && (
-                            <button
-                              onClick={() => scrollMyWarningsTable('right')}
-                              className="absolute right-2 top-1/2 transform -translate-y-1/2 z-50 text-white p-4 rounded-full shadow-lg transition-all duration-200 opacity-20 hover:opacity-100"
-                              style={{ backgroundColor: 'rgba(37, 99, 235, 1)' }}
-                              onMouseEnter={(e) => e.target.style.backgroundColor = 'rgba(29, 78, 216, 1)'}
-                              onMouseLeave={(e) => e.target.style.backgroundColor = 'rgba(37, 99, 235, 1)'}
-                              aria-label="Scroll right"
-                            >
-                              <ChevronRight className="w-9 h-9" />
+                            <button type="button" onClick={() => scrollMyWarningsTable('right')} className="warning-scroll-btn right" aria-label="Scroll right">
+                              <ChevronRight className="w-5 h-5" />
                             </button>
                           )}
                           
-                          <div 
-                            ref={myWarningsTableScrollRef}
-                            className="bg-black rounded-lg overflow-x-auto max-h-[calc(100vh-280px)] overflow-y-auto"
-                            onScroll={() => updateScrollButtons(myWarningsTableScrollRef, setMyWarningsCanScrollLeft, setMyWarningsCanScrollRight)}
-                          >
-                          <table className="w-full">
-                            <thead className="bg-gray-900 border-b border-gray-700 text-gray-400 font-medium sticky top-0 z-10">
+                          <div ref={myWarningsTableScrollRef} className="warning-table-scroll" onScroll={() => updateScrollButtons(myWarningsTableScrollRef, setMyWarningsCanScrollLeft, setMyWarningsCanScrollRight)}>
+                          <table className="warning-page-table">
+                            <thead>
                               <tr>
                                 {showCheckboxes && (
                                   <th className="py-3 px-4 w-10">
@@ -2837,72 +2527,69 @@ const WarningPage = memo(() => {
 
                         {/* Pagination */}
                         {totalWarnings > rowsPerPage && (
-                          <div className="flex items-center justify-between mt-6 pt-4 border-t border-gray-700">
-                            <div className="text-gray-400">
-                              Showing {Math.min((page * rowsPerPage) + 1, totalWarnings)} to {Math.min((page + 1) * rowsPerPage, totalWarnings)} of {totalWarnings} warnings
-                            </div>
-                            <div className="flex items-center gap-2">
-                              <button
-                                onClick={() => setPage(Math.max(0, page - 1))}
-                                disabled={page === 0}
-                                className="px-3 py-2 bg-gray-600 text-white rounded disabled:opacity-50 hover:bg-gray-700 transition"
-                              >
-                                Previous
-                              </button>
-                              <span className="px-3 py-2 text-white">
-                                Page {page + 1} of {Math.ceil(totalWarnings / rowsPerPage)}
-                              </span>
-                              <button
-                                onClick={() => setPage(Math.min(Math.ceil(totalWarnings / rowsPerPage) - 1, page + 1))}
-                                disabled={page >= Math.ceil(totalWarnings / rowsPerPage) - 1}
-                                className="px-3 py-2 bg-gray-600 text-white rounded disabled:opacity-50 hover:bg-gray-700 transition"
-                              >
-                                Next
-                              </button>
+                          <div className="warning-pagination">
+                            <div className="warning-pagination-info">Showing {Math.min((page * rowsPerPage) + 1, totalWarnings)} to {Math.min((page + 1) * rowsPerPage, totalWarnings)} of {totalWarnings} warnings</div>
+                            <div className="warning-pagination-btns">
+                              <button type="button" onClick={() => setPage(Math.max(0, page - 1))} disabled={page === 0} className="warning-pagination-btn">Previous</button>
+                              <span className="warning-pagination-page">Page {page + 1} of {Math.ceil(totalWarnings / rowsPerPage)}</span>
+                              <button type="button" onClick={() => setPage(Math.min(Math.ceil(totalWarnings / rowsPerPage) - 1, page + 1))} disabled={page >= Math.ceil(totalWarnings / rowsPerPage) - 1} className="warning-pagination-btn">Next</button>
                             </div>
                           </div>
                         )}
                       </div>
                     )}
-                  </>
-                )}
-              </div>
             </div>
-          </div>
-        </div>
-      </div>
+          )}
 
-      {/* Modals will be added here */}
-      {/* Add Warning Modal - UI matching CreateTask popup */}
+      {/* Add Warning Drawer — slides in from right (same as Task/Ticket) */}
       {addDialogOpen && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4 sm:p-6">
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-3xl overflow-hidden relative flex flex-col" style={{ maxHeight: '90vh' }}>
+        <>
+          <div
+            aria-hidden="true"
+            onClick={closeAddDialog}
+            style={{
+              position: 'fixed',
+              inset: 0,
+              zIndex: 1000,
+              background: 'rgba(15, 23, 42, 0.55)',
+              opacity: addDrawerVisible ? 1 : 0,
+              transition: 'opacity 0.28s ease',
+            }}
+          />
+          <div
+            tabIndex={-1}
+            className="relative bg-white flex flex-col overflow-hidden"
+            style={{
+              position: 'fixed',
+              top: 0,
+              right: 0,
+              height: '100vh',
+              width: '100%',
+              maxWidth: '640px',
+              zIndex: 1001,
+              boxShadow: '-12px 0 40px rgba(0, 0, 0, 0.28)',
+              transform: addDrawerVisible ? 'translateX(0)' : 'translateX(100%)',
+              transition: 'transform 0.28s cubic-bezier(0.4, 0, 0.2, 1)',
+              outline: 'none',
+            }}
+            role="dialog"
+            aria-modal="true"
+            aria-label="Issue New Warning"
+          >
             {/* Header */}
             <div className="flex items-center justify-between px-5 py-3.5 border-b border-gray-200 bg-gray-50 shrink-0">
               <h2 className="text-base font-black text-gray-800 flex items-center gap-2 uppercase tracking-tight">
                 <Send className="w-4 h-4 text-red-500" /> Issue New Warning
               </h2>
               <button
-                onClick={() => {
-                  setAddDialogOpen(false);
-                  setFormData({
-                    warning_type: '',
-                    issued_to: '',
-                    penalty_amount: '',
-                    warning_message: ''
-                  });
-                  setSelectedDepartmentForAdd('');
-                  setSelectedFiles([]);
-                  setSimilarWarnings([]);
-                  setShowingSimilarWarnings(false);
-                  resetAllSearchStates();
-                }}
+                type="button"
+                onClick={closeAddDialog}
                 className="text-gray-400 hover:text-red-500 hover:bg-red-50 transition w-7 h-7 flex items-center justify-center rounded-full"
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
-            <div className="p-5 overflow-y-auto flex-1">
+            <div className="p-5 overflow-y-auto flex-1 min-h-0">
             <form onSubmit={(e) => { e.preventDefault(); handleSubmit(); }} className="space-y-0">
                 {/* Date & Time and Issued By Row */}
                 <div className="grid grid-cols-2 gap-4 mb-5">
@@ -3385,15 +3072,7 @@ const WarningPage = memo(() => {
             <div className="px-5 py-3.5 border-t border-gray-200 bg-gray-50 flex items-center justify-end gap-3 shrink-0">
               <button
                 type="button"
-                onClick={() => {
-                  setAddDialogOpen(false);
-                  setFormData({ warning_type: '', issued_to: '', penalty_amount: '', warning_message: '' });
-                  setSelectedDepartmentForAdd('');
-                  setSelectedFiles([]);
-                  setSimilarWarnings([]);
-                  setShowingSimilarWarnings(false);
-                  resetAllSearchStates();
-                }}
+                onClick={closeAddDialog}
                 className="px-5 py-2 text-sm font-bold text-gray-600 bg-white border border-gray-300 hover:bg-gray-100 rounded-lg transition-colors uppercase"
               >
                 Cancel
@@ -3407,12 +3086,15 @@ const WarningPage = memo(() => {
               </button>
             </div>
           </div>
-        </div>
+        </>
       )}
 
       {/* View Warning Modal */}
-      {viewDialogOpen && selectedWarning && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4 sm:p-6">
+      {viewDialogOpen && selectedWarning && createPortal(
+        <div
+          className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 sm:p-6"
+          style={{ zIndex: WARNING_MODAL_Z_INDEX }}
+        >
           <div className="bg-gray-900 rounded-2xl shadow-xl w-full max-w-2xl overflow-hidden relative border border-gray-700">
             {/* Header */}
             <div className="flex items-center justify-between px-6 py-4 border-b border-gray-700 bg-gray-800/80">
@@ -3500,12 +3182,16 @@ const WarningPage = memo(() => {
 
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* Edit Warning Modal */}
-      {editDialogOpen && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4 sm:p-6">
+      {editDialogOpen && createPortal(
+        <div
+          className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 sm:p-6"
+          style={{ zIndex: WARNING_MODAL_Z_INDEX }}
+        >
           <div className="bg-gray-900 rounded-2xl shadow-xl w-full max-w-2xl overflow-hidden relative border border-gray-700">
             <div className="flex items-center justify-between px-6 py-4 border-b border-gray-700 bg-gray-800/80">
               <h2 className="text-lg font-bold text-white flex items-center gap-2">
@@ -3645,12 +3331,16 @@ const WarningPage = memo(() => {
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* Delete Confirmation Modal */}
-      {deleteDialogOpen && warningToDelete && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+      {deleteDialogOpen && warningToDelete && createPortal(
+        <div
+          className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4"
+          style={{ zIndex: WARNING_MODAL_Z_INDEX }}
+        >
           <div className="bg-gray-900 rounded-2xl shadow-xl w-full max-w-md overflow-hidden relative border border-gray-700">
             <div className="p-6 space-y-4">
               <div className="flex items-center gap-3 mb-2">
@@ -3682,12 +3372,16 @@ const WarningPage = memo(() => {
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* Filter Modal */}
-      {filterDialogOpen && (
-        <div className="bg-transparent fixed inset-0 z-50 flex items-center justify-center">
+      {filterDialogOpen && createPortal(
+        <div
+          className="bg-transparent fixed inset-0 flex items-center justify-center"
+          style={{ zIndex: WARNING_MODAL_Z_INDEX }}
+        >
           <div className="bg-[#1b2230] border border-gray-600 rounded-xl shadow-2xl p-1 w-[700px] max-w-[90vw] h-[550px] flex flex-col">
             <div className="flex justify-between items-center mb-6">
               <h2 className="text-xl font-semibold text-white">Filter Warnings</h2>
@@ -4116,12 +3810,16 @@ const WarningPage = memo(() => {
               </div>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* Create Mistake Category Modal */}
-      {createMistakeOpen && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+      {createMistakeOpen && createPortal(
+        <div
+          className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4"
+          style={{ zIndex: WARNING_MODAL_Z_INDEX }}
+        >
           <div className="bg-gray-900 rounded-2xl shadow-xl w-full max-w-md overflow-hidden relative border border-gray-700">
             <div className="flex items-center justify-between px-6 py-4 border-b border-gray-700 bg-gray-800/80">
               <h2 className="text-lg font-bold text-white flex items-center gap-2">
@@ -4171,14 +3869,16 @@ const WarningPage = memo(() => {
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* Edit Mistake Category Modal */}
       {/* View Mistake Description Modal (double-click) */}
-      {viewMistakeData && (
+      {viewMistakeData && createPortal(
         <div
-          className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[60] p-4"
+          className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4"
+          style={{ zIndex: WARNING_MODAL_Z_INDEX }}
           onClick={() => setViewMistakeData(null)}
         >
           <div
@@ -4206,11 +3906,15 @@ const WarningPage = memo(() => {
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
-      {editMistakeOpen && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+      {editMistakeOpen && createPortal(
+        <div
+          className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4"
+          style={{ zIndex: WARNING_MODAL_Z_INDEX }}
+        >
           <div className="bg-gray-900 rounded-2xl shadow-xl w-full max-w-md overflow-hidden relative border border-gray-700">
             <div className="flex items-center justify-between px-6 py-4 border-b border-gray-700 bg-gray-800/80">
               <h2 className="text-lg font-bold text-white flex items-center gap-2">
@@ -4260,7 +3964,8 @@ const WarningPage = memo(() => {
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* Notification */}

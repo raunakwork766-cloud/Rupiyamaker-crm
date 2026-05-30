@@ -7,16 +7,17 @@
 
 /* Style the table header */
 .employee-table-dark .ant-table-thead > tr > th {
-  background-color: #181818 !important;
-  color: #03B0F5 !important; /* Blue header text for better visibility */
-  border-bottom: 1px solid #333 !important;
-  font-weight: bold;
+  background-color: #ffffff !important;
+  color: #03b0f5 !important;
+  border-bottom: 1px solid #e5e7eb !important;
+  font-weight: 800;
 }
 
 /* Style the table rows */
 .employee-table-dark .ant-table-tbody > tr > td {
   background-color: #000 !important;
-  color: white !important;
+  color: #ffffff !important;
+  font-weight: 600 !important;
   border-bottom: 1px solid #333 !important;
 }
 
@@ -168,7 +169,8 @@
 
 /* Sticky header cell styling */
 .employee-table-dark .ant-table-thead > tr > th.ant-table-cell-fix-left {
-  background-color: #181818 !important;
+  background-color: #ffffff !important;
+  color: #03b0f5 !important;
   z-index: 2 !important;
   position: sticky !important;
   left: 0 !important;

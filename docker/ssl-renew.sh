@@ -7,7 +7,7 @@
 set -e
 
 # Configuration
-DOMAIN="crm.rupiyamakercrm.online"
+DOMAIN="crm.fixyourfinance.ai"
 EMAIL="admin@bhoomi.cloud"
 LOG_FILE="/var/log/ssl-renew.log"
 HTTP_PORT="5902"

@@ -10,7 +10,7 @@ Aapke paas ab **2 separate environments** hain:
 
 **Status:** ✅ Running
 **Branch:** `main`
-**Access:** https://rupiyamaker.com
+**Access:** https://crm.fixyourfinance.ai
 
 **Ports:**
 - Backend: 8049
@@ -122,7 +122,7 @@ pm2 list | grep dev
 
 ## ⚠️ Important Notes
 
-1. **Production** hamesha `main` branch par chalega (https://rupiyamaker.com)
+1. **Production** hamesha `main` branch par chalega (https://crm.fixyourfinance.ai)
 2. **Development** hamesha `dev` branch par chalega (http://IP:4522)
 3. Dono **completely separate** hain - ek dusre ko affect nahi karenge
 4. Production par directly changes **KABHI MAT KARO** - hamesha dev se test karke merge karo

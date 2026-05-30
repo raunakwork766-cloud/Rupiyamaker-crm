@@ -3,6 +3,15 @@ import { message } from "antd";
 import axios from 'axios';
 import { hasPermission, getUserPermissions } from '../../utils/permissions';
 import { getISTDateYMD, toISTDateYMD, getISTTimestamp } from '../../utils/dateUtils';
+import {
+  LEAD_FIELD_LABEL_CLASS,
+  LEAD_FIELD_LABEL_STYLE,
+  LEAD_FIELD_GRID_CLASS,
+  LEAD_FIELD_WRAPPER_CLASS,
+  LEAD_SECTION_CARD_CLASS,
+  LEAD_DROPDOWN_TRIGGER_CLASS,
+  LEAD_INPUT_CLASS,
+} from './leadSectionStyles';
 
 // API base URL - Use proxy in development
 const API_BASE_URL = '/api'; // Always use proxy
@@ -228,8 +237,8 @@ export default function OperationsSection({ lead, onSave, canEdit = true }) {
   const [tooltipPosition, setTooltipPosition] = useState({ top: 0, left: 0 });
 
   // Label styling (matching LoginFormSection)
-  const labelClass = "block font-bold mb-2 uppercase";
-  const labelStyle = { color: "black", fontWeight: 650, fontSize: "15px" };
+  const labelClass = LEAD_FIELD_LABEL_CLASS;
+  const labelStyle = LEAD_FIELD_LABEL_STYLE;
 
   // Refs for dropdown click outside detection
   const channelDropdownRef = useRef(null);
@@ -888,7 +897,7 @@ export default function OperationsSection({ lead, onSave, canEdit = true }) {
   };
 
   return (
-    <div className="p-7 rounded-2xl border-2 border-cyan-400/70 bg-white shadow-2xl text-[1.1rem] relative overflow-hidden">
+    <div className={LEAD_SECTION_CARD_CLASS}>
       <div className="absolute -right-12 -top-10 w-40 h-40 bg-white rounded-full blur-2xl" />
       <div className="absolute -left-16 top-20 w-28 h-28 bg-white rounded-full blur-2xl" />
 
@@ -926,12 +935,12 @@ export default function OperationsSection({ lead, onSave, canEdit = true }) {
       </div>
 
       {/* 3-column grid for operations fields only */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-8 font-bold z-10 relative">
+      <div className={`${LEAD_FIELD_GRID_CLASS} font-bold z-10 relative`}>
         {/* Operations fields, all editable */}
         {operationsFields.map(({ label, key, type, readOnly }) => {
           const isFieldReadOnly = readOnly || !canEdit;
           return (
-          <div className="flex flex-col gap-2" key={key}>
+          <div className={LEAD_FIELD_WRAPPER_CLASS} key={key}>
             <label className={labelClass} style={labelStyle}>
               {label}
             </label>
@@ -939,7 +948,7 @@ export default function OperationsSection({ lead, onSave, canEdit = true }) {
               <div className="relative w-full dropdown-container" ref={channelDropdownRef}>
                 <div
                   ref={channelTriggerRef}
-                  className={`w-full p-3 border-2 border-[#00bcd4] rounded-md bg-white text-green-600 text-md font-bold cursor-pointer flex items-center justify-between transition-all duration-300 focus-within:border-[#0097a7] focus-within:shadow-[0_0_0_3px_rgba(0,188,212,0.1)] ${
+                  className={`${LEAD_DROPDOWN_TRIGGER_CLASS} ${
                     isFieldReadOnly ? 'bg-gray-100 cursor-not-allowed' : ''
                   }`}
                   onClick={() => {
@@ -1037,7 +1046,7 @@ export default function OperationsSection({ lead, onSave, canEdit = true }) {
             ) : type === 'popup' ? (
               <div className="relative w-full dropdown-container">
                 <div
-                  className={`w-full p-3 border-2 border-[#00bcd4] rounded-md bg-white text-green-600 text-md font-bold cursor-pointer flex items-center justify-between transition-all duration-300 focus-within:border-[#0097a7] focus-within:shadow-[0_0_0_3px_rgba(0,188,212,0.1)] ${
+                  className={`${LEAD_DROPDOWN_TRIGGER_CLASS} ${
                     isFieldReadOnly ? 'bg-gray-100 cursor-not-allowed' : ''
                   }`}
                   onClick={() => !isFieldReadOnly && setShowLoginPersonPopup(true)}
@@ -1096,7 +1105,7 @@ export default function OperationsSection({ lead, onSave, canEdit = true }) {
                     ) : ''}
                   readOnly
                   onClick={() => !isFieldReadOnly && document.getElementById(`${key}_hidden`).showPicker()}
-                  className={`w-full p-3 border-2 border-[#00bcd4] rounded-md text-green-600 text-md font-bold transition-all duration-300 focus:border-[#0097a7] focus:shadow-[0_0_0_3px_rgba(0,188,212,0.1)] cursor-pointer ${
+                  className={`${LEAD_INPUT_CLASS} cursor-pointer ${
                     isFieldReadOnly ? 'bg-gray-100 cursor-not-allowed' : 'bg-white'
                   }`}
                   placeholder={key === 'login_sent_date' ? 'Login sent date and time' : 'Select date'}
@@ -1110,7 +1119,7 @@ export default function OperationsSection({ lead, onSave, canEdit = true }) {
                 onChange={(e) => isFieldReadOnly ? null : handleInputChange(key, e.target.value)}
                 onBlur={(e) => isFieldReadOnly ? null : handleInputBlur(key, e.target.value)}
                 onKeyDown={key === 'rate_percentage' ? handlePercentageKeyDown : null}
-                className={`w-full p-3 border-2 border-[#00bcd4] rounded-md text-green-600 text-md font-bold transition-all duration-300 focus:border-[#0097a7] focus:shadow-[0_0_0_3px_rgba(0,188,212,0.1)] ${
+                className={`${LEAD_INPUT_CLASS} ${
                   isFieldReadOnly ? 'bg-gray-100 cursor-not-allowed' : 'bg-white'
                 }`}
                 placeholder={isFieldReadOnly ? "Read-only: No edit permission" : `Enter ${label.toLowerCase()}`}
@@ -1122,7 +1131,7 @@ export default function OperationsSection({ lead, onSave, canEdit = true }) {
                 value={formData[key] || ''}
                 onChange={(e) => isFieldReadOnly ? null : handleInputChange(key, e.target.value)}
                 onBlur={(e) => isFieldReadOnly ? null : handleInputBlur(key, e.target.value)}
-                className={`w-full p-3 border-2 border-[#00bcd4] rounded-md text-green-600 text-md font-bold transition-all duration-300 focus:border-[#0097a7] focus:shadow-[0_0_0_3px_rgba(0,188,212,0.1)] ${
+                className={`${LEAD_INPUT_CLASS} ${
                   isFieldReadOnly ? 'bg-gray-100 cursor-not-allowed' : 'bg-white'
                 }`}
                 placeholder={isFieldReadOnly ? "Read-only: No edit permission" : `Enter ${label.toLowerCase()}`}

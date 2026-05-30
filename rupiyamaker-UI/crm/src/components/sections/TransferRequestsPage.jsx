@@ -339,20 +339,6 @@ const TransferRequestsPage = ({ user, navPush, navBack, trpNavStateRef }) => {
     { key: 'direct',   label: 'Direct Transfer',  Icon: ArrowRight,  color: 'blue'   },
   ];
 
-  const colorMap = {
-    yellow: { badge: 'bg-yellow-500/20 text-yellow-400 border-yellow-500/40', tab: 'text-yellow-400 border-yellow-400' },
-    green:  { badge: 'bg-green-500/20 text-green-400 border-green-500/40',   tab: 'text-green-400 border-green-400'  },
-    red:    { badge: 'bg-red-500/20 text-red-400 border-red-500/40',         tab: 'text-red-400 border-red-400'      },
-    blue:   { badge: 'bg-[#03B0F5]/20 text-[#03B0F5] border-[#03B0F5]/40',  tab: 'text-[#03B0F5] border-[#03B0F5]' },
-  };
-
-  const statusBadgeClass = {
-    pending:  'bg-yellow-500/20 text-yellow-400 border border-yellow-500/40',
-    approved: 'bg-green-500/20 text-green-400 border border-green-500/40',
-    rejected: 'bg-red-500/20 text-red-400 border border-red-500/40',
-    direct:   'bg-[#03B0F5]/20 text-[#03B0F5] border border-[#03B0F5]/40',
-  };
-
   const currentLead = selectedLead;
   const customerName = currentLead
     ? ([currentLead.first_name, currentLead.last_name].filter(Boolean).join(' ') ||
@@ -382,82 +368,72 @@ const TransferRequestsPage = ({ user, navPush, navBack, trpNavStateRef }) => {
   // ──────────────────────────────────────────────────────────────────────────
 
   return (
-    <div className="min-h-screen bg-[#0d1117] text-white">
-      {/* Page Header */}
-      <div className="px-6 pt-6 pb-4">
-        <h1 className="text-2xl font-bold text-white">Transfer Requests</h1>
-        <p className="text-neutral-400 text-sm mt-1">Track the status of your lead transfer requests.</p>
-      </div>
-
-      {/* Card */}
-      <div className="mx-6 mb-6 bg-[#0c1424] rounded-xl border border-neutral-800 overflow-hidden">
-        {/* Tab strip */}
-        <div className="flex border-b border-neutral-800 bg-[#0c1424]">
+    <div className="transfer-requests-page">
+      {/* HubSpot-style status tabs + toolbar */}
+      <div className="trp-toolbar">
+        <div className="trp-status-tabs">
           {tabDefs.map(t => {
-            const c = colorMap[t.color];
             const cnt = stats[t.key];
             return (
               <button
                 key={t.key}
+                type="button"
                 onClick={() => setActiveTab(t.key)}
-                className={`flex items-center gap-2 px-5 py-3.5 text-sm font-bold border-b-2 transition-all ${
-                  activeTab === t.key
-                    ? `${c.tab} bg-neutral-800/40`
-                    : 'border-transparent text-neutral-500 hover:text-neutral-300'
-                }`}
+                className={`trp-status-tab ${activeTab === t.key ? 'active' : ''}`}
               >
-                <t.Icon size={15} />
-                {t.label}
+                <t.Icon size={14} />
+                <span>{t.label}</span>
                 {cnt > 0 && (
-                  <span className={`px-2 py-0.5 rounded-full text-[11px] font-bold border ${
-                    activeTab === t.key ? c.badge : 'bg-neutral-800 text-neutral-500 border-neutral-700'
-                  }`}>{cnt}</span>
+                  <span className={`trp-status-count ${activeTab === t.key ? 'active' : ''}`}>{cnt}</span>
                 )}
               </button>
             );
           })}
-          <button
-            onClick={() => { loadRequests(); loadStats(); }}
-            disabled={loading}
-            className="ml-auto mr-3 my-2 flex items-center gap-1 px-2.5 py-1.5 text-neutral-500 hover:text-neutral-300 text-xs transition rounded-lg hover:bg-neutral-800"
-            title="Refresh"
-          >
-            <RefreshCw size={13} className={loading ? 'animate-spin' : ''} />
-          </button>
         </div>
+        <button
+          type="button"
+          onClick={() => { loadRequests(); loadStats(); }}
+          disabled={loading}
+          className="trp-refresh-btn"
+          title="Refresh"
+        >
+          <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
+          Refresh
+        </button>
+      </div>
 
-        {/* Error bar */}
+      {/* Main panel */}
+      <div className="trp-panel">
         {error && (
-          <div className="px-4 py-2 bg-red-900/30 border-b border-red-800/40 text-red-400 text-sm">{error}</div>
+          <div className="trp-error-bar">{error}</div>
         )}
 
-        {/* Table */}
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
+        <div className="trp-table-scroll">
+          <table className="trp-table">
             <thead>
-              <tr className="bg-white border-b-2 border-[#03B0F5]">
-                <th className="px-4 py-3 text-left text-xs font-black uppercase tracking-wider text-[#03B0F5] w-12">#</th>
-                <th className="px-4 py-3 text-left text-xs font-black uppercase tracking-wider text-[#03B0F5]">Date</th>
-                <th className="px-4 py-3 text-left text-xs font-black uppercase tracking-wider text-[#03B0F5]">Created By</th>
-                <th className="px-4 py-3 text-left text-xs font-black uppercase tracking-wider text-[#03B0F5]">Team Name</th>
-                <th className="px-4 py-3 text-left text-xs font-black uppercase tracking-wider text-[#03B0F5]">Customer Name</th>
-                <th className="px-4 py-3 text-left text-xs font-black uppercase tracking-wider text-[#03B0F5]">Lead Status</th>
-                <th className="px-4 py-3 text-left text-xs font-black uppercase tracking-wider text-[#03B0F5]">Requested By</th>
-                <th className="px-4 py-3 text-left text-xs font-black uppercase tracking-wider text-[#03B0F5]">Actions</th>
+              <tr>
+                <th className="trp-col-num">#</th>
+                <th>Date</th>
+                <th>Created By</th>
+                <th>Team Name</th>
+                <th>Customer Name</th>
+                <th>Lead Status</th>
+                <th>Requested By</th>
+                <th>Actions</th>
               </tr>
             </thead>
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan={8} className="text-center py-16 text-neutral-500">
-                    <RefreshCw size={20} className="inline animate-spin mr-2" />
-                    Loading...
+                  <td colSpan={8} className="trp-empty-cell">
+                    <RefreshCw size={18} className="inline animate-spin mr-2" />
+                    Loading transfer requests...
                   </td>
                 </tr>
               ) : requests.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="text-center py-16 text-neutral-500">
-                    No {activeTab} requests
+                  <td colSpan={8} className="trp-empty-cell">
+                    No {activeTab} requests found
                   </td>
                 </tr>
               ) : (
@@ -475,65 +451,63 @@ const TransferRequestsPage = ({ user, navPush, navBack, trpNavStateRef }) => {
                     <tr
                       key={lead._id}
                       onClick={() => handleRowViewLead(lead)}
-                      className="border-b border-neutral-800 hover:bg-neutral-800/30 cursor-pointer transition-colors"
+                      className="trp-row"
                     >
-                      <td className="px-4 py-3 text-neutral-400 font-bold text-xs">
-                        {(page - 1) * pageSize + idx + 1}
-                      </td>
-                      <td className="px-4 py-3">
-                        <div className="text-white text-xs font-semibold">{dateStr}</div>
-                        {age && <div className="text-neutral-500 text-[11px] mt-0.5">{age}</div>}
+                      <td className="trp-col-num">{(page - 1) * pageSize + idx + 1}</td>
+                      <td>
+                        <div className="trp-cell-primary">{dateStr}</div>
+                        {age && <div className="trp-cell-muted">{age}</div>}
                         {activeTab === 'pending' && lead.reassignment_requested_at && (() => {
                           const expiresAt = new Date(lead.reassignment_requested_at).getTime() + cooldownHours * 3_600_000;
                           const remMs = expiresAt - now;
-                          if (remMs <= 0) return <div className="text-orange-500/70 text-[10px] mt-0.5 font-mono">Cooldown expired</div>;
+                          if (remMs <= 0) return <div className="trp-cell-warn">Cooldown expired</div>;
                           const h = Math.floor(remMs / 3_600_000);
                           const m = Math.floor((remMs % 3_600_000) / 60_000);
                           const s = Math.floor((remMs % 60_000) / 1_000);
                           return (
-                            <div className="flex items-center gap-1 text-yellow-500/80 text-[11px] mt-1 font-mono">
-                              <Clock size={10} className="flex-shrink-0" />
+                            <div className="trp-cell-countdown">
+                              <Clock size={10} />
                               {h > 0 ? `${h}h ${m}m ${s}s` : `${m}m ${s}s`} left
                             </div>
                           );
                         })()}
                       </td>
-                      <td className="px-4 py-3 text-neutral-300 text-xs">{createdBy}</td>
-                      <td className="px-4 py-3 text-neutral-300 text-xs">{teamName}</td>
-                      <td className="px-4 py-3">
-                        <div className="text-white text-xs font-semibold">{name}</div>
-                      </td>
-                      <td className="px-4 py-3">
+                      <td>{createdBy}</td>
+                      <td>{teamName}</td>
+                      <td><div className="trp-cell-primary">{name}</div></td>
+                      <td>
                         {lead.file_sent_to_login ? (
                           <div>
-                            <span className="inline-block px-2 py-0.5 bg-green-600 text-white rounded text-[11px] font-bold">LOGIN</span>
-                            {subStatus && <div className="text-neutral-500 text-[10px] mt-0.5">{subStatus}</div>}
+                            <span className="trp-badge trp-badge-login">LOGIN</span>
+                            {subStatus && <div className="trp-cell-muted">{subStatus}</div>}
                           </div>
                         ) : leadStatus ? (
                           <div>
-                            <span className="inline-block px-2 py-0.5 bg-neutral-700 text-neutral-200 rounded text-[11px] font-medium">{leadStatus}</span>
-                            {subStatus && <div className="text-neutral-500 text-[10px] mt-0.5">{subStatus}</div>}
+                            <span className="trp-badge trp-badge-status">{leadStatus}</span>
+                            {subStatus && <div className="trp-cell-muted">{subStatus}</div>}
                           </div>
-                        ) : <span className="text-neutral-600 text-xs">—</span>}
+                        ) : <span className="trp-cell-muted">—</span>}
                       </td>
-                      <td className="px-4 py-3">
-                        <div className="text-neutral-300 text-xs">{requestedBy}</div>
+                      <td>
+                        <div>{requestedBy}</div>
                         {lead.reassignment_requested_at && (
-                          <div className="text-neutral-500 text-[10px] mt-0.5">{fmtDateTime(lead.reassignment_requested_at)}</div>
+                          <div className="trp-cell-muted">{fmtDateTime(lead.reassignment_requested_at)}</div>
                         )}
                       </td>
-                      <td className="px-4 py-3" onClick={e => e.stopPropagation()}>
+                      <td onClick={e => e.stopPropagation()}>
                         {lead.can_approve_request && activeTab === 'pending' ? (
                           <button
+                            type="button"
                             onClick={() => openModal(lead)}
-                            className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-lg transition-all duration-150 shadow-sm hover:shadow whitespace-nowrap"
+                            className="trp-btn trp-btn-primary"
                           >
                             Review
                           </button>
                         ) : (
                           <button
+                            type="button"
                             onClick={() => openModal(lead)}
-                            className="px-3 py-1.5 bg-neutral-700 hover:bg-neutral-600 text-neutral-200 text-xs font-bold rounded-lg transition-all duration-150 whitespace-nowrap"
+                            className="trp-btn trp-btn-secondary"
                           >
                             View
                           </button>
@@ -547,22 +521,27 @@ const TransferRequestsPage = ({ user, navPush, navBack, trpNavStateRef }) => {
           </table>
         </div>
 
-        {/* Pagination */}
         {totalPages > 1 && (
-          <div className="flex items-center justify-between px-4 py-3 border-t border-neutral-800">
-            <span className="text-neutral-500 text-xs">{totalItems} total</span>
-            <div className="flex gap-2 items-center">
+          <div className="trp-pagination">
+            <span className="trp-pagination-info">{totalItems} total records</span>
+            <div className="trp-pagination-btns">
               <button
+                type="button"
                 disabled={page <= 1}
                 onClick={() => setPage(p => p - 1)}
-                className="px-3 py-1.5 text-xs font-bold text-neutral-400 hover:text-white disabled:opacity-40 bg-neutral-800 rounded hover:bg-neutral-700 transition"
-              >Prev</button>
-              <span className="px-2 text-xs text-neutral-400">{page} / {totalPages}</span>
+                className="trp-pagination-btn"
+              >
+                Prev
+              </button>
+              <span className="trp-pagination-page">{page} / {totalPages}</span>
               <button
+                type="button"
                 disabled={page >= totalPages}
                 onClick={() => setPage(p => p + 1)}
-                className="px-3 py-1.5 text-xs font-bold text-neutral-400 hover:text-white disabled:opacity-40 bg-neutral-800 rounded hover:bg-neutral-700 transition"
-              >Next</button>
+                className="trp-pagination-btn"
+              >
+                Next
+              </button>
             </div>
           </div>
         )}

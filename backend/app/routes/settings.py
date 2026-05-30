@@ -1485,6 +1485,18 @@ async def update_attendance_settings(
         success = await settings_db.update_attendance_settings(settings_update.dict(exclude_none=True))
         
         if success:
+            # Sync current-month leave balances with new defaults (non-overridden employees only)
+            leave_fields = {
+                "grace_usage_limit", "default_paid_leave_monthly", "default_earned_leave_monthly",
+                "auto_grace_monthly_limit",
+            }
+            updated_payload = settings_update.dict(exclude_none=True)
+            if any(k in updated_payload for k in leave_fields):
+                period = get_ist_now().strftime("%Y-%m")
+                synced = await settings_db.sync_leave_balances_from_settings(period)
+                return {
+                    "message": f"Attendance settings updated successfully. Leave balances synced for {synced} employee(s)."
+                }
             return {"message": "Attendance settings updated successfully"}
         else:
             raise HTTPException(
@@ -2028,6 +2040,20 @@ async def delete_channel_name(
 
 # ==================== PAID LEAVE MANAGEMENT ENDPOINTS ====================
 
+async def _resolve_leave_employee(users_db: UsersDB, identifier: str):
+    """Resolve employee and canonical leave-balance keys (RM### or legacy mongo id)."""
+    employee = await users_db.resolve_employee(identifier)
+    if not employee:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Employee not found"
+        )
+    balance_key = users_db.leave_balance_key(employee)
+    mongo_id = str(employee["_id"])
+    alternate_ids = [mongo_id] if mongo_id != balance_key else []
+    return employee, balance_key, alternate_ids
+
+
 @router.get("/leave-balance/{employee_id}", response_model=Dict[str, Any])
 async def get_employee_leave_balance(
     employee_id: str,
@@ -2047,58 +2073,30 @@ async def get_employee_leave_balance(
             now_ist = get_ist_now()
             period = now_ist.strftime("%Y-%m")
 
-        # Get employee details
-        employee = await users_db.get_user(employee_id)
-        if not employee:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Employee not found"
-            )
+        # Get employee details (supports Mongo _id or HR code like RM065)
+        employee, balance_key, alternate_ids = await _resolve_leave_employee(users_db, employee_id)
 
         # Get or create leave balance for this period
-        balance = await settings_db.get_leave_balance(employee_id, period)
-
-        # Always read grace limit from settings (grace_usage_limit = Manual Grace Limit)
-        att_settings = await settings_db.get_attendance_settings()
-        grace_limit = att_settings.get("grace_usage_limit") or att_settings.get("auto_grace_monthly_limit") or 3
+        balance = await settings_db.get_leave_balance(balance_key, period, alternate_ids=alternate_ids)
+        defaults = await settings_db.resolve_leave_defaults()
 
         if not balance:
-            # Create default monthly balance using current settings
-            default_balance = {
-                "employee_id": employee_id,
-                "employee_name": employee.get("name", ""),
-                "employee_code": employee.get("employee_code"),
-                "department": employee.get("department"),
-                "period": period,
-                "paid_leaves_total": 1,
-                "paid_leaves_used": 0,
-                "paid_leaves_remaining": 1,
-                "earned_leaves_total": 0,
-                "earned_leaves_used": 0,
-                "earned_leaves_remaining": 0,
-                "sick_leaves_total": 0,
-                "sick_leaves_used": 0,
-                "sick_leaves_remaining": 0,
-                "casual_leaves_total": 0,
-                "casual_leaves_used": 0,
-                "casual_leaves_remaining": 0,
-                "grace_leaves_total": grace_limit,
-                "grace_leaves_used": 0,
-                "grace_leaves_remaining": grace_limit,
-            }
+            default_balance = settings_db.build_default_leave_balance(
+                balance_key, employee, period, defaults
+            )
             await settings_db.create_leave_balance(default_balance)
             balance = default_balance
 
-        # Always override grace_leaves_total from settings so it stays in sync with grace_usage_limit
-        balance["grace_leaves_total"] = grace_limit
+        # Merge settings defaults with employee usage/overrides
+        effective = settings_db.apply_effective_leave_balance(balance, defaults)
 
         # Ensure period is set on legacy records
-        if "period" not in balance or not balance.get("period"):
-            balance["period"] = period
+        if "period" not in effective or not effective.get("period"):
+            effective["period"] = period
 
         return {
             "success": True,
-            "data": convert_object_id(balance)
+            "data": convert_object_id(effective)
         }
     except HTTPException:
         raise
@@ -2116,36 +2114,40 @@ async def reset_leave_balance_defaults(
     users_db: UsersDB = Depends(get_users_db),
     roles_db: RolesDB = Depends(get_roles_db)
 ):
-    """Reset EL to 0, PL to 1, Grace to settings grace_usage_limit for ALL employees"""
+    """Reset PL/EL/Grace to attendance settings defaults for ALL employees (clears overrides)"""
     await check_permission(user_id, "settings", "edit", users_db, roles_db)
     try:
         db = settings_db.db
-        # Read current grace limit from settings
-        att_settings = await settings_db.get_attendance_settings()
-        grace_limit = att_settings.get("grace_usage_limit") or att_settings.get("auto_grace_monthly_limit") or 3
+        defaults = await settings_db.resolve_leave_defaults()
+        paid_default = defaults["paid"]
+        earned_default = defaults["earned"]
+        grace_limit = defaults["grace"]
 
-        # Reset earned leaves: set total & remaining to 0 (keep used as-is)
+        # Reset earned leaves: set total & remaining from settings (keep used as-is)
         el_result = await db.leave_balances.update_many(
             {},
             [{"$set": {
-                "earned_leaves_total": 0,
-                "earned_leaves_remaining": {"$max": [0, {"$subtract": [0, {"$ifNull": ["$earned_leaves_used", 0]}]}]},
+                "earned_leaves_total": earned_default,
+                "earned_leaves_remaining": {"$max": [0, {"$subtract": [earned_default, {"$ifNull": ["$earned_leaves_used", 0]}]}]},
+                "override_flags.earned": False,
             }}]
         )
-        # Reset paid leaves: set total & remaining to 1 (keep used as-is)
+        # Reset paid leaves from settings
         pl_result = await db.leave_balances.update_many(
             {},
             [{"$set": {
-                "paid_leaves_total": 1,
-                "paid_leaves_remaining": {"$max": [0, {"$subtract": [1, {"$ifNull": ["$paid_leaves_used", 0]}]}]},
+                "paid_leaves_total": paid_default,
+                "paid_leaves_remaining": {"$max": [0, {"$subtract": [paid_default, {"$ifNull": ["$paid_leaves_used", 0]}]}]},
+                "override_flags.paid": False,
             }}]
         )
-        # Reset grace leaves: set total & remaining to grace_limit (from settings)
+        # Reset grace leaves from settings
         gr_result = await db.leave_balances.update_many(
             {},
             [{"$set": {
                 "grace_leaves_total": grace_limit,
                 "grace_leaves_remaining": {"$max": [0, {"$subtract": [grace_limit, {"$ifNull": ["$grace_leaves_used", 0]}]}]},
+                "override_flags.grace": False,
             }}]
         )
         return {
@@ -2153,7 +2155,7 @@ async def reset_leave_balance_defaults(
             "el_updated": el_result.modified_count,
             "pl_updated": pl_result.modified_count,
             "gr_updated": gr_result.modified_count,
-            "message": f"All employees reset to EL=0, PL=1, Grace={grace_limit}"
+            "message": f"All employees reset to EL={earned_default}, PL={paid_default}, Grace={grace_limit} (from Attendance Settings)"
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Reset failed: {str(e)}")
@@ -2187,6 +2189,8 @@ async def allocate_leave_to_employee(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Invalid employee_id or quantity"
             )
+
+        employee, balance_key, alternate_ids = await _resolve_leave_employee(users_db, employee_id)
         
         # Validate leave type
         valid_types = ["paid", "earned", "sick", "casual", "grace"]
@@ -2197,23 +2201,12 @@ async def allocate_leave_to_employee(
             )
         
         # Get or auto-create monthly balance
-        balance = await settings_db.get_leave_balance(employee_id, period)
+        balance = await settings_db.get_leave_balance(balance_key, period, alternate_ids=alternate_ids)
+        defaults = await settings_db.resolve_leave_defaults()
         if not balance:
-            employee = await users_db.get_user(employee_id)
-            if not employee:
-                raise HTTPException(status_code=404, detail="Employee not found")
-            default_balance = {
-                "employee_id": employee_id,
-                "employee_name": employee.get("name", ""),
-                "employee_code": employee.get("employee_code"),
-                "department": employee.get("department"),
-                "period": period,
-                "paid_leaves_total": 1, "paid_leaves_used": 0, "paid_leaves_remaining": 1,
-                "earned_leaves_total": 0, "earned_leaves_used": 0, "earned_leaves_remaining": 0,
-                "sick_leaves_total": 0, "sick_leaves_used": 0, "sick_leaves_remaining": 0,
-                "casual_leaves_total": 0, "casual_leaves_used": 0, "casual_leaves_remaining": 0,
-                "grace_leaves_total": grace_limit, "grace_leaves_used": 0, "grace_leaves_remaining": grace_limit,
-            }
+            default_balance = settings_db.build_default_leave_balance(
+                balance_key, employee, period, defaults
+            )
             await settings_db.create_leave_balance(default_balance)
             balance = default_balance
         
@@ -2221,20 +2214,30 @@ async def allocate_leave_to_employee(
         field_total = f"{leave_type}_leaves_total"
         field_remaining = f"{leave_type}_leaves_remaining"
         
-        old_total = balance.get(field_total, 0)
-        old_remaining = balance.get(field_remaining, 0)
+        effective = settings_db.apply_effective_leave_balance(balance, defaults)
+        old_total = effective.get(field_total, 0)
+        old_remaining = effective.get(field_remaining, 0)
         
         new_total = old_total + quantity
         new_remaining = old_remaining + quantity
         
+        override_flags = dict(balance.get("override_flags") or {})
+        override_flags[leave_type] = True
+
         # Update balance
         update_data = {
             field_total: new_total,
             field_remaining: new_remaining,
+            "override_flags": override_flags,
             "last_updated": get_ist_now()
         }
         
-        success = await settings_db.update_leave_balance(employee_id, update_data, period)
+        success = await settings_db.update_leave_balance(
+            balance.get("employee_id", balance_key),
+            update_data,
+            period,
+            alternate_ids=alternate_ids,
+        )
         
         if success:
             # Log the transaction
@@ -2242,7 +2245,7 @@ async def allocate_leave_to_employee(
             admin_name = admin_user.get("name", "Admin") if admin_user else "Admin"
             
             history_entry = {
-                "employee_id": employee_id,
+                "employee_id": balance_key,
                 "employee_name": balance.get("employee_name"),
                 "leave_type": leave_type,
                 "transaction_type": "allocation",
@@ -2305,17 +2308,24 @@ async def deduct_leave_from_employee(
                 detail="Invalid employee_id or quantity"
             )
         
+        employee, balance_key, alternate_ids = await _resolve_leave_employee(users_db, employee_id)
+        
         # Get monthly balance
-        balance = await settings_db.get_leave_balance(employee_id, period)
+        balance = await settings_db.get_leave_balance(balance_key, period, alternate_ids=alternate_ids)
         if not balance:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Employee leave balance not found for this period"
+            defaults = await settings_db.resolve_leave_defaults()
+            default_balance = settings_db.build_default_leave_balance(
+                balance_key, employee, period, defaults
             )
+            await settings_db.create_leave_balance(default_balance)
+            balance = default_balance
+
+        defaults = await settings_db.resolve_leave_defaults()
+        effective = settings_db.apply_effective_leave_balance(balance, defaults)
         
         # Calculate new balance
         field_remaining = f"{leave_type}_leaves_remaining"
-        old_remaining = balance.get(field_remaining, 0)
+        old_remaining = effective.get(field_remaining, 0)
         
         if old_remaining < quantity:
             raise HTTPException(
@@ -2332,7 +2342,12 @@ async def deduct_leave_from_employee(
             "last_updated": get_ist_now()
         }
         
-        success = await settings_db.update_leave_balance(employee_id, update_data, period)
+        success = await settings_db.update_leave_balance(
+            balance.get("employee_id", balance_key),
+            update_data,
+            period,
+            alternate_ids=alternate_ids,
+        )
         
         if success:
             # Log the transaction
@@ -2340,7 +2355,7 @@ async def deduct_leave_from_employee(
             admin_name = admin_user.get("name", "Admin") if admin_user else "Admin"
             
             history_entry = {
-                "employee_id": employee_id,
+                "employee_id": balance_key,
                 "employee_name": balance.get("employee_name"),
                 "leave_type": leave_type,
                 "transaction_type": "deduction",
@@ -2384,7 +2399,10 @@ async def get_leave_history(
 ):
     """Get leave transaction history for an employee"""
     try:
-        history = await settings_db.get_leave_history(employee_id, period)
+        _, balance_key, alternate_ids = await _resolve_leave_employee(users_db, employee_id)
+        history = await settings_db.get_leave_history(
+            balance_key, period, alternate_ids=alternate_ids
+        )
         return [convert_object_id(h) for h in history]
     except Exception as e:
         raise HTTPException(
@@ -2558,37 +2576,68 @@ async def get_leave_approvers_for_me(
     user_id: str = Query(..., description="The current employee's user ID"),
     settings_db: SettingsDB = Depends(get_settings_db),
     users_db: UsersDB = Depends(get_users_db),
+    roles_db: RolesDB = Depends(get_roles_db),
 ):
-    """Get the list of approver employees for the current user based on their role"""
+    """
+    Get the list of approver employees for the current user based on their role.
+
+    Resolution order:
+    1. Approvers configured in Settings → Leave Approval Routes for the user's role.
+    2. Fallback: all super-admin users (used when no approver is configured).
+    """
     try:
-        # Get current user to find their role
         user = await users_db.get_user(user_id)
         if not user:
             raise HTTPException(status_code=404, detail="User not found")
 
         role_id = user.get("role_id") or user.get("role")
-        if not role_id:
-            return {"success": True, "data": []}
+        approver_ids = []
+        if role_id:
+            approver_ids = await settings_db.get_approvers_for_employee(str(role_id)) or []
 
-        approver_ids = await settings_db.get_approvers_for_employee(str(role_id))
+        # Fallback: no approver configured → use superadmins
+        is_default = False
         if not approver_ids:
-            return {"success": True, "data": []}
+            is_default = True
+            super_role_ids = []
+            async for role in roles_db.collection.find(
+                {"permissions": {"$elemMatch": {"page": "*", "actions": "*"}}}, {"_id": 1}
+            ):
+                super_role_ids.append(str(role["_id"]))
+            async for role in roles_db.collection.find({"is_super_admin": True}, {"_id": 1}):
+                rid = str(role["_id"])
+                if rid not in super_role_ids:
+                    super_role_ids.append(rid)
+            if super_role_ids:
+                async for u in users_db.collection.find(
+                    {"role_id": {"$in": super_role_ids}}, {"_id": 1}
+                ):
+                    sid = str(u["_id"])
+                    if sid not in approver_ids:
+                        approver_ids.append(sid)
+            async for u in users_db.collection.find({"is_super_admin": True}, {"_id": 1}):
+                sid = str(u["_id"])
+                if sid not in approver_ids:
+                    approver_ids.append(sid)
 
-        # Fetch approver details
         approvers = []
         for aid in approver_ids:
             emp = await users_db.get_user(aid)
             if emp:
-                # Build name from first_name + last_name since users don't have a "name" field
                 first = emp.get("first_name", "")
                 last = emp.get("last_name", "")
-                full_name = f"{first} {last}".strip() if (first or last) else emp.get("name", emp.get("username", "Unknown"))
+                full_name = (
+                    f"{first} {last}".strip()
+                    if (first or last)
+                    else emp.get("name", emp.get("username", "Unknown"))
+                )
                 approvers.append({
                     "id": str(emp.get("_id", aid)),
                     "name": full_name,
                     "role": emp.get("role_name", emp.get("designation", "")),
+                    "is_default": is_default,
                 })
-        return {"success": True, "data": approvers}
+        return {"success": True, "data": approvers, "is_default": is_default}
     except HTTPException:
         raise
     except Exception as e:

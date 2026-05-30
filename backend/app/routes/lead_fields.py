@@ -128,7 +128,8 @@ async def generate_share_link(
     # This should match the frontend URL pattern for shared lead forms
     # Example: http://your-domain.com/public/lead-form/{share_token}
     # For local development:
-    share_url = f"https://raunakcrm.bhoomitechzone.us:4521/public/lead-form/{share_token}"
+    from app.config import Config
+    share_url = f"{Config.BASE_URL.rstrip('/')}/public/lead-form/{share_token}"
     
     return {
         "message": "Share link generated successfully",

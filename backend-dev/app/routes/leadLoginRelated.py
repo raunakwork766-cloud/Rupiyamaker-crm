@@ -576,8 +576,9 @@ async def send_lead_to_login_department(
                     
                     print(f"📝 Processing note - original lead_id field: {note_copy.get('lead_id')}")
                     
-                    # Update to reference login lead instead of original lead
-                    note_copy['login_lead_id'] = note_copy.pop('lead_id', lead_id)
+                    # Point copied note at the NEW login lead document (not the original lead id).
+                    note_copy.pop('lead_id', None)
+                    note_copy['login_lead_id'] = login_lead_id
                     
                     print(f"📝 After conversion - login_lead_id: {note_copy.get('login_lead_id')}")
                     

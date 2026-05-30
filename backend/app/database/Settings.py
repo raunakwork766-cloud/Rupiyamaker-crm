@@ -1030,21 +1030,140 @@ class SettingsDB:
         return result.modified_count > 0 or result.upserted_id is not None
     
     # ==================== LEAVE BALANCE MANAGEMENT ====================
+
+    async def resolve_leave_defaults(self) -> dict:
+        """Company-wide monthly leave defaults from attendance_settings."""
+        settings = await self.get_attendance_settings()
+        grace_limit = settings.get("auto_grace_monthly_limit", 3)
+        if grace_limit is None:
+            grace_limit = settings.get("grace_usage_limit", 3)
+        return {
+            "paid": float(settings.get("default_paid_leave_monthly", 1.0)),
+            "earned": float(settings.get("default_earned_leave_monthly", 0)),
+            "grace": int(grace_limit),
+        }
+
+    def build_default_leave_balance(
+        self,
+        employee_id: str,
+        employee: dict,
+        period: str,
+        defaults: dict,
+    ) -> dict:
+        paid = defaults["paid"]
+        earned = defaults["earned"]
+        grace = defaults["grace"]
+        return {
+            "employee_id": employee_id,
+            "employee_name": employee.get("name") or f"{employee.get('first_name', '')} {employee.get('last_name', '')}".strip(),
+            "employee_code": employee.get("employee_code"),
+            "department": employee.get("department"),
+            "period": period,
+            "paid_leaves_total": paid,
+            "paid_leaves_used": 0,
+            "paid_leaves_remaining": paid,
+            "earned_leaves_total": earned,
+            "earned_leaves_used": 0,
+            "earned_leaves_remaining": earned,
+            "sick_leaves_total": 0,
+            "sick_leaves_used": 0,
+            "sick_leaves_remaining": 0,
+            "casual_leaves_total": 0,
+            "casual_leaves_used": 0,
+            "casual_leaves_remaining": 0,
+            "grace_leaves_total": grace,
+            "grace_leaves_used": 0,
+            "grace_leaves_remaining": grace,
+            "override_flags": {},
+        }
+
+    def apply_effective_leave_balance(self, balance: dict, defaults: dict) -> dict:
+        """
+        Merge attendance_settings defaults with per-employee usage/overrides.
+        Defaults apply unless override_flags.{paid|earned|grace} is True.
+        """
+        if not balance:
+            balance = {}
+        result = dict(balance)
+        override_flags = balance.get("override_flags") or {}
+
+        for key, prefix in (
+            ("paid", "paid_leaves"),
+            ("earned", "earned_leaves"),
+            ("grace", "grace_leaves"),
+        ):
+            used = float(balance.get(f"{prefix}_used") or 0)
+            if override_flags.get(key):
+                total = float(balance.get(f"{prefix}_total") or defaults[key])
+            else:
+                total = float(defaults[key])
+            remaining = max(0.0, total - used)
+            result[f"{prefix}_total"] = total
+            result[f"{prefix}_used"] = used
+            result[f"{prefix}_remaining"] = remaining
+
+        result["override_flags"] = override_flags
+        result["defaults_from_settings"] = defaults
+        return result
+
+    async def sync_leave_balances_from_settings(self, period: str = None) -> int:
+        """Update stored balances for employees without per-type overrides (current month)."""
+        if not period:
+            period = get_ist_now().strftime("%Y-%m")
+        defaults = await self.resolve_leave_defaults()
+        updated = 0
+        cursor = self.db.leave_balances.find({"period": period})
+        async for doc in cursor:
+            overrides = doc.get("override_flags") or {}
+            sets = {}
+            for key, prefix in (
+                ("paid", "paid_leaves"),
+                ("earned", "earned_leaves"),
+                ("grace", "grace_leaves"),
+            ):
+                if overrides.get(key):
+                    continue
+                used = float(doc.get(f"{prefix}_used") or 0)
+                total = float(defaults[key])
+                sets[f"{prefix}_total"] = total
+                sets[f"{prefix}_remaining"] = max(0.0, total - used)
+            if sets:
+                sets["last_updated"] = get_ist_now()
+                await self.db.leave_balances.update_one({"_id": doc["_id"]}, {"$set": sets})
+                updated += 1
+        return updated
     
-    async def get_leave_balance(self, employee_id: str, period: str = None) -> dict:
-        """Get leave balance for an employee, optionally for a specific period (YYYY-MM)"""
+    async def _fetch_leave_balance_doc(self, employee_id: str, period: str = None) -> dict:
         query = {"employee_id": employee_id}
         if period:
             query["period"] = period
         else:
             query["period"] = {"$exists": False}
         balance = await self.db.leave_balances.find_one(query)
-        # Fallback: legacy record without period field
         if not balance and period:
-            balance = await self.db.leave_balances.find_one({"employee_id": employee_id, "period": {"$exists": False}})
+            balance = await self.db.leave_balances.find_one(
+                {"employee_id": employee_id, "period": {"$exists": False}}
+            )
         if balance:
             balance["_id"] = str(balance["_id"])
         return balance
+
+    async def get_leave_balance(
+        self,
+        employee_id: str,
+        period: str = None,
+        alternate_ids: list = None,
+    ) -> dict:
+        """Get leave balance for an employee, optionally for a specific period (YYYY-MM)."""
+        candidates = []
+        for cid in [employee_id, *(alternate_ids or [])]:
+            if cid and cid not in candidates:
+                candidates.append(cid)
+        for cid in candidates:
+            balance = await self._fetch_leave_balance_doc(cid, period)
+            if balance:
+                return balance
+        return None
     
     async def create_leave_balance(self, balance_data: dict) -> str:
         """Create leave balance for an employee"""
@@ -1055,19 +1174,33 @@ class SettingsDB:
         result = await self.db.leave_balances.insert_one(balance_data)
         return str(result.inserted_id)
     
-    async def update_leave_balance(self, employee_id: str, update_data: dict, period: str = None) -> bool:
+    async def update_leave_balance(
+        self,
+        employee_id: str,
+        update_data: dict,
+        period: str = None,
+        alternate_ids: list = None,
+    ) -> bool:
         """Update leave balance for an employee"""
         update_data["last_updated"] = get_ist_now()
-        query = {"employee_id": employee_id}
-        if period:
-            query["period"] = period
-        else:
-            query["period"] = {"$exists": False}
-        result = await self.db.leave_balances.update_one(
-            query,
-            {"$set": update_data}
-        )
-        return result.modified_count > 0
+        candidates = []
+        for cid in [employee_id, *(alternate_ids or [])]:
+            if cid and cid not in candidates:
+                candidates.append(cid)
+
+        for cid in candidates:
+            query = {"employee_id": cid}
+            if period:
+                query["period"] = period
+            else:
+                query["period"] = {"$exists": False}
+            result = await self.db.leave_balances.update_one(
+                query,
+                {"$set": update_data}
+            )
+            if result.modified_count > 0:
+                return True
+        return False
     
     async def get_all_leave_balances(self, filters: dict = None) -> list:
         """Get leave balances for all employees with optional filters"""
@@ -1086,19 +1219,37 @@ class SettingsDB:
         result = await self.db.leave_history.insert_one(history_entry)
         return str(result.inserted_id)
     
-    async def get_leave_history(self, employee_id: str, period: str = None, limit: int = 100) -> list:
+    async def get_leave_history(
+        self,
+        employee_id: str,
+        period: str = None,
+        limit: int = 100,
+        alternate_ids: list = None,
+    ) -> list:
         """Get leave transaction history for an employee"""
+        candidates = []
+        for cid in [employee_id, *(alternate_ids or [])]:
+            if cid and cid not in candidates:
+                candidates.append(cid)
+
         history = []
-        query = {"employee_id": employee_id}
-        if period:
-            query["period"] = period
-        cursor = self.db.leave_history.find(query).sort("timestamp", -1).limit(limit)
-        
-        async for entry in cursor:
-            entry["_id"] = str(entry["_id"])
-            entry["timestamp"] = entry["timestamp"].isoformat() if isinstance(entry.get("timestamp"), datetime) else str(entry.get("timestamp"))
-            history.append(entry)
-        
+        seen_ids = set()
+        for cid in candidates:
+            query = {"employee_id": cid}
+            if period:
+                query["period"] = period
+            cursor = self.db.leave_history.find(query).sort("timestamp", -1).limit(limit)
+            async for entry in cursor:
+                entry_id = str(entry.get("_id"))
+                if entry_id in seen_ids:
+                    continue
+                seen_ids.add(entry_id)
+                entry["_id"] = entry_id
+                entry["timestamp"] = entry["timestamp"].isoformat() if isinstance(entry.get("timestamp"), datetime) else str(entry.get("timestamp"))
+                history.append(entry)
+            if history:
+                break
+
         return history
     
     async def get_leave_config_defaults(self) -> dict:

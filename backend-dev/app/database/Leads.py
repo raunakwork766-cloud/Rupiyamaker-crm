@@ -542,6 +542,28 @@ class LeadsDB:
                 update_data["created_at"] = original_created_at
             else:
                 del update_data["created_at"]
+
+        # Re-attribute creator (superadmin): lead must belong only to the new creator for
+        # list visibility ($or uses created_by, assigned_to, assign_report_to). Purana
+        # creator + baaki assignees hata kar sirf naya creator assign karo.
+        if "created_by" in update_data:
+            def _lead_uid(val):
+                if val is None:
+                    return None
+                if isinstance(val, ObjectId):
+                    return str(val)
+                return str(val).strip()
+
+            old_creator = _lead_uid(current_lead.get("created_by"))
+            new_creator = _lead_uid(update_data.get("created_by"))
+            if old_creator and new_creator and old_creator != new_creator:
+                update_data["assigned_to"] = new_creator
+                update_data["assign_report_to"] = []
+                logger.info(
+                    "Lead creator re-attributed %s -> %s: assigned_to=new creator only, assign_report_to cleared",
+                    old_creator,
+                    new_creator,
+                )
         
         # CRITICAL FIX: Handle dynamic_fields with deep copy to preserve nested structures
         if "dynamic_fields" not in update_data:

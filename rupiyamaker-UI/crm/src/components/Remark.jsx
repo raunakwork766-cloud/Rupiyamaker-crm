@@ -1,48 +1,88 @@
-import React, { useState, useEffect, useRef } from "react";
-import { Send, AlertCircle, MessageCircle } from "lucide-react";
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import { Pencil, Trash2, Check, X } from 'lucide-react';
+import { isSuperAdmin } from '../utils/permissions';
+import {
+  MSGR,
+  formatDateLabel,
+  getInitials,
+  getAvatarColor,
+  getBubbleRadius,
+  scrollStyles,
+  DatePill,
+  RelativeTime,
+} from './messengerChatStyles.jsx';
 
-// API base URL - Use proxy in development
-const API_BASE_URL = '/api'; // Always use API proxy
+const API_BASE_URL = '/api';
 
-export default function CommentSection({ leadData, canEdit = true }) {
-  const [comment, setComment] = useState("");
+const groupCommentsByDate = (comments) => {
+  const groups = [];
+  let currentDate = null;
+
+  comments.forEach((note) => {
+    const dateKey = new Date(note.created_at).toDateString();
+    if (dateKey !== currentDate) {
+      currentDate = dateKey;
+      groups.push({ type: 'date', label: formatDateLabel(note.created_at), key: `date-${dateKey}` });
+    }
+    groups.push({ type: 'message', note, key: note._id });
+  });
+
+  return groups;
+};
+
+export default function CommentSection({ leadData, canEdit = true, refreshToken = 0 }) {
+  const [comment, setComment] = useState('');
   const [comments, setComments] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
-  const [currentUser, setCurrentUser] = useState({
-    name: "",
-    id: "",
-    avatar: null,
-  });
+  const [currentUser, setCurrentUser] = useState({ name: '', id: '' });
+  const [editingNoteId, setEditingNoteId] = useState(null);
+  const [editingContent, setEditingContent] = useState('');
+  const [actionNoteId, setActionNoteId] = useState(null);
+  const [isUserSuperAdmin, setIsUserSuperAdmin] = useState(false);
   const messagesEndRef = useRef(null);
+  const textareaRef = useRef(null);
+  const editTextareaRef = useRef(null);
 
-  // Get current user information when component mounts
+  const getNotesApiBase = useCallback(() => {
+    const isLoginLead = leadData && (leadData.original_lead_id || leadData.login_created_at);
+    return isLoginLead
+      ? `${API_BASE_URL}/lead-login/login-leads/${leadData._id}/notes`
+      : `${API_BASE_URL}/leads/${leadData._id}/notes`;
+  }, [leadData]);
+
   useEffect(() => {
-    const userId = localStorage.getItem('userId');
-    // Use 'userName' which is stored during login (first_name + last_name)
+    const userId = localStorage.getItem('userId') || localStorage.getItem('user_id');
     const userName = localStorage.getItem('userName') || '';
-    const fullName = userName.trim() || "User";
-
     setCurrentUser({
-      name: fullName,
+      name: userName.trim() || 'User',
       id: userId,
-      avatar: null,
     });
+
+    let superAdmin = false;
+    try {
+      const perms = JSON.parse(localStorage.getItem('userPermissions') || '[]');
+      superAdmin = isSuperAdmin(perms);
+      if (!superAdmin) {
+        const user = JSON.parse(localStorage.getItem('user') || '{}');
+        superAdmin = user.role?.name?.toLowerCase() === 'super admin';
+      }
+    } catch (_) {
+      superAdmin = false;
+    }
+    setIsUserSuperAdmin(superAdmin);
   }, []);
 
-  // Scroll to bottom when comments load/update
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [comments]);
 
-  // Load comments/notes from API when component mounts or leadData changes
   useEffect(() => {
-    if (leadData?._id) {
-      fetchNotes();
-    }
-  }, [leadData]);
+    if (leadData?._id) fetchNotes();
+  }, [leadData, refreshToken]);
 
-  // Function to fetch notes from the API
+  const groupedItems = useMemo(() => groupCommentsByDate(comments), [comments]);
+
   const fetchNotes = async () => {
     if (!leadData?._id) return;
 
@@ -50,35 +90,32 @@ export default function CommentSection({ leadData, canEdit = true }) {
     setError(null);
 
     try {
-      const userId = localStorage.getItem('userId');
-      if (!userId) {
-        throw new Error('No user ID available');
-      }
+      const userId = localStorage.getItem('userId') || localStorage.getItem('user_id');
+      if (!userId) throw new Error('No user ID available');
 
-      // Determine if this is a login lead
       const isLoginLead = leadData && (leadData.original_lead_id || leadData.login_created_at);
       const apiUrl = isLoginLead
-        ? `${API_BASE_URL}/lead-login/login-leads/${leadData._id}/notes?user_id=${userId}`
-        : `${API_BASE_URL}/leads/${leadData._id}/notes?user_id=${userId}`;
+        ? `${API_BASE_URL}/lead-login/login-leads/${leadData._id}/notes?user_id=${userId}&limit=100`
+        : `${API_BASE_URL}/leads/${leadData._id}/notes?user_id=${userId}&limit=100`;
 
       const response = await fetch(apiUrl, {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
-        }
+          Authorization: `Bearer ${localStorage.getItem('token')}`,
+        },
       });
 
       if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
+        const errorText = await response.text();
+        throw new Error(errorText || `HTTP error! status: ${response.status}`);
       }
 
       const data = await response.json();
-      setComments(data || []);
-
-    } catch (error) {
-      console.error('Error fetching notes:', error);
-      setError('Failed to load remarks');
+      setComments((data || []).filter((note) => note.note_type !== 'status_change_remark'));
+    } catch (err) {
+      console.error('Error fetching notes:', err);
+      setError('Failed to load messages');
     } finally {
       setIsLoading(false);
     }
@@ -91,186 +128,326 @@ export default function CommentSection({ leadData, canEdit = true }) {
     setError(null);
 
     try {
-      const userId = localStorage.getItem('userId');
-      if (!userId) {
-        throw new Error('No user ID available');
-      }
+      const userId = localStorage.getItem('userId') || localStorage.getItem('user_id');
+      if (!userId) throw new Error('No user ID available');
 
-      const isLoginLead = leadData && (leadData.original_lead_id || leadData.login_created_at);
-      const apiUrl = isLoginLead
-        ? `${API_BASE_URL}/lead-login/login-leads/${leadData._id}/notes?user_id=${userId}`
-        : `${API_BASE_URL}/leads/${leadData._id}/notes?user_id=${userId}`;
-
-      const noteData = {
-        lead_id: leadData._id,
-        content: comment,
-        note_type: "remark",
-        created_by: userId,
-        creator_name: currentUser.name
-      };
+      const apiUrl = `${getNotesApiBase()}?user_id=${userId}`;
 
       const response = await fetch(apiUrl, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
+          Authorization: `Bearer ${localStorage.getItem('token')}`,
         },
-        body: JSON.stringify(noteData)
+        body: JSON.stringify({
+          lead_id: leadData._id,
+          content: comment.trim(),
+          note_type: 'remark',
+          created_by: userId,
+          creator_name: currentUser.name,
+        }),
       });
 
       if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
+        const errorText = await response.text();
+        throw new Error(errorText || `HTTP error! status: ${response.status}`);
       }
 
-      setComment("");
+      setComment('');
+      if (textareaRef.current) textareaRef.current.style.height = 'auto';
       await fetchNotes();
-
-    } catch (error) {
-      console.error('Error adding remark:', error);
-      setError('Failed to add remark');
+    } catch (err) {
+      console.error('Error adding remark:', err);
+      setError('Could not send message');
     } finally {
       setIsLoading(false);
     }
   };
 
-  const formatTime = (time) =>
-    new Intl.DateTimeFormat("en-IN", {
-      day: "numeric",
-      month: "short",
-      year: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
-      hour12: true,
-      timeZone: "Asia/Kolkata",
-    }).format(new Date(time));
+  const handleDeleteNote = async (noteId) => {
+    if (!window.confirm('Delete this remark?')) return;
 
-  const getInitials = (name) => {
-    if (!name || name === 'User') return '?';
-    return name.split(' ').filter(Boolean).map(n => n[0]).join('').toUpperCase().slice(0, 2);
+    setActionNoteId(noteId);
+    setError(null);
+
+    try {
+      const userId = localStorage.getItem('userId') || localStorage.getItem('user_id');
+      if (!userId) throw new Error('No user ID available');
+
+      const response = await fetch(`${getNotesApiBase()}/${noteId}?user_id=${userId}`, {
+        method: 'DELETE',
+        headers: {
+          Authorization: `Bearer ${localStorage.getItem('token')}`,
+        },
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(errorText || `HTTP error! status: ${response.status}`);
+      }
+
+      if (editingNoteId === noteId) {
+        setEditingNoteId(null);
+        setEditingContent('');
+      }
+      await fetchNotes();
+    } catch (err) {
+      console.error('Error deleting remark:', err);
+      setError(err.message || 'Could not delete remark');
+    } finally {
+      setActionNoteId(null);
+    }
   };
 
-  const isCurrentUser = (note) => note.created_by === currentUser.id;
-
-  // Deterministic color for other users' avatars
-  const otherAvatarColors = [
-    'bg-purple-500', 'bg-emerald-500', 'bg-orange-500', 'bg-rose-500', 'bg-indigo-500', 'bg-teal-500'
-  ];
-  const getAvatarColor = (name) => {
-    if (!name) return 'bg-gray-400';
-    const idx = name.charCodeAt(0) % otherAvatarColors.length;
-    return otherAvatarColors[idx];
+  const startEditingNote = (note) => {
+    setEditingNoteId(note._id);
+    setEditingContent(note.content || '');
+    setTimeout(() => editTextareaRef.current?.focus(), 0);
   };
+
+  const cancelEditingNote = () => {
+    setEditingNoteId(null);
+    setEditingContent('');
+  };
+
+  const handleSaveEdit = async (noteId) => {
+    const trimmed = editingContent.trim();
+    if (!trimmed) return;
+
+    setActionNoteId(noteId);
+    setError(null);
+
+    try {
+      const userId = localStorage.getItem('userId') || localStorage.getItem('user_id');
+      if (!userId) throw new Error('No user ID available');
+
+      const response = await fetch(`${getNotesApiBase()}/${noteId}?user_id=${userId}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${localStorage.getItem('token')}`,
+        },
+        body: JSON.stringify({ content: trimmed }),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(errorText || `HTTP error! status: ${response.status}`);
+      }
+
+      setEditingNoteId(null);
+      setEditingContent('');
+      await fetchNotes();
+    } catch (err) {
+      console.error('Error updating remark:', err);
+      setError(err.message || 'Could not update remark');
+    } finally {
+      setActionNoteId(null);
+    }
+  };
+
+  const isCurrentUser = (note) => String(note.created_by) === String(currentUser.id);
+  const canEditNote = (note) => isUserSuperAdmin || note.can_edit || isCurrentUser(note);
+  const canDeleteNote = (note) => isUserSuperAdmin || note.can_delete || isCurrentUser(note);
+  const canSend = comment.trim().length > 0 && !isLoading;
 
   return (
-    <div className="flex flex-col h-full" style={{ background: 'linear-gradient(180deg, #f0f7ff 0%, #e8f0fe 100%)' }}>
-      {/* Messages Area */}
-      <div className="flex-1 overflow-y-auto px-3 py-3 space-y-3 min-h-0">
-        {/* Error display */}
+    <div className="flex flex-col h-full" style={{ backgroundColor: MSGR.chatBg }}>
+      <style>{scrollStyles}</style>
+
+      <div className="msgr-scroll flex-1 overflow-y-auto px-3 py-3 min-h-0">
         {error && (
-          <div className="bg-red-50 border border-red-200 text-red-600 px-3 py-2 rounded-lg flex items-center gap-2 text-xs">
-            <AlertCircle className="w-3.5 h-3.5 flex-shrink-0" />
-            <span>{error}</span>
-          </div>
+          <p className="text-center text-xs text-red-500 py-2">{error}</p>
         )}
 
-        {/* Loading state */}
         {isLoading && comments.length === 0 && (
-          <div className="flex flex-col items-center justify-center py-10 gap-2">
-            <div className="w-8 h-8 rounded-full border-2 border-[#03B0F5] border-t-transparent animate-spin" />
-            <span className="text-xs text-gray-400">Loading remarks...</span>
-          </div>
+          <p className="text-center text-sm py-12" style={{ color: MSGR.muted }}>Loading...</p>
         )}
 
-        {/* Empty state */}
-        {!isLoading && comments.length === 0 && (
-          <div className="flex flex-col items-center justify-center py-12 text-gray-400">
-            <div className="w-14 h-14 rounded-full bg-blue-50 border-2 border-blue-100 flex items-center justify-center mb-3 shadow-inner">
-              <MessageCircle className="w-7 h-7 text-[#03B0F5] opacity-60" />
-            </div>
-            <p className="text-sm font-semibold text-gray-500">No remarks yet</p>
-            <p className="text-xs mt-1 text-gray-400">Be the first to add a remark</p>
-          </div>
+        {!isLoading && comments.length === 0 && !error && (
+          <p className="text-center text-sm py-12 px-6" style={{ color: MSGR.muted }}>
+            No messages yet. Say hi 👋
+          </p>
         )}
 
-        {/* Chat Messages */}
-        {comments.map((note) => {
-          const isMine = isCurrentUser(note);
-          const initials = getInitials(note.creator_name);
-          const avatarBg = isMine ? 'bg-[#03B0F5]' : getAvatarColor(note.creator_name);
-          return (
-            <div key={note._id} className={`flex items-end gap-2 ${isMine ? 'flex-row-reverse' : 'flex-row'}`}>
-              {/* Avatar */}
-              <div className={`w-7 h-7 rounded-full flex-shrink-0 flex items-center justify-center text-white text-[10px] font-bold shadow-sm ${avatarBg}`}>
-                {initials}
-              </div>
-              {/* Bubble */}
-              <div className={`max-w-[78%] flex flex-col gap-0.5 ${isMine ? 'items-end' : 'items-start'}`}>
-                {!isMine && (
-                  <span className="text-[10px] text-gray-500 font-semibold px-1">{note.creator_name || 'User'}</span>
-                )}
-                <div className={`px-3 py-2 rounded-2xl text-xs leading-relaxed shadow-sm ${
-                  isMine
-                    ? 'bg-[#03B0F5] text-white rounded-br-none'
-                    : 'bg-white text-gray-800 rounded-bl-none border border-gray-100 shadow'
-                }`}>
-                  {note.content}
+        <div>
+          {groupedItems.map((item, index) => {
+            if (item.type === 'date') {
+              return <DatePill key={item.key} label={item.label} />;
+            }
+
+            const note = item.note;
+            const isMine = isCurrentUser(note);
+            const prevItem = groupedItems[index - 1];
+            const nextItem = groupedItems[index + 1];
+            const prevNote = prevItem?.type === 'message' ? prevItem.note : null;
+            const nextNote = nextItem?.type === 'message' ? nextItem.note : null;
+
+            const sameSenderAsPrev =
+              prevNote && prevNote.created_by === note.created_by && prevItem?.type === 'message';
+            const sameSenderAsNext =
+              nextNote && nextNote.created_by === note.created_by && nextItem?.type === 'message';
+
+            const showAvatar = !isMine && !sameSenderAsPrev;
+            const senderName = note.creator_name || 'User';
+            const radius = getBubbleRadius(isMine, sameSenderAsPrev, sameSenderAsNext);
+
+            return (
+              <div
+                key={item.key}
+                className={`flex items-end gap-1.5 ${isMine ? 'flex-row-reverse' : 'flex-row'} ${sameSenderAsPrev ? 'mt-[2px]' : 'mt-3'}`}
+              >
+                <div className="w-7 flex-shrink-0 self-end">
+                  {showAvatar ? (
+                    <div
+                      className="w-7 h-7 rounded-full flex items-center justify-center text-white text-[10px] font-semibold"
+                      style={{ backgroundColor: getAvatarColor(senderName) }}
+                    >
+                      {getInitials(senderName)}
+                    </div>
+                  ) : (
+                    <div className="w-7 h-7" />
+                  )}
                 </div>
-                <span className="text-[9px] text-gray-400 px-1">{formatTime(note.created_at)}</span>
+
+                <div className={`max-w-[78%] flex flex-col ${isMine ? 'items-end' : 'items-start'}`}>
+                  {!isMine && showAvatar && (
+                    <span className="text-[11px] font-medium mb-[2px] px-1" style={{ color: MSGR.muted }}>
+                      {senderName}
+                    </span>
+                  )}
+
+                  {editingNoteId === note._id ? (
+                    <div
+                      className={`w-full px-3 py-2 rounded-2xl border ${radius}`}
+                      style={{ backgroundColor: MSGR.inputBg, borderColor: MSGR.border }}
+                    >
+                      <textarea
+                        ref={editTextareaRef}
+                        value={editingContent}
+                        onChange={(e) => setEditingContent(e.target.value)}
+                        className="w-full bg-transparent outline-none text-[15px] resize-none leading-snug min-h-[56px] max-h-32"
+                        style={{ color: MSGR.text }}
+                        rows={2}
+                      />
+                      <div className="flex justify-end gap-2 mt-2">
+                        <button
+                          type="button"
+                          onClick={cancelEditingNote}
+                          className="p-1.5 rounded-full hover:bg-black/5"
+                          title="Cancel"
+                        >
+                          <X className="w-4 h-4" style={{ color: MSGR.muted }} />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleSaveEdit(note._id)}
+                          disabled={!editingContent.trim() || actionNoteId === note._id}
+                          className="p-1.5 rounded-full disabled:opacity-50"
+                          style={{ backgroundColor: MSGR.blue, color: '#fff' }}
+                          title="Save"
+                        >
+                          <Check className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <>
+                      <div
+                        className={`px-3 py-2 ${radius}`}
+                        style={{
+                          backgroundColor: isMine ? MSGR.blue : MSGR.received,
+                          color: isMine ? '#fff' : MSGR.text,
+                        }}
+                      >
+                        <p className="text-[15px] leading-snug whitespace-pre-wrap break-words">{note.content}</p>
+                      </div>
+                      <div className={`flex items-center gap-2 mt-0.5 px-1 ${isMine ? 'flex-row-reverse' : 'flex-row'}`}>
+                        <RelativeTime
+                          time={note.created_at}
+                          className="text-[9px] leading-none"
+                          style={{ color: MSGR.muted }}
+                        />
+                        {(canEditNote(note) || canDeleteNote(note)) && (
+                          <div className="flex items-center gap-1">
+                            {canEditNote(note) && (
+                              <button
+                                type="button"
+                                onClick={() => startEditingNote(note)}
+                                disabled={actionNoteId === note._id}
+                                className="p-1 rounded hover:bg-black/5 disabled:opacity-50"
+                                style={{ color: MSGR.muted }}
+                                title="Edit remark"
+                              >
+                                <Pencil className="w-3 h-3" />
+                              </button>
+                            )}
+                            {canDeleteNote(note) && (
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteNote(note._id)}
+                                disabled={actionNoteId === note._id}
+                                className="p-1 rounded hover:bg-red-50 text-red-500 disabled:opacity-50"
+                                title="Delete remark"
+                              >
+                                <Trash2 className="w-3 h-3" />
+                              </button>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    </>
+                  )}
+                </div>
               </div>
-            </div>
-          );
-        })}
+            );
+          })}
+        </div>
+
         <div ref={messagesEndRef} />
       </div>
 
-      {/* Input Area - always at bottom */}
       {canEdit ? (
-        <div className="flex-shrink-0 border-t border-gray-200 bg-white px-3 py-2.5 shadow-[0_-2px_8px_rgba(3,176,245,0.07)]">
+        <div className="flex-shrink-0 px-3 py-2.5 border-t" style={{ borderColor: MSGR.border, backgroundColor: MSGR.bg }}>
           <div className="flex items-end gap-2">
-            <div className="w-7 h-7 rounded-full bg-[#03B0F5] flex-shrink-0 flex items-center justify-center text-white text-[10px] font-bold mb-0.5 shadow-sm" title={currentUser.name}>
-              {getInitials(currentUser.name)}
-            </div>
-            <div className="flex-1 flex items-end bg-gray-50 border border-gray-200 rounded-2xl px-3 py-1.5 gap-2 focus-within:border-[#03B0F5] focus-within:bg-white transition-all">
+            <div
+              className="flex-1 flex items-end rounded-[20px] px-4 py-2 min-h-[40px] border border-transparent focus-within:border-[#0084ff]/30 transition-colors"
+              style={{ backgroundColor: MSGR.inputBg }}
+            >
               <textarea
-                placeholder="Add a remark... (Enter to send)"
-                className="flex-1 bg-transparent outline-none text-xs text-gray-800 placeholder:text-gray-400 resize-none overflow-auto leading-snug"
-                rows={1}
+                ref={textareaRef}
+                placeholder="Write a remark..."
+                className="flex-1 bg-transparent outline-none text-[15px] resize-none overflow-auto leading-snug max-h-28 placeholder:text-[#65676b]"
+                style={{ color: MSGR.text }}
+                rows={2}
                 value={comment}
                 onChange={(e) => {
                   setComment(e.target.value);
                   e.target.style.height = 'auto';
-                  e.target.style.height = Math.min(e.target.scrollHeight, 80) + 'px';
-                }}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" && !e.shiftKey) {
-                    e.preventDefault();
-                    handlePost();
-                  }
+                  e.target.style.height = `${Math.min(e.target.scrollHeight, 112)}px`;
                 }}
                 disabled={isLoading}
-                style={{ minHeight: '18px', maxHeight: '80px' }}
               />
-              <button
-                onClick={handlePost}
-                disabled={isLoading || !comment.trim()}
-                className={`mb-0.5 flex-shrink-0 w-7 h-7 rounded-full flex items-center justify-center transition-all ${
-                  comment.trim() && !isLoading
-                    ? 'bg-[#03B0F5] text-white hover:bg-[#029fd9] shadow-sm hover:scale-110'
-                    : 'bg-gray-200 text-gray-400 cursor-not-allowed'
-                }`}
-              >
-                {isLoading ? (
-                  <div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                ) : (
-                  <Send className="w-3 h-3" />
-                )}
-              </button>
             </div>
+            <button
+              type="button"
+              onClick={handlePost}
+              disabled={!canSend}
+              className="h-9 px-4 rounded-full flex items-center justify-center flex-shrink-0 mb-0.5 text-sm font-semibold disabled:opacity-40 disabled:cursor-not-allowed"
+              style={{ backgroundColor: MSGR.blue, color: '#fff' }}
+              title="Post remark"
+            >
+              {isLoading ? (
+                <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+              ) : (
+                'Post'
+              )}
+            </button>
           </div>
         </div>
       ) : (
-        <div className="flex-shrink-0 border-t border-gray-200 bg-gray-50 px-3 py-2 text-center">
-          <span className="text-xs text-gray-400">Remarks are read-only</span>
+        <div className="flex-shrink-0 px-3 py-3 border-t text-center text-sm" style={{ borderColor: MSGR.border, color: MSGR.muted }}>
+          Read only
         </div>
       )}
     </div>

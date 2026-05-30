@@ -23,6 +23,7 @@ import {
     Save,
     Award,
     ChevronDown,
+    ChevronRight,
     ChevronUp,
     GripVertical,
     Menu,
@@ -58,248 +59,468 @@ import PopupModalSettings from './settings/PopupModalSettings';
 import OtpVerificationSettings from './settings/OtpVerificationSettings';
 import { hrmsService } from '../services/hrmsService';
 
-// Tab Management Dropdown Component
-const TabManageDropdown = ({ tabs, activeTab, setActiveTab }) => {
-    const [isOpen, setIsOpen] = useState(false);
-    
-    // Filter to show only the main tabs that go in the dropdown: campaigns, dataCodes, bankNames, channelNames, companyData, statuses, importantQuestions
-    const manageTabs = tabs.filter(tab => 
-        ['campaigns', 'dataCodes', 'bankNames', 'channelNames', 'companyData', 'statuses', 'importantQuestions'].includes(tab.id)
-    );
-    
-    const activeTabData = tabs.find(tab => tab.id === activeTab);
-    const isManageTabActive = ['campaigns', 'dataCodes', 'bankNames', 'channelNames', 'companyData', 'statuses', 'importantQuestions'].includes(activeTab);
-    
-    return (
-        <div className="relative">
-            <button
-                onClick={() => setIsOpen(!isOpen)}
-                className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-all ${
-                    isManageTabActive
-                        ? 'bg-blue-500 text-white shadow-lg'
-                        : 'bg-white text-black hover:bg-black hover:text-white border border-black'
-                }`}
-            >
-                <Menu size={16} />
-                <span>Dropdown Management</span>
-                <ChevronDown 
-                    size={16} 
-                    className={`transform transition-transform ${isOpen ? 'rotate-180' : ''}`} 
-                />
-            </button>
-            
-            {isOpen && (
-                <div className="absolute left-0 top-full mt-2 w-64 bg-gray-900 border border-gray-700 rounded-lg shadow-xl z-50">
-                    <div className="p-2">
-                        <div className="text-xs font-semibold text-gray-400 uppercase tracking-wide px-3 py-2 mb-1">
-                            Data Management
-                        </div>
-                        
-                        {/* Data Management Tabs */}
-                        {manageTabs
-                            .filter(tab => ['campaigns', 'dataCodes', 'bankNames', 'channelNames', 'companyData'].includes(tab.id))
-                            .map((tab) => (
-                                <button
-                                    key={tab.id}
-                                    onClick={() => {
-                                        setActiveTab(tab.id);
-                                        setIsOpen(false);
-                                    }}
-                                    className={`w-full flex items-center gap-3 px-3 py-2 rounded-md text-left transition-colors ${
-                                        activeTab === tab.id 
-                                            ? 'bg-blue-600 text-white' 
-                                            : 'text-gray-300 hover:bg-gray-800 hover:text-white'
-                                    }`}
-                                >
-                                    <tab.icon size={16} className="text-blue-400" />
-                                    <span className="text-sm font-medium">{tab.label}</span>
-                                </button>
-                            ))}
-                        
-                        <hr className="border-gray-700 my-2" />
-                        
-                        <div className="text-xs font-semibold text-gray-400 uppercase tracking-wide px-3 py-2 mb-1">
-                            System Management
-                        </div>
-                        
-                        {/* System Management Tabs */}
-                        {manageTabs
-                            .filter(tab => ['statuses', 'importantQuestions'].includes(tab.id))
-                            .map((tab) => (
-                                <button
-                                    key={tab.id}
-                                    onClick={() => {
-                                        setActiveTab(tab.id);
-                                        setIsOpen(false);
-                                    }}
-                                    className={`w-full flex items-center gap-3 px-3 py-2 rounded-md text-left transition-colors ${
-                                        activeTab === tab.id 
-                                            ? 'bg-blue-600 text-white' 
-                                            : 'text-gray-300 hover:bg-gray-800 hover:text-white'
-                                    }`}
-                                >
-                                    <tab.icon size={16} className="text-blue-400" />
-                                    <span className="text-sm font-medium">{tab.label}</span>
-                                </button>
-                            ))}
-                    </div>
-                </div>
-            )}
-            
-            {/* Click outside to close */}
-            {isOpen && (
-                <div 
-                    className="fixed inset-0 z-40" 
-                    onClick={() => setIsOpen(false)}
-                />
-            )}
-        </div>
-    );
+const settingsPageStyles = `
+  .hs-settings-shell { display: flex; min-height: calc(100vh - 0px); background: #f5f8fa; font-family: "Lexend Deca", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; color: #33475b; }
+  .hs-settings-sidebar { width: 280px; min-width: 280px; background: #fff; border-right: 1px solid #cbd6e2; display: flex; flex-direction: column; position: sticky; top: 0; height: 100vh; overflow: hidden; }
+  .hs-settings-sidebar-header { padding: 20px 20px 12px; border-bottom: 1px solid #eaf0f6; }
+  .hs-settings-sidebar-header h1 { margin: 0; font-size: 20px; font-weight: 600; color: #33475b; display: flex; align-items: center; gap: 10px; }
+  .hs-settings-sidebar-header p { margin: 6px 0 0; font-size: 12px; color: #7c98b6; line-height: 1.4; }
+  .hs-settings-search { padding: 12px 16px; border-bottom: 1px solid #eaf0f6; }
+  .hs-settings-search input { width: 100%; box-sizing: border-box; border: 1px solid #cbd6e2; border-radius: 3px; padding: 8px 12px 8px 34px; font-size: 13px; color: #33475b; background: #f5f8fa; outline: none; }
+  .hs-settings-search input:focus { border-color: #00a4bd; box-shadow: 0 0 0 1px #00a4bd; background: #fff; }
+  .hs-settings-search input::placeholder { color: #99acc2; }
+  .hs-settings-search-wrap { position: relative; }
+  .hs-settings-search-wrap svg { position: absolute; left: 10px; top: 50%; transform: translateY(-50%); color: #99acc2; pointer-events: none; }
+  .hs-settings-nav { flex: 1; overflow-y: auto; padding: 8px 0 16px; }
+  .hs-settings-nav::-webkit-scrollbar { width: 6px; }
+  .hs-settings-nav::-webkit-scrollbar-thumb { background: #cbd6e2; border-radius: 3px; }
+  .hs-settings-nav-group { margin-bottom: 8px; }
+  .hs-settings-nav-group-title { padding: 10px 20px 6px; font-size: 11px; font-weight: 700; letter-spacing: 0.6px; text-transform: uppercase; color: #7c98b6; }
+  .hs-settings-nav-item { display: flex; align-items: center; gap: 10px; width: calc(100% - 16px); margin: 1px 8px; padding: 9px 12px; border: none; background: transparent; border-radius: 3px; cursor: pointer; text-align: left; font-size: 14px; font-weight: 500; color: #33475b; transition: background 0.12s, color 0.12s; border-left: 3px solid transparent; }
+  .hs-settings-nav-item:hover { background: #eaf0f6; color: #0091ae; }
+  .hs-settings-nav-item.active { background: #eaf0f6; color: #33475b; font-weight: 600; border-left-color: #ff7a59; }
+  .hs-settings-nav-item svg { flex-shrink: 0; color: #516f90; }
+  .hs-settings-nav-item.active svg { color: #ff7a59; }
+  .hs-settings-nav-empty { padding: 16px 20px; font-size: 13px; color: #7c98b6; }
+  .hs-settings-main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+  .hs-settings-main-inner { flex: 1; padding: 28px 32px 40px; overflow-y: auto; }
+  .hs-settings-page-header { margin-bottom: 24px; }
+  .hs-settings-page-header h2 { margin: 0 0 6px; font-size: 28px; font-weight: 600; color: #33475b; line-height: 1.2; }
+  .hs-settings-page-header p { margin: 0; font-size: 14px; color: #516f90; line-height: 1.5; max-width: 720px; }
+  .hs-settings-content { display: flex; flex-direction: column; gap: 16px; }
+  .hs-card { background: #fff; border: 1px solid #cbd6e2; border-radius: 3px; overflow: hidden; box-shadow: 0 1px 2px rgba(0,0,0,0.04); }
+  .hs-card-header { padding: 20px 24px; border-bottom: 1px solid #eaf0f6; display: flex; justify-content: space-between; align-items: center; gap: 16px; flex-wrap: wrap; background: #fff; }
+  .hs-card-title { margin: 0; font-size: 18px; font-weight: 600; color: #33475b; }
+  .hs-card-subtitle { margin: 4px 0 0; font-size: 13px; color: #516f90; }
+  .hs-btn-primary { background: #ff7a59; color: #fff; border: 1px solid #ff7a59; padding: 8px 16px; border-radius: 3px; font-size: 14px; font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; gap: 8px; transition: background 0.15s, border-color 0.15s; white-space: nowrap; }
+  .hs-btn-primary:hover { background: #ff8f73; border-color: #ff8f73; }
+  .hs-btn-secondary { background: #fff; color: #506e91; border: 1px solid #cbd6e2; padding: 8px 16px; border-radius: 3px; font-size: 14px; font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; gap: 8px; }
+  .hs-btn-secondary:hover { background: #f5f8fa; }
+  .hs-table-wrap { overflow-x: auto; }
+  .hs-table { width: 100%; border-collapse: collapse; }
+  .hs-table thead { background: #f5f8fa; border-bottom: 1px solid #cbd6e2; }
+  .hs-table th { padding: 12px 16px; text-align: left; font-size: 11px; font-weight: 700; letter-spacing: 0.5px; text-transform: uppercase; color: #516f90; white-space: nowrap; }
+  .hs-table td { padding: 14px 16px; font-size: 14px; color: #33475b; border-bottom: 1px solid #eaf0f6; vertical-align: middle; }
+  .hs-table tbody tr:hover { background: #f5f8fa; }
+  .hs-table tbody tr:last-child td { border-bottom: none; }
+  .hs-badge { display: inline-flex; align-items: center; padding: 2px 10px; border-radius: 12px; font-size: 12px; font-weight: 600; }
+  .hs-badge-success { background: #e5f8f6; color: #00a182; }
+  .hs-badge-muted { background: #eaf0f6; color: #516f90; }
+  .hs-icon-btn { background: transparent; border: none; padding: 6px; border-radius: 3px; cursor: pointer; color: #516f90; display: inline-flex; }
+  .hs-icon-btn:hover { background: #eaf0f6; color: #0091ae; }
+  .hs-icon-btn.danger:hover { color: #f2545b; background: #fde8e8; }
+  .hs-state-screen { min-height: 100vh; background: #f5f8fa; display: flex; align-items: center; justify-content: center; padding: 24px; }
+  .hs-state-card { background: #fff; border: 1px solid #cbd6e2; border-radius: 3px; padding: 40px; max-width: 420px; width: 100%; text-align: center; box-shadow: 0 1px 3px rgba(0,0,0,0.06); }
+  .hs-state-card h2 { margin: 16px 0 8px; font-size: 22px; font-weight: 600; color: #33475b; }
+  .hs-state-card p { margin: 0 0 20px; color: #516f90; font-size: 14px; line-height: 1.5; }
+  .hs-state-card code { background: #f5f8fa; padding: 2px 6px; border-radius: 3px; font-size: 12px; color: #0091ae; }
+  .hs-spinner { width: 40px; height: 40px; border: 3px solid #eaf0f6; border-top-color: #ff7a59; border-radius: 50%; animation: hsSpin 0.8s linear infinite; margin: 0 auto 16px; }
+  @keyframes hsSpin { to { transform: rotate(360deg); } }
+
+  /* Light theme overrides for all settings sub-pages */
+  .hs-settings-shell .bg-black,
+  .hs-settings-shell .bg-gray-900,
+  .hs-settings-shell .bg-gray-800,
+  .hs-settings-shell [class*="bg-gray-9"],
+  .hs-settings-shell [class*="bg-gray-8"],
+  .hs-settings-shell [class*="bg-black"] {
+    background-color: #ffffff !important;
+  }
+  .hs-settings-shell .item-content {
+    background-color: #ffffff !important;
+    border: 1px solid #eaf0f6 !important;
+    border-radius: 3px !important;
+  }
+  .hs-settings-shell .item-content:hover,
+  .hs-settings-shell [class*="hover:bg-gray-8"]:hover,
+  .hs-settings-shell [class*="hover:bg-gray-9"]:hover,
+  .hs-settings-shell [class*="hover:bg-gray-7"]:hover,
+  .hs-settings-shell [class*="hover:bg-black"]:hover {
+    background-color: #f5f8fa !important;
+  }
+  .hs-settings-shell table tbody tr:hover,
+  .hs-settings-shell tr[class*="hover:bg-gray-7"]:hover,
+  .hs-settings-shell tr[class*="hover:bg-gray-8"]:hover {
+    background-color: #f5f8fa !important;
+  }
+  .hs-settings-shell table tbody tr:hover td,
+  .hs-settings-shell tr[class*="hover:bg-gray-7"]:hover td,
+  .hs-settings-shell tr[class*="hover:bg-gray-8"]:hover td {
+    color: #33475b !important;
+  }
+  .hs-settings-shell h1.text-white,
+  .hs-settings-shell h2.text-white,
+  .hs-settings-shell h3.text-white,
+  .hs-settings-shell .text-gray-200,
+  .hs-settings-shell .text-gray-300 {
+    color: #33475b !important;
+  }
+  .hs-settings-shell .text-white {
+    color: #33475b !important;
+  }
+  .hs-settings-shell button.text-white,
+  .hs-settings-shell button[class*="bg-blue"],
+  .hs-settings-shell button[class*="bg-indigo"],
+  .hs-settings-shell button[class*="bg-red"],
+  .hs-settings-shell button[class*="bg-green"],
+  .hs-settings-shell button[class*="bg-amber"],
+  .hs-settings-shell button[class*="bg-yellow"],
+  .hs-settings-shell button[class*="bg-violet"],
+  .hs-settings-shell button[class*="bg-orange"],
+  .hs-settings-shell .hs-btn-primary,
+  .hs-settings-shell span[class*="bg-blue-6"],
+  .hs-settings-shell span[class*="bg-green-6"],
+  .hs-settings-shell span[class*="bg-blue-7"] {
+    color: #ffffff !important;
+  }
+  .hs-settings-shell .text-gray-400,
+  .hs-settings-shell .text-gray-500,
+  .hs-settings-shell .text-gray-600 {
+    color: #516f90 !important;
+  }
+  .hs-settings-shell .border-black,
+  .hs-settings-shell .border-gray-600,
+  .hs-settings-shell .border-gray-700,
+  .hs-settings-shell [class*="border-gray-"],
+  .hs-settings-shell [class*="border-white"],
+  .hs-settings-shell .divide-gray-700 > :not([hidden]) ~ :not([hidden]),
+  .hs-settings-shell .divide-black > :not([hidden]) ~ :not([hidden]) {
+    border-color: #eaf0f6 !important;
+  }
+  .hs-settings-shell .rounded-xl,
+  .hs-settings-shell .rounded-lg {
+    border-radius: 3px !important;
+  }
+  .hs-settings-shell .shadow-lg,
+  .hs-settings-shell .shadow-2xl {
+    box-shadow: 0 1px 2px rgba(0,0,0,0.04) !important;
+  }
+  .hs-settings-shell table {
+    border: 1px solid #cbd6e2 !important;
+    border-radius: 3px !important;
+    overflow: hidden;
+    background: #fff !important;
+  }
+  .hs-settings-shell table thead,
+  .hs-settings-shell thead.bg-gray-800,
+  .hs-settings-shell thead.bg-black {
+    background: #f5f8fa !important;
+  }
+  .hs-settings-shell table th {
+    color: #516f90 !important;
+    font-size: 11px !important;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    border-bottom: 1px solid #cbd6e2 !important;
+  }
+  .hs-settings-shell table td,
+  .hs-settings-shell tbody.bg-gray-900 td {
+    color: #33475b !important;
+    border-bottom: 1px solid #eaf0f6 !important;
+  }
+  .hs-settings-shell tbody.bg-gray-900,
+  .hs-settings-shell tbody.bg-black,
+  .hs-settings-shell tr.hover\\:bg-gray-800:hover {
+    background: #fff !important;
+  }
+  .hs-settings-shell tr.hover\\:bg-gray-800:hover {
+    background: #f5f8fa !important;
+  }
+  .hs-settings-shell input,
+  .hs-settings-shell select,
+  .hs-settings-shell textarea {
+    background-color: #ffffff !important;
+    border-color: #cbd6e2 !important;
+    border-radius: 3px !important;
+    color: #33475b !important;
+  }
+  .hs-settings-shell input:focus,
+  .hs-settings-shell select:focus,
+  .hs-settings-shell textarea:focus {
+    border-color: #00a4bd !important;
+    box-shadow: 0 0 0 1px #00a4bd !important;
+    outline: none !important;
+  }
+  .hs-settings-shell [class*="from-blue-5"],
+  .hs-settings-shell [class*="from-yellow-5"],
+  .hs-settings-shell [class*="from-green-5"],
+  .hs-settings-shell [class*="from-violet-5"],
+  .hs-settings-shell [class*="from-orange-5"],
+  .hs-settings-shell [class*="from-red-5"],
+  .hs-settings-shell [class*="from-sky-6"],
+  .hs-settings-shell [class*="from-emerald"] {
+    background: #ff7a59 !important;
+    background-image: none !important;
+    color: #fff !important;
+  }
+  .hs-settings-shell .bg-gradient-to-br {
+    background: #f5f8fa !important;
+    background-image: none !important;
+    border: 1px solid #cbd6e2 !important;
+  }
+  .hs-settings-shell .bg-gradient-to-br .text-white {
+    color: #33475b !important;
+  }
+  .hs-settings-shell .fixed.inset-0[class*="bg-black"] {
+    background-color: rgba(45, 62, 80, 0.55) !important;
+    backdrop-filter: blur(2px);
+  }
+  .hs-settings-shell .fixed .bg-gray-800,
+  .hs-settings-shell .fixed [class*="bg-gray-8"] {
+    background: #ffffff !important;
+    border: 1px solid #cbd6e2 !important;
+    color: #33475b !important;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.12) !important;
+  }
+  .hs-settings-shell .fixed .bg-gray-800 .text-white,
+  .hs-settings-shell .fixed [class*="bg-gray-8"] .text-white,
+  .hs-settings-shell .fixed .bg-gray-800 h2,
+  .hs-settings-shell .fixed .bg-gray-800 label {
+    color: #33475b !important;
+  }
+  .hs-settings-shell .fixed input[class*="bg-gray-7"],
+  .hs-settings-shell .fixed select[class*="bg-gray-7"],
+  .hs-settings-shell .fixed textarea[class*="bg-gray-7"] {
+    background: #fff !important;
+    border: 1px solid #cbd6e2 !important;
+    color: #33475b !important;
+  }
+  .hs-settings-shell .hs-subpanel {
+    width: 100%;
+    background: #fff;
+    border: 1px solid #cbd6e2;
+    border-radius: 3px;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+    padding: 1.5rem;
+    color: #33475b;
+  }
+  .hs-settings-shell .hs-subpanel-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1.5rem;
+    padding-bottom: 1rem;
+    border-bottom: 1px solid #eaf0f6;
+  }
+  .hs-settings-shell .hs-subpanel-title {
+    margin: 0;
+    font-size: 1.125rem;
+    font-weight: 600;
+    color: #33475b;
+  }
+  .hs-settings-shell .hs-inner-tabs {
+    display: flex;
+    gap: 0;
+    border-bottom: 1px solid #cbd6e2;
+    margin-bottom: 1rem;
+  }
+  .hs-settings-shell .hs-inner-tab {
+    padding: 0.625rem 1rem;
+    border: none;
+    background: transparent;
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: #516f90;
+    cursor: pointer;
+    border-bottom: 3px solid transparent;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+  .hs-settings-shell .hs-inner-tab.active {
+    color: #ff7a59;
+    border-bottom-color: #ff7a59;
+    background: #fff;
+  }
+  .hs-settings-shell .hs-inner-tab:hover {
+    color: #33475b;
+    background: #f5f8fa;
+  }
+  .hs-popup-card {
+    background: #fff;
+    border: 1px solid #cbd6e2;
+    border-radius: 3px;
+    padding: 1.25rem 1.5rem;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    position: relative;
+    overflow: hidden;
+    transition: box-shadow 0.15s, border-color 0.15s;
+  }
+  .hs-popup-card:hover {
+    border-color: #99acc2;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+  }
+  .hs-popup-card-accent {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 4px;
+    height: 100%;
+    border-radius: 3px 0 0 3px;
+  }
+  .hs-popup-field-label {
+    font-size: 0.75rem;
+    color: #516f90;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    font-weight: 700;
+    margin-bottom: 0.375rem;
+    display: block;
+  }
+  .hs-popup-input {
+    background: #fff;
+    border: 1px solid #cbd6e2;
+    color: #33475b;
+    padding: 0.5rem 0.75rem;
+    border-radius: 3px;
+    font-size: 0.875rem;
+    outline: none;
+  }
+  .hs-popup-input:focus {
+    border-color: #00a4bd;
+    box-shadow: 0 0 0 1px #00a4bd;
+  }
+  .hs-popup-input:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    background: #f5f8fa;
+  }
+  .hs-modal-overlay { position: fixed; inset: 0; background: rgba(45, 62, 80, 0.55); z-index: 9999; display: flex; align-items: flex-start; justify-content: center; padding: 24px 16px; overflow-y: auto; backdrop-filter: blur(2px); }
+  .hs-modal { background: #fff; border-radius: 3px; width: 100%; max-width: 720px; color: #33475b; box-shadow: 0 8px 32px rgba(0,0,0,0.18); border: 1px solid #cbd6e2; display: flex; flex-direction: column; max-height: calc(100vh - 48px); }
+  .hs-modal-wide { max-width: 960px; }
+  .hs-modal-header { padding: 20px 24px; border-bottom: 1px solid #eaf0f6; display: flex; justify-content: space-between; align-items: center; background: #fff; }
+  .hs-modal-header h3 { margin: 0; font-size: 18px; font-weight: 600; color: #33475b; }
+  .hs-modal-body { padding: 24px; overflow-y: auto; flex: 1; }
+  .hs-modal-footer { padding: 16px 24px; border-top: 1px solid #eaf0f6; display: flex; gap: 12px; justify-content: flex-end; background: #fff; }
+  .hs-settings-shell span[style*="color: '#ffffff'"],
+  .hs-settings-shell span[style*='color: "#ffffff"'],
+  .hs-settings-shell td[style*="color: '#ffffff'"],
+  .hs-settings-shell th[style*="color: '#ffffff'"] {
+    color: #33475b !important;
+  }
+  .hs-settings-shell div[style*="background:'#000"],
+  .hs-settings-shell div[style*="background: '#000000'"],
+  .hs-settings-shell div[style*="background:#000"],
+  .hs-settings-shell table[style*="background:#000"],
+  .hs-settings-shell thead[style*="background: '#000"] {
+    background-color: #ffffff !important;
+  }
+  .hs-settings-shell th[style*="background:#000"],
+  .hs-settings-shell td[style*="background:#000"],
+  .hs-settings-shell th[style*="background: '#000"] {
+    background-color: #f5f8fa !important;
+    color: #516f90 !important;
+  }
+  @media (max-width: 960px) {
+    .hs-settings-shell { flex-direction: column; }
+    .hs-settings-sidebar { width: 100%; min-width: 0; height: auto; position: relative; max-height: 320px; }
+    .hs-settings-main-inner { padding: 20px 16px 32px; }
+    .hs-settings-page-header h2 { font-size: 22px; }
+  }
+`;
+
+const SETTINGS_NAV_GROUPS = [
+  {
+    title: 'Data & CRM',
+    items: ['campaigns', 'dataCodes', 'bankNames', 'channelNames', 'companyData', 'importantQuestions'],
+  },
+  {
+    title: 'Organization',
+    items: ['departments', 'designations', 'roles', 'otpVerification'],
+  },
+  {
+    title: 'System & Tools',
+    items: ['statuses', 'attachmentTypes', 'excelUpload', 'attendance', 'popupModals'],
+  },
+];
+
+const TAB_DESCRIPTIONS = {
+  campaigns: 'Manage campaign name options used across lead records.',
+  dataCodes: 'Configure data source codes for lead classification.',
+  bankNames: 'Maintain the list of bank names available in the CRM.',
+  channelNames: 'Manage marketing and sales channel name options.',
+  companyData: 'Upload and manage company master data linked to banks.',
+  importantQuestions: 'Configure validation questions shown during lead processing.',
+  departments: 'Set up your organizational department hierarchy.',
+  designations: 'Manage job titles and designations for employees.',
+  roles: 'Define roles and granular permissions for your team.',
+  otpVerification: 'Configure OTP verification rules and settings.',
+  statuses: 'Manage lead status workflows by department.',
+  attachmentTypes: 'Define document categories and attachment types.',
+  excelUpload: 'Bulk import company data using Excel templates.',
+  attendance: 'Configure attendance policies, shifts, and rules.',
+  popupModals: 'Manage popup alerts and modal notifications.',
 };
 
-// Core Management Dropdown Component
-const CoreManageDropdown = ({ tabs, activeTab, setActiveTab }) => {
-    const [isOpen, setIsOpen] = useState(false);
-    
-    // Filter to show only the core management tabs: departments, designations, roles, otpVerification
-    const coreManageTabs = tabs.filter(tab => 
-        ['departments', 'designations', 'roles', 'otpVerification'].includes(tab.id)
-    );
-    
-    const activeTabData = tabs.find(tab => tab.id === activeTab);
-    const isCoreManageTabActive = ['departments', 'designations', 'roles', 'otpVerification'].includes(activeTab);
-    
-    return (
-        <div className="relative">
-            <button
-                onClick={() => setIsOpen(!isOpen)}
-                className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-all ${
-                    isCoreManageTabActive
-                        ? 'bg-green-500 text-white shadow-lg'
-                        : 'bg-white text-black hover:bg-black hover:text-white border border-black'
-                }`}
-            >
-                <Building size={16} />
-                <span>Core Management</span>
-                <ChevronDown 
-                    size={16} 
-                    className={`transform transition-transform ${isOpen ? 'rotate-180' : ''}`} 
-                />
-            </button>
-            
-            {isOpen && (
-                <div className="absolute left-0 top-full mt-2 w-64 bg-gray-900 border border-gray-700 rounded-lg shadow-xl z-50">
-                    <div className="p-2">
-                        <div className="text-xs font-semibold text-gray-400 uppercase tracking-wide px-3 py-2 mb-1">
-                            Organizational Structure
-                        </div>
-                        
-                        {/* Core Management Tabs */}
-                        {coreManageTabs.map((tab) => (
-                            <button
-                                key={tab.id}
-                                onClick={() => {
-                                    setActiveTab(tab.id);
-                                    setIsOpen(false);
-                                }}
-                                className={`w-full flex items-center gap-3 px-3 py-2 rounded-md text-left transition-colors ${
-                                    activeTab === tab.id 
-                                        ? 'bg-green-600 text-white' 
-                                        : 'text-gray-300 hover:bg-gray-800 hover:text-white'
-                                }`}
-                            >
-                                <tab.icon size={16} className="text-green-400" />
-                                <span className="text-sm font-medium">{tab.label}</span>
-                            </button>
-                        ))}
-                    </div>
-                </div>
-            )}
-            
-            {/* Click outside to close */}
-            {isOpen && (
-                <div 
-                    className="fixed inset-0 z-40" 
-                    onClick={() => setIsOpen(false)}
-                />
-            )}
-        </div>
-    );
-};
+const SettingsHubSpotSidebar = ({ tabs, activeTab, setActiveTab, navSearch, setNavSearch }) => {
+  const tabMap = Object.fromEntries(tabs.map((tab) => [tab.id, tab]));
+  const query = navSearch.trim().toLowerCase();
 
-// Other Management Dropdown Component
-const OtherManageDropdown = ({ tabs, activeTab, setActiveTab }) => {
-    const [isOpen, setIsOpen] = useState(false);
-    
-    // Filter to show only the other management tabs: attachmentTypes, excelUpload, attendance
-    const otherManageTabs = tabs.filter(tab => 
-        ['attachmentTypes', 'excelUpload', 'attendance', 'popupModals'].includes(tab.id)
-    );
-    
-    const activeTabData = tabs.find(tab => tab.id === activeTab);
-    const isOtherManageTabActive = ['attachmentTypes', 'excelUpload', 'attendance', 'popupModals'].includes(activeTab);
-    
-    return (
-        <div className="relative">
-            <button
-                onClick={() => setIsOpen(!isOpen)}
-                className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-all ${
-                    isOtherManageTabActive
-                        ? 'bg-purple-500 text-white shadow-lg'
-                        : 'bg-white text-black hover:bg-black hover:text-white border border-black'
-                }`}
-            >
-                <Settings size={16} />
-                <span>Other</span>
-                <ChevronDown 
-                    size={16} 
-                    className={`transform transition-transform ${isOpen ? 'rotate-180' : ''}`} 
-                />
-            </button>
-            
-            {isOpen && (
-                <div className="absolute left-0 top-full mt-2 w-64 bg-gray-900 border border-gray-700 rounded-lg shadow-xl z-50">
-                    <div className="p-2">
-                        <div className="text-xs font-semibold text-gray-400 uppercase tracking-wide px-3 py-2 mb-1">
-                            Additional Settings
-                        </div>
-                        
-                        {/* Other Management Tabs */}
-                        {otherManageTabs.map((tab) => (
-                            <button
-                                key={tab.id}
-                                onClick={() => {
-                                    setActiveTab(tab.id);
-                                    setIsOpen(false);
-                                }}
-                                className={`w-full flex items-center gap-3 px-3 py-2 rounded-md text-left transition-colors ${
-                                    activeTab === tab.id 
-                                        ? 'bg-purple-600 text-white' 
-                                        : 'text-gray-300 hover:bg-gray-800 hover:text-white'
-                                }`}
-                            >
-                                <tab.icon size={16} className="text-purple-400" />
-                                <span className="text-sm font-medium">{tab.label}</span>
-                            </button>
-                        ))}
-                    </div>
-                </div>
-            )}
-            
-            {/* Click outside to close */}
-            {isOpen && (
-                <div 
-                    className="fixed inset-0 z-40" 
-                    onClick={() => setIsOpen(false)}
-                />
-            )}
+  const filteredGroups = SETTINGS_NAV_GROUPS.map((group) => ({
+    ...group,
+    items: group.items.filter((id) => {
+      const tab = tabMap[id];
+      if (!tab) return false;
+      if (!query) return true;
+      return tab.label.toLowerCase().includes(query) || group.title.toLowerCase().includes(query);
+    }),
+  })).filter((group) => group.items.length > 0);
+
+  return (
+    <aside className="hs-settings-sidebar">
+      <div className="hs-settings-sidebar-header">
+        <h1><Settings size={20} color="#ff7a59" /> Settings</h1>
+        <p>Manage your CRM account, data, and system preferences</p>
+      </div>
+      <div className="hs-settings-search">
+        <div className="hs-settings-search-wrap">
+          <Search size={14} />
+          <input
+            type="text"
+            placeholder="Search settings..."
+            value={navSearch}
+            onChange={(e) => setNavSearch(e.target.value)}
+          />
         </div>
-    );
+      </div>
+      <nav className="hs-settings-nav">
+        {filteredGroups.length === 0 ? (
+          <div className="hs-settings-nav-empty">No settings match your search.</div>
+        ) : (
+          filteredGroups.map((group) => (
+            <div key={group.title} className="hs-settings-nav-group">
+              <div className="hs-settings-nav-group-title">{group.title}</div>
+              {group.items.map((id) => {
+                const tab = tabMap[id];
+                if (!tab) return null;
+                const Icon = tab.icon;
+                return (
+                  <button
+                    key={id}
+                    type="button"
+                    className={`hs-settings-nav-item ${activeTab === id ? 'active' : ''}`}
+                    onClick={() => setActiveTab(id)}
+                  >
+                    <Icon size={16} />
+                    <span>{tab.label}</span>
+                  </button>
+                );
+              })}
+            </div>
+          ))
+        )}
+      </nav>
+    </aside>
+  );
 };
 
 const SettingsPage = () => {
     // State management
     const [activeTab, setActiveTab] = useTabWithHistory('section', 'campaigns', { localStorageKey: 'settingsPageTab' });
+    const [navSearch, setNavSearch] = useState('');
     const [loading, setLoading] = useState(false);
     const [user_id] = useState(localStorage.getItem('userId') || '');
     const [userPermissions, setUserPermissions] = useState({});
@@ -1254,7 +1475,7 @@ const SettingsPage = () => {
         console.log("Loading statuses from: ${BASE_URL}/admin/statuses");
 
         try {
-            const response = await axios.get(`${API_BASE_URL}/leads/admin/statuses?user_id=${localStorage.getItem('user_id')}`);
+            const response = await axios.get(`${API_BASE_URL}/leads/admin/statuses?user_id=${localStorage.getItem('user_id') || localStorage.getItem('userId') || ''}`);
             const statusesData = response.data;
             
             // Ensure we always set an array
@@ -1298,8 +1519,7 @@ const updateStatus = async (statusId, statusData) => {
     console.log("Updating status:", statusId, statusData);
 
     try {
-        // Use the correct user_id from localStorage - same as used in loadStatuses
-        const correctUserId = localStorage.getItem('userId');
+        const correctUserId = localStorage.getItem('userId') || localStorage.getItem('user_id') || '';
         
         if (!correctUserId) {
             console.error('Error: No user_id found in localStorage');
@@ -1307,7 +1527,6 @@ const updateStatus = async (statusId, statusData) => {
             return false;
         }
         
-        // Use the same URL format as other status calls
         const response = await axios.put(
             `${API_BASE_URL}/leads/admin/statuses/${statusId}?user_id=${correctUserId}`, 
             statusData
@@ -2198,8 +2417,8 @@ const updateStatus = async (statusId, statusData) => {
 
     // Important Questions Table Render Function
     const renderImportantQuestionsTable = () => (
-        <div className="bg-black rounded-xl shadow-lg overflow-hidden">
-            <div className="p-6 border-b border-gray-700 flex justify-between items-center">
+        <div className="hs-card">
+            <div className="hs-card-header">
                 <div>
                     <h3 className="text-xl font-bold text-white">Important Questions Management</h3>
                     <p className="text-sm text-gray-300 mt-1">
@@ -2317,8 +2536,8 @@ const updateStatus = async (statusId, statusData) => {
     const renderWarningDataTables = () => (
         <div className="space-y-6">
             {/* Mistake Types Table */}
-            <div className="bg-black rounded-xl shadow-lg overflow-hidden">
-                <div className="p-6 border-b border-gray-700 flex justify-between items-center">
+            <div className="hs-card">
+                <div className="hs-card-header">
                     <div>
                         <h3 className="text-xl font-bold text-white">Mistake Types</h3>
                         <p className="text-sm text-gray-300 mt-1">
@@ -2413,8 +2632,8 @@ const updateStatus = async (statusId, statusData) => {
             </div>
 
             {/* Warning Actions Table */}
-            <div className="bg-black rounded-xl shadow-lg overflow-hidden">
-                <div className="p-6 border-b border-gray-700 flex justify-between items-center">
+            <div className="hs-card">
+                <div className="hs-card-header">
                     <div>
                         <h3 className="text-xl font-bold text-white">Warning Actions</h3>
                         <p className="text-sm text-gray-300 mt-1">
@@ -2511,8 +2730,8 @@ const updateStatus = async (statusId, statusData) => {
     );
 
     const renderWarningTypesTable = () => (
-        <div className="bg-black rounded-xl shadow-lg overflow-hidden">
-            <div className="p-6 border-b border-gray-700 flex justify-between items-center">
+        <div className="hs-card">
+            <div className="hs-card-header">
                 <div>
                     <h3 className="text-xl font-bold text-white">Warning Types Management</h3>
                     <p className="text-sm text-gray-300 mt-1">
@@ -2699,44 +2918,42 @@ const updateStatus = async (statusId, statusData) => {
     };
 
     const renderDataTable = (data, type, columns) => (
-        <div className="bg-black rounded-xl shadow-lg overflow-hidden">
-            <div className="p-6 border-b border-black flex justify-between items-center">
-                <h3 className="text-xl font-bold text-white">
-                    {tabs.find(t => t.id === type)?.label || type}
-                </h3>
+        <div className="hs-card">
+            <div className="hs-card-header">
+                <div>
+                    <h3 className="hs-card-title">{tabs.find(t => t.id === type)?.label || type}</h3>
+                    <p className="hs-card-subtitle">{TAB_DESCRIPTIONS[type] || 'Manage settings for this section.'}</p>
+                </div>
                 {(isSuperAdmin(userPermissions) || hasPermission(userPermissions, 'settings', 'create')) && (
-                    <button
-                        onClick={() => handleAdd(type)}
-                        className="bg-gradient-to-r from-blue-500 to-blue-600 text-white px-4 py-2 rounded-lg flex items-center gap-2 hover:from-blue-600 hover:to-blue-700 transition-all"
-                    >
+                    <button type="button" onClick={() => handleAdd(type)} className="hs-btn-primary">
                         <Plus size={16} />
                         Add New
                     </button>
                 )}
             </div>
-
-            <div className="overflow-x-auto">
-                <table className="w-full">
-                    <thead className="bg-black">
+            <div className="hs-table-wrap">
+                <table className="hs-table">
+                    <thead>
                         <tr>
                             {columns.map(col => (
-                                <th key={col} className="px-6 py-3 text-left text-xs font-medium text-white uppercase tracking-wider">
-                                    {col.replace('_', ' ')}
-                                </th>
+                                <th key={col}>{col.replace('_', ' ')}</th>
                             ))}
-                            <th className="px-6 py-3 text-left text-xs font-medium text-white uppercase tracking-wider">
-                                Actions
-                            </th>
+                            <th>Actions</th>
                         </tr>
                     </thead>
-                    <tbody className="divide-y divide-black">
-                        {data.map((item, index) => (
-                            <tr key={item._id || item.id || index} className="hover:bg-black">
+                    <tbody>
+                        {data.length === 0 ? (
+                            <tr>
+                                <td colSpan={columns.length + 1} style={{ textAlign: 'center', padding: '32px', color: '#7c98b6' }}>
+                                    No records found. Click &quot;Add New&quot; to create one.
+                                </td>
+                            </tr>
+                        ) : data.map((item, index) => (
+                            <tr key={item._id || item.id || index}>
                                 {columns.map(col => (
-                                    <td key={col} className="px-6 py-4 whitespace-nowrap text-sm text-white">
+                                    <td key={col}>
                                         {col === 'is_active' ? (
-                                            <span className={`px-2 py-1 rounded-full text-xs font-medium ${item[col] ? 'bg-green-100 text-white' : 'bg-black text-white'
-                                                }`}>
+                                            <span className={`hs-badge ${item[col] ? 'hs-badge-success' : 'hs-badge-muted'}`}>
                                                 {item[col] ? 'Active' : 'Inactive'}
                                             </span>
                                         ) : (
@@ -2744,23 +2961,15 @@ const updateStatus = async (statusId, statusData) => {
                                         )}
                                     </td>
                                 ))}
-                                <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                                    <div className="flex gap-2">
+                                <td>
+                                    <div className="flex gap-1">
                                         {(isSuperAdmin(userPermissions) || hasPermission(userPermissions, 'settings', 'edit')) && (
-                                            <button
-                                                onClick={() => handleEdit(item, type)}
-                                                className="text-white hover:text-white"
-                                                title="Edit"
-                                            >
+                                            <button type="button" onClick={() => handleEdit(item, type)} className="hs-icon-btn" title="Edit">
                                                 <Edit size={16} />
                                             </button>
                                         )}
                                         {(isSuperAdmin(userPermissions) || hasPermission(userPermissions, 'settings', 'delete')) && (
-                                            <button
-                                                onClick={() => handleDelete(item._id || item.id, type)}
-                                                className="text-white hover:text-white"
-                                                title="Delete"
-                                            >
+                                            <button type="button" onClick={() => handleDelete(item._id || item.id, type)} className="hs-icon-btn danger" title="Delete">
                                                 <Trash2 size={16} />
                                             </button>
                                         )}
@@ -3197,7 +3406,7 @@ const updateStatus = async (statusId, statusData) => {
                 <div className="bg-gray-800 rounded-xl shadow-lg border border-gray-700 overflow-hidden">
                     <button
                         onClick={() => setShowInlineUpload(!showInlineUpload)}
-                        className="w-full p-4 flex items-center justify-between text-white hover:bg-gray-700 transition-colors"
+                        className="w-full p-4 flex items-center justify-between text-[#33475b] hover:bg-[#f5f8fa] transition-colors"
                     >
                         <span className="flex items-center gap-2 font-semibold text-base">
                             <Upload className="text-blue-400" size={20} />
@@ -3613,14 +3822,14 @@ const updateStatus = async (statusId, statusData) => {
                                         </tr>
                                     ) : (
                                         companyData.map((company, index) => (
-                                            <tr key={company.id || index} className="hover:bg-gray-700 transition-colors">
-                                                <td className="px-6 py-4 text-sm font-medium text-white">
+                                            <tr key={company.id || index} className="transition-colors hover:bg-[#f5f8fa]">
+                                                <td className="px-6 py-4 text-sm font-medium text-[#33475b]">
                                                     <div className="flex items-center gap-2">
                                                         <Building size={16} className="text-orange-400 flex-shrink-0" />
                                                         <span className="truncate">{company.company_name}</span>
                                                     </div>
                                                 </td>
-                                                <td className="px-6 py-4 text-sm text-gray-300">
+                                                <td className="px-6 py-4 text-sm text-[#516f90]">
                                                     <div className="flex flex-wrap gap-1">
                                                         {(company.categories || []).map((category, idx) => (
                                                             <span key={idx} className="bg-blue-600 text-white px-2 py-1 rounded-full text-xs font-medium">
@@ -3629,7 +3838,7 @@ const updateStatus = async (statusId, statusData) => {
                                                         ))}
                                                     </div>
                                                 </td>
-                                                <td className="px-6 py-4 text-sm text-gray-300">
+                                                <td className="px-6 py-4 text-sm text-[#516f90]">
                                                     <div className="flex flex-wrap gap-1">
                                                         {(company.bank_names || []).map((bank, idx) => (
                                                             <span key={idx} className="bg-green-600 text-white px-2 py-1 rounded-full text-xs font-medium">
@@ -3940,8 +4149,8 @@ const updateStatus = async (statusId, statusData) => {
     };
 
     const renderRolesTable = () => (
-        <div className="bg-black rounded-xl shadow-lg overflow-hidden">
-            <div className="p-6 border-b border-black flex justify-between items-center">
+        <div className="hs-card">
+            <div className="hs-card-header">
                 <h3 className="text-xl font-bold text-white">Roles & Permissions</h3>
                 {(isSuperAdmin(userPermissions) || hasPermission(userPermissions, 'roles', 'create')) && (
                     <button
@@ -4894,108 +5103,82 @@ const updateStatus = async (statusId, statusData) => {
     // Error state
     if (error) {
         return (
-            <div className="min-h-screen bg-black text-white flex items-center justify-center">
-                <div className="max-w-md w-full bg-black rounded-lg shadow-lg p-8 text-center">
-                    <AlertCircle className="h-16 w-16 text-white mx-auto mb-4" />
-                    <h2 className="text-2xl font-bold text-white mb-2">Error</h2>
-                    <p className="text-white mb-4">{error}</p>
-                    <button
-                        onClick={() => window.location.reload()}
-                        className="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600"
-                    >
-                        Reload Page
-                    </button>
+            <>
+                <style>{settingsPageStyles}</style>
+                <div className="hs-state-screen">
+                    <div className="hs-state-card">
+                        <AlertCircle size={48} color="#f2545b" style={{ margin: '0 auto' }} />
+                        <h2>Something went wrong</h2>
+                        <p>{error}</p>
+                        <button type="button" onClick={() => window.location.reload()} className="hs-btn-primary">Reload Page</button>
+                    </div>
                 </div>
-            </div>
+            </>
         );
     }
 
     // Loading state
     if (!permissionsLoaded) {
         return (
-            <div className="min-h-screen bg-black text-white flex items-center justify-center">
-                <div className="text-center">
-                    <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto mb-4"></div>
-                    <p className="text-white">Loading permissions...</p>
+            <>
+                <style>{settingsPageStyles}</style>
+                <div className="hs-state-screen">
+                    <div className="hs-state-card">
+                        <div className="hs-spinner" />
+                        <p style={{ color: '#516f90', margin: 0 }}>Loading settings...</p>
+                    </div>
                 </div>
-            </div>
+            </>
         );
     }
 
     // Access denied component
     if (!hasSettingsAccess) {
         return (
-            <div className="min-h-screen bg-black text-white flex items-center justify-center">
-                <div className="max-w-md w-full bg-black rounded-lg shadow-lg p-8 text-center">
-                    <Lock className="h-16 w-16 text-white mx-auto mb-4" />
-                    <h2 className="text-2xl font-bold text-white mb-2">Access Denied</h2>
-                    <p className="text-white mb-4">
-                        You don't have permission to access the Settings page.
-                        Please contact your administrator if you need access.
-                    </p>
-                    <div className="bg-black border border-black rounded-lg p-4">
-                        <div className="flex items-center">
-                            <Shield className="h-5 w-5 text-white mr-2" />
-                            <span className="text-sm text-white">
-                                Required permission: <code className="bg-black px-2 py-1 rounded">settings.view</code>
-                            </span>
+            <>
+                <style>{settingsPageStyles}</style>
+                <div className="hs-state-screen">
+                    <div className="hs-state-card">
+                        <Lock size={48} color="#516f90" style={{ margin: '0 auto' }} />
+                        <h2>Access denied</h2>
+                        <p>You don&apos;t have permission to access Settings. Contact your administrator if you need access.</p>
+                        <div style={{ background: '#f5f8fa', border: '1px solid #cbd6e2', borderRadius: 3, padding: 12, textAlign: 'left' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: '#516f90' }}>
+                                <Shield size={16} />
+                                <span>Required permission: <code>settings.view</code></span>
+                            </div>
                         </div>
                     </div>
                 </div>
-            </div>
+            </>
         );
     }
 
     return (
-        <div className="min-h-screen bg-black text-white">
-            {/* Header */}
-            <div className="bg-black shadow-sm border-b border-black">
-                <div className="w-full px-4 sm:px-6 lg:px-8">
-                    <div className="flex items-center justify-between h-16">
-                        <div className="flex items-center">
-                            <Settings className="h-8 w-8 text-white mr-3" />
-                            <h1 className="text-2xl font-bold text-white">Settings Management</h1>
+        <>
+            <style>{settingsPageStyles}</style>
+            <div className="hs-settings-shell">
+                <SettingsHubSpotSidebar
+                    tabs={tabs}
+                    activeTab={activeTab}
+                    setActiveTab={setActiveTab}
+                    navSearch={navSearch}
+                    setNavSearch={setNavSearch}
+                />
+                <main className="hs-settings-main">
+                    <div className="hs-settings-main-inner">
+                        <div className="hs-settings-page-header">
+                            <h2>{tabs.find(t => t.id === activeTab)?.label || 'Settings'}</h2>
+                            <p>{TAB_DESCRIPTIONS[activeTab] || 'Configure your CRM settings.'}</p>
+                        </div>
+                        <div className="hs-settings-content">
+                            {renderTabContent()}
                         </div>
                     </div>
-                </div>
+                </main>
             </div>
-
-            {/* Tabs */}
-            <div className="w-full px-4 sm:px-6 lg:px-8 py-6">
-                
-                {/* Tab Management Dropdown and Tab Buttons */}
-                <div className="flex flex-wrap gap-2 mb-6">
-                    {/* Tab Management Dropdown as first button */}
-                    <TabManageDropdown 
-                        tabs={tabs}
-                        activeTab={activeTab}
-                        setActiveTab={setActiveTab}
-                    />
-                    
-                    {/* Core Management Dropdown as second button */}
-                    <CoreManageDropdown 
-                        tabs={tabs}
-                        activeTab={activeTab}
-                        setActiveTab={setActiveTab}
-                    />
-                    
-                    {/* Other Management Dropdown as third button */}
-                    <OtherManageDropdown 
-                        tabs={tabs}
-                        activeTab={activeTab}
-                        setActiveTab={setActiveTab}
-                    />
-                </div>
-
-                {/* Content */}
-                <div className="space-y-6">
-                    {renderTabContent()}
-                </div>
-            </div>
-
-            {/* Modal */}
             {renderModal()}
-        </div>
+        </>
     );
 };
 

@@ -82,7 +82,7 @@ const RoleSettings = () => {
         'interview': ['show', 'view_team', 'view_all', 'interview_setting', 'delete'],
         'employees': ['show', 'view_team', 'view_all', 'add_employee', 'reset_password', 'lock_role', 'delete'],
         'leaves': ['show', 'view_team', 'view_all', 'leave_setting', 'delete'],
-        'attendance': ['show', 'view_team', 'view_all', 'leave_management', 'update_attendance'],
+        'attendance': ['show', 'view_team', 'view_all', 'leave_management', 'update_attendance', 'view_salary'],
         'dialer_report': ['show'],
         'offer_letter': ['show'],
         'apps': ['show', 'create_app', 'edit_app', 'share_app'],
@@ -106,7 +106,7 @@ const RoleSettings = () => {
             'interview': { show:'Show in Sidebar', view_team:'View Team', view_all:'View All', interview_setting:'Interview Setting', delete:'Delete' },
             'employees': { show:'Show in Sidebar', view_team:'View Team', view_all:'View All', add_employee:'Add Employee', reset_password:'Reset Password', lock_role:'Lock Role', delete:'Delete' },
             'leaves': { show:'Show in Sidebar', view_team:'View Team', view_all:'View All', leave_setting:'Leave Setting', delete:'Delete' },
-            'attendance': { show:'Show in Sidebar', view_team:'View Team', view_all:'View All', leave_management:'Leave Management', update_attendance:'Update Attendance' },
+            'attendance': { show:'Show in Sidebar', view_team:'View Team', view_all:'View All', leave_management:'Leave Management', update_attendance:'Update Attendance', view_salary:'View Salary Column' },
             'dialer_report': { show:'Show in Sidebar' },
             'offer_letter': { show:'Show in Sidebar' },
             'apps': { show:'Show in Sidebar', create_app:'Create App', edit_app:'Edit App', share_app:'Share App' },
@@ -189,6 +189,7 @@ const RoleSettings = () => {
         'leave_setting': '⚙️ Leave Setting - Can manage leave configurations',
         'leave_management': '📋 Leave Management - Can manage team leave',
         'update_attendance': '📝 Update Attendance - Can update attendance records',
+        'view_salary': '💰 View Salary Column - Can see Salary & Deduction columns in Attendance',
         'create_app': '➕ Create App - Can create new apps',
         'edit_app': '✏️ Edit App - Can edit existing apps',
         'share_app': '🔗 Share App - Can share apps',
@@ -2735,7 +2736,7 @@ const RoleSettings = () => {
                 rows.push(
                     <tr key={`separator-${team.head.id || team.head._id}`} style={{
                         height: '2px',
-                        background: '#000000'
+                        background: '#f5f8fa'
                     }}>
                         <td colSpan={5} style={{ 
                             padding: 0,
@@ -2778,29 +2779,29 @@ const RoleSettings = () => {
             <tr 
                 key={roleId}
                 style={{
-                    background: isHead ? '#0a0a0a' : '#000000',
-                    borderLeft: isHead ? '6px solid #ffffff' : 'none',
-                    borderBottom: '1px solid #222222',
+                    background: isHead ? '#f5f8fa' : '#ffffff',
+                    borderLeft: isHead ? '6px solid #ff7a59' : 'none',
+                    borderBottom: '1px solid #eaf0f6',
                     transition: 'all 0.2s ease'
                 }}
-                onMouseEnter={(e) => e.currentTarget.style.background = '#0a0a0a'}
-                onMouseLeave={(e) => e.currentTarget.style.background = isHead ? '#0a0a0a' : '#000000'}
+                onMouseEnter={(e) => e.currentTarget.style.background = '#f5f8fa'}
+                onMouseLeave={(e) => e.currentTarget.style.background = isHead ? '#f5f8fa' : '#ffffff'}
             >
                 {/* Role Name */}
                 <td style={{ 
                     padding: isHead ? '20px 15px' : '16px 15px', 
                     paddingLeft: indentLevel > 0 ? `${15 + (indentLevel * 50)}px` : '15px',
-                    borderRight: '1px solid #1a1a1a'
+                    borderRight: '1px solid #eaf0f6'
                 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                         <div style={{
                             width: isHead ? '12px' : '10px',
                             height: isHead ? '12px' : '10px',
-                            background: '#ffffff',
+                            background: '#ff7a59',
                             borderRadius: '50%'
                         }}></div>
                         <span style={{
-                            color: '#ffffff',
+                            color: '#33475b',
                             fontWeight: isHead ? '700' : '500',
                             fontSize: isHead ? '1.05rem' : '0.95rem'
                         }}>
@@ -2810,7 +2811,7 @@ const RoleSettings = () => {
                 </td>
                 
                 {/* Department */}
-                <td style={{ padding: '16px 15px', borderRight: '1px solid #1a1a1a' }}>
+                <td style={{ padding: '16px 15px', borderRight: '1px solid #eaf0f6' }}>
                     {role.department_id ? (
                         <span style={{
                             display: 'inline-block',
@@ -2818,21 +2819,21 @@ const RoleSettings = () => {
                             borderRadius: '6px',
                             fontSize: '0.85rem',
                             fontWeight: '600',
-                            background: '#000000',
-                            color: '#ffffff',
-                            border: '2px solid #555555'
+                            background: '#f5f8fa',
+                            color: '#33475b',
+                            border: '1px solid #cbd6e2'
                         }}>
                             {getDepartmentName(role.department_id)}
                         </span>
                     ) : (
-                        <span style={{ color: '#666666' }}>-</span>
+                        <span style={{ color: '#99acc2' }}>-</span>
                     )}
                 </td>
                 
                 {/* Reports To */}
-                <td style={{ padding: '16px 15px', borderRight: '1px solid #1a1a1a' }}>
+                <td style={{ padding: '16px 15px', borderRight: '1px solid #eaf0f6' }}>
                     {isTopLevel ? (
-                        <span style={{ color: '#666666', fontSize: '0.85rem' }}>Top Level</span>
+                        <span style={{ color: '#99acc2', fontSize: '0.85rem' }}>Top Level</span>
                     ) : reportingRoleNames.length > 0 ? (
                         reportingRoleNames.length > 1 ? (
                             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '4px' }}>
@@ -2840,15 +2841,15 @@ const RoleSettings = () => {
                                     <svg style={{ width: '16px', height: '16px' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 10l7-7m0 0l7 7m-7-7v18" />
                                     </svg>
-                                    <span style={{ color: '#ffffff', fontWeight: '500' }}>{reportingRoleNames[0]}</span>
+                                    <span style={{ color: '#33475b', fontWeight: '500' }}>{reportingRoleNames[0]}</span>
                                 </div>
                                 {reportingRoleNames.slice(1).map((name, idx) => (
-                                    <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#cccccc' }}>
+                                    <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#516f90' }}>
                                         <svg style={{ width: '16px', height: '16px' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 10l7-7m0 0l7 7m-7-7v18" />
                                         </svg>
                                         <span>{name}</span>
-                                        <span style={{ fontSize: '0.75rem', color: '#888888' }}>(Secondary)</span>
+                                        <span style={{ fontSize: '0.75rem', color: '#99acc2' }}>(Secondary)</span>
                                     </div>
                                 ))}
                             </div>
@@ -2857,21 +2858,21 @@ const RoleSettings = () => {
                                 <svg style={{ width: '16px', height: '16px' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 10l7-7m0 0l7 7m-7-7v18" />
                                 </svg>
-                                <span style={{ color: '#ffffff', fontWeight: '500' }}>{reportingRoleNames[0]}</span>
+                                <span style={{ color: '#33475b', fontWeight: '500' }}>{reportingRoleNames[0]}</span>
                             </div>
                         )
                     ) : (
-                        <span style={{ color: '#666666' }}>-</span>
+                        <span style={{ color: '#99acc2' }}>-</span>
                     )}
                 </td>
                 
                 {/* Permissions */}
-                <td style={{ padding: '16px 15px', borderRight: '1px solid #1a1a1a' }}>
+                <td style={{ padding: '16px 15px', borderRight: '1px solid #eaf0f6' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                         <svg style={{ width: '16px', height: '16px' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
                         </svg>
-                        <span style={{ color: '#ffffff', fontWeight: '500' }}>
+                        <span style={{ color: '#33475b', fontWeight: '500' }}>
                             {getPermissionsCount(role.permissions)}
                         </span>
                     </div>
@@ -2888,7 +2889,7 @@ const RoleSettings = () => {
                             setCompareSelected(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
                         }}
                     >
-                        <div style={{ width:'24px', height:'24px', borderRadius:'6px', border:'2px solid '+(compareSelected.includes(role._id||role.id)?'#ffd700':'#555'), background:compareSelected.includes(role._id||role.id)?'#ffd700':'transparent', display:'flex', alignItems:'center', justifyContent:'center', cursor:'pointer', margin:'auto', transition:'all 0.15s' }}>
+                        <div style={{ width:'24px', height:'24px', borderRadius:'6px', border:'2px solid '+(compareSelected.includes(role._id||role.id)?'#ff7a59':'#cbd6e2'), background:compareSelected.includes(role._id||role.id)?'#ff7a59':'transparent', display:'flex', alignItems:'center', justifyContent:'center', cursor:'pointer', margin:'auto', transition:'all 0.15s' }}>
                             {compareSelected.includes(role._id||role.id) && <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#000" strokeWidth="3"><polyline points="20 6 9 17 4 12"/></svg>}
                         </div>
                     </td>
@@ -2902,13 +2903,13 @@ const RoleSettings = () => {
                                 width: '36px',
                                 height: '36px',
                                 borderRadius: '6px',
-                                border: '2px solid #ffffff',
-                                background: '#000000',
+                                border: '1px solid #cbd6e2',
+                                background: '#f5f8fa',
                                 cursor: 'pointer',
                                 display: 'flex',
                                 alignItems: 'center',
                                 justifyContent: 'center',
-                                color: '#ffffff',
+                                color: '#33475b',
                                 transition: 'all 0.2s'
                             }}
                             onMouseEnter={(e) => {
@@ -2918,7 +2919,7 @@ const RoleSettings = () => {
                             }}
                             onMouseLeave={(e) => {
                                 e.currentTarget.style.background = '#000000';
-                                e.currentTarget.style.color = '#ffffff';
+                                e.currentTarget.style.color = '#33475b';
                                 e.currentTarget.style.transform = 'scale(1)';
                             }}
                             title="Edit"
@@ -2932,19 +2933,19 @@ const RoleSettings = () => {
                                 width: '36px',
                                 height: '36px',
                                 borderRadius: '6px',
-                                border: hasDirectReports ? '2px solid #333333' : '2px solid #666666',
-                                background: '#000000',
+                                border: hasDirectReports ? '1px solid #eaf0f6' : '1px solid #cbd6e2',
+                                background: '#f5f8fa',
                                 cursor: hasDirectReports ? 'not-allowed' : 'pointer',
                                 display: 'flex',
                                 alignItems: 'center',
                                 justifyContent: 'center',
-                                color: hasDirectReports ? '#333333' : '#666666',
+                                color: hasDirectReports ? '#99acc2' : '#516f90',
                                 transition: 'all 0.2s'
                             }}
                             onMouseEnter={(e) => {
                                 if (!hasDirectReports) {
                                     e.currentTarget.style.background = '#ffffff';
-                                    e.currentTarget.style.borderColor = '#ffffff';
+                                    e.currentTarget.style.borderColor = '#ff7a59';
                                     e.currentTarget.style.color = '#000000';
                                     e.currentTarget.style.transform = 'scale(1.05)';
                                 }
@@ -3011,9 +3012,9 @@ const RoleSettings = () => {
             const teamInitial = team.name.split(' ').map(word => word[0]).join('').toUpperCase();
             rows.push(
                 <tr key={`team-header-${team.name}`} style={{
-                    background: '#000000',
-                    borderTop: '4px solid #ffffff',
-                    borderBottom: '4px solid #ffffff'
+                    background: '#f5f8fa',
+                    borderTop: '4px solid #ff7a59',
+                    borderBottom: '4px solid #ff7a59'
                 }}>
                     <td colSpan="5" style={{ padding: '24px 15px' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
@@ -3035,7 +3036,7 @@ const RoleSettings = () => {
                                 fontWeight: '800',
                                 fontSize: '1.2rem',
                                 letterSpacing: '2px',
-                                color: '#ffffff'
+                                color: '#33475b'
                             }}>
                                 {team.name.toUpperCase()}
                             </span>
@@ -3069,13 +3070,13 @@ const RoleSettings = () => {
                         key={role.id || role._id}
                         className={isManager ? 'manager-row' : 'subordinate-row'}
                         style={{
-                            background: isManager ? '#0a0a0a' : '#000000',
-                            borderLeft: isManager ? '6px solid #ffffff' : 'none',
-                            borderBottom: '1px solid #222222',
+                            background: isManager ? '#f5f8fa' : '#ffffff',
+                            borderLeft: isManager ? '6px solid #ff7a59' : 'none',
+                            borderBottom: '1px solid #eaf0f6',
                             transition: 'all 0.2s ease'
                         }}
-                        onMouseEnter={(e) => e.currentTarget.style.background = '#0a0a0a'}
-                        onMouseLeave={(e) => e.currentTarget.style.background = isManager ? '#0a0a0a' : '#000000'}
+                        onMouseEnter={(e) => e.currentTarget.style.background = '#f5f8fa'}
+                        onMouseLeave={(e) => e.currentTarget.style.background = isManager ? '#f5f8fa' : '#ffffff'}
                     >
                         {/* Role Name */}
                         <td style={{ padding: isManager ? '20px 15px' : '16px 15px', paddingLeft: isManager ? '15px' : '50px' }}>
@@ -3083,11 +3084,11 @@ const RoleSettings = () => {
                                 <div style={{
                                     width: isManager ? '12px' : '10px',
                                     height: isManager ? '12px' : '10px',
-                                    background: '#ffffff',
+                                    background: '#ff7a59',
                                     borderRadius: '50%'
                                 }}></div>
                                 <span style={{
-                                    color: '#ffffff',
+                                    color: '#33475b',
                                     fontWeight: isManager ? '700' : '500',
                                     fontSize: isManager ? '1.05rem' : '0.95rem'
                                 }}>
@@ -3105,14 +3106,14 @@ const RoleSettings = () => {
                                     borderRadius: '6px',
                                     fontSize: '0.85rem',
                                     fontWeight: '600',
-                                    background: '#000000',
-                                    color: '#ffffff',
-                                    border: '2px solid #555555'
+                                    background: '#f5f8fa',
+                                    color: '#33475b',
+                                    border: '1px solid #cbd6e2'
                                 }}>
                                     {getDepartmentName(role.department_id)}
                                 </span>
                             ) : (
-                                <span style={{ color: '#666666' }}>-</span>
+                                <span style={{ color: '#99acc2' }}>-</span>
                             )}
                         </td>
                         
@@ -3123,7 +3124,7 @@ const RoleSettings = () => {
                                     <svg style={{ width: '16px', height: '16px' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 10l7-7m0 0l7 7m-7-7v18" />
                                     </svg>
-                                    <span style={{ color: '#ffffff', fontWeight: '500' }}>Super Admin</span>
+                                    <span style={{ color: '#33475b', fontWeight: '500' }}>Super Admin</span>
                                 </div>
                             ) : reportingRoleNames.length > 0 ? (
                                 reportingRoleNames.length > 1 ? (
@@ -3132,15 +3133,15 @@ const RoleSettings = () => {
                                             <svg style={{ width: '16px', height: '16px' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 10l7-7m0 0l7 7m-7-7v18" />
                                             </svg>
-                                            <span style={{ color: '#ffffff', fontWeight: '500' }}>{reportingRoleNames[0]}</span>
+                                            <span style={{ color: '#33475b', fontWeight: '500' }}>{reportingRoleNames[0]}</span>
                                         </div>
                                         {reportingRoleNames.slice(1).map((name, idx) => (
-                                            <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#cccccc' }}>
+                                            <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#516f90' }}>
                                                 <svg style={{ width: '16px', height: '16px' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 10l7-7m0 0l7 7m-7-7v18" />
                                                 </svg>
                                                 <span>{name}</span>
-                                                <span style={{ fontSize: '0.75rem', color: '#888888' }}>(Secondary)</span>
+                                                <span style={{ fontSize: '0.75rem', color: '#99acc2' }}>(Secondary)</span>
                                             </div>
                                         ))}
                                     </div>
@@ -3149,11 +3150,11 @@ const RoleSettings = () => {
                                         <svg style={{ width: '16px', height: '16px' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 10l7-7m0 0l7 7m-7-7v18" />
                                         </svg>
-                                        <span style={{ color: '#ffffff', fontWeight: '500' }}>{reportingRoleNames[0]}</span>
+                                        <span style={{ color: '#33475b', fontWeight: '500' }}>{reportingRoleNames[0]}</span>
                                     </div>
                                 )
                             ) : (
-                                <span style={{ color: '#666666' }}>-</span>
+                                <span style={{ color: '#99acc2' }}>-</span>
                             )}
                         </td>
                         
@@ -3163,7 +3164,7 @@ const RoleSettings = () => {
                                 <svg style={{ width: '16px', height: '16px' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
                                 </svg>
-                                <span style={{ color: '#ffffff', fontWeight: '500' }}>
+                                <span style={{ color: '#33475b', fontWeight: '500' }}>
                                     {getPermissionsCount(role.permissions)}
                                 </span>
                             </div>
@@ -3178,13 +3179,13 @@ const RoleSettings = () => {
                                         width: '36px',
                                         height: '36px',
                                         borderRadius: '6px',
-                                        border: '2px solid #ffffff',
-                                        background: '#000000',
+                                        border: '1px solid #cbd6e2',
+                                        background: '#f5f8fa',
                                         cursor: 'pointer',
                                         display: 'flex',
                                         alignItems: 'center',
                                         justifyContent: 'center',
-                                        color: '#ffffff',
+                                        color: '#33475b',
                                         transition: 'all 0.2s'
                                     }}
                                     onMouseEnter={(e) => {
@@ -3194,7 +3195,7 @@ const RoleSettings = () => {
                                     }}
                                     onMouseLeave={(e) => {
                                         e.currentTarget.style.background = '#000000';
-                                        e.currentTarget.style.color = '#ffffff';
+                                        e.currentTarget.style.color = '#33475b';
                                         e.currentTarget.style.transform = 'scale(1)';
                                     }}
                                     title="Edit"
@@ -3208,19 +3209,19 @@ const RoleSettings = () => {
                                         width: '36px',
                                         height: '36px',
                                         borderRadius: '6px',
-                                        border: hasDirectReports ? '2px solid #333333' : '2px solid #666666',
-                                        background: '#000000',
+                                        border: hasDirectReports ? '1px solid #eaf0f6' : '1px solid #cbd6e2',
+                                        background: '#f5f8fa',
                                         cursor: hasDirectReports ? 'not-allowed' : 'pointer',
                                         display: 'flex',
                                         alignItems: 'center',
                                         justifyContent: 'center',
-                                        color: hasDirectReports ? '#333333' : '#666666',
+                                        color: hasDirectReports ? '#99acc2' : '#516f90',
                                         transition: 'all 0.2s'
                                     }}
                                     onMouseEnter={(e) => {
                                         if (!hasDirectReports) {
                                             e.currentTarget.style.background = '#ffffff';
-                                            e.currentTarget.style.borderColor = '#ffffff';
+                                            e.currentTarget.style.borderColor = '#ff7a59';
                                             e.currentTarget.style.color = '#000000';
                                             e.currentTarget.style.transform = 'scale(1.05)';
                                         }
@@ -3604,85 +3605,32 @@ const RoleSettings = () => {
     const treeData = React.useMemo(() => buildTree(roles), [roles]);
 
     return (
-        <div style={{
-            width: '100%',
-            background: '#000000',
-            border: '1px solid #333333',
-            borderRadius: '12px',
-            boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)',
-            padding: '2rem',
-            color: '#ffffff',
-            fontFamily: 'Segoe UI, Tahoma, Geneva, Verdana, sans-serif'
-        }}>
+        <div className="hs-card hs-subpanel">
             {/* Tabs */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0', marginBottom: '1.5rem', borderBottom: '2px solid #333' }}>
+            <div className="hs-inner-tabs" style={{ marginBottom: '1.5rem' }}>
                 <button
+                    type="button"
                     onClick={() => setActiveRoleTab('roles')}
-                    style={{
-                        padding: '0.75rem 1.5rem',
-                        fontWeight: '700',
-                        fontSize: '0.95rem',
-                        border: 'none',
-                        borderBottom: activeRoleTab === 'roles' ? '3px solid #3b82f6' : '3px solid transparent',
-                        background: activeRoleTab === 'roles' ? '#111' : 'transparent',
-                        color: activeRoleTab === 'roles' ? '#3b82f6' : '#888',
-                        cursor: 'pointer',
-                        transition: 'all 0.2s',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '0.5rem',
-                        letterSpacing: '0.5px'
-                    }}
-                    onMouseEnter={e => { if (activeRoleTab !== 'roles') e.currentTarget.style.color = '#bbb'; }}
-                    onMouseLeave={e => { if (activeRoleTab !== 'roles') e.currentTarget.style.color = '#888'; }}
+                    className={`hs-inner-tab ${activeRoleTab === 'roles' ? 'active' : ''}`}
                 >
                     <Users className="h-4 w-4" />
                     Roles
                 </button>
                 <button
+                    type="button"
                     onClick={() => setActiveRoleTab('permissions')}
-                    style={{
-                        padding: '0.75rem 1.5rem',
-                        fontWeight: '700',
-                        fontSize: '0.95rem',
-                        border: 'none',
-                        borderBottom: activeRoleTab === 'permissions' ? '3px solid #a855f7' : '3px solid transparent',
-                        background: activeRoleTab === 'permissions' ? '#111' : 'transparent',
-                        color: activeRoleTab === 'permissions' ? '#a855f7' : '#888',
-                        cursor: 'pointer',
-                        transition: 'all 0.2s',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '0.5rem',
-                        letterSpacing: '0.5px'
-                    }}
-                    onMouseEnter={e => { if (activeRoleTab !== 'permissions') e.currentTarget.style.color = '#bbb'; }}
-                    onMouseLeave={e => { if (activeRoleTab !== 'permissions') e.currentTarget.style.color = '#888'; }}
+                    className={`hs-inner-tab ${activeRoleTab === 'permissions' ? 'active' : ''}`}
                 >
                     <Shield className="h-4 w-4" />
                     All Permissions
                 </button>
-                {/* Spacer + Add Role button (only on Roles tab) */}
                 <div style={{ flex: 1 }} />
                 {activeRoleTab === 'roles' && (
                     <button
+                        type="button"
                         onClick={() => openModal()}
-                        style={{
-                            background: '#ffffff',
-                            color: '#000000',
-                            fontWeight: '600',
-                            padding: '0.5rem 1.25rem',
-                            borderRadius: '0.5rem',
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '0.5rem',
-                            border: 'none',
-                            cursor: 'pointer',
-                            transition: 'all 0.2s',
-                            marginBottom: '4px'
-                        }}
-                        onMouseEnter={e => { e.currentTarget.style.transform = 'scale(1.05)'; e.currentTarget.style.background = '#f0f0f0'; }}
-                        onMouseLeave={e => { e.currentTarget.style.transform = 'scale(1)'; e.currentTarget.style.background = '#ffffff'; }}
+                        className="hs-btn-primary"
+                        style={{ marginBottom: 4 }}
                     >
                         <Plus className="h-5 w-5" />
                         <span>Add New Role</span>
@@ -3692,7 +3640,7 @@ const RoleSettings = () => {
 
             {/* === ALL PERMISSIONS TAB === */}
             {activeRoleTab === 'permissions' && (
-                <Suspense fallback={<div className="flex justify-center items-center h-64"><div className="animate-spin rounded-full h-12 w-12 border-b-2 border-white"></div></div>}>
+                <Suspense fallback={<div className="flex justify-center items-center h-64"><div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#ff7a59]"></div></div>}>
                     <div style={{ margin: '-1rem -2rem -2rem', borderRadius: '0 0 12px 12px', overflow: 'hidden' }}>
                         <RoleCompare embedded />
                     </div>
@@ -3707,7 +3655,7 @@ const RoleSettings = () => {
                     <div className="flex items-center justify-between">
                         <div>
                             <div className="text-blue-400 text-sm font-medium">Total Roles</div>
-                            <div className="text-2xl font-bold text-white mt-1">{roles.length}</div>
+                            <div className="text-2xl font-bold text-[#33475b] mt-1">{roles.length}</div>
                         </div>
                         <div className="bg-blue-500/20 p-3 rounded-lg">
                             <Users className="h-6 w-6 text-blue-400" />
@@ -3718,7 +3666,7 @@ const RoleSettings = () => {
                     <div className="flex items-center justify-between">
                         <div>
                             <div className="text-purple-400 text-sm font-medium">Top Level Roles</div>
-                            <div className="text-2xl font-bold text-white mt-1">
+                            <div className="text-2xl font-bold text-[#33475b] mt-1">
                                 {roles.filter(r => !r.reporting_id && (!r.reporting_ids || r.reporting_ids.length === 0)).length}
                             </div>
                         </div>
@@ -3731,7 +3679,7 @@ const RoleSettings = () => {
                     <div className="flex items-center justify-between">
                         <div>
                             <div className="text-green-400 text-sm font-medium">Departments</div>
-                            <div className="text-2xl font-bold text-white mt-1">{departments.length}</div>
+                            <div className="text-2xl font-bold text-[#33475b] mt-1">{departments.length}</div>
                         </div>
                         <div className="bg-green-500/20 p-3 rounded-lg">
                             <svg className="h-6 w-6 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -3745,28 +3693,28 @@ const RoleSettings = () => {
             {/* Role Table */}
             {loading ? (
                 <div className="flex justify-center items-center h-64">
-                    <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-white"></div>
+                    <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#ff7a59]"></div>
                 </div>
             ) : (
                 <div style={{
                     position: 'relative',
-                    border: '2px solid #ffffff',
-                    borderRadius: '12px',
+                    border: '1px solid #cbd6e2',
+                    borderRadius: '3px',
                     overflow: 'hidden',
-                    background: '#000000',
-                    boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)'
+                    background: '#ffffff',
+                    boxShadow: '0 1px 2px rgba(0,0,0,0.04)'
                 }}>
                     <div style={{ overflowX: 'auto' }}>
                         <table style={{ width: '100%', textAlign: 'left', fontSize: '0.95rem', borderCollapse: 'collapse' }}>
-                            <thead style={{ background: '#000000', borderBottom: '3px solid #ffffff', position: 'sticky', top: 0, zIndex: 10 }}>
+                            <thead style={{ background: '#f5f8fa', borderBottom: '2px solid #cbd6e2', position: 'sticky', top: 0, zIndex: 10 }}>
                                 <tr>
-                                    <th scope="col" style={{ padding: '14px 15px', fontWeight: '700', fontSize: '0.875rem', textTransform: 'uppercase', letterSpacing: '1.2px', color: '#ffffff', borderRight: '1px solid #333', whiteSpace: 'nowrap', minWidth: '180px' }}>ROLE NAME</th>
-                                    <th scope="col" style={{ padding: '14px 15px', fontWeight: '700', fontSize: '0.875rem', textTransform: 'uppercase', letterSpacing: '1.2px', color: '#ffffff', borderRight: '1px solid #333', whiteSpace: 'nowrap', minWidth: '140px' }}>DEPARTMENT</th>
-                                    <th scope="col" style={{ padding: '14px 15px', fontWeight: '700', fontSize: '0.875rem', textTransform: 'uppercase', letterSpacing: '1.2px', color: '#ffffff', borderRight: '1px solid #333', whiteSpace: 'nowrap', minWidth: '160px' }}>REPORTS TO</th>
-                                    <th scope="col" style={{ padding: '14px 15px', fontWeight: '700', fontSize: '0.875rem', textTransform: 'uppercase', letterSpacing: '1.2px', color: '#ffffff', borderRight: '1px solid #333', whiteSpace: 'nowrap', minWidth: '90px' }}>PERMS</th>
-                                    {compareMode && <th scope="col" style={{ padding: '14px 15px', fontWeight: '700', fontSize: '0.875rem', textTransform: 'uppercase', letterSpacing: '1.2px', color: '#ffd700', borderLeft: '2px solid #ffd700', whiteSpace: 'nowrap', minWidth: '60px', textAlign: 'center' }}>SELECT</th>}
+                                    <th scope="col" style={{ padding: '14px 15px', fontWeight: '700', fontSize: '0.875rem', textTransform: 'uppercase', letterSpacing: '1.2px', color: '#516f90', borderRight: '1px solid #eaf0f6', whiteSpace: 'nowrap', minWidth: '180px' }}>ROLE NAME</th>
+                                    <th scope="col" style={{ padding: '14px 15px', fontWeight: '700', fontSize: '0.875rem', textTransform: 'uppercase', letterSpacing: '1.2px', color: '#516f90', borderRight: '1px solid #eaf0f6', whiteSpace: 'nowrap', minWidth: '140px' }}>DEPARTMENT</th>
+                                    <th scope="col" style={{ padding: '14px 15px', fontWeight: '700', fontSize: '0.875rem', textTransform: 'uppercase', letterSpacing: '1.2px', color: '#516f90', borderRight: '1px solid #eaf0f6', whiteSpace: 'nowrap', minWidth: '160px' }}>REPORTS TO</th>
+                                    <th scope="col" style={{ padding: '14px 15px', fontWeight: '700', fontSize: '0.875rem', textTransform: 'uppercase', letterSpacing: '1.2px', color: '#516f90', borderRight: '1px solid #eaf0f6', whiteSpace: 'nowrap', minWidth: '90px' }}>PERMS</th>
+                                    {compareMode && <th scope="col" style={{ padding: '14px 15px', fontWeight: '700', fontSize: '0.875rem', textTransform: 'uppercase', letterSpacing: '1.2px', color: '#ff7a59', borderLeft: '2px solid #ff7a59', whiteSpace: 'nowrap', minWidth: '60px', textAlign: 'center' }}>SELECT</th>}
 
-                                    <th scope="col" style={{ padding: '14px 15px', fontWeight: '700', fontSize: '0.875rem', textTransform: 'uppercase', letterSpacing: '1.2px', color: '#ffffff', borderLeft: '2px solid #333', whiteSpace: 'nowrap', minWidth: '80px', textAlign: 'center' }}>ACTIONS</th>
+                                    <th scope="col" style={{ padding: '14px 15px', fontWeight: '700', fontSize: '0.875rem', textTransform: 'uppercase', letterSpacing: '1.2px', color: '#516f90', borderLeft: '2px solid #cbd6e2', whiteSpace: 'nowrap', minWidth: '80px', textAlign: 'center' }}>ACTIONS</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -3791,19 +3739,19 @@ const RoleSettings = () => {
                                 margin: '0 auto 1rem',
                                 border: '2px solid #333333'
                             }}>
-                                <Users className="h-10 w-10" style={{ opacity: 0.5, color: '#666666' }} />
+                                <Users className="h-10 w-10" style={{ opacity: 0.5, color: '#99acc2' }} />
                             </div>
                             <p style={{
                                 fontSize: '1.125rem',
                                 fontWeight: '500',
                                 marginBottom: '0.5rem',
-                                color: '#cccccc'
+                                color: '#516f90'
                             }}>
                                 No roles found
                             </p>
                             <p style={{
                                 fontSize: '0.875rem',
-                                color: '#666666'
+                                color: '#99acc2'
                             }}>
                                 Click "Add New Role" to create your first role
                             </p>
@@ -4182,7 +4130,7 @@ const RoleSettings = () => {
                                     const role=roles.find(x=>(x._id||x.id)===id);
                                     if(!role) return null;
                                     return(
-                                        <tr key={id} style={{background:rIdx%2===0?'#000':'#060606',borderBottom:'1px solid #1a1a1a'}}>
+                                        <tr key={id} style={{background:rIdx%2===0?'#000':'#060606',borderBottom:'1px solid #eaf0f6'}}>
                                             {/* Sticky role name cell */}
                                             <td style={{padding:'12px 20px',background:rIdx%2===0?'#000':'#060606',borderRight:'3px solid #ffd700',position:'sticky',left:0,zIndex:2,whiteSpace:'nowrap'}}>
                                                 <div style={{display:'flex',alignItems:'center',gap:'8px'}}>

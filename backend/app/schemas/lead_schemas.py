@@ -373,6 +373,7 @@ class LeadUpdate(BaseModel):
     created_by_name: Optional[str] = None  # Super admin: update displayed creator name
     department_name: Optional[str] = None  # Super admin: update department/team name
     override_created_by_id: Optional[str] = None  # Super admin: change created_by user ID on existing lead
+    status_change_remark: Optional[str] = None  # Mandatory remark when changing to a status that requires it
     
     class Config:
         extra = 'ignore'  # Ignore extra fields that aren't defined
@@ -665,6 +666,7 @@ class StatusBase(BaseModel):
     is_active: bool = True
     reassignment_period: Optional[int] = None  # Days until reassignment is allowed
     is_manager_permission_required: Optional[bool] = False  # Whether manager approval is needed for reassignment
+    requires_remark_on_change: Optional[bool] = False  # Whether a remark is mandatory when selecting this status
     
 class StatusCreate(StatusBase):
     pass
@@ -673,6 +675,7 @@ class SubStatusObject(BaseModel):
     name: str
     reassignment_period: Optional[int] = None
     is_manager_permission_required: Optional[bool] = False
+    requires_remark_on_change: Optional[bool] = False
 
 class StatusUpdate(BaseModel):
     name: Optional[str] = None
@@ -684,6 +687,7 @@ class StatusUpdate(BaseModel):
     sub_statuses: Optional[List[Union[str, Dict[str, Any], SubStatusObject]]] = None  # List of sub-status IDs or objects
     reassignment_period: Optional[int] = None  # Days until reassignment is allowed
     is_manager_permission_required: Optional[bool] = None  # Whether manager approval is needed for reassignment
+    requires_remark_on_change: Optional[bool] = None  # Whether a remark is mandatory when selecting this status
     category: Optional[str] = None  # open or closed (for login statuses)
 
 
@@ -711,6 +715,7 @@ class SubStatusBase(BaseModel):
     is_active: bool = True
     reassignment_period: Optional[int] = None  # Days until reassignment is allowed, overrides parent status
     is_manager_permission_required: Optional[bool] = False  # Whether manager approval is needed for reassignment
+    requires_remark_on_change: Optional[bool] = False  # Whether a remark is mandatory when selecting this sub-status
 
 class SubStatusCreate(SubStatusBase):
     pass
@@ -722,6 +727,7 @@ class SubStatusUpdate(BaseModel):
     is_active: Optional[bool] = None
     reassignment_period: Optional[int] = None  # Days until reassignment is allowed, overrides parent status
     is_manager_permission_required: Optional[bool] = False  # Whether manager approval is needed for reassignment
+    requires_remark_on_change: Optional[bool] = False  # Whether a remark is mandatory when selecting this sub-status
 
 class SubStatusInDB(SubStatusBase):
     id: str

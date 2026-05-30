@@ -1,13 +1,10 @@
 """
 Speed Dial Routes
 ─────────────────
-Per-user bookmark tiles (folders + links) for the navbar shortcut page.
+Shared company-wide bookmark tiles (folders + links) for the navbar shortcut page.
+All authenticated employees see and manage the same tiles.
 
-Currently restricted to super-admin users (matches the FAQ pattern). Once
-permissions are configured later, replace `_require_super_admin` with a
-proper page-permission check.
-
-Endpoints (all require ?user_id=):
+Endpoints (all require ?user_id= for auth):
   GET    /speed-dial/items?parent_id=         – list items in a folder (or root)
   POST   /speed-dial/items                    – create link OR folder
   PUT    /speed-dial/items/{item_id}          – update title/url/image/parent
@@ -28,8 +25,6 @@ import logging
 from app.database import get_database_instances
 from app.database.SpeedDial import SpeedDialDB
 from app.database.Users import UsersDB
-from app.database.Roles import RolesDB
-from app.utils.permissions import PermissionManager
 
 logger = logging.getLogger(__name__)
 
@@ -66,28 +61,16 @@ def _get_speed_dial_db(db_instances=Depends(get_database_instances)) -> SpeedDia
 def _get_users_db(db_instances=Depends(get_database_instances)) -> UsersDB:
     return db_instances["users"]
 
-def _get_roles_db(db_instances=Depends(get_database_instances)) -> RolesDB:
-    return db_instances["roles"]
 
+# ── Auth helper ───────────────────────────────────────────────
 
-# ── Permission helper ─────────────────────────────────────────
-
-async def _require_super_admin(
-    user_id: str,
-    users_db: UsersDB,
-    roles_db: RolesDB,
-):
-    """Raise 403 if user is not a super admin (mirrors faq.py)."""
-    perms = await PermissionManager.get_user_permissions(user_id, users_db, roles_db)
-    is_super = any(
-        p.get("page") == "*" and (
-            p.get("actions") == "*" or
-            (isinstance(p.get("actions"), list) and "*" in p.get("actions", []))
-        )
-        for p in perms
-    )
-    if not is_super:
-        raise HTTPException(status_code=403, detail="Super admin access required")
+async def _require_user(user_id: str, users_db: UsersDB):
+    """Raise 401/404 if user_id is missing or not found."""
+    if not (user_id or "").strip():
+        raise HTTPException(status_code=401, detail="user_id is required")
+    user = await users_db.get_user(user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
 
 
 def _ensure_db(db: SpeedDialDB):
@@ -105,11 +88,10 @@ async def list_items(
     parent_id: Optional[str] = Query(None),
     db: SpeedDialDB = Depends(_get_speed_dial_db),
     users_db: UsersDB = Depends(_get_users_db),
-    roles_db: RolesDB = Depends(_get_roles_db),
 ):
     _ensure_db(db)
-    await _require_super_admin(user_id, users_db, roles_db)
-    return await db.list_items(user_id, parent_id)
+    await _require_user(user_id, users_db)
+    return await db.list_items(parent_id)
 
 
 @router.post("/items")
@@ -118,10 +100,9 @@ async def create_item(
     user_id: str = Query(...),
     db: SpeedDialDB = Depends(_get_speed_dial_db),
     users_db: UsersDB = Depends(_get_users_db),
-    roles_db: RolesDB = Depends(_get_roles_db),
 ):
     _ensure_db(db)
-    await _require_super_admin(user_id, users_db, roles_db)
+    await _require_user(user_id, users_db)
 
     if body.type not in ("link", "folder"):
         raise HTTPException(status_code=400, detail="type must be 'link' or 'folder'")
@@ -141,10 +122,9 @@ async def update_item(
     user_id: str = Query(...),
     db: SpeedDialDB = Depends(_get_speed_dial_db),
     users_db: UsersDB = Depends(_get_users_db),
-    roles_db: RolesDB = Depends(_get_roles_db),
 ):
     _ensure_db(db)
-    await _require_super_admin(user_id, users_db, roles_db)
+    await _require_user(user_id, users_db)
     data = {k: v for k, v in body.dict().items() if v is not None}
     if not data:
         return {"message": "Nothing to update"}
@@ -160,10 +140,9 @@ async def delete_item(
     user_id: str = Query(...),
     db: SpeedDialDB = Depends(_get_speed_dial_db),
     users_db: UsersDB = Depends(_get_users_db),
-    roles_db: RolesDB = Depends(_get_roles_db),
 ):
     _ensure_db(db)
-    await _require_super_admin(user_id, users_db, roles_db)
+    await _require_user(user_id, users_db)
     deleted = await db.delete_item(item_id)
     if not deleted:
         raise HTTPException(status_code=404, detail="Item not found")
@@ -176,11 +155,10 @@ async def reorder_items(
     user_id: str = Query(...),
     db: SpeedDialDB = Depends(_get_speed_dial_db),
     users_db: UsersDB = Depends(_get_users_db),
-    roles_db: RolesDB = Depends(_get_roles_db),
 ):
     _ensure_db(db)
-    await _require_super_admin(user_id, users_db, roles_db)
-    await db.reorder(user_id, body.parent_id, body.item_ids)
+    await _require_user(user_id, users_db)
+    await db.reorder(body.parent_id, body.item_ids)
     return {"message": "Items reordered"}
 
 
@@ -193,14 +171,9 @@ async def upload_tile_image(
     user_id: str = Query(...),
     image: UploadFile = File(...),
     users_db: UsersDB = Depends(_get_users_db),
-    roles_db: RolesDB = Depends(_get_roles_db),
 ):
     """Upload a tile image for a speed-dial bookmark and return its URL."""
-    await _require_super_admin(user_id, users_db, roles_db)
-
-    user = await users_db.get_user(user_id)
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
+    await _require_user(user_id, users_db)
 
     allowed = {".jpg", ".jpeg", ".png", ".gif", ".webp", ".svg"}
     ext = os.path.splitext(image.filename or "")[1].lower()

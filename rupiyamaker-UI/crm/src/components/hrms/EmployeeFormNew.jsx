@@ -31,6 +31,9 @@ const EmployeeForm = ({
         aadhaar_number: employee?.aadhaar_number || '',
         highest_qualification: employee?.highest_qualification || '',
         experience_level: employee?.experience_level || '',
+        experience_years: employee?.experience_years || '',
+        experience_months: employee?.experience_months || '',
+        experience_companies: employee?.experience_companies || [],
         gender: employee?.gender || '',
         marital_status: employee?.marital_status || '',
         nationality: employee?.nationality || 'Indian',
@@ -41,7 +44,11 @@ const EmployeeForm = ({
         current_city: employee?.current_address?.city || employee?.current_city || '',
         current_state: employee?.current_address?.state || '',
         current_pincode: employee?.current_address?.pincode || '',
-        same_as_current: false,
+        permanent_address: employee?.permanent_address?.address || '',
+        permanent_city: employee?.permanent_address?.city || employee?.permanent_city || '',
+        permanent_pincode: employee?.permanent_address?.pincode || '',
+        address_property_type: employee?.address_property_type || 'owned',
+        same_as_current: employee?.address_property_type === 'owned',
         
         // Emergency Contacts - handle both schema formats
         emergency_contact_1_name: employee?.emergency_contacts?.[0]?.name || employee?.emergency_contact_name || '',
@@ -62,6 +69,7 @@ const EmployeeForm = ({
         salary_account_number: employee?.salary_account_number || '',
         salary_ifsc_code: employee?.salary_ifsc_code || '',
         salary_bank_name: employee?.salary_bank_name || '',
+        salary_account_name: employee?.salary_account_name || '',
         
         // Login Credentials
         username: employee?.username || '',
@@ -70,6 +78,7 @@ const EmployeeForm = ({
 
     const [imageUrl, setImageUrl] = useState(getProfilePictureUrlWithCacheBusting(employee?.profile_photo));
     const [imageFile, setImageFile] = useState(null);
+    const [newCompany, setNewCompany] = useState('');
     const [departments, setDepartments] = useState([]);
     const [roles, setRoles] = useState([]);
     const [lockedRoleIds, setLockedRoleIds] = useState([]); // role IDs locked by the current user's role config
@@ -138,6 +147,9 @@ const EmployeeForm = ({
                 aadhaar_number: employee?.aadhaar_number || '',
                 highest_qualification: employee?.highest_qualification || '',
                 experience_level: employee?.experience_level || '',
+                experience_years: employee?.experience_years || '',
+                experience_months: employee?.experience_months || '',
+                experience_companies: employee?.experience_companies || [],
                 gender: employee?.gender || '',
                 marital_status: employee?.marital_status || '',
                 nationality: employee?.nationality || 'Indian',
@@ -148,7 +160,11 @@ const EmployeeForm = ({
                 current_city: employee?.current_address?.city || employee?.current_city || '',
                 current_state: employee?.current_address?.state || '',
                 current_pincode: employee?.current_address?.pincode || '',
-                same_as_current: false,
+                permanent_address: employee?.permanent_address?.address || '',
+                permanent_city: employee?.permanent_address?.city || employee?.permanent_city || '',
+                permanent_pincode: employee?.permanent_address?.pincode || '',
+                address_property_type: employee?.address_property_type || 'owned',
+                same_as_current: employee?.address_property_type === 'owned',
                 
                 // Emergency Contacts - handle both schema formats
                 emergency_contact_1_name: employee?.emergency_contacts?.[0]?.name || employee?.emergency_contact_name || '',
@@ -169,6 +185,7 @@ const EmployeeForm = ({
                 salary_account_number: employee?.salary_account_number || '',
                 salary_ifsc_code: employee?.salary_ifsc_code || '',
                 salary_bank_name: employee?.salary_bank_name || '',
+                salary_account_name: employee?.salary_account_name || '',
                 
                 // Login Credentials
                 username: employee?.username || '',
@@ -469,6 +486,9 @@ const EmployeeForm = ({
                 aadhaar_number: employee?.aadhaar_number || '',
                 highest_qualification: employee?.highest_qualification || '',
                 experience_level: employee?.experience_level || '',
+                experience_years: employee?.experience_years || '',
+                experience_months: employee?.experience_months || '',
+                experience_companies: employee?.experience_companies || [],
                 gender: employee?.gender || '',
                 marital_status: employee?.marital_status || '',
                 nationality: employee?.nationality || 'Indian',
@@ -479,7 +499,11 @@ const EmployeeForm = ({
                 current_city: employee?.current_address?.city || employee?.current_city || '',
                 current_state: employee?.current_address?.state || '',
                 current_pincode: employee?.current_address?.pincode || '',
-                same_as_current: false,
+                permanent_address: employee?.permanent_address?.address || '',
+                permanent_city: employee?.permanent_address?.city || employee?.permanent_city || '',
+                permanent_pincode: employee?.permanent_address?.pincode || '',
+                address_property_type: employee?.address_property_type || 'owned',
+                same_as_current: employee?.address_property_type === 'owned',
                 
                 // Emergency Contacts - handle both schema formats
                 emergency_contact_1_name: employee?.emergency_contacts?.[0]?.name || employee?.emergency_contact_name || '',
@@ -500,6 +524,7 @@ const EmployeeForm = ({
                 salary_account_number: employee?.salary_account_number || '',
                 salary_ifsc_code: employee?.salary_ifsc_code || '',
                 salary_bank_name: employee?.salary_bank_name || '',
+                salary_account_name: employee?.salary_account_name || '',
                 
                 // Login Credentials
                 username: employee?.username || '',
@@ -575,6 +600,9 @@ const EmployeeForm = ({
             aadhaar_number: '',
             highest_qualification: '',
             experience_level: '',
+            experience_years: '',
+            experience_months: '',
+            experience_companies: [],
             gender: '',
             marital_status: '',
             nationality: 'Indian',
@@ -583,7 +611,11 @@ const EmployeeForm = ({
             current_city: '',
             current_state: '',
             current_pincode: '',
-            same_as_current: false,
+            permanent_address: '',
+            permanent_city: '',
+            permanent_pincode: '',
+            address_property_type: 'owned',
+            same_as_current: true,
             emergency_contact_1_name: '',
             emergency_contact_1_phone: '',
             emergency_contact_1_relation: '',
@@ -600,10 +632,37 @@ const EmployeeForm = ({
             salary_account_number: '',
             salary_ifsc_code: '',
             salary_bank_name: '',
+            salary_account_name: '',
             username: '',
             password: ''
         });
         setImageUrl(null);
+    };
+
+    const handleAddCompany = () => {
+        if (!newCompany.trim()) return;
+        const companyName = newCompany.trim().toUpperCase();
+        if (!formData.experience_companies.includes(companyName)) {
+            setFormData(prev => ({
+                ...prev,
+                experience_companies: [...prev.experience_companies, companyName]
+            }));
+        }
+        setNewCompany('');
+    };
+
+    const handleRemoveCompany = (companyToRemove) => {
+        setFormData(prev => ({
+            ...prev,
+            experience_companies: prev.experience_companies.filter(c => c !== companyToRemove)
+        }));
+    };
+
+    const handleCompanyKeyDown = (e) => {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            handleAddCompany();
+        }
     };
 
     const fetchDropdownData = async () => {
@@ -677,6 +736,7 @@ const EmployeeForm = ({
             const uppercaseFields = [
                 'first_name', 'last_name', 'nationality', 'blood_group',
                 'current_address', 'current_city', 'current_state',
+                'permanent_address', 'permanent_city',
                 'emergency_contact_1_name', 'emergency_contact_1_relation',
                 'emergency_contact_2_name', 'emergency_contact_2_relation',
                 'designation', 'salary_bank_name'
@@ -761,6 +821,38 @@ const EmployeeForm = ({
                     if (empId && firstName) {
                         newData.username = `${empId}${firstName.toLowerCase().replace(/[^a-z]/g, '')}`;
                     }
+                }
+
+                // Handle address_property_type change: owned = same address, rented = different address
+                if (name === 'address_property_type') {
+                    if (processedValue === 'owned') {
+                        // Owned: sync permanent from current
+                        newData.same_as_current = true;
+                        newData.permanent_address = prev.current_address;
+                        newData.permanent_city = prev.current_city;
+                        newData.permanent_pincode = prev.current_pincode;
+                    } else if (processedValue === 'rented') {
+                        // Rented: allow independent permanent address
+                        newData.same_as_current = false;
+                    }
+                }
+
+                // Sync permanent address from current when auto-sync is enabled
+                const autoSyncPermanent = name === 'same_as_current' ? checked : (name === 'address_property_type' ? processedValue === 'owned' : prev.same_as_current !== false);
+                if (autoSyncPermanent && name !== 'address_property_type') {
+                    if (name === 'current_address') newData.permanent_address = processedValue;
+                    if (name === 'current_city') newData.permanent_city = processedValue;
+                    if (name === 'current_pincode') newData.permanent_pincode = processedValue;
+                    if (name === 'same_as_current' && checked) {
+                        newData.permanent_address = prev.current_address;
+                        newData.permanent_city = prev.current_city;
+                        newData.permanent_pincode = prev.current_pincode;
+                    }
+                }
+                if (name === 'same_as_current' && !checked) {
+                    newData.same_as_current = false;
+                } else if (name === 'same_as_current' && checked) {
+                    newData.same_as_current = true;
                 }
                 
                 // Clear previous validation errors for this field
@@ -1054,6 +1146,11 @@ const EmployeeForm = ({
             console.log('📝 New employee creation - all fields including phone, username and password are required');
         }
         
+        // Dynamic experience fields requirements
+        if (formData.experience_level === 'Experienced') {
+            requiredFields.push('experience_years', 'experience_months');
+        }
+        
         // Special validation for password field - only validate if the field is visible to the user
         let fieldsToValidate = [...requiredFields];
         if (!shouldShowPasswordField && !isEditing) {
@@ -1062,7 +1159,10 @@ const EmployeeForm = ({
             console.log('📝 Password field validation skipped for new employee with no password permission');
         }
         
-        const missingFields = fieldsToValidate.filter(field => !formData[field] || !formData[field].trim());
+        const missingFields = fieldsToValidate.filter(field => {
+            const val = formData[field];
+            return val === undefined || val === null || String(val).trim() === '';
+        });
 
         console.log('🚀 Required fields check:', { requiredFields: fieldsToValidate, missingFields, isEditing, formDataKeys: Object.keys(formData) });
 
@@ -1124,6 +1224,8 @@ const EmployeeForm = ({
                     case 'joining_date': return 'Joining Date';
                     case 'username': return 'Username';
                     case 'password': return 'Password';
+                    case 'experience_years': return 'Years of Experience';
+                    case 'experience_months': return 'Months of Experience';
                     default: return field.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase());
                 }
             });
@@ -1419,7 +1521,28 @@ const EmployeeForm = ({
             if (formData.pan_number && formData.pan_number.trim()) submissionData.pan_number = formData.pan_number.toUpperCase();
             if (formData.aadhaar_number && formData.aadhaar_number.trim()) submissionData.aadhaar_number = formData.aadhaar_number;
             if (formData.highest_qualification && formData.highest_qualification.trim()) submissionData.highest_qualification = formData.highest_qualification;
-            if (formData.experience_level && formData.experience_level.trim()) submissionData.experience_level = formData.experience_level;
+            if (formData.experience_level && formData.experience_level.trim()) {
+                submissionData.experience_level = formData.experience_level;
+                if (formData.experience_level === 'Experienced') {
+                    if (formData.experience_years !== undefined && formData.experience_years !== '') {
+                        submissionData.experience_years = parseInt(formData.experience_years, 10);
+                    } else {
+                        submissionData.experience_years = null;
+                    }
+                    if (formData.experience_months !== undefined && formData.experience_months !== '') {
+                        submissionData.experience_months = parseInt(formData.experience_months, 10);
+                    } else {
+                        submissionData.experience_months = null;
+                    }
+                    if (formData.experience_companies) {
+                        submissionData.experience_companies = formData.experience_companies;
+                    }
+                } else {
+                    submissionData.experience_years = null;
+                    submissionData.experience_months = null;
+                    submissionData.experience_companies = [];
+                }
+            }
             if (formData.gender && formData.gender.trim()) submissionData.gender = formData.gender;
             if (formData.marital_status && formData.marital_status.trim()) submissionData.marital_status = formData.marital_status;
             if (formData.nationality && formData.nationality.trim()) submissionData.nationality = formData.nationality;
@@ -1439,6 +1562,20 @@ const EmployeeForm = ({
                     address_type: 'current'
                 };
             }
+
+            if (formData.permanent_address || formData.permanent_city || formData.permanent_pincode) {
+                submissionData.permanent_address = {
+                    address: formData.permanent_address || '',
+                    city: formData.permanent_city || '',
+                    state: formData.current_state || '',
+                    pincode: formData.permanent_pincode || '',
+                    country: 'India',
+                    address_type: 'permanent'
+                };
+                submissionData.same_as_permanent = formData.same_as_current !== false;
+            }
+
+            submissionData.address_property_type = formData.address_property_type || 'owned';
 
             // Emergency Contacts - only include if provided
             const emergencyContacts = [];
@@ -1479,6 +1616,7 @@ const EmployeeForm = ({
             if (formData.salary_account_number && formData.salary_account_number.trim()) submissionData.salary_account_number = formData.salary_account_number;
             if (formData.salary_ifsc_code && formData.salary_ifsc_code.trim()) submissionData.salary_ifsc_code = formData.salary_ifsc_code;
             if (formData.salary_bank_name && formData.salary_bank_name.trim()) submissionData.salary_bank_name = formData.salary_bank_name;
+            if (formData.salary_account_name && formData.salary_account_name.trim()) submissionData.salary_account_name = formData.salary_account_name;
 
             // Profile photo - only if provided
             if (formData.profile_photo) submissionData.profile_photo = formData.profile_photo;
@@ -1667,803 +1805,963 @@ const EmployeeForm = ({
 
     return (
         <>
-            <style>
-                {`
-                    @keyframes pulse {
-                        0% {
-                            transform: scale(1);
-                            box-shadow: 0 0 0 0 rgba(255, 77, 79, 0.7);
-                            border-color: #ff4d4f;
-                        }
-                        50% {
-                            transform: scale(1.02);
-                            box-shadow: 0 0 0 10px rgba(255, 77, 79, 0.2);
-                            border-color: #ff4d4f;
-                        }
-                        100% {
-                            transform: scale(1);
-                            box-shadow: 0 0 0 0 rgba(255, 77, 79, 0);
-                            border-color: #ff4d4f;
-                        }
-                    }
-                    
-                    .employee-form-container .required-field-error {
-                        border-color: #ff4d4f !important;
-                        background-color: #fff2f0 !important;
-                    }
-                    
-                    .employee-form-container .required-field-label {
-                        color: #ff4d4f !important;
-                        font-weight: bold !important;
-                    }
-                    
-                    .employee-form-container .error-message {
-                        color: #ff4d4f;
-                        font-size: 12px;
-                        margin-top: 2px;
-                    }
-                `}
-            </style>
             <div className="employee-form-container">
-            <div className="form-card">
-                <form key={`form-${employee?._id}-${employee?._refreshKey}-${forceRender}`} onSubmit={handleSubmit}>
-                    {/* Debug Info - only show in console */}
-                    <div style={{display: 'none'}}>
-                        {console.log('🎯 FORM RENDER - Current formData:', formData)}
-                        {console.log('🎯 FORM RENDER - Employee data:', employee)}
-                        {console.log('🎯 FORM RENDER - Force render key:', forceRender)}
-                    </div>
-                    {/* Profile Photo */}
-                    <div className="section">
-                        <div className="form-row">
-                            <div>
-                                <label>Profile Photo</label>
-                                <div className="photo-upload">
-                                    <div
-                                        className="photo-circle"
-                                        style={{cursor: 'pointer', position: 'relative'}}
-                                        onClick={() => fileInputRef.current?.click()}
-                                        title="Click to upload photo"
-                                    >
-                                        {imageUrl ? (
-                                            <img src={imageUrl} alt="Profile" style={{width: '100%', height: '100%', borderRadius: '50%', objectFit: 'cover'}} />
-                                        ) : (
-                                            <span>👤</span>
-                                        )}
-                                        <div style={{
-                                            position: 'absolute', bottom: 0, right: 0,
-                                            background: '#4f46e5', borderRadius: '50%',
-                                            width: 28, height: 28, display: 'flex',
-                                            alignItems: 'center', justifyContent: 'center',
-                                            boxShadow: '0 1px 4px rgba(0,0,0,0.2)'
-                                        }}>
-                                            <span style={{color: '#fff', fontSize: 14}}>📷</span>
+                <div className="form-card">
+                    <form key={`form-${employee?._id}-${employee?._refreshKey}-${forceRender}`} onSubmit={handleSubmit}>
+                        {/* Debug Info - only show in console */}
+                        <div style={{display: 'none'}}>
+                            {console.log('🎯 FORM RENDER - Current formData:', formData)}
+                            {console.log('🎯 FORM RENDER - Employee data:', employee)}
+                            {console.log('🎯 FORM RENDER - Force render key:', forceRender)}
+                        </div>
+
+                        {/* Core Identity & Profile */}
+                        <div className="ef-section-card">
+                            <div className="ef-section-head">
+                                <div className="ef-section-icon">👤</div>
+                                <h3 className="ef-section-title">Core Identity & Profile</h3>
+                            </div>
+                            
+                            <div className="ef-identity-layout">
+                                {/* Left Column: Profile Photo */}
+                                <div className="photo-section">
+                                    <div className="photo-upload">
+                                        <div
+                                            className="photo-circle"
+                                            onClick={() => fileInputRef.current?.click()}
+                                            title="Click to upload photo"
+                                        >
+                                            {imageUrl ? (
+                                                <img src={imageUrl} alt="Profile" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block', borderRadius: 'inherit' }} />
+                                            ) : (
+                                                <span>👤</span>
+                                            )}
                                         </div>
+                                        <input 
+                                            ref={fileInputRef}
+                                            type="file" 
+                                            accept="image/png, image/jpeg"
+                                            onChange={handleFileChange}
+                                            style={{ display: 'none' }}
+                                        />
                                     </div>
-                                    <button
-                                        type="button"
-                                        className="photo-change-btn"
-                                        onClick={() => fileInputRef.current?.click()}
-                                    >
-                                        📷 {imageUrl ? 'Change Photo' : 'Upload Photo'}
-                                    </button>
-                                    <input 
-                                        ref={fileInputRef}
-                                        type="file" 
-                                        accept="image/png, image/jpeg"
-                                        onChange={handleFileChange}
-                                    />
+                                </div>
+
+                                {/* Right Column: Fields in 2-column grid */}
+                                <div className="ef-grid-2">
+                                    {/* Employee ID */}
+                                    <div className="ef-field">
+                                        <label className="ef-label">Employee ID <span className="ef-req">*</span></label>
+                                        <input 
+                                            type="text" 
+                                            name="employee_id"
+                                            value={formData.employee_id}
+                                            readOnly
+                                            disabled
+                                            style={{ backgroundColor: '#f8fafc', cursor: 'not-allowed', color: '#64748b' }}
+                                        />
+                                    </div>
+
+                                    {/* Personal Email */}
+                                    <div className="ef-field">
+                                        <label className={`ef-label ${validationErrors.personal_email ? 'ef-label--error' : ''}`}>
+                                            Personal Email <span className="ef-req">*</span>
+                                        </label>
+                                        <div className="ef-input-icon-wrap">
+                                            <span className="ef-input-icon">✉️</span>
+                                            <input 
+                                                ref={emailRef}
+                                                type="email" 
+                                                name="personal_email"
+                                                value={formData.personal_email}
+                                                onChange={handleInputChange}
+                                                placeholder="Personal Email"
+                                                className={validationErrors.personal_email ? 'required-field-error' : ''}
+                                                required
+                                            />
+                                        </div>
+                                        {validationErrors.personal_email && (
+                                            <div className="error-message">{validationErrors.personal_email}</div>
+                                        )}
+                                    </div>
+
+                                    {/* First Name */}
+                                    <div className="ef-field">
+                                        <label className={`ef-label ${validationErrors.first_name ? 'ef-label--error' : ''}`}>
+                                            First Name <span className="ef-req">*</span>
+                                        </label>
+                                        <input 
+                                            ref={firstNameRef}
+                                            type="text" 
+                                            name="first_name"
+                                            value={formData.first_name}
+                                            onChange={handleInputChange}
+                                            placeholder="First Name"
+                                            className={validationErrors.first_name ? 'required-field-error' : ''}
+                                            required
+                                        />
+                                        {validationErrors.first_name && (
+                                            <div className="error-message">{validationErrors.first_name}</div>
+                                        )}
+                                    </div>
+
+                                    {/* Last Name */}
+                                    <div className="ef-field">
+                                        <label className={`ef-label ${validationErrors.last_name ? 'ef-label--error' : ''}`}>
+                                            Last Name <span className="ef-req">*</span>
+                                        </label>
+                                        <input 
+                                            ref={lastNameRef}
+                                            type="text" 
+                                            name="last_name"
+                                            value={formData.last_name}
+                                            onChange={handleInputChange}
+                                            placeholder="Last Name"
+                                            className={validationErrors.last_name ? 'required-field-error' : ''}
+                                            required
+                                        />
+                                        {validationErrors.last_name && (
+                                            <div className="error-message">{validationErrors.last_name}</div>
+                                        )}
+                                    </div>
+
+                                    {/* Department */}
+                                    <div className="ef-field">
+                                        <label className="ef-label">Department</label>
+                                        <select 
+                                            name="department_id"
+                                            value={formData.department_id}
+                                            onChange={handleInputChange}
+                                        >
+                                            <option value="" disabled>Select Department</option>
+                                            {departments.map(dept => (
+                                                <option key={dept._id || dept.id} value={dept._id || dept.id}>
+                                                    {dept.name}
+                                                </option>
+                                            ))}
+                                        </select>
+                                    </div>
+
+                                    {/* Role */}
+                                    <div className="ef-field">
+                                        <label className="ef-label">Role</label>
+                                        {shouldShowRoleField ? (
+                                            <select 
+                                                name="role_id"
+                                                value={formData.role_id}
+                                                onChange={handleInputChange}
+                                            >
+                                                <option value="" disabled>Select Role</option>
+                                                {filteredRoles.map(role => (
+                                                    <option key={role._id || role.id} value={role._id || role.id}>
+                                                        {role.name}
+                                                    </option>
+                                                ))}
+                                            </select>
+                                        ) : (
+                                            <div className="ef-role-locked">
+                                                For Role Update, Contact your senior.
+                                            </div>
+                                        )}
+                                    </div>
                                 </div>
                             </div>
-                            <div></div>
-                            <div></div>
                         </div>
-                    </div>
 
-                    {/* Employee Information */}
-                    <div className="section">
-                        <div className="section-title">
-                            <span>👤</span>Employee Information
-                        </div>
-                        
-                        <div className="form-row">
-                            <div>
-                                <label>Employee ID</label>
-                                <input 
-                                    type="text" 
-                                    name="employee_id"
-                                    value={formData.employee_id}
-                                    readOnly
-                                    style={{ backgroundColor: '#f5f5f5', cursor: 'not-allowed', color: '#666' }}
-                                />
+                        {/* Personal Information */}
+                        <div className="ef-section-card">
+                            <div className="ef-section-head">
+                                <div className="ef-section-icon">📄</div>
+                                <h3 className="ef-section-title">Personal Information</h3>
                             </div>
-                            <div>
-                                <label className={validationErrors.first_name ? 'required-field-label' : ''}>First Name *</label>
-                                <input      
-                                    ref={firstNameRef}
-                                    type="text" 
-                                    name="first_name"
-                                    value={formData.first_name}
-                                    onChange={handleInputChange}
-                                    placeholder="First Name" 
-                                    required
-                                    className={`form-input ${validationErrors.first_name ? 'required-field-error' : ''}`}
-                                />
-                                {validationErrors.first_name && (
-                                    <div className="error-message">
-                                        {validationErrors.first_name}
+                            
+                            <div className="ef-grid-3">
+                                {/* Mobile Number */}
+                                <div className="ef-field">
+                                    <label className={`ef-label ${validationErrors.phone ? 'ef-label--error' : ''}`}>
+                                        Mobile Number <span className="ef-req">*</span>
+                                    </label>
+                                    <div className="ef-input-icon-wrap">
+                                        <span className="ef-input-icon">📞</span>
+                                        <input 
+                                            ref={phoneRef}
+                                            type="tel" 
+                                            name="phone"
+                                            value={formData.phone}
+                                            onChange={handleInputChange}
+                                            placeholder="10-digit mobile number" 
+                                            pattern="[0-9]{10}"
+                                            maxLength="10"
+                                            className={validationErrors.phone ? 'required-field-error' : ''}
+                                            required
+                                        />
                                     </div>
-                                )}
-                            </div>
-                            <div>
-                                <label className={validationErrors.last_name ? 'required-field-label' : ''}>Last Name *</label>
-                                <input 
-                                    ref={lastNameRef}
-                                    type="text" 
-                                    name="last_name"
-                                    value={formData.last_name}
-                                    onChange={handleInputChange}
-                                    placeholder="Last Name" 
-                                    required
-                                    className={`form-input ${validationErrors.last_name ? 'required-field-error' : ''}`}
-                                />
-                                {validationErrors.last_name && (
-                                    <div className="error-message">
-                                        {validationErrors.last_name}
+                                    {validationErrors.phone && (
+                                        <div className="error-message">{validationErrors.phone}</div>
+                                    )}
+                                </div>
+
+                                {/* Alternate Number */}
+                                <div className="ef-field">
+                                    <label className={`ef-label ${validationErrors.alternate_phone ? 'ef-label--error' : ''}`}>
+                                        Alternate Number
+                                    </label>
+                                    <div className="ef-input-icon-wrap">
+                                        <span className="ef-input-icon">📞</span>
+                                        <input 
+                                            type="tel" 
+                                            name="alternate_phone"
+                                            value={formData.alternate_phone}
+                                            onChange={handleInputChange}
+                                            placeholder="10-digit alternate number"
+                                            pattern="[0-9]{10}"
+                                            maxLength="10"
+                                            className={validationErrors.alternate_phone ? 'required-field-error' : ''}
+                                        />
                                     </div>
-                                )}
-                            </div>
-                        </div>
+                                    {validationErrors.alternate_phone && (
+                                        <div className="error-message">{validationErrors.alternate_phone}</div>
+                                    )}
+                                </div>
 
-                        <div className="form-row">
-                            <div>
-                                <label className={validationErrors.phone ? 'required-field-label' : ''}>Mobile Number *</label>
-                                <input 
-                                    ref={phoneRef}
-                                    type="tel" 
-                                    name="phone"
-                                    value={formData.phone}
-                                    onChange={handleInputChange}
-                                    placeholder="10-digit mobile number" 
-                                    pattern="[0-9]{10}"
-                                    maxLength="10"
-                                    required
-                                    style={{
-                                        borderColor: validationErrors.phone ? '#ff4d4f' : '',
-                                        backgroundColor: validationErrors.phone ? '#fff2f0' : ''
-                                    }}
-                                    className={`form-input ${validationErrors.phone ? 'required-field-error' : ''}`}
-                                />
-                                {validationErrors.phone && (
-                                    <div className="error-message">
-                                        {validationErrors.phone}
+                                {/* Date of Birth */}
+                                <div className="ef-field">
+                                    <label className="ef-label">Date of Birth</label>
+                                    <input 
+                                        type="date" 
+                                        name="dob"
+                                        value={formData.dob}
+                                        onChange={handleInputChange}
+                                    />
+                                </div>
+
+                                {/* Gender */}
+                                <div className="ef-field">
+                                    <label className="ef-label">Gender</label>
+                                    <select 
+                                        name="gender"
+                                        value={formData.gender}
+                                        onChange={handleInputChange}
+                                    >
+                                        <option value="" disabled>Select Gender</option>
+                                        <option value="male">Male</option>
+                                        <option value="female">Female</option>
+                                        <option value="other">Other</option>
+                                    </select>
+                                </div>
+
+                                {/* Marital Status */}
+                                <div className="ef-field">
+                                    <label className="ef-label">Marital Status</label>
+                                    <select 
+                                        name="marital_status"
+                                        value={formData.marital_status}
+                                        onChange={handleInputChange}
+                                    >
+                                        <option value="" disabled>Select Status</option>
+                                        <option value="single">Single</option>
+                                        <option value="married">Married</option>
+                                        <option value="divorced">Divorced</option>
+                                        <option value="widowed">Widowed</option>
+                                    </select>
+                                </div>
+
+                                {/* Aadhaar Number */}
+                                <div className="ef-field">
+                                    <label className={`ef-label ${validationErrors.aadhaar_number ? 'ef-label--error' : ''}`}>
+                                        Aadhaar Number
+                                    </label>
+                                    <input 
+                                        type="text" 
+                                        name="aadhaar_number"
+                                        value={formData.aadhaar_number}
+                                        onChange={handleInputChange}
+                                        placeholder="12-digit Aadhaar number"
+                                        pattern="[0-9]{12}"
+                                        maxLength="12"
+                                        className={validationErrors.aadhaar_number ? 'required-field-error' : ''}
+                                    />
+                                    {validationErrors.aadhaar_number && (
+                                        <div className="error-message">{validationErrors.aadhaar_number}</div>
+                                    )}
+                                </div>
+
+                                {/* PAN Number */}
+                                <div className="ef-field">
+                                    <label className={`ef-label ${validationErrors.pan_number ? 'ef-label--error' : ''}`}>
+                                        PAN Number
+                                    </label>
+                                    <input 
+                                        type="text" 
+                                        name="pan_number"
+                                        value={formData.pan_number}
+                                        onChange={handleInputChange}
+                                        placeholder="ABCDE1234F"
+                                        pattern="[A-Z]{5}[0-9]{4}[A-Z]{1}"
+                                        maxLength="10"
+                                        style={{ textTransform: 'uppercase' }}
+                                        className={validationErrors.pan_number ? 'required-field-error' : ''}
+                                    />
+                                    {validationErrors.pan_number && (
+                                        <div className="error-message">{validationErrors.pan_number}</div>
+                                    )}
+                                </div>
+
+                                {/* Highest Qualification */}
+                                <div className="ef-field">
+                                    <label className="ef-label">Highest Qualification</label>
+                                    <select 
+                                        name="highest_qualification"
+                                        value={formData.highest_qualification}
+                                        onChange={handleInputChange}
+                                    >
+                                        <option value="" disabled>Select Qualification</option>
+                                        <option value="10th">10th</option>
+                                        <option value="12th">12th</option>
+                                        <option value="Diploma">Diploma</option>
+                                        <option value="Bachelor's">Bachelor's</option>
+                                        <option value="Master's">Master's</option>
+                                        <option value="PhD">PhD</option>
+                                    </select>
+                                </div>
+
+                                {/* Experience Level */}
+                                <div className="ef-field">
+                                    <label className="ef-label">Experience Level</label>
+                                    <select 
+                                        name="experience_level"
+                                        value={formData.experience_level}
+                                        onChange={handleInputChange}
+                                    >
+                                        <option value="" disabled>Select Experience</option>
+                                        <option value="Fresher">Fresher</option>
+                                        <option value="Experienced">Experienced</option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            {formData.experience_level === 'Experienced' && (
+                                <div className="ef-experience-details-wrapper" style={{ marginTop: '1.25rem', paddingTop: '1.25rem', borderTop: '1px dashed var(--ef-border)' }}>
+                                    <div className="ef-grid-2" style={{ marginBottom: '1.25rem' }}>
+                                        {/* Years of Experience */}
+                                        <div className="ef-field">
+                                            <label className={`ef-label ${validationErrors.experience_years ? 'ef-label--error' : ''}`}>
+                                                Years of Experience <span className="ef-req">*</span>
+                                            </label>
+                                            <input 
+                                                type="number" 
+                                                name="experience_years"
+                                                value={formData.experience_years}
+                                                onChange={handleInputChange}
+                                                placeholder="e.g. 3"
+                                                min="0"
+                                                max="50"
+                                                className={validationErrors.experience_years ? 'required-field-error' : ''}
+                                                required
+                                            />
+                                            {validationErrors.experience_years && (
+                                                <div className="error-message">{validationErrors.experience_years}</div>
+                                            )}
+                                        </div>
+
+                                        {/* Months of Experience */}
+                                        <div className="ef-field">
+                                            <label className={`ef-label ${validationErrors.experience_months ? 'ef-label--error' : ''}`}>
+                                                Months of Experience <span className="ef-req">*</span>
+                                            </label>
+                                            <input 
+                                                type="number" 
+                                                name="experience_months"
+                                                value={formData.experience_months}
+                                                onChange={handleInputChange}
+                                                placeholder="e.g. 6"
+                                                min="0"
+                                                max="11"
+                                                className={validationErrors.experience_months ? 'required-field-error' : ''}
+                                                required
+                                            />
+                                            {validationErrors.experience_months && (
+                                                <div className="error-message">{validationErrors.experience_months}</div>
+                                            )}
+                                        </div>
                                     </div>
-                                )}
-                            </div>
-                            <div>
-                                <label className={validationErrors.alternate_phone ? 'required-field-label' : ''}>Alternate Number</label>
-                                <input 
-                                    type="tel" 
-                                    name="alternate_phone"
-                                    value={formData.alternate_phone}
-                                    onChange={handleInputChange}
-                                    placeholder="10-digit alternate number"
-                                    pattern="[0-9]{10}"
-                                    maxLength="10"
-                                    className={`form-input ${validationErrors.alternate_phone ? 'required-field-error' : ''}`}
-                                />
-                                {validationErrors.alternate_phone && (
-                                    <div className="error-message">
-                                        {validationErrors.alternate_phone}
+
+                                    {/* Companies Worked For */}
+                                    <div className="ef-field">
+                                        <label className="ef-label">Companies Worked For</label>
+                                        <div className="ef-company-input-wrap">
+                                            <input 
+                                                type="text" 
+                                                value={newCompany}
+                                                onChange={(e) => setNewCompany(e.target.value)}
+                                                onKeyDown={handleCompanyKeyDown}
+                                                placeholder="Type company name and press Enter or click Add"
+                                            />
+                                            <button 
+                                                type="button" 
+                                                className="ef-company-add-btn"
+                                                onClick={handleAddCompany}
+                                            >
+                                                ➕ Add
+                                            </button>
+                                        </div>
+                                        {formData.experience_companies && formData.experience_companies.length > 0 && (
+                                            <div className="ef-company-tags">
+                                                {formData.experience_companies.map((company, index) => (
+                                                    <span key={index} className="ef-company-tag">
+                                                        🏢 {company}
+                                                        <button 
+                                                            type="button" 
+                                                            className="ef-company-tag-remove"
+                                                            onClick={() => handleRemoveCompany(company)}
+                                                        >
+                                                            ×
+                                                        </button>
+                                                    </span>
+                                                ))}
+                                            </div>
+                                        )}
                                     </div>
-                                )}
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Address Details */}
+                        <div className="ef-section-card">
+                            <div className="ef-section-head">
+                                <div className="ef-section-icon">📍</div>
+                                <h3 className="ef-section-title">Address Details</h3>
                             </div>
-                            <div>
-                                <label className={validationErrors.personal_email ? 'required-field-label' : ''}>Personal Email</label>
-                                <input 
-                                    ref={emailRef}
-                                    type="email" 
-                                    name="personal_email"
-                                    value={formData.personal_email}
-                                    onChange={handleInputChange}
-                                    placeholder="Personal Email"
-                                    className={`form-input ${validationErrors.personal_email ? 'required-field-error' : ''}`}
-                                />
-                                {validationErrors.personal_email && (
-                                    <div className="error-message">
-                                        {validationErrors.personal_email}
+                            
+                            <div style={{ marginBottom: '1.25rem', background: '#fafbfc', padding: '1rem', borderRadius: '12px', border: '1px solid var(--ef-border)' }}>
+                                <span className="ef-label" style={{ marginBottom: '0.65rem', display: 'block' }}>Current Address Property Type</span>
+                                <div className="ef-radio-row">
+                                    <label className="ef-radio-option">
+                                        <input 
+                                            type="radio" 
+                                            name="address_property_type" 
+                                            value="owned" 
+                                            checked={formData.address_property_type === 'owned'} 
+                                            onChange={handleInputChange} 
+                                        />
+                                        🏠 Owned Property
+                                    </label>
+                                    <label className="ef-radio-option">
+                                        <input 
+                                            type="radio" 
+                                            name="address_property_type" 
+                                            value="rented" 
+                                            checked={formData.address_property_type === 'rented'} 
+                                            onChange={handleInputChange} 
+                                        />
+                                        🏢 Rented Space
+                                    </label>
+                                </div>
+                            </div>
+
+                            <div className="ef-address-grid">
+                                {/* Current Address Column */}
+                                <div className="ef-address-card">
+                                    <div className="ef-address-card-head">
+                                        <div className="ef-address-card-title">
+                                            <span className="ef-dot ef-dot--purple"></span>
+                                            Current Address
+                                        </div>
                                     </div>
-                                )}
-                            </div>
-                        </div>
-
-                        <div className="form-row">
-                            <div>
-                                <label>Work Email</label>
-                                <input 
-                                    type="email" 
-                                    name="work_email"
-                                    value={formData.work_email}
-                                    onChange={handleInputChange}
-                                    placeholder="Work Email"
-                                />
-                            </div>
-                            <div>
-                                <label>Employee DOB</label>
-                                <input 
-                                    type="date" 
-                                    name="dob"
-                                    value={formData.dob}
-                                    onChange={handleInputChange}
-                                />
-                            </div>
-                            <div>
-                                <label className={validationErrors.pan_number ? 'required-field-label' : ''}>PAN Number</label>
-                                <input 
-                                    type="text" 
-                                    name="pan_number"
-                                    value={formData.pan_number}
-                                    onChange={handleInputChange}
-                                    placeholder="AAAAA9999A (e.g., ABCDE1234F)"
-                                    pattern="[A-Z]{5}[0-9]{4}[A-Z]{1}"
-                                    maxLength="10"
-                                    style={{ textTransform: 'uppercase' }}
-                                    className={`form-input ${validationErrors.pan_number ? 'required-field-error' : ''}`}
-                                />
-                                {validationErrors.pan_number && (
-                                    <div className="error-message">
-                                        {validationErrors.pan_number}
+                                    <div className="ef-field" style={{ marginBottom: '0.75rem' }}>
+                                        <textarea 
+                                            name="current_address"
+                                            value={formData.current_address}
+                                            onChange={handleInputChange}
+                                            placeholder="Enter complete current residential address..."
+                                        />
                                     </div>
-                                )}
-                            </div>
-                        </div>
-
-                        <div className="form-row">
-                            <div>
-                                <label className={validationErrors.aadhaar_number ? 'required-field-label' : ''}>Aadhaar Number</label>
-                                <input 
-                                    type="text" 
-                                    name="aadhaar_number"
-                                    value={formData.aadhaar_number}
-                                    onChange={handleInputChange}
-                                    placeholder="12-digit Aadhar number"
-                                    pattern="[0-9]{12}"
-                                    maxLength="12"
-                                    className={`form-input ${validationErrors.aadhaar_number ? 'required-field-error' : ''}`}
-                                />
-                                {validationErrors.aadhaar_number && (
-                                    <div className="error-message">
-                                        {validationErrors.aadhaar_number}
+                                    <div className="ef-grid-2">
+                                        <div className="ef-field">
+                                            <span className="ef-label">City</span>
+                                            <input 
+                                                type="text" 
+                                                name="current_city"
+                                                value={formData.current_city}
+                                                onChange={handleInputChange}
+                                                placeholder="City name"
+                                            />
+                                        </div>
+                                        <div className="ef-field">
+                                            <span className="ef-label">Pincode</span>
+                                            <input 
+                                                type="text" 
+                                                name="current_pincode"
+                                                value={formData.current_pincode}
+                                                onChange={handleInputChange}
+                                                placeholder="e.g. 110001"
+                                                maxLength="6"
+                                            />
+                                        </div>
                                     </div>
-                                )}
-                            </div>
-                        </div>
+                                </div>
 
-                        <div className="form-row">
-                            <div>
-                                <label>Current City (Living In)</label>
-                                <input 
-                                    type="text" 
-                                    name="current_city"
-                                    value={formData.current_city}
-                                    onChange={handleInputChange}
-                                    placeholder="Current City"
-                                />
-                            </div>
-                            <div>
-                                <label>Highest Qualification</label>
-                                <select 
-                                    name="highest_qualification"
-                                    value={formData.highest_qualification}
-                                    onChange={handleInputChange}
-                                >
-                                    <option value="" disabled>Select Qualification</option>
-                                    <option value="10th">10th</option>
-                                    <option value="12th">12th</option>
-                                    <option value="Diploma">Diploma</option>
-                                    <option value="Bachelor's">Bachelor's</option>
-                                    <option value="Master's">Master's</option>
-                                    <option value="PhD">PhD</option>
-                                </select>
-                            </div>
-                            <div>
-                                <label>Experience</label>
-                                <select 
-                                    name="experience_level"
-                                    value={formData.experience_level}
-                                    onChange={handleInputChange}
-                                >
-                                    <option value="" disabled>Select Experience</option>
-                                    <option value="Fresher">Fresher</option>
-                                    <option value="Experienced">Experienced</option>
-                                </select>
-                            </div>
-                        </div>
-
-                        <div className="form-row">
-                            <div>
-                                <label>Gender</label>
-                                <select 
-                                    name="gender"
-                                    value={formData.gender}
-                                    onChange={handleInputChange}
-                                >
-                                    <option value="" disabled>Select Gender</option>
-                                    <option value="male">Male</option>
-                                    <option value="female">Female</option>
-                                    <option value="other">Other</option>
-                                </select>
-                            </div>
-                            <div>
-                                <label>Marital Status</label>
-                                <select 
-                                    name="marital_status"
-                                    value={formData.marital_status}
-                                    onChange={handleInputChange}
-                                >
-                                    <option value="" disabled>Select Status</option>
-                                    <option value="single">Single</option>
-                                    <option value="married">Married</option>
-                                    <option value="divorced">Divorced</option>
-                                    <option value="widowed">Widowed</option>
-                                </select>
-                            </div>
-                            <div>
-                                <label>Nationality</label>
-                                <input 
-                                    type="text" 
-                                    name="nationality"
-                                    value={formData.nationality}
-                                    onChange={handleInputChange}
-                                    placeholder="Nationality"
-                                />
-                            </div>
-                        </div>
-
-                        <div className="form-row">
-                           
-                            <div></div>
-                            <div></div>
-                        </div>
-
-                        <div className="form-row full">
-                            <div>
-                                <label>Current Address</label>
-                                <textarea 
-                                    rows="4" 
-                                    name="current_address"
-                                    value={formData.current_address}
-                                    onChange={handleInputChange}
-                                    placeholder="Current Address"
-                                />
+                                {/* Permanent Address Column */}
+                                <div className="ef-address-card">
+                                    <div className="ef-address-card-head">
+                                        <div className="ef-address-card-title">
+                                            <span className="ef-dot ef-dot--gray"></span>
+                                            Permanent Address
+                                        </div>
+                                        {formData.address_property_type === 'owned' ? (
+                                            <span className="ef-badge-sync">AUTO-SYNCED</span>
+                                        ) : (
+                                            <span className="ef-badge-rented">RENTED</span>
+                                        )}
+                                    </div>
+                                    <div className="ef-field" style={{ marginBottom: '0.75rem' }}>
+                                        <textarea 
+                                            name="permanent_address"
+                                            value={formData.permanent_address}
+                                            onChange={handleInputChange}
+                                            placeholder={formData.address_property_type === 'owned' ? "Automatically copying current address..." : "Enter permanent residential address..."}
+                                            readOnly={formData.address_property_type === 'owned'}
+                                            disabled={formData.address_property_type === 'owned'}
+                                        />
+                                    </div>
+                                    <div className="ef-grid-2">
+                                        <div className="ef-field">
+                                            <span className="ef-label">Permanent City</span>
+                                            <input 
+                                                type="text" 
+                                                name="permanent_city"
+                                                value={formData.permanent_city}
+                                                onChange={handleInputChange}
+                                                placeholder="City name"
+                                                readOnly={formData.address_property_type === 'owned'}
+                                                disabled={formData.address_property_type === 'owned'}
+                                            />
+                                        </div>
+                                        <div className="ef-field">
+                                            <span className="ef-label">Pincode</span>
+                                            <input 
+                                                type="text" 
+                                                name="permanent_pincode"
+                                                value={formData.permanent_pincode}
+                                                onChange={handleInputChange}
+                                                placeholder="e.g. 110001"
+                                                maxLength="6"
+                                                readOnly={formData.address_property_type === 'owned'}
+                                                disabled={formData.address_property_type === 'owned'}
+                                            />
+                                        </div>
+                                    </div>
+                                </div>
                             </div>
                         </div>
 
                         {/* Emergency Contacts */}
-                        <div className="form-row">
-                            <div>
-                                <label>1st Emergency Contact Name</label>
-                                <input 
-                                    type="text" 
-                                    name="emergency_contact_1_name"
-                                    value={formData.emergency_contact_1_name}
-                                    onChange={handleInputChange}
-                                    placeholder="Contact Name"
-                                />
+                        <div className="ef-section-card">
+                            <div className="ef-section-head">
+                                <div className="ef-section-icon">👥</div>
+                                <h3 className="ef-section-title">Emergency Contacts</h3>
                             </div>
-                            <div>
-                                <label>Contact Mobile Number</label>
-                                <input 
-                                    type="tel" 
-                                    name="emergency_contact_1_phone"
-                                    value={formData.emergency_contact_1_phone}
-                                    onChange={handleInputChange}
-                                    placeholder="Contact Mobile"
-                                />
-                            </div>
-                            <div>
-                                <label>Contact Relation</label>
-                                <select 
-                                    name="emergency_contact_1_relation"
-                                    value={formData.emergency_contact_1_relation}
-                                    onChange={handleInputChange}
-                                >
-                                    <option value="" disabled>Select Relation</option>
-                                    <option value="Father">Father</option>
-                                    <option value="Mother">Mother</option>
-                                    <option value="Spouse">Spouse</option>
-                                    <option value="Brother">Brother</option>
-                                    <option value="Sister">Sister</option>
-                                    <option value="Friend">Friend</option>
-                                    <option value="Other">Other</option>
-                                </select>
-                            </div>
-                        </div>
-
-                        <div className="form-row">
-                            <div>
-                                <label>2nd Emergency Contact Name</label>
-                                <input 
-                                    type="text" 
-                                    name="emergency_contact_2_name"
-                                    value={formData.emergency_contact_2_name}
-                                    onChange={handleInputChange}
-                                    placeholder="Contact Name"
-                                />
-                            </div>
-                            <div>
-                                <label>Contact Mobile Number</label>
-                                <input 
-                                    type="tel" 
-                                    name="emergency_contact_2_phone"
-                                    value={formData.emergency_contact_2_phone}
-                                    onChange={handleInputChange}
-                                    placeholder="Contact Mobile"
-                                />
-                            </div>
-                            <div>
-                                <label>Contact Relation</label>
-                                <select 
-                                    name="emergency_contact_2_relation"
-                                    value={formData.emergency_contact_2_relation}
-                                    onChange={handleInputChange}
-                                >
-                                    <option value="" disabled>Select Relation</option>
-                                    <option value="Father">Father</option>
-                                    <option value="Mother">Mother</option>
-                                    <option value="Spouse">Spouse</option>
-                                    <option value="Brother">Brother</option>
-                                    <option value="Sister">Sister</option>
-                                    <option value="Friend">Friend</option>
-                                    <option value="Other">Other</option>
-                                </select>
-                            </div>
-                        </div>
-                    </div>
-
-                    {/* Employment Details */}
-                    <div className="section">
-                        <div className="section-title">
-                            <span>💼</span>Employment Details
-                        </div>
-                        
-                        <div className="form-row">
-                            <div>
-                                <label className={validationErrors.joining_date ? 'required-field-label' : ''}>Date of Joining *</label>
-                                <input 
-                                    ref={joiningDateRef}
-                                    type="date" 
-                                    name="joining_date"
-                                    value={formData.joining_date}
-                                    onChange={handleInputChange}
-                                    required
-                                    className={`form-input ${validationErrors.joining_date ? 'required-field-error' : ''}`}
-                                />
-                                {validationErrors.joining_date && (
-                                    <div className="error-message">
-                                        {validationErrors.joining_date}
+                            
+                            <div className="ef-address-grid">
+                                {/* Primary Contact */}
+                                <div className="ef-contact-card">
+                                    <div className="ef-contact-card-title">
+                                        <span className="ef-dot" style={{ background: '#3b82f6' }}></span>
+                                        Primary Contact
                                     </div>
-                                )}
-                            </div>
-                            <div>
-                                <label>Monthly Salary</label>
-                                <input 
-                                    type="number" 
-                                    name="monthly_salary"
-                                    value={formData.monthly_salary}
-                                    onChange={handleInputChange}
-                                    placeholder="₹ Monthly Salary"
-                                />
-                            </div>
-                            <div>
-                                <label>Monthly Target</label>
-                                <input 
-                                    type="number" 
-                                    name="monthly_target"
-                                    value={formData.monthly_target}
-                                    onChange={handleInputChange}
-                                    placeholder="₹ Monthly Target"
-                                />
+                                    <div className="ef-field" style={{ marginBottom: '0.75rem' }}>
+                                        <label className="ef-label">Contact Name <span className="ef-req">*</span></label>
+                                        <input 
+                                            type="text" 
+                                            name="emergency_contact_1_name"
+                                            value={formData.emergency_contact_1_name}
+                                            onChange={handleInputChange}
+                                            placeholder="Full Name"
+                                            required
+                                        />
+                                    </div>
+                                    <div className="ef-field" style={{ marginBottom: '0.75rem' }}>
+                                        <label className="ef-label">Mobile Number <span className="ef-req">*</span></label>
+                                        <div className="ef-input-icon-wrap">
+                                            <span className="ef-input-icon">📞</span>
+                                            <input 
+                                                type="tel" 
+                                                name="emergency_contact_1_phone"
+                                                value={formData.emergency_contact_1_phone}
+                                                onChange={handleInputChange}
+                                                placeholder="10-digit number"
+                                                pattern="[0-9]{10}"
+                                                maxLength="10"
+                                                required
+                                            />
+                                        </div>
+                                    </div>
+                                    <div className="ef-field">
+                                        <label className="ef-label">Relation <span className="ef-req">*</span></label>
+                                        <select 
+                                            name="emergency_contact_1_relation"
+                                            value={formData.emergency_contact_1_relation}
+                                            onChange={handleInputChange}
+                                            required
+                                        >
+                                            <option value="" disabled>Select Relation</option>
+                                            <option value="Father">Father</option>
+                                            <option value="Mother">Mother</option>
+                                            <option value="Spouse">Spouse</option>
+                                            <option value="Brother">Brother</option>
+                                            <option value="Sister">Sister</option>
+                                            <option value="Friend">Friend</option>
+                                            <option value="Other">Other</option>
+                                        </select>
+                                    </div>
+                                </div>
+
+                                {/* Secondary Contact */}
+                                <div className="ef-contact-card">
+                                    <div className="ef-contact-card-title">
+                                        <span className="ef-dot" style={{ background: '#94a3b8' }}></span>
+                                        Secondary Contact
+                                    </div>
+                                    <div className="ef-field" style={{ marginBottom: '0.75rem' }}>
+                                        <label className="ef-label">Contact Name <span className="ef-req">*</span></label>
+                                        <input 
+                                            type="text" 
+                                            name="emergency_contact_2_name"
+                                            value={formData.emergency_contact_2_name}
+                                            onChange={handleInputChange}
+                                            placeholder="Full Name"
+                                            required
+                                        />
+                                    </div>
+                                    <div className="ef-field" style={{ marginBottom: '0.75rem' }}>
+                                        <label className="ef-label">Mobile Number <span className="ef-req">*</span></label>
+                                        <div className="ef-input-icon-wrap">
+                                            <span className="ef-input-icon">📞</span>
+                                            <input 
+                                                type="tel" 
+                                                name="emergency_contact_2_phone"
+                                                value={formData.emergency_contact_2_phone}
+                                                onChange={handleInputChange}
+                                                placeholder="10-digit number"
+                                                pattern="[0-9]{10}"
+                                                maxLength="10"
+                                                required
+                                            />
+                                        </div>
+                                    </div>
+                                    <div className="ef-field">
+                                        <label className="ef-label">Relation <span className="ef-req">*</span></label>
+                                        <select 
+                                            name="emergency_contact_2_relation"
+                                            value={formData.emergency_contact_2_relation}
+                                            onChange={handleInputChange}
+                                            required
+                                        >
+                                            <option value="" disabled>Select Relation</option>
+                                            <option value="Father">Father</option>
+                                            <option value="Mother">Mother</option>
+                                            <option value="Spouse">Spouse</option>
+                                            <option value="Brother">Brother</option>
+                                            <option value="Sister">Sister</option>
+                                            <option value="Friend">Friend</option>
+                                            <option value="Other">Other</option>
+                                        </select>
+                                    </div>
+                                </div>
                             </div>
                         </div>
 
-                        <div className="form-row">
-                            <div>
-                                <label>Incentive</label>
-                                <input 
-                                    type="text" 
-                                    name="incentive"
-                                    value={formData.incentive}
-                                    onChange={handleInputChange}
-                                    placeholder="Incentive"
-                                />
+                        {/* Employment Details */}
+                        <div className="ef-section-card">
+                            <div className="ef-section-head">
+                                <div className="ef-section-icon">💼</div>
+                                <h3 className="ef-section-title">Employment Details</h3>
                             </div>
-                            <div>
-                                <label>Department</label>
-                                <select 
-                                    name="department_id"
-                                    value={formData.department_id}
-                                    onChange={handleInputChange}
-                                >
-                                    <option value="" disabled>Select Department</option>
-                                    {departments.map(dept => (
-                                        <option key={dept._id || dept.id} value={dept._id || dept.id}>
-                                            {dept.name}
-                                        </option>
-                                    ))}
-                                </select>
-                            </div>
-                            {/* Role field - only show if user has role permission */}
-                            {shouldShowRoleField && (
-                                <div>
-                                    <label>Role</label>
+                            
+                            <div className="ef-grid-4">
+                                {/* Date of Joining */}
+                                <div className="ef-field">
+                                    <label className={`ef-label ${validationErrors.joining_date ? 'ef-label--error' : ''}`}>
+                                        Date of Joining <span className="ef-req">*</span>
+                                    </label>
+                                    <input 
+                                        ref={joiningDateRef}
+                                        type="date" 
+                                        name="joining_date"
+                                        value={formData.joining_date}
+                                        onChange={handleInputChange}
+                                        className={validationErrors.joining_date ? 'required-field-error' : ''}
+                                        required
+                                    />
+                                    {validationErrors.joining_date && (
+                                        <div className="error-message">{validationErrors.joining_date}</div>
+                                    )}
+                                </div>
+
+                                {/* Designation */}
+                                <div className="ef-field">
+                                    <label className="ef-label">Designation</label>
                                     <select 
-                                        name="role_id"
-                                        value={formData.role_id}
+                                        name="designation"
+                                        value={formData.designation}
                                         onChange={handleInputChange}
                                     >
-                                        <option value="" disabled>Select Role</option>
-                                        {filteredRoles.map(role => (
-                                            <option key={role._id || role.id} value={role._id || role.id}>
-                                                {role.name}
+                                        <option value="" disabled>Select Designation</option>
+                                        {designations.map(designation => (
+                                            <option key={designation.id} value={designation.name}>
+                                                {designation.name}
                                             </option>
                                         ))}
                                     </select>
                                 </div>
-                            )}
-                            {/* Show message if role field is hidden due to permissions */}
-                            {!shouldShowRoleField && (
-                                <div>
-                                    <label>Role</label>
-                                    <div style={{
-                                        padding: '8px 12px',
-                                        backgroundColor: '#f5f5f5',
-                                        border: '1px solid #d9d9d9',
-                                        borderRadius: '4px',
-                                        color: '#666',
-                                        fontStyle: 'italic',
-                                        fontSize: '14px'
-                                    }}>
-                                        For Role Update, Contact your senior.
+
+                                {/* Monthly Salary */}
+                                <div className="ef-field">
+                                    <label className="ef-label">Monthly Salary</label>
+                                    <div className="ef-input-prefix">
+                                        <span className="ef-prefix">₹</span>
+                                        <input 
+                                            type="number" 
+                                            name="monthly_salary"
+                                            value={formData.monthly_salary}
+                                            onChange={handleInputChange}
+                                            placeholder="0.00"
+                                        />
                                     </div>
                                 </div>
-                            )}
-                        </div>
 
-                        <div className="form-row">
-                            <div>
-                                <label>Designation</label>
-                                <select 
-                                    name="designation"
-                                    value={formData.designation}
-                                    onChange={handleInputChange}
-                                >
-                                    <option value="" disabled>Select Designation</option>
-                                    {designations.map(designation => (
-                                        <option key={designation.id} value={designation.name}>
-                                            {designation.name}
-                                        </option>
-                                    ))}
-                                </select>
-                            </div>
-                            <div>
-                                <label>Salary Account Number</label>
-                                <input 
-                                    type="text" 
-                                    name="salary_account_number"
-                                    value={formData.salary_account_number}
-                                    onChange={handleInputChange}
-                                    placeholder="Salary Account Number"
-                                />
-                            </div>
-                            <div>
-                                <label>Salary IFSC Code</label>
-                                <input 
-                                    type="text" 
-                                    name="salary_ifsc_code"
-                                    value={formData.salary_ifsc_code}
-                                    onChange={handleInputChange}
-                                    placeholder="Salary IFSC Code"
-                                />
+                                {/* Incentive */}
+                                <div className="ef-field">
+                                    <label className="ef-label">Incentive (per Lakh)</label>
+                                    <input 
+                                        type="text" 
+                                        name="incentive"
+                                        value={formData.incentive}
+                                        onChange={handleInputChange}
+                                        placeholder="e.g. 100, 200, 300"
+                                    />
+                                </div>
                             </div>
                         </div>
 
-                        <div className="form-row">
-                            <div>
-                                <label>Salary Bank Name</label>
-                                <input 
-                                    type="text" 
-                                    name="salary_bank_name"
-                                    value={formData.salary_bank_name}
-                                    onChange={handleInputChange}
-                                    placeholder="Salary Bank Name"
-                                />
+                        {/* Bank & Salary Account */}
+                        <div className="ef-section-card">
+                            <div className="ef-section-head">
+                                <div className="ef-section-icon">💳</div>
+                                <h3 className="ef-section-title">Bank & Salary Account</h3>
                             </div>
-                            <div></div>
-                            <div></div>
-                        </div>
-                    </div>
-
-                    {/* Login Credentials */}
-                    <div className="section">
-                        <div className="section-title">
-                            <span>🔒</span>Login Credentials
-                        </div>
-                        
-                        <div className="form-row">
-                            <div>
-                                <label className={validationErrors.username ? 'required-field-label' : ''}>Username *</label>
-                                <input 
-                                    ref={usernameRef}
-                                    type="text" 
-                                    name="username"
-                                    value={formData.username}
-                                    onChange={handleInputChange}
-                                    placeholder={isEditing ? "Username" : "Auto-generated from Employee ID + First Name"}
-                                    required
-                                    readOnly={!isEditing}
-                                    disabled={!isEditing}
-                                    className={`form-input ${validationErrors.username ? 'required-field-error' : ''}`}
-                                    style={!isEditing ? { backgroundColor: '#f3f4f6', cursor: 'not-allowed' } : {}}
-                                />
-                                {!isEditing && (
-                                    <div style={{ fontSize: '12px', color: '#6b7280', marginTop: '4px' }}>
-                                        ℹ️ Auto-generated: Employee ID + First Name
-                                    </div>
-                                )}
-                                {validationErrors.username && (
-                                    <div className="error-message">
-                                        {validationErrors.username}
-                                    </div>
-                                )}
-                            </div>
-                            {/* Password field for creating new employees (users with password permission or superadmin) */}
-                            {shouldShowPasswordField && !isEditing && (
+                            
+                            <div className="ef-bank-alert">
+                                <span style={{ fontSize: '1.1rem', lineHeight: '1' }}>🛡️</span>
                                 <div>
-                                    <label className={validationErrors.password ? 'required-field-label' : ''}>Password *</label>
-                                    <div style={{ position: 'relative' }}>
-                                        <input 
-                                            ref={passwordRef}
-                                            type={showPassword ? "text" : "password"} 
-                                            name="password"
-                                            value={formData.password}
-                                            onChange={handleInputChange}
-                                            placeholder="Password" 
-                                            required
-                                            minLength="3"
-                                            style={{ paddingRight: '40px' }}
-                                            className={`form-input ${validationErrors.password ? 'required-field-error' : ''}`}
-                                        />
-                                        <button
-                                            type="button"
-                                            onClick={() => setShowPassword(!showPassword)}
-                                            style={{
-                                                position: 'absolute',
-                                                right: '10px',
-                                                top: '50%',
-                                                transform: 'translateY(-50%)',
-                                                background: 'none',
-                                                border: 'none',
-                                                cursor: 'pointer',
-                                                fontSize: '16px',
-                                                color: '#666'
-                                            }}
-                                            title={showPassword ? "Hide password" : "Show password"}
-                                        >
-                                            {showPassword ? '🙈' : '👁️'}
-                                        </button>
-                                    </div>
-                                    {validationErrors.password && (
-                                        <div className="error-message">
-                                            {validationErrors.password}
+                                    Ensure the <strong>"Name as per Bank Account"</strong> precisely matches the passbook to avoid automated salary transfer failures.
+                                </div>
+                            </div>
+
+                            <div className="ef-grid-2" style={{ marginBottom: '1rem' }}>
+                                {/* Bank Name */}
+                                <div className="ef-field">
+                                    <label className="ef-label">Bank Name</label>
+                                    <input 
+                                        type="text" 
+                                        name="salary_bank_name"
+                                        value={formData.salary_bank_name}
+                                        onChange={handleInputChange}
+                                        placeholder="e.g. HDFC Bank"
+                                    />
+                                </div>
+
+                                {/* Name as per Bank Account */}
+                                <div className="ef-field">
+                                    <label className="ef-label">Name as per Bank Account <span className="ef-req">*</span></label>
+                                    <input 
+                                        type="text" 
+                                        name="salary_account_name"
+                                        value={formData.salary_account_name || ''}
+                                        onChange={handleInputChange}
+                                        placeholder="Exact name registered in bank"
+                                    />
+                                </div>
+                            </div>
+
+                            <div className="ef-grid-2">
+                                {/* Salary Account Number */}
+                                <div className="ef-field">
+                                    <label className="ef-label">Salary Account Number</label>
+                                    <input 
+                                        type="text" 
+                                        name="salary_account_number"
+                                        value={formData.salary_account_number}
+                                        onChange={handleInputChange}
+                                        placeholder="Salary Account Number"
+                                    />
+                                </div>
+
+                                {/* Salary IFSC Code */}
+                                <div className="ef-field">
+                                    <label className="ef-label">Salary IFSC Code</label>
+                                    <input 
+                                        type="text" 
+                                        name="salary_ifsc_code"
+                                        value={formData.salary_ifsc_code}
+                                        onChange={handleInputChange}
+                                        placeholder="Salary IFSC Code"
+                                    />
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Login Credentials */}
+                        <div className="ef-login-card">
+                            <div className="ef-section-head">
+                                <div className="ef-section-icon">🔒</div>
+                                <h3 className="ef-section-title">Login Credentials</h3>
+                            </div>
+                            
+                            <div className="ef-grid-2">
+                                {/* Username */}
+                                <div className="ef-field">
+                                    <label className={`ef-label ${validationErrors.username ? 'ef-label--error' : ''}`}>
+                                        Username <span className="ef-req">*</span>
+                                    </label>
+                                    <input 
+                                        ref={usernameRef}
+                                        type="text" 
+                                        name="username"
+                                        value={formData.username}
+                                        onChange={handleInputChange}
+                                        placeholder={isEditing ? "Username" : "Auto-generated from Employee ID + First Name"}
+                                        required
+                                        readOnly={!isEditing}
+                                        disabled={!isEditing}
+                                        className={validationErrors.username ? 'required-field-error' : ''}
+                                    />
+                                    {!isEditing && (
+                                        <div className="ef-field-hint">
+                                            ℹ️ Auto-generated: Employee ID + First Name
                                         </div>
                                     )}
+                                    {validationErrors.username && (
+                                        <div className="error-message">{validationErrors.username}</div>
+                                    )}
                                 </div>
-                            )}
-                            {/* Password field for editing employees (users with password permission or superadmin) */}
-                            {(() => {
-                                console.log('🔍 Password field rendering check:', {
-                                    shouldShowPasswordFieldForEditing,
-                                    isEditing,
-                                    isUserSuperAdmin,
-                                    currentPassword,
-                                    formDataPassword: formData.password
-                                });
-                                return shouldShowPasswordFieldForEditing;
-                            })() && (
-                                <div>
-                                    <label>
-                                        Current Password {
-                                            currentPassword 
-                                                ? currentPassword.startsWith('[') 
-                                                    ? `(${currentPassword})` 
-                                                    : '(Loaded - Decrypted)'
-                                                : '(Loading...)'
-                                        }
-                                    </label>
-                                    <div style={{ position: 'relative' }}>
-                                        <input 
-                                            type={showPassword ? "text" : "password"} 
-                                            name="password"
-                                            value={formData.password}
-                                            onChange={handleInputChange}
-                                            placeholder={
-                                                currentPassword 
-                                                    ? currentPassword.startsWith('[')
-                                                        ? "Enter new password "
-                                                        : "Current password shown - modify to change"
-                                                    : "Loading current password..."
-                                            }
-                                            minLength="3"
-                                            style={{ paddingRight: '40px' }}
-                                        />
-                                        <button
-                                            type="button"
-                                            onClick={() => setShowPassword(!showPassword)}
-                                            style={{
-                                                position: 'absolute',
-                                                right: '10px',
-                                                top: '50%',
-                                                transform: 'translateY(-50%)',
-                                                background: 'none',
-                                                border: 'none',
-                                                cursor: 'pointer',
-                                                fontSize: '16px',
-                                                color: '#666'
-                                            }}
-                                            title={showPassword ? "Hide password" : "Show password"}
-                                        >
-                                            {showPassword ? '🙈' : '👁️'}
-                                        </button>
+
+                                {/* Password for creating */}
+                                {shouldShowPasswordField && !isEditing && (
+                                    <div className="ef-field">
+                                        <label className={`ef-label ${validationErrors.password ? 'ef-label--error' : ''}`}>
+                                            Password <span className="ef-req">*</span>
+                                        </label>
+                                        <div style={{ position: 'relative' }}>
+                                            <input 
+                                                ref={passwordRef}
+                                                type={showPassword ? "text" : "password"} 
+                                                name="password"
+                                                value={formData.password}
+                                                onChange={handleInputChange}
+                                                placeholder="Password" 
+                                                required
+                                                minLength="3"
+                                                style={{ paddingRight: '40px' }}
+                                                className={validationErrors.password ? 'required-field-error' : ''}
+                                            />
+                                            <button
+                                                type="button"
+                                                className="ef-password-toggle"
+                                                onClick={() => setShowPassword(!showPassword)}
+                                                title={showPassword ? "Hide password" : "Show password"}
+                                            >
+                                                {showPassword ? '🙈' : '👁️'}
+                                            </button>
+                                        </div>
+                                        {validationErrors.password && (
+                                            <div className="error-message">{validationErrors.password}</div>
+                                        )}
                                     </div>
+                                )}
 
-                                </div>
-                            )}
-                            <div></div>
+                                {/* Password for editing */}
+                                {shouldShowPasswordFieldForEditing && (
+                                    <div className="ef-field">
+                                        <label className="ef-label">
+                                            Current Password {
+                                                currentPassword 
+                                                    ? currentPassword.startsWith('[') 
+                                                        ? `(${currentPassword})` 
+                                                        : '(Loaded - Decrypted)'
+                                                    : '(Loading...)'
+                                            }
+                                        </label>
+                                        <div style={{ position: 'relative' }}>
+                                            <input 
+                                                type={showPassword ? "text" : "password"} 
+                                                name="password"
+                                                value={formData.password}
+                                                onChange={handleInputChange}
+                                                placeholder={
+                                                    currentPassword 
+                                                        ? currentPassword.startsWith('[')
+                                                            ? "Enter new password "
+                                                            : "Current password shown - modify to change"
+                                                        : "Loading current password..."
+                                                }
+                                                minLength="3"
+                                                style={{ paddingRight: '40px' }}
+                                            />
+                                            <button
+                                                type="button"
+                                                className="ef-password-toggle"
+                                                onClick={() => setShowPassword(!showPassword)}
+                                                title={showPassword ? "Hide password" : "Show password"}
+                                            >
+                                                {showPassword ? '🙈' : '👁️'}
+                                            </button>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
                         </div>
-                    </div>
 
-                    {/* Buttons */}
-                    <div className="button-group">
-                        {onCancel && (
-                            <button type="button" className="cancel" onClick={onCancel}>
-                                Cancel
+                        {/* Buttons */}
+                        <div className="button-group">
+                            {onCancel && (
+                                <button type="button" className="cancel" onClick={onCancel}>
+                                    Cancel
+                                </button>
+                            )}
+                            <button 
+                                type="button" 
+                                className="submit" 
+                                disabled={loading}
+                                onClick={async (e) => {
+                                    console.log('🚨🚨 BUTTON CLICKED - UPDATE EMPLOYEE 🚨🚨🚨');
+                                    console.log('🔘 Current loading state:', loading);
+                                    console.log('🔘 Is editing mode:', isEditing);
+                                    
+                                    if (loading) {
+                                        console.log('⚠️ Button click ignored - loading in progress');
+                                        return;
+                                    }
+                                    
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                    
+                                    try {
+                                        console.log('🔘 About to call handleSubmit...');
+                                        await handleSubmit(e);
+                                        console.log('🔘 handleSubmit completed successfully');
+                                    } catch (error) {
+                                        console.error('🔘 ERROR in button onClick:', error);
+                                        message.error(`Update failed: ${error.message}`);
+                                    }
+                                }}
+                            >
+                                {loading ? 'Saving...' : (isEditing ? 'Update Employee' : 'Create Employee')}
                             </button>
-                        )}
-                        <button 
-                            type="button" 
-                            className="submit" 
-                            disabled={loading}
-                            onClick={async (e) => {
-                                console.log('�🚨🚨 BUTTON CLICKED - UPDATE EMPLOYEE 🚨🚨🚨');
+                        </div>
+                    </form>
+                </div>
 
-                                console.log('🔘 Current loading state:', loading);
-                                console.log('🔘 Is editing mode:', isEditing);
-                                
-                                if (loading) {
-                                    console.log('⚠️ Button click ignored - loading in progress');
-
-                                    return;
-                                }
-                                
-                                e.preventDefault();
-                                e.stopPropagation();
-                                
-                                try {
-                                    console.log('🔘 About to call handleSubmit...');
-                                    await handleSubmit(e);
-                                    console.log('🔘 handleSubmit completed successfully');
-                                } catch (error) {
-                                    console.error('🔘 ERROR in button onClick:', error);
-                                    message.error(`Update failed: ${error.message}`);
-                                }
-                            }}
-                        >
-                            {loading ? 'Saving...' : (isEditing ? 'Update Employee' : 'Create Employee')}
-                        </button>
-                    </div>
-                </form>
-            </div>
             
             {/* Success Modal */}
             <Modal

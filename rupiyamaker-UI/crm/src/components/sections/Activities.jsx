@@ -42,6 +42,30 @@ const normalizeAction = (activity) => {
   }
 };
 
+const normalizeDisplayValue = (value) => {
+  if (value === undefined || value === null) return 'Not set';
+  const text = String(value).trim();
+  if (!text || text.toLowerCase() === 'null' || text.toLowerCase() === 'undefined') return 'Not set';
+  return text;
+};
+
+const ChangePreview = ({ label = 'Change', oldValue, newValue }) => (
+  <div className="mt-2 rounded-lg border border-gray-200 bg-white p-2">
+    <div className="mb-2 text-[10px] font-bold uppercase tracking-wide text-gray-500">{label}</div>
+    <div className="flex flex-wrap items-stretch gap-2">
+      <div className="min-w-[150px] flex-1 rounded-md border border-red-200 bg-red-50 p-2">
+        <div className="mb-1 text-[10px] font-bold uppercase text-red-700">Old Value</div>
+        <div className="text-xs text-red-900 break-words">{normalizeDisplayValue(oldValue)}</div>
+      </div>
+      <div className="self-center text-gray-400 font-bold">→</div>
+      <div className="min-w-[150px] flex-1 rounded-md border border-green-200 bg-green-50 p-2">
+        <div className="mb-1 text-[10px] font-bold uppercase text-green-700">New Value</div>
+        <div className="text-xs text-green-900 break-words">{normalizeDisplayValue(newValue)}</div>
+      </div>
+    </div>
+  </div>
+);
+
 export default function Activities({ leadId, userId, formatDate }) {
   const [activities, setActivities] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -180,14 +204,20 @@ export default function Activities({ leadId, userId, formatDate }) {
           activity.details?.new_sub_status ||
           'N/A';
         const label = isSub ? 'Sub-status' : 'Status';
-        return `${label}: “${oldVal}” → “${newVal}”`;
+        return {
+          isChange: true,
+          fieldName: label,
+          oldValue: oldVal,
+          newValue: newVal
+        };
       }
       case 'assigned':
-        return `Lead assigned to ${
-          activity.details?.assigned_to_name ||
-          activity.details?.to_user_name ||
-          'Unknown'
-        }`;
+        return {
+          isChange: true,
+          fieldName: 'Assigned To',
+          oldValue: activity.details?.from_user_name,
+          newValue: activity.details?.assigned_to_name || activity.details?.to_user_name || 'Unknown'
+        };
       case 'note':
       case 'remark_added':
         return 'Note added';
@@ -201,7 +231,12 @@ export default function Activities({ leadId, userId, formatDate }) {
       case 'login_form_updated':
         return 'Login form updated';
       case 'transferred':
-        return `Lead transferred to ${activity.details?.department || 'Unknown Department'}`;
+        return {
+          isChange: true,
+          fieldName: 'Department',
+          oldValue: activity.details?.from_department_name,
+          newValue: activity.details?.to_department_name || activity.details?.department || 'Unknown Department'
+        };
       default:
         return activity.description || action;
     }
@@ -311,14 +346,15 @@ export default function Activities({ leadId, userId, formatDate }) {
                             {activities.map((activity, activityIndex) => {
                               const description = formatActivityDescription(activity);
                               const isFieldUpdate = description && typeof description === 'object' && description.isFieldUpdate;
+                              const isChange = description && typeof description === 'object' && description.isChange;
                               const normalizedType = normalizeAction(activity);
                               
                               return (
-                                <div key={activity._id || activityIndex} className="bg-gray-50 p-3 rounded-lg border border-gray-200">
+                                <div key={activity._id || activityIndex} className="bg-gray-50 p-3 rounded-lg border border-gray-200 shadow-sm">
                                   {/* Header with field name and user */}
                                   <div className="flex items-center justify-between mb-2">
                                     <span className="text-sm font-medium text-black">
-                                      {isFieldUpdate ? description.fieldName : description}
+                                      {isFieldUpdate || isChange ? description.fieldName : description}
                                     </span>
                                     <div className="text-sm text-gray-600 flex items-center">
                                       <User className="w-3 h-3 mr-1" />
@@ -326,19 +362,22 @@ export default function Activities({ leadId, userId, formatDate }) {
                                     </div>
                                   </div>
                                   
-                                  {/* FROM and TO section for field updates */}
+                                  {/* Old/New section for field updates */}
                                   {isFieldUpdate && (
-                                    <div className="text-sm">
-                                      <span className="font-medium text-blue-600">FROM:</span>
-                                      <span className={`ml-2 ${description.oldValue ? 'text-red-600' : 'text-gray-400'}`}>
-                                        {description.oldValue || 'Empty'}
-                                      </span>
-                                      <span className="mx-2">→</span>
-                                      <span className="font-medium text-blue-600">TO:</span>
-                                      <span className="ml-2 text-green-600">
-                                        {description.newValue}
-                                      </span>
-                                    </div>
+                                    <ChangePreview
+                                      label={description.fieldName}
+                                      oldValue={description.oldValue}
+                                      newValue={description.newValue}
+                                    />
+                                  )}
+
+                                  {/* Old/New section for status/assignment/transfer */}
+                                  {isChange && (
+                                    <ChangePreview
+                                      label={description.fieldName}
+                                      oldValue={description.oldValue}
+                                      newValue={description.newValue}
+                                    />
                                   )}
                                   
                                   {/* Comments for non-field-update activities */}

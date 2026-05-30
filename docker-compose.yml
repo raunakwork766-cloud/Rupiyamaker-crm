@@ -28,7 +28,7 @@ services:
     environment:
       - NODE_ENV=development
       - PYTHONPATH=/app/backend
-      - DOMAIN=crm.rupiyamakercrm.online
+      - DOMAIN=crm.fixyourfinance.ai
       - SSL_EMAIL=admin@soheru.me
       - HTTP_PORT=5902
       - BACKEND_PORT=8049

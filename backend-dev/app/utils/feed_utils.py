@@ -32,27 +32,30 @@ def get_file_type(filename: str) -> str:
 
 async def save_upload_file(upload_file: UploadFile, destination: Path) -> Dict[str, Any]:
     """
-    Save an uploaded file to the specified destination
+    Save an uploaded file to the specified destination without re-encoding or resizing.
     Returns file metadata
     """
-    # Generate a safe filename to avoid collisions and security issues
-    file_extension = os.path.splitext(upload_file.filename)[1]
+    original_name = upload_file.filename or "upload"
+    file_extension = os.path.splitext(original_name)[1]
     safe_filename = f"{uuid.uuid4()}{file_extension}"
     
     file_path = destination / safe_filename
     
-    # Write file
+    # Read full original bytes — avoids partial writes from stale file pointers
+    await upload_file.seek(0)
+    content = await upload_file.read()
     with open(file_path, "wb") as buffer:
-        shutil.copyfileobj(upload_file.file, buffer)
+        buffer.write(content)
     
-    # Return file metadata
-    file_size = file_path.stat().st_size
-    file_type = get_file_type(upload_file.filename)
+    file_size = len(content)
+    file_type = get_file_type(original_name)
+    mime_type = upload_file.content_type or mimetypes.guess_type(original_name)[0] or "application/octet-stream"
     
     return {
-        "filename": upload_file.filename,  # Original name
-        "file_path": str(file_path).replace("\\", "/"),  # Path for storage
+        "filename": original_name,
+        "file_path": str(file_path).replace("\\", "/"),
         "file_type": file_type,
+        "mime_type": mime_type,
         "size": file_size
     }
 

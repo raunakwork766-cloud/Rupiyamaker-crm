@@ -102,12 +102,12 @@ const EmployeeRemarks = ({ employeeId }) => {
 
     return (
         <div className="w-full p-4 space-y-4">
-            {/* Header with refresh button */}
             <div className="flex justify-between items-center">
-                <h3 className="text-lg font-semibold text-gray-800">Remarks</h3>
+                <h3 className="text-lg font-semibold" style={{ color: '#c8d0e0' }}>Remarks</h3>
                 <button 
                     onClick={fetchRemarks} 
-                    className="text-blue-500 hover:text-blue-700 flex items-center text-sm"
+                    className="flex items-center text-sm"
+                    style={{ color: '#60a5fa', background: 'none', border: 'none', cursor: 'pointer' }}
                     disabled={isLoading}
                 >
                     <RefreshCcw className={`w-4 h-4 mr-1 ${isLoading ? 'animate-spin' : ''}`} />
@@ -115,94 +115,72 @@ const EmployeeRemarks = ({ employeeId }) => {
                 </button>
             </div>
             
-            {/* Error display */}
             {error && (
-                <div className="bg-red-100 text-red-700 p-3 rounded-lg flex items-start">
+                <div className="p-3 rounded-lg flex items-start" style={{ background: '#1a0a0a', color: '#f87171', border: '1px solid #7f1d1d' }}>
                     <AlertCircle className="w-5 h-5 mr-2 flex-shrink-0 mt-0.5" />
                     <span>{error}</span>
                 </div>
             )}
             
-            {/* Top Input Bar */}
-            <div className="flex items-center border border-gray-300 rounded-full px-3 py-2 bg-white shadow-sm">
-                {/* Avatar */}
-                <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-purple-500 to-blue-500 p-[2px] mr-3">
-                    <div className="bg-white w-full h-full rounded-full flex items-center justify-center">
-                        {currentUser.avatar ? (
-                            <img
-                                src={currentUser.avatar}
-                                alt="avatar"
-                                className="w-full h-full object-cover rounded-full"
-                            />
-                        ) : (
-                            <User className="text-black w-5 h-5" />
-                        )}
-                    </div>
+            <div className="flex items-center rounded px-3 py-2" style={{ border: '1px solid #2a2a3a', background: '#1a1a24' }}>
+                <div className="w-10 h-10 rounded-full mr-3 flex items-center justify-center flex-shrink-0" style={{ background: '#1e3a5f', border: '1px solid #3b82f6', color: '#93c5fd' }}>
+                    {currentUser.avatar ? (
+                        <img src={currentUser.avatar} alt="avatar" className="w-full h-full object-cover rounded-full" />
+                    ) : (
+                        <User className="w-5 h-5" />
+                    )}
                 </div>
 
-                {/* Input Field */}
                 <input
                     type="text"
                     placeholder={`Write a remark as ${currentUser.name}...`}
-                    className="flex-1 outline-none border-none text-sm text-gray-700 placeholder:text-gray-400 bg-transparent"
+                    className="flex-1 outline-none border-none text-sm bg-transparent"
+                    style={{ color: '#c8d0e0' }}
                     value={comment}
                     onChange={(e) => setComment(e.target.value)}
                     onKeyDown={(e) => e.key === 'Enter' && handlePost()}
                     disabled={isLoading}
                 />
 
-                {/* Send Button */}
                 <button 
                     onClick={handlePost} 
                     disabled={isLoading || !comment.trim()}
-                    className={`${!comment.trim() ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+                    style={{ background: 'none', border: 'none', cursor: !comment.trim() ? 'not-allowed' : 'pointer', opacity: !comment.trim() ? 0.5 : 1 }}
                 >
-                    <Send className={`w-5 h-5 ${isLoading ? 'text-gray-400' : 'text-blue-500 hover:text-blue-600'}`} />
+                    <Send className="w-5 h-5" style={{ color: isLoading ? '#4a5570' : '#60a5fa' }} />
                 </button>
             </div>
 
-            {/* Loading indicator */}
             {isLoading && comments.length === 0 && (
                 <div className="flex justify-center py-8">
-                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2" style={{ borderColor: '#3b82f6' }}></div>
                 </div>
             )}
 
-            {/* Empty state */}
             {!isLoading && comments.length === 0 && (
-                <div className="text-center py-8 text-gray-500">
+                <div className="text-center py-8" style={{ color: '#6b7a99' }}>
                     <User className="w-12 h-12 mx-auto mb-2 opacity-25" />
                     <p>No remarks yet. Be the first to add one!</p>
                 </div>
             )}
 
-            {/* Comments Feed */}
             <div className="space-y-3">
                 {comments.map((note) => (
                     <div key={note.id || note._id} className="flex items-start gap-3">
-                        {/* Avatar & Name Column */}
                         <div className="flex flex-col items-center min-w-[50px]">
-                            <div className="w-9 h-9 rounded-full bg-gradient-to-tr from-purple-500 to-blue-500 p-[2px]">
-                                <div className="bg-white w-full h-full rounded-full flex items-center justify-center">
-                                    <User className="text-black w-4 h-4" />
-                                </div>
+                            <div className="w-9 h-9 rounded-full flex items-center justify-center" style={{ background: '#1e3a5f', border: '1px solid #3b82f6', color: '#93c5fd' }}>
+                                <User className="w-4 h-4" />
                             </div>
-                            <span className="text-xs mt-1 text-gray-700 font-medium">
+                            <span className="text-xs mt-1 font-medium" style={{ color: '#6b7a99' }}>
                                 {note.created_by_name || note.creator_name || 'User'}
                             </span>
                         </div>
 
-                        {/* Comment Box */}
-                        <div className="bg-gray-100 rounded-lg p-3 shadow-sm flex-1">
+                        <div className="rounded-lg p-3 flex-1" style={{ background: '#000', border: '1px solid #1f1f27' }}>
                             <div className="flex justify-between items-center mb-1">
-                                <span className="text-xs text-gray-500">{formatTime(note.created_at)}</span>
-                                {note.can_edit && (
-                                    <div className="flex space-x-1">
-                                        {/* We can add edit/delete functionality here in the future */}
-                                    </div>
-                                )}
+                                <span className="text-xs" style={{ color: '#4a5570' }}>{formatTime(note.created_at)}</span>
                             </div>
-                            <p className="text-sm text-gray-800">{note.remark || note.content}</p>
+                            <p className="text-sm" style={{ color: '#c8d0e0' }}>{note.remark || note.content}</p>
                         </div>
                     </div>
                 ))}

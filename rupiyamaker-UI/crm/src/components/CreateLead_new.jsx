@@ -5084,14 +5084,23 @@ function CreateLead() {
   return (
     <>
       <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" />
-      <div className="flex-1 p-6 mx-auto main-content max-w-8xl min-h-screen">
-        {/* Tab Selector - Fixed positioning to prevent shifts */}
-        <div className="flex items-center mb-3 space-x-2 sticky top-0 z-10 bg-black py-2 border-b border-gray-200">
+      <div
+        id="create-lead-page-root"
+        className="create-lead-page main-content flex min-h-screen min-w-0 max-w-none flex-1 flex-col px-0 py-0"
+      >
+        {/* HubSpot-style page header */}
+        <div className="create-lead-top-bar">
+          <div>
+            <h1>Create Lead</h1>
+            <p>Add and qualify a new lead before assigning it to your pipeline.</p>
+          </div>
+        </div>
+
+        {/* HubSpot-style tabs */}
+        <div className="create-lead-view-toggle-bar">
           <button
-            className={`px-6 py-2 rounded-t-md font-extrabold text-xl transition-all duration-200 transform hover:scale-105 active:scale-95 ${activeTab === "all"
-              ? "bg-sky-400 text-white"
-              : "bg-neutral-800 text-gray-300 hover:bg-neutral-700"
-              }`}
+            type="button"
+            className={`create-lead-view-toggle-btn ${activeTab === "all" ? "active" : ""}`}
             onClick={() => {
               animateButton('allTabBtn');
               setActiveTab("all");
@@ -5100,10 +5109,8 @@ function CreateLead() {
             Create
           </button>
           <button
-            className={`px-6 py-2 rounded-t-md font-extrabold text-xl transition-all duration-200 transform hover:scale-105 active:scale-95 ${activeTab === "reassignment"
-              ? "bg-sky-400 text-white"
-              : "bg-neutral-800 text-gray-300 hover:bg-neutral-700"
-              }`}
+            type="button"
+            className={`create-lead-view-toggle-btn ${activeTab === "reassignment" ? "active" : ""}`}
             onClick={() => {
               animateButton('reassignmentTabBtn');
               setActiveTab("reassignment");
@@ -5112,133 +5119,117 @@ function CreateLead() {
             Transfer Request
           </button>
         </div>
+
         {activeTab === "all" && (
-          <div className="space-y-6">
-            {/* Product selector - Single row layout with fixed positioning */}
-            <div className="p-6 bg-white rounded-lg shadow-md card">
-              <div className="mb-6 text-xl font-bold card-title text-[#03B0F5]">Select Product Type</div>
-              <div className="form-section">
-                <div className="form-group">
-                  {/* Single row with equal heights and consistent spacing */}
-                  <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-end">
-                    {/* Product Type - 4 columns */}
-                    <div className="lg:col-span-4">
-                      <label className="block mb-2 text-md font-bold text-black form-label required-field">
-                        Product Type<span className="ml-1 text-red-400">*</span>
-                      </label>
-                      <div className="h-[42px]">
-                        <SearchableSelect
-                          options={loanTypes && loanTypes.length > 0 ? loanTypes.map(loanType => ({
-                            value: loanType.name,
-                            label: loanType.name
-                          })) : []}
-                          value={productType}
-                          onChange={(value) => {
-                            setProductType(value);
-                            // Clear validation error when user selects
-                            if (value && showValidationErrors) {
-                              setFormValidationErrors(prev => ({ ...prev, productType: false }));
-                            }
-                          }}
-                          placeholder={loadingLoanTypes ? "Loading..." : "Select Product"}
-                          searchPlaceholder="Search products..."
-                          disabled={loadingLoanTypes || showLeadForm || !!existingLeadData}
-                          emptyMessage={!loadingLoanTypes ? "No loan types available" : "Loading..."}
-                          className={`form-select h-full ${showValidationErrors && formValidationErrors.productType ? 'border-red-500' : ''}`}
-                        />
-                        {showValidationErrors && formValidationErrors.productType && (
-                          <p className="text-red-500 text-sm mt-1">Product Type is required</p>
-                        )}
-                      </div>
-                    </div>
-                    
-                    {/* Mobile Number - 5 columns */}
-                    <div className="lg:col-span-5">
-                      <label className="block mb-2 text-md font-bold text-black form-label required-field">
-                        Mobile Number<span className="ml-1 text-red-400">*</span>
-                      </label>
-                      <div className="h-[42px]">
-                        <input
-                          type="text"
-                          className={`w-full h-full px-3 py-2 text-white border rounded-lg form-control border-neutral-800 bg-neutral-800 focus:outline-none ${
-                            mobileValidationError || (showValidationErrors && formValidationErrors.mobileNumber) 
-                              ? 'border-red-500 focus:border-red-500' 
-                              : 'focus:border-sky-400'
-                          } ${(showLeadForm || !!existingLeadData) ? 'opacity-60 cursor-not-allowed' : ''}`}
-                          placeholder="Enter Mobile Number"
-                          value={mobileNumber}
-                          onChange={handleMobileNumberChange}
-                          disabled={showLeadForm || !!existingLeadData}
-                          readOnly={showLeadForm || !!existingLeadData}
-                        />
-                      </div>
-                      {showValidationErrors && formValidationErrors.mobileNumber && (
-                        <p className="text-red-500 text-sm mt-1">Mobile Number is required</p>
-                      )}
-                    </div>
-                    
-                    {/* Check Button - 3 columns */}
-                    <div className="lg:col-span-3">
-                      <label className="block mb-2 text-md font-bold text-transparent">Action</label>
-                      <div className="h-[42px]">
-                        <button
-                          type="button"
-                          className={`w-full h-full px-4 py-2 font-bold text-white rounded-lg btn transition-all duration-300 transform ${
-                            showLeadForm 
-                              ? "bg-green-500 hover:bg-green-600 cursor-default" 
-                              : existingLeadData
-                              ? "bg-yellow-600 cursor-default opacity-90"
-                              : checkMobileLoading
-                              ? "bg-gray-400 cursor-not-allowed scale-95"
-                              : "bg-sky-400 hover:bg-sky-500 hover:scale-105 active:scale-95"
-                          } ${buttonAnimations.checkMobileBtn ? 'animate-pulse scale-95' : ''}`}
-                          id="checkMobile"
-                          onClick={showLeadForm || existingLeadData ? undefined : handleCheckMobile}
-                          disabled={showLeadForm || !!existingLeadData || checkMobileLoading}
-                        >
-                          {showLeadForm ? (
-                            <>
-                              <i className="fas fa-check mr-2"></i>
-                              Loaded
-                            </>
-                          ) : existingLeadData ? (
-                            <>
-                              <i className="fas fa-exclamation-triangle mr-2"></i>
-                              Duplicate Found
-                            </>
-                          ) : checkMobileLoading ? (
-                            <>
-                              <i className="fas fa-spinner fa-spin mr-2"></i>
-                              Checking...
-                            </>
-                          ) : (
-                            "Check & Load"
-                          )}
-                        </button>
-                      </div>
-                    </div>
+          <div className="create-lead-content-stack">
+            {/* Select Product Type */}
+            <div className="create-lead-panel create-lead-product-strip">
+              <div className="create-lead-panel-header">
+                <h3>Select Product Type</h3>
+              </div>
+              <div className="create-lead-panel-body">
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-12 md:items-end md:gap-x-4 md:gap-y-3">
+                <div className="md:col-span-5">
+                  <label htmlFor="create-lead-product-type" className="create-lead-field-label">
+                    Product Type<span className="ml-0.5 text-red-500">*</span>
+                  </label>
+                  <div className="h-10 w-full min-w-0">
+                    <SearchableSelect
+                      id="create-lead-product-type"
+                      options={loanTypes && loanTypes.length > 0 ? loanTypes.map(loanType => ({
+                        value: loanType.name,
+                        label: loanType.name
+                      })) : []}
+                      value={productType}
+                      onChange={(value) => {
+                        setProductType(value);
+                        if (value && showValidationErrors) {
+                          setFormValidationErrors(prev => ({ ...prev, productType: false }));
+                        }
+                      }}
+                      placeholder={loadingLoanTypes ? "Loading..." : "Select Product"}
+                      searchPlaceholder="Search products..."
+                      disabled={loadingLoanTypes || showLeadForm || !!existingLeadData}
+                      emptyMessage={!loadingLoanTypes ? "No loan types available" : "Loading..."}
+                      className={`form-select h-full ${showValidationErrors && formValidationErrors.productType ? 'border-red-500' : ''}`}
+                    />
                   </div>
-                  
-                  {/* Error message row - Fixed height to prevent layout shifts */}
-                  <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 mt-2">
-                    <div className="lg:col-span-4"></div>
-                    <div className="lg:col-span-5">
-                      <div className="h-[32px] flex items-start">
-                        {mobileValidationError && (
-                          <div className="text-xl font-bold text-red-600">
-                            {mobileValidationError}
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                    <div className="lg:col-span-3"></div>
-                  </div>
+                  {showValidationErrors && formValidationErrors.productType && (
+                    <p className="mt-1 text-xs text-red-600">Product Type is required</p>
+                  )}
                 </div>
+
+                <div className="md:col-span-4">
+                  <label htmlFor="create-lead-mobile" className="create-lead-field-label">
+                    Mobile Number<span className="ml-0.5 text-red-500">*</span>
+                  </label>
+                  <div className="h-10 w-full min-w-0">
+                    <input
+                      id="create-lead-mobile"
+                      type="text"
+                      className={`create-lead-input-dark h-full ${
+                        mobileValidationError || (showValidationErrors && formValidationErrors.mobileNumber)
+                          ? "border-red-500"
+                          : ""
+                      } ${showLeadForm || !!existingLeadData ? "cursor-not-allowed opacity-60" : ""}`}
+                      placeholder="Enter mobile number"
+                      value={mobileNumber}
+                      onChange={handleMobileNumberChange}
+                      disabled={showLeadForm || !!existingLeadData}
+                      readOnly={showLeadForm || !!existingLeadData}
+                    />
+                  </div>
+                  {showValidationErrors && formValidationErrors.mobileNumber && (
+                    <p className="mt-1 text-xs text-red-600">Mobile Number is required</p>
+                  )}
+                </div>
+
+                <div className="md:col-span-3 md:flex md:justify-end">
+                  <button
+                    type="button"
+                    className={`create-lead-btn-primary ${
+                      showLeadForm
+                        ? "create-lead-btn-success"
+                        : existingLeadData
+                        ? "create-lead-btn-warning"
+                        : checkMobileLoading
+                        ? ""
+                        : ""
+                    } ${buttonAnimations.checkMobileBtn ? "animate-pulse" : ""}`}
+                    id="checkMobile"
+                    onClick={showLeadForm || existingLeadData ? undefined : handleCheckMobile}
+                    disabled={showLeadForm || !!existingLeadData || checkMobileLoading}
+                  >
+                    {showLeadForm ? (
+                      <span className="inline-flex items-center justify-center gap-2">
+                        <i className="fas fa-check text-sm" />
+                        Loaded
+                      </span>
+                    ) : existingLeadData ? (
+                      <span className="inline-flex items-center justify-center gap-2">
+                        <i className="fas fa-exclamation-triangle text-sm" />
+                        Duplicate
+                      </span>
+                    ) : checkMobileLoading ? (
+                      <span className="inline-flex items-center justify-center gap-2">
+                        <i className="fas fa-spinner fa-spin text-sm" />
+                        Checking…
+                      </span>
+                    ) : (
+                      "Check & Load"
+                    )}
+                  </button>
+                </div>
+              </div>
+
+              {mobileValidationError ? (
+                <p className="mt-3 text-sm font-medium leading-snug text-red-600">{mobileValidationError}</p>
+              ) : null}
               </div>
             </div>
 
             {/* Mobile Check Results */}
-            <div>
+            <div className="w-full min-w-0">
               {/* ─── MULTI-LEAD DUPLICATE DISPLAY ─── */}
               {existingLeadData && (() => {
                 const leads = allDuplicateLeads.length > 0 ? allDuplicateLeads : [existingLeadData];
@@ -5259,12 +5250,12 @@ function CreateLead() {
                 const unlockD = new Date(refD); unlockD.setDate(unlockD.getDate() + (existingLeadData?.reassignment_period || 0));
                 const colCount = 8;
                 return (
-                  <div className="mb-6 bg-[#0d1117] rounded-xl border border-neutral-700 overflow-hidden">
+                  <div className="mb-2 bg-[#0d1117] rounded-lg border border-neutral-700 overflow-hidden">
                     {/* Header strip */}
-                    <div className="flex flex-wrap items-center gap-2 px-5 py-2.5 bg-neutral-800 border-b border-neutral-700">
+                    <div className="flex flex-wrap items-center gap-2 px-3 py-1.5 bg-neutral-800 border-b border-neutral-700">
                       <svg className="w-4 h-4 text-yellow-400 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" /></svg>
                       <span className="text-yellow-400 font-bold text-xs uppercase tracking-wider">Duplicate Lead Found</span>
-                      <button className="ml-auto w-6 h-6 flex items-center justify-center rounded-full text-neutral-400 hover:text-white hover:bg-neutral-700 transition" onClick={handleDuplicatePanelClose} title="Close duplicate panel">
+                      <button className="crm-compact-touch ml-auto w-6 h-6 min-h-0 min-w-0 flex items-center justify-center rounded-full text-neutral-400 hover:text-white hover:bg-neutral-700 transition" onClick={handleDuplicatePanelClose} title="Close duplicate panel">
                         <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" /></svg>
                       </button>
                     </div>
@@ -5277,14 +5268,14 @@ function CreateLead() {
                       <table className="w-full text-sm" style={{ minWidth: '1000px' }}>
                         <thead>
                           <tr className="bg-[#060d1a] border-b border-neutral-700">
-                            <th className="text-[#00a0e3] font-bold px-4 py-2.5 text-center text-xs tracking-wider uppercase whitespace-nowrap w-12">#</th>
-                            <th className="text-[#00a0e3] font-bold px-4 py-2.5 text-left text-xs tracking-wider uppercase whitespace-nowrap">Date</th>
-                            <th className="text-[#00a0e3] font-bold px-4 py-2.5 text-left text-xs tracking-wider uppercase whitespace-nowrap">Created By</th>
-                            <th className="text-[#00a0e3] font-bold px-4 py-2.5 text-left text-xs tracking-wider uppercase whitespace-nowrap">Team Name</th>
-                            <th className="text-[#00a0e3] font-bold px-4 py-2.5 text-left text-xs tracking-wider uppercase whitespace-nowrap">Customer Name</th>
-                            <th className="text-[#00a0e3] font-bold px-4 py-2.5 text-center text-xs tracking-wider uppercase whitespace-nowrap">Lead Status</th>
-                            <th className="text-[#00a0e3] font-bold px-4 py-2.5 text-center text-xs tracking-wider uppercase whitespace-nowrap">Cooldown</th>
-                            <th className="text-[#00a0e3] font-bold px-4 py-2.5 text-center text-xs tracking-wider uppercase whitespace-nowrap">Actions</th>
+                            <th className="text-[#00a0e3] font-bold px-2 py-1.5 text-center text-[10px] tracking-wider uppercase whitespace-nowrap w-12">#</th>
+                            <th className="text-[#00a0e3] font-bold px-2 py-1.5 text-left text-[10px] tracking-wider uppercase whitespace-nowrap">Date</th>
+                            <th className="text-[#00a0e3] font-bold px-2 py-1.5 text-left text-[10px] tracking-wider uppercase whitespace-nowrap">Created By</th>
+                            <th className="text-[#00a0e3] font-bold px-2 py-1.5 text-left text-[10px] tracking-wider uppercase whitespace-nowrap">Team Name</th>
+                            <th className="text-[#00a0e3] font-bold px-2 py-1.5 text-left text-[10px] tracking-wider uppercase whitespace-nowrap">Customer Name</th>
+                            <th className="text-[#00a0e3] font-bold px-2 py-1.5 text-center text-[10px] tracking-wider uppercase whitespace-nowrap">Lead Status</th>
+                            <th className="text-[#00a0e3] font-bold px-2 py-1.5 text-center text-[10px] tracking-wider uppercase whitespace-nowrap">Cooldown</th>
+                            <th className="text-[#00a0e3] font-bold px-2 py-1.5 text-center text-[10px] tracking-wider uppercase whitespace-nowrap">Actions</th>
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-neutral-800/50">
@@ -5890,28 +5881,27 @@ function CreateLead() {
 
             {/* LEAD FORM - Fixed height to prevent layout shifts */}
             {showLeadForm && (
-              <div className="mb-6 bg-white border-3 border-[#00bcd4] rounded-xl shadow-lg" id="leadForm" ref={leadFormRef}>
-                {/* Header */}
-                <div className="bg-[#00bcd4] rounded-t-xl px-8 py-4 flex items-center justify-between">
-                  <h2 className="text-white font-bold text-lg uppercase tracking-wide">New Lead Details</h2>
-                  <span className="text-white text-sm opacity-80">Fill all required fields (*)</span>
+              <div className="create-lead-form-card mb-2" id="leadForm" ref={leadFormRef}>
+                <div className="create-lead-form-card-header">
+                  <h2>New Lead Details</h2>
+                  <span>Required fields marked *</span>
                 </div>
 
-                <div className="p-8">
+                <div className="create-lead-form-card-body w-full max-w-none">
                   {/* Row 1: Source Name, Customer Name, Mobile Number */}
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mb-8">
-                    <div className="flex flex-col gap-2">
-                      <label className="block font-bold mb-2 uppercase" style={{ color: "black", fontWeight: 650, fontSize: "15px" }}>SOURCE NAME <span className="text-red-500">*</span></label>
+                  <div className="mb-2 grid grid-cols-1 gap-x-2 gap-y-2 md:grid-cols-3 md:gap-x-2">
+                    <div className="flex flex-col gap-0.5">
+                      <label className="block font-bold mb-0.5 uppercase text-black text-[11px] leading-tight">SOURCE NAME <span className="text-red-500">*</span></label>
                       <div ref={sourceDropdownRef} className="relative w-full">
                         <div
-                          className={`w-full p-3 border-2 rounded-md bg-white text-green-600 text-md font-bold min-h-[52px] flex items-center cursor-pointer transition-all duration-300 hover:border-[#0097a7] ${loadingSettings ? 'opacity-60 cursor-not-allowed' : ''} ${showValidationErrors && formValidationErrors.campaignName ? 'border-red-500 bg-red-50' : 'border-[#00bcd4]'}`}
+                          className={`w-full p-2 border-2 rounded-md bg-white text-green-600 text-xs font-bold min-h-[38px] flex items-center cursor-pointer transition-all duration-300 hover:border-[#0097a7] ${loadingSettings ? 'opacity-60 cursor-not-allowed' : ''} ${showValidationErrors && formValidationErrors.campaignName ? 'border-red-500 bg-red-50' : 'border-[#00bcd4]'}`}
                           onClick={() => !loadingSettings && setShowSourceDropdown(prev => !prev)}
                         >
-                          <span className={campaignName ? 'text-green-600 font-bold' : 'text-gray-400 font-normal text-sm'}>
+                          <span className={campaignName ? 'text-green-600 font-bold text-xs' : 'text-gray-400 font-normal text-xs'}>
                             {campaignName || 'Select Source'}
                           </span>
                           <div className="ml-auto flex-shrink-0">
-                            <svg className={`w-5 h-5 text-green-600 transition-transform duration-200 ${showSourceDropdown ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
+                            <svg className={`w-4 h-4 text-green-600 transition-transform duration-200 ${showSourceDropdown ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
                           </div>
                         </div>
                         {showSourceDropdown && !loadingSettings && (
@@ -5957,15 +5947,15 @@ function CreateLead() {
                           </div>
                         )}
                         {showValidationErrors && formValidationErrors.campaignName && (
-                          <p className="text-red-500 text-xs mt-1">Source Name is required</p>
+                          <p className="text-red-500 text-[10px] mt-0.5 leading-tight">Source Name is required</p>
                         )}
                       </div>
                     </div>
-                    <div className="flex flex-col gap-2">
-                      <label className="block font-bold mb-2 uppercase" style={{ color: "black", fontWeight: 650, fontSize: "15px" }}>CUSTOMER NAME <span className="text-red-500">*</span></label>
+                    <div className="flex flex-col gap-0.5">
+                      <label className="block font-bold mb-0.5 uppercase text-black text-[11px] leading-tight">CUSTOMER NAME <span className="text-red-500">*</span></label>
                       <input
                         type="text"
-                        className={`w-full p-3 border-2 rounded-md bg-white text-green-600 text-md font-bold transition-all duration-300 focus:border-[#0097a7] focus:shadow-[0_0_0_3px_rgba(0,188,212,0.1)] ${showValidationErrors && formValidationErrors.customerName ? 'border-red-500 bg-red-50' : 'border-[#00bcd4]'}`}
+                        className={`w-full p-2 border-2 rounded-md bg-white text-green-600 text-xs font-bold transition-all duration-300 focus:border-[#0097a7] focus:shadow-[0_0_0_2px_rgba(0,188,212,0.08)] ${showValidationErrors && formValidationErrors.customerName ? 'border-red-500 bg-red-50' : 'border-[#00bcd4]'}`}
                         placeholder="Enter customer name"
                         value={customerName}
                         onChange={(e) => {
@@ -5974,13 +5964,13 @@ function CreateLead() {
                         }}
                       />
                       {showValidationErrors && formValidationErrors.customerName && (
-                        <p className="text-red-500 text-xs mt-1">Customer Name is required</p>
+                        <p className="text-red-500 text-[10px] mt-0.5 leading-tight">Customer Name is required</p>
                       )}
                     </div>
-                    <div className="flex flex-col gap-2">
-                      <label className="block font-bold mb-2 uppercase" style={{ color: "black", fontWeight: 650, fontSize: "15px" }}>MOBILE NUMBER</label>
+                    <div className="flex flex-col gap-0.5">
+                      <label className="block font-bold mb-0.5 uppercase text-black text-[11px] leading-tight">MOBILE NUMBER</label>
                       <input
-                        className="w-full p-3 border-2 border-[#00bcd4] rounded-md bg-gray-100 text-green-600 text-md font-bold cursor-not-allowed"
+                        className="w-full p-2 border-2 border-[#00bcd4] rounded-md bg-gray-100 text-green-600 text-xs font-bold cursor-not-allowed"
                         value={mobileNumber}
                         readOnly
                         title="Mobile number cannot be changed here"
@@ -5989,27 +5979,27 @@ function CreateLead() {
                   </div>
 
                   {/* Row 2: Alternate Number, Pincode & City (combined), Data Code (permission) */}
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mb-8">
-                    <div className="flex flex-col gap-2">
-                      <label className="block font-bold mb-2 uppercase" style={{ color: "black", fontWeight: 650, fontSize: "15px" }}>ALTERNATE NUMBER</label>
+                  <div className="mb-2 grid grid-cols-1 gap-x-2 gap-y-2 md:grid-cols-3 md:gap-x-2">
+                    <div className="flex flex-col gap-0.5">
+                      <label className="block font-bold mb-0.5 uppercase text-black text-[11px] leading-tight">ALTERNATE NUMBER</label>
                       <input
                         type="text"
-                        className={`w-full p-3 border-2 rounded-md bg-white text-green-600 text-md font-bold transition-all duration-300 focus:border-[#0097a7] focus:shadow-[0_0_0_3px_rgba(0,188,212,0.1)] ${alternateNumber && alternateNumber === mobileNumber ? 'border-red-500 bg-red-50' : 'border-[#00bcd4]'}`}
+                        className={`w-full p-2 border-2 rounded-md bg-white text-green-600 text-xs font-bold transition-all duration-300 focus:border-[#0097a7] focus:shadow-[0_0_0_2px_rgba(0,188,212,0.08)] ${alternateNumber && alternateNumber === mobileNumber ? 'border-red-500 bg-red-50' : 'border-[#00bcd4]'}`}
                         placeholder="Enter 10-digit alternate number"
                         value={alternateNumber}
                         onChange={handleAlternateNumberChange}
                         maxLength="10"
                       />
                       {alternateNumber && alternateNumber === mobileNumber && (
-                        <p className="text-red-500 text-xs mt-1">Must be different from mobile number</p>
+                        <p className="text-red-500 text-[10px] mt-0.5 leading-tight">Must be different from mobile number</p>
                       )}
                     </div>
-                    <div className="flex flex-col gap-2">
-                      <label className="block font-bold mb-2 uppercase" style={{ color: "black", fontWeight: 650, fontSize: "15px" }}>PINCODE & CITY</label>
+                    <div className="flex flex-col gap-0.5">
+                      <label className="block font-bold mb-0.5 uppercase text-black text-[11px] leading-tight">PINCODE & CITY</label>
                       <div className="relative w-full">
                         <input
                           type="text"
-                          className="w-full p-3 pr-12 border-2 border-[#00bcd4] rounded-md bg-white text-green-600 text-md font-bold transition-all duration-300 focus:border-[#0097a7] focus:shadow-[0_0_0_3px_rgba(0,188,212,0.1)]"
+                          className="w-full p-2 pr-10 border-2 border-[#00bcd4] rounded-md bg-white text-green-600 text-xs font-bold transition-all duration-300 focus:border-[#0097a7] focus:shadow-[0_0_0_2px_rgba(0,188,212,0.08)]"
                           placeholder="Pincode & City (e.g. 400001 Mumbai)"
                           value={pincodeCity}
                           onChange={e => setPincodeCity(e.target.value)}
@@ -6024,7 +6014,7 @@ function CreateLead() {
                               window.open('https://www.google.com/maps', '_blank');
                             }
                           }}
-                          className="absolute right-2 top-1/2 transform -translate-y-1/2 p-1.5 bg-[#00bcd4] text-white rounded-md hover:bg-[#0097a7] transition-colors"
+                          className="crm-compact-touch absolute right-1.5 top-1/2 transform -translate-y-1/2 p-1 bg-[#00bcd4] text-white rounded-md hover:bg-[#0097a7] transition-colors"
                           title="Search on Google Maps"
                         >
                           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
@@ -6032,11 +6022,11 @@ function CreateLead() {
                       </div>
                     </div>
                     {canViewDataCode && (
-                      <div className="flex flex-col gap-2">
-                        <label className="block font-bold mb-2 uppercase" style={{ color: "black", fontWeight: 650, fontSize: "15px" }}>DATA CODE</label>
+                      <div className="flex flex-col gap-0.5">
+                        <label className="block font-bold mb-0.5 uppercase text-black text-[11px] leading-tight">DATA CODE</label>
                         <div ref={dataCodeDropdownRef} className="relative w-full">
                           <div
-                            className="w-full p-3 border-2 border-[#00bcd4] rounded-md bg-white text-green-600 text-md font-bold min-h-[52px] flex flex-wrap gap-2 items-center cursor-pointer transition-all duration-300 hover:border-[#0097a7]"
+                            className="w-full p-2 border-2 border-[#00bcd4] rounded-md bg-white text-green-600 text-xs font-bold min-h-[38px] flex flex-wrap gap-1 items-center cursor-pointer transition-all duration-300 hover:border-[#0097a7]"
                             onClick={() => setShowDataCodeDropdown(prev => !prev)}
                           >
                             {selectedDataCodes.length === 0 && !dataCode && (
@@ -6046,14 +6036,14 @@ function CreateLead() {
                               selectedDataCodes.map(code => (
                                 <div key={code} className="flex items-center gap-1 bg-[#03B0F5] text-white px-2 py-1 rounded-md text-xs font-bold">
                                   <span>{code}</span>
-                                  <button type="button" className="text-white hover:text-red-200 ml-1 text-sm" onClick={e => { e.stopPropagation(); setSelectedDataCodes(prev => prev.filter(c => c !== code)); }}>&times;</button>
+                                  <button type="button" className="crm-compact-touch text-white hover:text-red-200 ml-1 text-xs leading-none min-w-0 px-0.5" onClick={e => { e.stopPropagation(); setSelectedDataCodes(prev => prev.filter(c => c !== code)); }}>&times;</button>
                                 </div>
                               ))
                             ) : dataCode ? (
                               <span className="text-green-600 font-bold">{dataCode}</span>
                             ) : null}
                             <div className="ml-auto flex-shrink-0">
-                              <svg className={`w-5 h-5 text-green-600 transition-transform duration-200 ${showDataCodeDropdown ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
+                              <svg className={`w-4 h-4 text-green-600 transition-transform duration-200 ${showDataCodeDropdown ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
                             </div>
                           </div>
                           {showDataCodeDropdown && (
@@ -6103,12 +6093,12 @@ function CreateLead() {
                   </div>
 
                   {/* Row 3: Assigned Lead */}
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mb-8">
-                    <div className="flex flex-col gap-2">
-                      <label className="block font-bold mb-2 uppercase" style={{ color: "black", fontWeight: 650, fontSize: "15px" }}>ASSIGNED LEAD <span className="text-red-500">*</span></label>
+                  <div className="mb-1.5 grid grid-cols-1 gap-x-2 gap-y-2 md:grid-cols-3 md:gap-x-2">
+                    <div className="flex flex-col gap-0.5">
+                      <label className="block font-bold mb-0.5 uppercase text-black text-[11px] leading-tight">ASSIGNED LEAD <span className="text-red-500">*</span></label>
                       <div ref={assignDropdownRef} className="relative w-full">
                         <div
-                          className={`w-full p-3 border-2 border-[#00bcd4] rounded-md text-green-600 text-md font-bold min-h-[52px] flex flex-wrap gap-2 items-center transition-all duration-300 ${isAssignedLeadReadOnly ? 'bg-gray-100 cursor-not-allowed' : 'bg-white cursor-pointer hover:border-[#0097a7]'} ${showValidationErrors && formValidationErrors.assignedTo ? 'border-red-500 bg-red-50' : ''}`}
+                          className={`w-full p-2 border-2 border-[#00bcd4] rounded-md text-green-600 text-xs font-bold min-h-[38px] flex flex-wrap gap-1 items-center transition-all duration-300 ${isAssignedLeadReadOnly ? 'bg-gray-100 cursor-not-allowed' : 'bg-white cursor-pointer hover:border-[#0097a7]'} ${showValidationErrors && formValidationErrors.assignedTo ? 'border-red-500 bg-red-50' : ''}`}
                           onClick={() => { if (!isAssignedLeadReadOnly) setShowAssignPopup(prev => !prev); }}
                         >
                           {assignedTo.length === 0 && (
@@ -6124,13 +6114,13 @@ function CreateLead() {
                                 </div>
                                 <span className="text-xs font-bold">{displayName}</span>
                                 {!isAssignedLeadReadOnly && (
-                                  <button type="button" className="text-white hover:text-red-200 ml-1 text-sm" onClick={(e) => { e.stopPropagation(); handleRemoveAssignee(assignee); }}>×</button>
+                                  <button type="button" className="crm-compact-touch text-white hover:text-red-200 ml-1 text-xs leading-none min-w-0 px-0.5" onClick={(e) => { e.stopPropagation(); handleRemoveAssignee(assignee); }}>×</button>
                                 )}
                               </div>
                             );
                           })}
                           <div className="ml-auto flex-shrink-0">
-                            <svg className={`w-5 h-5 text-green-600 transition-transform duration-200 ${showAssignPopup ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
+                            <svg className={`w-4 h-4 text-green-600 transition-transform duration-200 ${showAssignPopup ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
                           </div>
                         </div>
                         {showAssignPopup && !isAssignedLeadReadOnly && (() => {
@@ -6193,16 +6183,16 @@ function CreateLead() {
                         })()}
                       </div>
                       {showValidationErrors && formValidationErrors.assignedTo && (
-                        <p className="text-red-500 text-xs mt-1">Please select an assignee</p>
+                        <p className="text-red-500 text-[10px] mt-0.5 leading-tight">Please select an assignee</p>
                       )}
                     </div>
                   </div>
 
                   {/* Action buttons */}
-                  <div className="flex justify-end gap-4 mt-4 pt-6 border-t border-gray-200">
+                  <div className="create-lead-form-actions">
                     <button
                       type="button"
-                      className="px-6 py-2.5 font-semibold text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg border border-gray-300 transition-all"
+                      className="create-lead-btn-secondary"
                       onClick={() => {
                         setShowLeadForm(false);
                         setCustomerName('');
@@ -6226,11 +6216,7 @@ function CreateLead() {
                     <button
                       type="button"
                       id="createLeadBtn"
-                      className={`px-6 py-2.5 font-bold text-white rounded-lg transition-all duration-300 transform ${
-                        createLeadLoading
-                          ? "bg-gray-400 cursor-not-allowed opacity-75"
-                          : "bg-[#00bcd4] hover:bg-[#0097a7] hover:scale-105 active:scale-95 shadow-lg"
-                      } ${buttonAnimations.createLeadBtn ? 'animate-pulse scale-95' : ''}`}
+                      className={`create-lead-btn-submit ${createLeadLoading ? 'opacity-75 cursor-not-allowed' : ''} ${buttonAnimations.createLeadBtn ? 'animate-pulse scale-95' : ''}`}
                       onClick={() => {
                         if (!validateFormFields()) { setShowValidationErrors(true); return; }
                         setShowStatusPopup(true);
@@ -6241,7 +6227,7 @@ function CreateLead() {
                       {createLeadLoading ? (
                         <><i className="fas fa-spinner fa-spin mr-2"></i>Creating...</>
                       ) : (
-                        <>🚀 Create Lead</>
+                        <>Create Lead</>
                       )}
                     </button>
                   </div>
@@ -6259,17 +6245,17 @@ function CreateLead() {
                 <h3 className="text-white font-bold text-xl text-center">Select Lead Status</h3>
                 <p className="text-white/80 text-sm text-center mt-1">Choose the status for this new lead</p>
               </div>
-              <div className="p-8 flex flex-col gap-4">
+              <div className="p-5 sm:p-6 flex flex-col gap-3">
                 <button
                   type="button"
-                  className="w-full py-4 rounded-xl border-2 border-[#00bcd4] bg-[#e0f7fa] hover:bg-[#00bcd4] hover:text-white text-[#00838f] font-bold text-lg transition-all duration-200 flex items-center justify-center gap-3"
+                  className="w-full py-3 rounded-xl border-2 border-[#00bcd4] bg-[#e0f7fa] hover:bg-[#00bcd4] hover:text-white text-[#00838f] font-bold text-base transition-all duration-200 flex items-center justify-center gap-2"
                   onClick={() => { setStatus('lead'); setShowStatusPopup(false); handleSubmit('lead'); }}
                 >
                   <span className="text-2xl">✅</span> Lead
                 </button>
                 <button
                   type="button"
-                  className="w-full py-4 rounded-xl border-2 border-gray-300 bg-gray-50 hover:bg-gray-200 text-gray-700 font-bold text-lg transition-all duration-200 flex items-center justify-center gap-3"
+                  className="w-full py-3 rounded-xl border-2 border-gray-300 bg-gray-50 hover:bg-gray-200 text-gray-700 font-bold text-base transition-all duration-200 flex items-center justify-center gap-2"
                   onClick={() => { setStatus('not_a_lead'); setShowStatusPopup(false); handleSubmit('not_a_lead'); }}
                 >
                   <span className="text-2xl">❌</span> Not a Lead
@@ -6287,11 +6273,13 @@ function CreateLead() {
         )}
 
         {activeTab === "reassignment" && (
-          <TransferRequestsPage
-            navPush={trpNavPush}
-            navBack={trpNavBack}
-            trpNavStateRef={trpNavState}
-          />
+          <div className="create-lead-content-stack create-lead-transfer-tab">
+            <TransferRequestsPage
+              navPush={trpNavPush}
+              navBack={trpNavBack}
+              trpNavStateRef={trpNavState}
+            />
+          </div>
         )}
       </div>
 

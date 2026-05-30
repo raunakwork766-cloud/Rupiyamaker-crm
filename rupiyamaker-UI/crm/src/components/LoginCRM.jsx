@@ -154,6 +154,7 @@ import { formatDate, getISTTimestamp } from '../utils/dateUtils';
 import dayjs from 'dayjs';
 import { leadsService } from '../services/leadsService';
 import useModalHistory from '../hooks/useModalHistory';
+import useNavbarPageSearch from '../hooks/useNavbarPageSearch';
 
 // API base URL - Use proxy in development
 const API_BASE_URL = '/api'; // Always use proxy
@@ -392,10 +393,11 @@ const LoginCRM = ({ user, selectedLoanType: initialLoanType, department = "login
     // CSS styles for sticky headers and smooth animations
     const stickyHeaderStyles = `
         .sticky-table-container {
-            max-height: 600px;
+            flex: 1;
+            min-height: 0;
             overflow-y: auto;
             overflow-x: auto;
-            border-radius: 12px;
+            max-height: none;
         }
         
         .sticky-header {
@@ -685,6 +687,7 @@ const LoginCRM = ({ user, selectedLoanType: initialLoanType, department = "login
     
     const [selectedStatus, setSelectedStatus] = useState('all');
     const [searchTerm, setSearchTerm] = useState('');
+    useNavbarPageSearch(setSearchTerm);
     // ⚡ PERFORMANCE: Debounced search term to prevent excessive filtering  
     const debouncedSearchTerm = useDebounce(searchTerm, 300);
     const [selectedLead, setSelectedLead] = useState(null);
@@ -5283,7 +5286,7 @@ const LoginCRM = ({ user, selectedLoanType: initialLoanType, department = "login
     return (
         <React.Fragment>
             <style>{stickyHeaderStyles}</style>
-            <div className="min-h-screen bg-black text-white font-sans overflow-hidden">
+            <div className="login-crm-page bg-black text-white font-sans relative">
             {/* Grid background pattern */}
             <div
                 className="fixed inset-0 opacity-[0.02] pointer-events-none z-0"
@@ -5293,66 +5296,9 @@ const LoginCRM = ({ user, selectedLoanType: initialLoanType, department = "login
                 }}
             ></div>
 
-            <div className="relative z-10 flex h-screen">
-                {/* Main Content Area - Full Width */}
-                <div className="flex-1 overflow-y-auto">
-                    <div className="px-6 py-8 space-y-8">
-                        {/* Header */}
-                        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-                    <div>
-                        {/* <h1 className="text-2xl font-bold flex items-center gap-2">
-                            <Users className="w-6 h-6" /> {loanTypes.find(type => type._id === selectedLoanType)?.name || 'Unknown Loan Type'}
-                        </h1> */}
-                        {/* {selectedLoanType !== 'all' && (
-                            <p className="text-md text-gray-400 mt-1 flex items-center gap-2">
-                                <FileText className="w-4 h-4" />
-                                Filtered by: {loanTypes.find(type => type._id === selectedLoanType)?.name || 'Unknown Loan Type'}
-                            </p>
-                        )} */}
-                    </div>
-                    {/* <div className="flex flex-wrap gap-3">
-                        <button 
-                            className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded flex items-center gap-2"
-                            onClick={() => {
-                                message.info('🔄 Force refreshing leads with cache clear...', 1);
-                                forceRefreshLoginLeads();
-                            }}
-                            disabled={loading || clearingCache}
-                            title="Force refresh - clears cache for immediate database sync"
-                        >
-                            {(loading || clearingCache) ? (
-                                <>
-                                    <span className="animate-spin">⏳</span>
-                                    {clearingCache ? 'Clearing Cache...' : 'Loading...'}
-                                </>
-                            ) : (
-                                <>
-                                    <RefreshCw className="w-4 h-4" />
-                                    Force Refresh
-                                </>
-                            )}
-                        </button>
-                            <ReloadOutlined style={{ fontSize: '18px' }} />
-                            Refresh
-                        </button>
-                        {selectedLeads.length > 0 && (
-                            <button
-                                className={`px-4 py-2 rounded flex items-center gap-2 text-white ${
-                                    loadingUsers 
-                                        ? 'bg-gray-400 cursor-not-allowed' 
-                                        : 'bg-green-600 hover:bg-green-700'
-                                }`}
-                                onClick={() => setBulkAssignmentVisible(true)}
-                                disabled={loadingUsers}
-                            >
-                                <UserOutlined />
-                                {loadingUsers ? 'Loading Users...' : `Assign Selected (${selectedLeads.length})`}
-                            </button>
-                        )}
-                    </div> */}
-                </div>
+            <div className="login-crm-shell relative z-10">
                 {/* Status Cards */}
-                <div className="flex flex-nowrap gap-3 mb-6 overflow-x-auto pb-1">
+                <div className="flex flex-nowrap gap-3 mb-3 overflow-x-auto pb-1">
                     {statusCardConfig.map(({ key, label, gradient, shadowColor }, index) => (
                         <div
                             key={index}
@@ -5445,12 +5391,11 @@ const LoginCRM = ({ user, selectedLoanType: initialLoanType, department = "login
                     );
                 })()}
 
-                {/* Table Section - Fixed Controls with Scrollable Table */}
-                <div className="bg-black-900 rounded-xl shadow-lg">
-                    {/* Fixed Controls Section - No Scroll */}
-                    <div className="sticky top-0 z-10 bg-black-900 rounded-t-xl">
+                {/* Table Section - toolbar fixed, table fills remaining height */}
+                <div className="login-crm-table-panel">
+                    <div className="login-crm-toolbar bg-black border-b border-[#1f1f27]">
                         {/* Unified Controls Row - Select, Filter, Search and Results Indicator */}
-                        <div className="flex items-center justify-between gap-4 mb-4 px-4 pt-4">
+                        <div className="flex items-center justify-between gap-4 px-4 py-3">
                             <div className="flex items-center gap-3">
                                 {/* Select Button */}
                                 {(canDeleteLogin() || isUserSuperAdmin) && !checkboxVisible ? (
@@ -5572,7 +5517,7 @@ const LoginCRM = ({ user, selectedLoanType: initialLoanType, department = "login
                                 </button>
                                 
                                 {/* Search Input */}
-                                <div className="relative w-[320px]">
+                                <div className="relative w-[320px] crm-page-inline-search">
                                     <input
                                         type="text"
                                         placeholder="Search by name, phone, email, company, city, status..."
@@ -5618,7 +5563,7 @@ const LoginCRM = ({ user, selectedLoanType: initialLoanType, department = "login
                     </div>
 
                     {/* Scrollable Table Container with Scroll Buttons */}
-                    <div className="w-full bg-black" style={{ marginLeft: 0 }}>
+                    <div className="login-crm-table-wrap w-full bg-black">
                         <div className="relative">
                             {/* Horizontal scroll buttons */}
                             {canScrollLeft && (
@@ -5655,7 +5600,7 @@ const LoginCRM = ({ user, selectedLoanType: initialLoanType, department = "login
                             
                             <div 
                                 ref={tableScrollRef}
-                                className="overflow-auto max-h-[600px] sticky-table-container"
+                                className="login-crm-table-scroll sticky-table-container"
                                 onScroll={updateScrollButtons}
                             >
                                 <table className="min-w-[1700px] w-full">
@@ -6115,6 +6060,7 @@ const LoginCRM = ({ user, selectedLoanType: initialLoanType, department = "login
                         </div>
                         </div>
                     </div>
+                </div>
             
             {/* Add all modals */}
             {/* Operations Modal */}
@@ -7798,9 +7744,6 @@ const LoginCRM = ({ user, selectedLoanType: initialLoanType, department = "login
             )}
 
             </div>
-        </div>
-        </div>
-        </div>
         </div>
         </React.Fragment>
     );

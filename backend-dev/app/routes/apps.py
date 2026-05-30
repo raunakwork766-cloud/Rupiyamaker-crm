@@ -93,7 +93,8 @@ async def upload_image(
             f.write(content)
         
         # Return the URL (adjust this based on your server configuration)
-        image_url = f"https://rupiyamaker.com:8049/media/app-images/{unique_filename}"
+        from app.config import Config
+        image_url = f"{Config.BASE_URL.rstrip('/')}/api/media/app-images/{unique_filename}"
         
         logger.info(f"Image uploaded successfully: {unique_filename} by user {user_id}")
         

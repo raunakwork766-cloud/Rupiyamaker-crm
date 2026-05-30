@@ -1,4 +1,14 @@
 import { useState, useEffect, useRef } from "react";
+import {
+  LEAD_FIELD_LABEL_CLASS,
+  LEAD_FIELD_LABEL_STYLE,
+  LEAD_FIELD_GRID_CLASS,
+  LEAD_FIELD_WRAPPER_CLASS,
+  LEAD_SECTION_CARD_CLASS,
+  LEAD_DROPDOWN_TRIGGER_CLASS,
+  LEAD_TEXTAREA_CLASS,
+  LEAD_INPUT_READONLY_CLASS,
+} from './leadSectionStyles';
 
 export default function HowToProcessSection({ process, onSave, lead, canEdit = true }) {
   // For dummy data, ensure process has default values to prevent errors
@@ -145,8 +155,8 @@ export default function HowToProcessSection({ process, onSave, lead, canEdit = t
   });
   
   // Label styling (matching LoginFormSection)
-  const labelClass = "block font-bold mb-2 uppercase";
-  const labelStyle = { color: "black", fontWeight: 650, fontSize: "15px" };
+  const labelClass = LEAD_FIELD_LABEL_CLASS;
+  const labelStyle = LEAD_FIELD_LABEL_STYLE;
   
   // Ref for the auto-expanding textarea
   const howToProcessTextareaRef = useRef(null);
@@ -756,19 +766,14 @@ export default function HowToProcessSection({ process, onSave, lead, canEdit = t
   };
 
   return (
-    <div className="max-w-9xl mx-auto">
-      
-      
-      {/* Form Container */}
-      <div className="bg-white border-3 border-[#00bcd4] rounded-b-xl p-8">
-        {/* First Row: Processing Bank, Loan Type, Case Type */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mb-8 items-start">
+    <div className={LEAD_SECTION_CARD_CLASS}>
+      <div className={LEAD_FIELD_GRID_CLASS}>
           {/* Processing Bank */}
-          <div className="flex flex-col gap-2">
+          <div className={LEAD_FIELD_WRAPPER_CLASS}>
             <label className={labelClass} style={labelStyle}>LOGIN BANK</label>
             <div className="relative dropdown-container">
               <div
-                className={`w-full p-3 border-2 border-[#00bcd4] rounded-md bg-white text-green-600 text-md font-bold cursor-pointer flex items-center justify-between transition-all duration-300 focus-within:border-[#0097a7] focus-within:shadow-[0_0_0_3px_rgba(0,188,212,0.1)] ${
+                className={`${LEAD_DROPDOWN_TRIGGER_CLASS} ${
                   !canEdit ? 'bg-gray-100 cursor-not-allowed' : ''
                 }`}
                 onClick={() => {
@@ -824,11 +829,11 @@ export default function HowToProcessSection({ process, onSave, lead, canEdit = t
           </div>
 
           {/* Loan Type */}
-          <div className="flex flex-col gap-2">
+          <div className={LEAD_FIELD_WRAPPER_CLASS}>
             <label className={labelClass} style={labelStyle}>LOAN TYPE</label>
             <div className="relative dropdown-container">
               <div
-                className={`w-full p-3 border-2 border-[#00bcd4] rounded-md bg-white text-green-600 text-md font-bold cursor-pointer flex items-center justify-between transition-all duration-300 focus-within:border-[#0097a7] focus-within:shadow-[0_0_0_3px_rgba(0,188,212,0.1)] ${
+                className={`${LEAD_DROPDOWN_TRIGGER_CLASS} ${
                   !canEdit ? 'bg-gray-100 cursor-not-allowed' : ''
                 }`}
                 onClick={() => {
@@ -883,11 +888,11 @@ export default function HowToProcessSection({ process, onSave, lead, canEdit = t
           </div>
 
           {/* Case Type */}
-          <div className="flex flex-col gap-2">
+          <div className={LEAD_FIELD_WRAPPER_CLASS}>
             <label className={labelClass} style={labelStyle}>CASE TYPE</label>
             <div className="relative dropdown-container">
               <div
-                className={`w-full p-3 border-2 border-[#00bcd4] rounded-md bg-white text-md font-bold cursor-pointer flex items-center justify-between transition-all duration-300 focus-within:border-[#0097a7] focus-within:shadow-[0_0_0_3px_rgba(0,188,212,0.1)] ${
+                className={`${LEAD_DROPDOWN_TRIGGER_CLASS} text-md font-bold ${
                   !canEdit ? 'bg-gray-100 cursor-not-allowed' : ''
                 }`}
                 onClick={() => {
@@ -947,15 +952,15 @@ export default function HowToProcessSection({ process, onSave, lead, canEdit = t
         </div>
 
         {/* Second Row: Loan Amount Applied, Tenure (Combined) */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-8 items-start">
+        <div className={`${LEAD_FIELD_GRID_CLASS} md:grid-cols-2 mt-3`}>
           {/* Loan Amount Applied */}
-          <div className="flex flex-col gap-2">
+          <div className={LEAD_FIELD_WRAPPER_CLASS}>
             <label className={labelClass} style={labelStyle}>LOAN AMOUNT APPLIED</label>
             <div className="relative">
-              <span className="absolute left-4 top-1/2 transform -translate-y-1/2 text-[#00bcd4] font-semibold z-10">₹</span>
+              <span className="absolute left-3 top-1/2 transform -translate-y-1/2 text-[#00bcd4] font-semibold z-10">₹</span>
               <input
                 type="text"
-                className="w-full p-3 pl-8 border-2 border-[#00bcd4] rounded-md bg-gray-50 text-green-600 text-md font-bold cursor-not-allowed"
+                className={`${LEAD_INPUT_READONLY_CLASS} pl-8 bg-gray-50`}
                 value={fields.loanAmountRequired}
                 readOnly
                 placeholder="0"
@@ -964,7 +969,7 @@ export default function HowToProcessSection({ process, onSave, lead, canEdit = t
           </div>
 
           {/* Required Tenure — Combined field with mode toggle */}
-          <div className="flex flex-col gap-2">
+          <div className={LEAD_FIELD_WRAPPER_CLASS}>
             <div className="flex items-center justify-between">
               <label className={labelClass} style={labelStyle}>REQUIRED TENURE</label>
               <button
@@ -981,7 +986,7 @@ export default function HowToProcessSection({ process, onSave, lead, canEdit = t
                   <input
                     ref={tenureInputRef}
                     type="text"
-                    className="w-full p-3 pr-36 border-2 border-[#00bcd4] rounded-md bg-gray-50 text-green-600 text-md font-bold cursor-not-allowed"
+                    className={`${LEAD_INPUT_READONLY_CLASS} pr-36 bg-gray-50`}
                     value={getTenureDisplayValue()}
                     readOnly
                     placeholder="Enter months"
@@ -996,7 +1001,7 @@ export default function HowToProcessSection({ process, onSave, lead, canEdit = t
                 <>
                   <input
                     type="text"
-                    className="w-full p-3 pr-36 border-2 border-[#00bcd4] rounded-md bg-gray-50 text-green-600 text-md font-bold cursor-not-allowed"
+                    className={`${LEAD_INPUT_READONLY_CLASS} pr-36 bg-gray-50`}
                     value={getYearsDisplayValue()}
                     readOnly
                     placeholder="Enter years"
@@ -1016,13 +1021,13 @@ export default function HowToProcessSection({ process, onSave, lead, canEdit = t
         </div>
 
         {/* Third Row: Purpose of Loan and How to Process */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-0">
+        <div className={`${LEAD_FIELD_GRID_CLASS} md:grid-cols-2 mt-3`}>
           {/* Purpose of Loan */}
-          <div className="flex flex-col gap-2">
+          <div className={LEAD_FIELD_WRAPPER_CLASS}>
             <label className={labelClass} style={labelStyle}>PURPOSE OF LOAN</label>
             <textarea
               ref={purposeOfLoanTextareaRef}
-              className={`w-full p-3 border-2 border-[#00bcd4] rounded-md bg-white text-green-600 text-md font-bold transition-all duration-300 focus:border-[#0097a7] focus:shadow-[0_0_0_3px_rgba(0,188,212,0.1)] resize-y min-h-[80px] font-inherit ${
+              className={`${LEAD_TEXTAREA_CLASS} ${
                 !canEdit ? 'bg-gray-100 cursor-not-allowed' : ''
               }`}
               value={fields.purposeOfLoan || ""}
@@ -1035,11 +1040,11 @@ export default function HowToProcessSection({ process, onSave, lead, canEdit = t
           </div>
 
           {/* How to Process */}
-          <div className="flex flex-col gap-2">
+          <div className={LEAD_FIELD_WRAPPER_CLASS}>
             <label className={labelClass} style={labelStyle}>HOW TO PROCESS</label>
             <textarea
               ref={howToProcessTextareaRef}
-              className={`w-full p-3 border-2 border-[#00bcd4] rounded-md bg-white text-green-600 text-md font-bold transition-all duration-300 focus:border-[#0097a7] focus:shadow-[0_0_0_3px_rgba(0,188,212,0.1)] resize-y min-h-[80px] font-inherit ${
+              className={`${LEAD_TEXTAREA_CLASS} ${
                 !canEdit ? 'bg-gray-100 cursor-not-allowed' : ''
               }`}
               value={fields.howToProcess || ""}
@@ -1051,7 +1056,6 @@ export default function HowToProcessSection({ process, onSave, lead, canEdit = t
             />
           </div>
         </div>
-      </div>
     </div>
   );
 }

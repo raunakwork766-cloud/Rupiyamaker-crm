@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Deployment script for Rupiyamaker CRM with auto-generated SSL certificates
-# Domain: crm.rupiyamakercrm.online
+# Domain: crm.fixyourfinance.ai
 # Ports: 5902 (HTTP), 5903 (HTTPS), 8049 (Backend)
 
 set -e
@@ -30,7 +30,7 @@ error() {
 }
 
 # Configuration
-DOMAIN="crm.rupiyamakercrm.online"
+DOMAIN="crm.fixyourfinance.ai"
 HTTP_PORT="5902"
 BACKEND_PORT="8049"
 CONTAINER_NAME="rupiyamaker"

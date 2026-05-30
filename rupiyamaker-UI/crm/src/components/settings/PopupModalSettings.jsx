@@ -4,39 +4,38 @@ import { Loader2 } from 'lucide-react';
 
 const API_BASE_URL = '/api';
 
-// accent border color per type — matches HTML mockup left-bar colors
 const MODAL_TYPES = [
     {
         key: 'announcement',
         label: 'Announcements',
         description: 'Company-wide alerts',
         icon: '📢',
-        iconColor: '#ff4757',
-        accentColor: '#ff4757',   // --danger
+        iconColor: '#ff7a59',
+        accentColor: '#ff7a59',
     },
     {
         key: 'warning',
         label: 'Warnings',
         description: 'Violation or urgent alerts',
         icon: '⚠️',
-        iconColor: '#ffa502',
-        accentColor: '#ffa502',
+        iconColor: '#f5a623',
+        accentColor: '#f5a623',
     },
     {
         key: 'task',
         label: 'Tasks Prompt',
         description: 'Pending callbacks & logs',
         icon: '📋',
-        iconColor: '#4e54c8',     // --primary
-        accentColor: '#4e54c8',
+        iconColor: '#00a4bd',
+        accentColor: '#00a4bd',
     },
     {
         key: 'ticket',
         label: 'Ticket Updates',
         description: 'Updates on open tickets',
         icon: '🎫',
-        iconColor: '#2ed573',     // --success
-        accentColor: '#2ed573',
+        iconColor: '#00bda5',
+        accentColor: '#00bda5',
     },
 ];
 
@@ -112,7 +111,7 @@ const PopupModalSettings = ({ userId }) => {
             setSaving(true);
             const uid = userId || localStorage.getItem('userId');
             await axios.put(`${API_BASE_URL}/settings/popup-modal-settings?user_id=${uid}`, { modals: settings });
-            setSaveMessage('✓ Configuration saved successfully');
+            setSaveMessage('Configuration saved successfully');
             setHasChanges(false);
             setTimeout(() => setSaveMessage(''), 3000);
         } catch (error) {
@@ -126,107 +125,52 @@ const PopupModalSettings = ({ userId }) => {
 
     if (loading) {
         return (
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '3rem' }}>
-                <Loader2 className="animate-spin" size={32} style={{ color: '#4e54c8' }} />
-                <span style={{ marginLeft: '0.75rem', color: '#888' }}>Loading popup modal settings...</span>
+            <div className="hs-card" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '3rem' }}>
+                <Loader2 className="animate-spin" size={28} style={{ color: '#ff7a59' }} />
+                <span style={{ marginLeft: '0.75rem', color: '#516f90' }}>Loading popup modal settings...</span>
             </div>
         );
     }
 
     return (
-        <div style={{ fontFamily: "'Outfit', 'Inter', system-ui, sans-serif", color: '#f0f0f0' }}>
-
-            {/* ── Header ── */}
-            <div style={{ marginBottom: '2rem', borderBottom: '1px solid #2a2a2a', paddingBottom: '1.5rem' }}>
-                <h1 style={{
-                    fontSize: '2rem',
-                    fontWeight: 600,
-                    background: 'linear-gradient(to right, #ffffff, #a0a0a0)',
-                    WebkitBackgroundClip: 'text',
-                    WebkitTextFillColor: 'transparent',
-                    marginBottom: '0.5rem',
-                }}>
-                    Agent Screen Popups
-                </h1>
-                <p style={{ color: '#888', fontSize: '1rem' }}>
-                    Configure interaction rules, limits, and reappear logic for agent screen models.
-                </p>
+        <div className="hs-card">
+            <div className="hs-card-header">
+                <div>
+                    <h3 className="hs-card-title">Agent Screen Popups</h3>
+                    <p className="hs-card-subtitle">
+                        Configure interaction rules, limits, and reappear logic for agent screen modals.
+                    </p>
+                </div>
             </div>
 
-            {/* ── Cards ── */}
-            <div style={{ display: 'grid', gap: '1.5rem' }}>
+            <div style={{ padding: '0 24px 24px', display: 'grid', gap: '1rem' }}>
                 {MODAL_TYPES.map((mt) => {
                     const modal = settings[mt.key] || {};
                     const isForced = !!modal.force_accept;
 
                     return (
-                        <div
-                            key={mt.key}
-                            style={{
-                                background: '#121212',
-                                border: '1px solid #2a2a2a',
-                                borderRadius: '16px',
-                                padding: '1.5rem',
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'space-between',
-                                position: 'relative',
-                                overflow: 'hidden',
-                                transition: 'all 0.3s ease',
-                                cursor: 'default',
-                            }}
-                            onMouseEnter={e => {
-                                e.currentTarget.style.background = '#1a1a1a';
-                                e.currentTarget.style.borderColor = '#3a3a3a';
-                                e.currentTarget.style.boxShadow = '0 8px 30px rgba(0,0,0,0.5)';
-                                e.currentTarget.style.transform = 'translateY(-2px)';
-                            }}
-                            onMouseLeave={e => {
-                                e.currentTarget.style.background = '#121212';
-                                e.currentTarget.style.borderColor = '#2a2a2a';
-                                e.currentTarget.style.boxShadow = 'none';
-                                e.currentTarget.style.transform = 'translateY(0)';
-                            }}
-                        >
-                            {/* Left accent bar */}
-                            <div style={{
-                                position: 'absolute',
-                                top: 0, left: 0,
-                                width: '4px',
-                                height: '100%',
-                                background: mt.accentColor,
-                                borderRadius: '16px 0 0 16px',
-                                opacity: 0.6,
-                            }} />
+                        <div key={mt.key} className="hs-popup-card">
+                            <div className="hs-popup-card-accent" style={{ background: mt.accentColor }} />
 
-                            {/* Card Info — 25% width */}
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '1.5rem', width: '25%' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', minWidth: '220px', paddingLeft: 8 }}>
                                 <div style={{
-                                    width: '50px', height: '50px',
-                                    borderRadius: '12px',
+                                    width: 44, height: 44, borderRadius: 3,
                                     display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                    fontSize: '1.5rem',
-                                    background: 'rgba(255,255,255,0.05)',
-                                    border: '1px solid rgba(255,255,255,0.1)',
-                                    color: mt.iconColor,
+                                    fontSize: '1.25rem', background: '#f5f8fa',
+                                    border: '1px solid #eaf0f6', color: mt.iconColor,
                                 }}>
                                     {mt.icon}
                                 </div>
                                 <div>
-                                    <h3 style={{ fontSize: '1.2rem', fontWeight: 500, color: '#f0f0f0' }}>{mt.label}</h3>
-                                    <p style={{ fontSize: '0.85rem', color: '#888', marginTop: '0.25rem' }}>{mt.description}</p>
+                                    <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 600, color: '#33475b' }}>{mt.label}</h3>
+                                    <p style={{ margin: '2px 0 0', fontSize: '0.8125rem', color: '#516f90' }}>{mt.description}</p>
                                 </div>
                             </div>
 
-                            {/* Card Controls */}
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '2.5rem', flexGrow: 1, justifyContent: 'flex-end' }}>
-
-                                {/* Force Accept */}
-                                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                                    <span style={{ fontSize: '0.8rem', color: '#888', textTransform: 'uppercase', letterSpacing: '0.5px', fontWeight: 600 }}>
-                                        Force Accept
-                                    </span>
-                                    <label style={{ position: 'relative', display: 'inline-block', width: '50px', height: '26px', cursor: 'pointer' }}>
+                            <div style={{ display: 'flex', alignItems: 'flex-end', gap: '2rem', flexWrap: 'wrap', justifyContent: 'flex-end', flex: 1 }}>
+                                <div>
+                                    <span className="hs-popup-field-label">Force Accept</span>
+                                    <label style={{ position: 'relative', display: 'inline-block', width: 44, height: 24, cursor: 'pointer' }}>
                                         <input
                                             type="checkbox"
                                             checked={isForced}
@@ -234,97 +178,49 @@ const PopupModalSettings = ({ userId }) => {
                                             style={{ opacity: 0, width: 0, height: 0, position: 'absolute' }}
                                         />
                                         <span style={{
-                                            position: 'absolute',
-                                            top: 0, left: 0, right: 0, bottom: 0,
-                                            background: isForced ? '#4e54c8' : '#333',
-                                            borderRadius: '34px',
-                                            transition: '0.4s',
-                                            boxShadow: isForced ? '0 0 10px rgba(78,84,200,0.4)' : 'none',
+                                            position: 'absolute', inset: 0,
+                                            background: isForced ? '#ff7a59' : '#cbd6e2',
+                                            borderRadius: 24, transition: '0.2s',
                                         }}>
                                             <span style={{
-                                                position: 'absolute',
-                                                height: '18px', width: '18px',
-                                                left: isForced ? '28px' : '4px',
-                                                bottom: '4px',
-                                                background: 'white',
-                                                borderRadius: '50%',
-                                                transition: '0.3s',
+                                                position: 'absolute', height: 18, width: 18,
+                                                left: isForced ? 22 : 3, top: 3,
+                                                background: '#fff', borderRadius: '50%', transition: '0.2s',
                                             }} />
                                         </span>
                                     </label>
                                 </div>
 
-                                {/* Max Cut Limit */}
-                                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                                    <span style={{ fontSize: '0.8rem', color: '#888', textTransform: 'uppercase', letterSpacing: '0.5px', fontWeight: 600 }}>
-                                        Max Cut Limit
-                                    </span>
+                                <div>
+                                    <span className="hs-popup-field-label">Max Cut Limit</span>
                                     <input
                                         type="number"
                                         min="0"
+                                        className="hs-popup-input"
+                                        style={{ width: 80, textAlign: 'center' }}
                                         value={modal.max_cut_limit ?? 0}
                                         onChange={e => handleFieldChange(mt.key, 'max_cut_limit', Math.max(0, parseInt(e.target.value) || 0))}
                                         disabled={isForced}
-                                        title={isForced ? 'Disabled when Force Accept is ON' : ''}
-                                        style={{
-                                            width: '90px',
-                                            textAlign: 'center',
-                                            background: '#0a0a0a',
-                                            border: '1px solid #333',
-                                            color: '#fff',
-                                            padding: '0.6rem 1rem',
-                                            borderRadius: '8px',
-                                            fontSize: '0.95rem',
-                                            outline: 'none',
-                                            opacity: isForced ? 0.4 : 1,
-                                            cursor: isForced ? 'not-allowed' : 'text',
-                                            MozAppearance: 'textfield',
-                                        }}
                                     />
                                 </div>
 
-                                {/* Reappear After */}
-                                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                                    <span style={{ fontSize: '0.8rem', color: '#888', textTransform: 'uppercase', letterSpacing: '0.5px', fontWeight: 600 }}>
-                                        Reappear After
-                                    </span>
-                                    <div style={{ display: 'flex', gap: '0.5rem' }}>
+                                <div>
+                                    <span className="hs-popup-field-label">Reappear After</span>
+                                    <div style={{ display: 'flex', gap: 8 }}>
                                         <input
                                             type="number"
                                             min="0"
+                                            className="hs-popup-input"
+                                            style={{ width: 64, textAlign: 'center' }}
                                             value={modal.reappear_time ?? 0}
                                             onChange={e => handleFieldChange(mt.key, 'reappear_time', Math.max(0, parseInt(e.target.value) || 0))}
                                             disabled={isForced}
-                                            style={{
-                                                width: '60px',
-                                                textAlign: 'center',
-                                                background: '#0a0a0a',
-                                                border: '1px solid #333',
-                                                color: '#fff',
-                                                padding: '0.6rem 0.5rem',
-                                                borderRadius: '8px',
-                                                fontSize: '0.95rem',
-                                                outline: 'none',
-                                                opacity: isForced ? 0.4 : 1,
-                                                cursor: isForced ? 'not-allowed' : 'text',
-                                                MozAppearance: 'textfield',
-                                            }}
                                         />
                                         <select
+                                            className="hs-popup-input"
                                             value={modal.reappear_unit || 'seconds'}
                                             onChange={e => handleFieldChange(mt.key, 'reappear_unit', e.target.value)}
                                             disabled={isForced}
-                                            style={{
-                                                background: '#0a0a0a',
-                                                border: '1px solid #333',
-                                                color: '#fff',
-                                                padding: '0.6rem 1rem',
-                                                borderRadius: '8px',
-                                                fontSize: '0.95rem',
-                                                outline: 'none',
-                                                opacity: isForced ? 0.4 : 1,
-                                                cursor: isForced ? 'not-allowed' : 'pointer',
-                                            }}
                                         >
                                             {TIME_UNITS.map(u => (
                                                 <option key={u.value} value={u.value}>{u.label}</option>
@@ -332,58 +228,30 @@ const PopupModalSettings = ({ userId }) => {
                                         </select>
                                     </div>
                                 </div>
-
                             </div>
                         </div>
                     );
                 })}
             </div>
 
-            {/* ── Action Bar ── */}
             <div style={{
-                marginTop: '3rem',
-                paddingTop: '1.5rem',
-                borderTop: '1px solid #2a2a2a',
+                padding: '16px 24px',
+                borderTop: '1px solid #eaf0f6',
                 display: 'flex',
                 justifyContent: 'flex-end',
                 alignItems: 'center',
+                gap: 16,
             }}>
                 {saveMessage && (
-                    <span style={{
-                        color: saveMessage.startsWith('✓') ? '#2ed573' : '#ff4757',
-                        fontSize: '0.9rem',
-                        marginRight: '1.5rem',
-                    }}>
+                    <span style={{ color: saveMessage.includes('success') ? '#00a182' : '#f2545b', fontSize: 14 }}>
                         {saveMessage}
                     </span>
                 )}
-                <button
-                    onClick={handleSave}
-                    disabled={saving}
-                    style={{
-                        background: 'linear-gradient(135deg, #4e54c8, #8f94fb)',
-                        color: 'white',
-                        border: 'none',
-                        padding: '0.8rem 2rem',
-                        borderRadius: '8px',
-                        fontWeight: 600,
-                        fontSize: '1rem',
-                        cursor: saving ? 'not-allowed' : 'pointer',
-                        boxShadow: '0 4px 15px rgba(78,84,200,0.4)',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '0.5rem',
-                        opacity: saving ? 0.7 : 1,
-                        transition: 'all 0.3s ease',
-                    }}
-                    onMouseEnter={e => { if (!saving) e.currentTarget.style.transform = 'translateY(-2px)'; }}
-                    onMouseLeave={e => { e.currentTarget.style.transform = 'translateY(0)'; }}
-                >
+                <button type="button" onClick={handleSave} disabled={saving || !hasChanges} className="hs-btn-primary">
                     {saving && <Loader2 size={16} className="animate-spin" />}
                     Save Configurations
                 </button>
             </div>
-
         </div>
     );
 };

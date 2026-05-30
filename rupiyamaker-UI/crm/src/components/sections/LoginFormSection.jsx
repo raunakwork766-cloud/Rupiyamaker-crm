@@ -1,6 +1,16 @@
 import { useState, useEffect, useRef, forwardRef, useImperativeHandle } from "react";
 import { Share2, X, Download } from "lucide-react";
 import * as XLSX from 'xlsx';
+import {
+  LEAD_FIELD_LABEL_CLASS,
+  LEAD_FIELD_LABEL_STYLE,
+  LEAD_FIELD_GRID_CLASS,
+  LEAD_FIELD_WRAPPER_CLASS,
+  LEAD_SECTION_CARD_CLASS,
+  LEAD_INPUT_CLASS,
+  LEAD_INPUT_READONLY_CLASS,
+  LEAD_DROPDOWN_TRIGGER_CLASS,
+} from './leadSectionStyles';
 
 // API base URL - Use proxy in development
 const API_BASE_URL = '/api'; // Always use proxy
@@ -52,6 +62,13 @@ const LoginFormSection = forwardRef(function LoginFormSection({
   onFieldChange = null, // Optional callback for auto-save (public form)
   hideShareButton = false // Hide built-in share button when parent controls sharing
 }, ref) {
+  const labelClass = LEAD_FIELD_LABEL_CLASS;
+  const labelStyle = LEAD_FIELD_LABEL_STYLE;
+  const inputClass = LEAD_INPUT_CLASS;
+  const inputReadOnlyClass = LEAD_INPUT_READONLY_CLASS;
+  const inputStyle = {};
+  const inputReadOnlyStyle = {};
+
   // Add state for save status indicator
   const [saveStatus, setSaveStatus] = useState('');
   const [isSaving, setIsSaving] = useState(false);
@@ -538,7 +555,7 @@ const LoginFormSection = forwardRef(function LoginFormSection({
       } else {
       }
 
-      // Create a clean short link — rupiyamaker.com/f/{code} (no IP, no port)
+      // Create a clean short link — crm.fixyourfinance.ai/f/{code} (no IP, no port)
       let formUrl;
       try {
         const shortRes = await fetch(`${API_BASE_URL}/share-links/create-form-short`, {
@@ -552,7 +569,7 @@ const LoginFormSection = forwardRef(function LoginFormSection({
         });
         if (shortRes.ok) {
           const shortData = await shortRes.json();
-          formUrl = shortData.short_url; // https://rupiyamaker.com/f/{code}
+          formUrl = shortData.short_url; // https://crm.fixyourfinance.ai/f/{code}
         }
       } catch (_) { /* fallback below */ }
 
@@ -780,7 +797,7 @@ const LoginFormSection = forwardRef(function LoginFormSection({
 
   // Render a DOB picker field
   const renderDobPicker = (fieldName, label) => (
-    <div className="flex flex-col h-full" ref={activeDobField === fieldName ? dobPickerRef : null}>
+    <div className={LEAD_FIELD_WRAPPER_CLASS} ref={activeDobField === fieldName ? dobPickerRef : null}>
       <label className={labelClass} style={labelStyle}>{label}</label>
       <div className="relative">
         <div
@@ -836,7 +853,7 @@ const LoginFormSection = forwardRef(function LoginFormSection({
 
   // Render a Year+Month picker field
   const renderYearPicker = (fieldName, label) => (
-    <div className="flex flex-col h-full" ref={activeYearField === fieldName ? yearPickerRef : null}>
+    <div className={LEAD_FIELD_WRAPPER_CLASS} ref={activeYearField === fieldName ? yearPickerRef : null}>
       <label className={labelClass} style={labelStyle}>{label}</label>
       <div className="relative">
         <div
@@ -881,17 +898,8 @@ const LoginFormSection = forwardRef(function LoginFormSection({
     </div>
   );
 
-  // Style classes to match About/HowToProcess sections
-  const labelClass = "block font-bold mb-2 uppercase";
-  const labelStyle = { color: "black", fontWeight: 650, fontSize: "15px" };  const inputClass =
-    "w-full px-2 py-2 border border-black rounded text-green-600 font-bold focus:outline-none focus:ring-2 focus:ring-cyan-400 h-10";
-  const inputStyle = { fontSize: "15px" };
-  const inputReadOnlyClass =
-    "w-full px-2 py-2 border border-black rounded text-green-600 font-bold bg-gray-100 cursor-not-allowed h-10";
-  const inputReadOnlyStyle = { fontSize: "15px" };
-
   return (
-    <div className="p-4 rounded-2xl border-2 border-cyan-400/70 bg-white shadow-2xl space-y-6">{/* Removed form tag since no submit button */}
+    <div className={`${LEAD_SECTION_CARD_CLASS} space-y-4`}>{/* Removed form tag since no submit button */}
       {/* Save status indicator */}
       {saveStatus && (
         <div className={`text-sm font-semibold mb-2 ${saveStatus === 'Saved' ? 'text-green-500' :
@@ -929,10 +937,10 @@ const LoginFormSection = forwardRef(function LoginFormSection({
 
 
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-x-4 gap-y-6 items-start">
+      <div className={`${LEAD_FIELD_GRID_CLASS} items-start`}>
         {/* Show reference name for both primary applicant and co-applicant, but not on public form */}
         {!isPublic && (
-          <div className="flex flex-col h-full">
+          <div className={LEAD_FIELD_WRAPPER_CLASS}>
             <label className={labelClass} style={labelStyle}>Login Call Reference</label>
             <input
               {...getInputProps("referenceNameForLogin", fields.referenceNameForLogin)}
@@ -942,35 +950,35 @@ const LoginFormSection = forwardRef(function LoginFormSection({
         {/* Hide sensitive fields (Aadhar, PAN, Father's name, Bank details) only for public forms */}
         {!isPublic && (
           <>
-            <div className="flex flex-col h-full">
+            <div className={LEAD_FIELD_WRAPPER_CLASS}>
               <label className={labelClass} style={labelStyle}>Aadhar Number</label>
               <input
                 {...getInputProps("aadharNumber", fields.aadharNumber)}
               />
             </div>
-            <div className="flex flex-col h-full">
+            <div className={LEAD_FIELD_WRAPPER_CLASS}>
               <label className={labelClass} style={labelStyle}>Pan Card</label>
               <input
                 {...getInputProps("panCard", fields.panCard)}
               />
             </div>
-            <div className="flex flex-col h-full">
+            <div className={LEAD_FIELD_WRAPPER_CLASS}>
               <label className={labelClass} style={labelStyle}>Father's Name</label>
               <input
                 {...getInputProps("fathersName", fields.fathersName)}
               />
             </div>
-            <div className="flex flex-col h-full">
+            <div className={LEAD_FIELD_WRAPPER_CLASS}>
               <label className={labelClass} style={labelStyle}>Salary A/C Bank Name</label>
               <div className="relative" ref={bankDropdownRef}>
                 {/* SearchableSelect-style dropdown button */}
                 <div
                   ref={bankTriggerRef}
-                  className={`w-full px-3 py-2 border rounded-lg cursor-pointer flex items-center justify-between ${
+                  className={`${LEAD_DROPDOWN_TRIGGER_CLASS} ${
                     (isPublic || !canEdit) 
-                      ? 'bg-gray-100 text-gray-400 border-gray-300 cursor-not-allowed'
-                      : 'bg-white text-black border-black hover:border-cyan-400 focus:border-cyan-400'
-                  } ${showBankDropdown ? 'border-cyan-400' : ''}`}
+                      ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                      : ''
+                  } ${showBankDropdown ? 'border-[#0097a7]' : ''}`}
                   onClick={() => {
                     if (!isPublic && canEdit) {
                       if (!showBankDropdown && bankTriggerRef.current) {
@@ -983,7 +991,7 @@ const LoginFormSection = forwardRef(function LoginFormSection({
                       }
                     }
                   }}
-                  style={{fontSize: "15px", fontWeight: 'bold', color: fields.salaryAccountBank ? '#16a34a' : '#6b7280'}}
+                  style={{ fontWeight: 'bold', color: fields.salaryAccountBank ? '#16a34a' : '#6b7280' }}
                 >
                   <span className="flex-1">
                     {fields.salaryAccountBank || "Select Bank"}
@@ -1076,14 +1084,14 @@ const LoginFormSection = forwardRef(function LoginFormSection({
                 )}
               </div>
             </div>
-            <div className="flex flex-col h-full">
+            <div className={LEAD_FIELD_WRAPPER_CLASS}>
               <label className={labelClass} style={labelStyle}>Salary A/C Bank Number</label>
               <input
                 {...getInputProps("salaryAccountBankNumber", fields.salaryAccountBankNumber)}
                 placeholder="Enter salary account number"
               />
             </div>
-            <div className="flex flex-col h-full">
+            <div className={LEAD_FIELD_WRAPPER_CLASS}>
               <label className={labelClass} style={labelStyle}>IFSC Code</label>
               <input
                 {...getInputProps("ifscCode", fields.ifscCode)}
@@ -1100,7 +1108,7 @@ const LoginFormSection = forwardRef(function LoginFormSection({
           </div>
         )}
 
-        <div className="flex flex-col h-full">
+        <div className={LEAD_FIELD_WRAPPER_CLASS}>
           <label className={labelClass} style={labelStyle}>Customer Name</label>
           <input
             {...getInputProps("customerName", fields.customerName)}
@@ -1108,7 +1116,7 @@ const LoginFormSection = forwardRef(function LoginFormSection({
         </div>
 
 
-        <div className="flex flex-col h-full">
+        <div className={LEAD_FIELD_WRAPPER_CLASS}>
           <label className={labelClass} style={labelStyle}>Mobile Number</label>
           {/* For co-applicant, mobile number should be editable. For primary applicant, keep read-only */}
           <input
@@ -1120,7 +1128,7 @@ const LoginFormSection = forwardRef(function LoginFormSection({
             })}
           />
         </div>
-        <div className="flex flex-col h-full">
+        <div className={LEAD_FIELD_WRAPPER_CLASS}>
           <label className={labelClass} style={labelStyle}>Alternate Number</label>
           <input
             {...getInputProps("alternateNumber", fields.alternateNumber)}
@@ -1128,16 +1136,16 @@ const LoginFormSection = forwardRef(function LoginFormSection({
           />
         </div>
 
-        <div className="flex flex-col h-full">
+        <div className={LEAD_FIELD_WRAPPER_CLASS}>
           <label className={labelClass} style={labelStyle}>Highest Qualification</label>
           <div className="relative" ref={qualRef}>
             <div
-              className={`w-full px-3 py-2 border rounded-lg cursor-pointer flex items-center justify-between ${
+              className={`${LEAD_DROPDOWN_TRIGGER_CLASS} ${
                 !canEdit
-                  ? 'bg-gray-100 text-gray-400 border-gray-300 cursor-not-allowed'
-                  : 'bg-white border-black hover:border-cyan-400'
-              } ${qualOpen ? 'border-cyan-400' : ''}`}
-              style={{ fontSize: '15px', fontWeight: 'bold', color: fields.qualification ? '#16a34a' : '#6b7280' }}
+                  ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                  : ''
+              } ${qualOpen ? 'border-[#0097a7]' : ''}`}
+              style={{ fontWeight: 'bold', color: fields.qualification ? '#16a34a' : '#6b7280' }}
               ref={qualTriggerRef}
               onClick={() => {
                 if (canEdit) {
@@ -1204,13 +1212,13 @@ const LoginFormSection = forwardRef(function LoginFormSection({
             )}
           </div>
         </div>
-        <div className="flex flex-col h-full">
+        <div className={LEAD_FIELD_WRAPPER_CLASS}>
           <label className={labelClass} style={labelStyle}>Mother's Name</label>
           <input
             {...getInputProps("mothersName", fields.mothersName)}
           />
         </div>
-        <div className="flex flex-col h-full">
+        <div className={LEAD_FIELD_WRAPPER_CLASS}>
           <label className={labelClass} style={labelStyle}>Marital Status</label>
           <select
             {...getSelectProps("maritalStatus", fields.maritalStatus)}
@@ -1223,7 +1231,7 @@ const LoginFormSection = forwardRef(function LoginFormSection({
         </div>
         {fields.maritalStatus === "Married" && (
           <>
-            <div className="flex flex-col h-full">
+            <div className={LEAD_FIELD_WRAPPER_CLASS}>
               <label className={labelClass} style={labelStyle}>Spouse Name</label>
               <input
                 {...getInputProps("spousesName", fields.spousesName)}
@@ -1232,19 +1240,19 @@ const LoginFormSection = forwardRef(function LoginFormSection({
             {renderDobPicker('spousesDob', "Spouse's DOB")}
           </>
         )}
-        <div className="flex flex-col h-full">
+        <div className={LEAD_FIELD_WRAPPER_CLASS}>
           <label className={labelClass} style={labelStyle}>Current Address</label>
           <textarea
             {...getTextareaProps("currentAddress", fields.currentAddress)}
           />
         </div>
-        <div className="flex flex-col h-full">
+        <div className={LEAD_FIELD_WRAPPER_CLASS}>
           <label className={labelClass} style={labelStyle}>Current Address Landmark</label>
           <input
             {...getInputProps("currentAddressLandmark", fields.currentAddressLandmark)}
           />
         </div>
-        <div className="flex flex-col h-full">
+        <div className={LEAD_FIELD_WRAPPER_CLASS}>
           <label className={labelClass} style={labelStyle}>Current Address Type</label>
           <select
             {...getSelectProps("currentAddressType", fields.currentAddressType)}
@@ -1255,7 +1263,7 @@ const LoginFormSection = forwardRef(function LoginFormSection({
             ))}
           </select>
         </div>
-        <div className="flex flex-col h-full">
+        <div className={LEAD_FIELD_WRAPPER_CLASS}>
           <label className={labelClass} style={labelStyle}>Current Address Proof</label>
           <select
             {...getSelectProps("currentAddressProof", fields.currentAddressProof)}
@@ -1268,31 +1276,31 @@ const LoginFormSection = forwardRef(function LoginFormSection({
         </div>
         {renderYearPicker('yearsAtCurrentAddress', "No of Years Living in Current Addr.")}
         {renderYearPicker('yearsInCurrentCity', "No of Years Living in Current City")}
-        <div className="flex flex-col h-full">
+        <div className={LEAD_FIELD_WRAPPER_CLASS}>
           <label className={labelClass} style={labelStyle}>Permanent Address</label>
           <textarea
             {...getTextareaProps("permanentAddress", fields.permanentAddress)}
           />
         </div>
-        <div className="flex flex-col h-full">
+        <div className={LEAD_FIELD_WRAPPER_CLASS}>
           <label className={labelClass} style={labelStyle}>Permanent Address Landmark</label>
           <input
             {...getInputProps("permanentAddressLandmark", fields.permanentAddressLandmark)}
           />
         </div>
-        <div className="flex flex-col h-full">
+        <div className={LEAD_FIELD_WRAPPER_CLASS}>
           <label className={labelClass} style={labelStyle}>Company Name</label>
           <input
             {...getInputProps("companyName", fields.companyName)}
           />
         </div>
-        <div className="flex flex-col h-full">
+        <div className={LEAD_FIELD_WRAPPER_CLASS}>
           <label className={labelClass} style={labelStyle}>Your Designation</label>
           <input
             {...getInputProps("yourDesignation", fields.yourDesignation)}
           />
         </div>
-        <div className="flex flex-col h-full">
+        <div className={LEAD_FIELD_WRAPPER_CLASS}>
           <label className={labelClass} style={labelStyle}>Your Department</label>
           <input
             {...getInputProps("yourDepartment", fields.yourDepartment)}
@@ -1301,27 +1309,27 @@ const LoginFormSection = forwardRef(function LoginFormSection({
         {renderDobPicker('dojCurrentCompany', "DOJ in Current Company")}
         {renderYearPicker('currentWorkExperience', "Current Work Experience")}
         {renderYearPicker('totalWorkExperience', "Total Work Experience")}
-        <div className="flex flex-col h-full">
+        <div className={LEAD_FIELD_WRAPPER_CLASS}>
           <label className={labelClass} style={labelStyle}>Personal Email</label>
           <input
             type="email"
             {...getInputProps("personalEmail", fields.personalEmail)}
           />
         </div>
-        <div className="flex flex-col h-full">
+        <div className={LEAD_FIELD_WRAPPER_CLASS}>
           <label className={labelClass} style={labelStyle}>Work Email</label>
           <input
             type="email"
             {...getInputProps("workEmail", fields.workEmail)}
           />
         </div>
-        <div className="flex flex-col h-full">
+        <div className={LEAD_FIELD_WRAPPER_CLASS}>
           <label className={labelClass} style={labelStyle}>Office Address</label>
           <textarea
             {...getTextareaProps("officeAddress", fields.officeAddress)}
           />
         </div>
-        <div className="flex flex-col h-full">
+        <div className={LEAD_FIELD_WRAPPER_CLASS}>
           <label className={labelClass} style={labelStyle}>Office Address Landmark</label>
           <input
             {...getInputProps("officeAddressLandmark", fields.officeAddressLandmark)}
@@ -1334,20 +1342,20 @@ const LoginFormSection = forwardRef(function LoginFormSection({
         <>
           {/* 1st Reference */}
           <div className="mt-8 mb-2 font-extrabold text-[#00AEEF] text-base">1st Reference</div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-x-4 gap-y-4">
-            <div className="flex flex-col h-full">
+          <div className={LEAD_FIELD_GRID_CLASS}>
+            <div className={LEAD_FIELD_WRAPPER_CLASS}>
               <label className={labelClass} style={labelStyle}>Reference Name</label>
               <input
                 {...getInputProps("ref1Name", fields.ref1Name)}
               />
             </div>
-            <div className="flex flex-col h-full">
+            <div className={LEAD_FIELD_WRAPPER_CLASS}>
               <label className={labelClass} style={labelStyle}>Reference Mobile Number</label>
               <input
                 {...getInputProps("ref1Mobile", fields.ref1Mobile)}
               />
             </div>
-            <div className="flex flex-col h-full">
+            <div className={LEAD_FIELD_WRAPPER_CLASS}>
               <label className={labelClass} style={labelStyle}>Reference Relation</label>
               <select
                 {...getSelectProps("ref1Relation", fields.ref1Relation)}
@@ -1358,7 +1366,7 @@ const LoginFormSection = forwardRef(function LoginFormSection({
                 ))}
               </select>
             </div>
-            <div className="flex flex-col h-full">
+            <div className={LEAD_FIELD_WRAPPER_CLASS}>
               <label className={labelClass} style={labelStyle}>Reference Address</label>
               <textarea
                 {...getTextareaProps("ref1Address", fields.ref1Address)}
@@ -1368,20 +1376,20 @@ const LoginFormSection = forwardRef(function LoginFormSection({
 
           {/* 2nd Reference */}
           <div className="mt-8 mb-2 font-extrabold text-[#00AEEF] text-base">2nd Reference</div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-x-4 gap-y-4">
-            <div className="flex flex-col h-full">
+          <div className={LEAD_FIELD_GRID_CLASS}>
+            <div className={LEAD_FIELD_WRAPPER_CLASS}>
               <label className={labelClass} style={labelStyle}>Reference Name</label>
               <input
                 {...getInputProps("ref2Name", fields.ref2Name)}
               />
             </div>
-            <div className="flex flex-col h-full">
+            <div className={LEAD_FIELD_WRAPPER_CLASS}>
               <label className={labelClass} style={labelStyle}>Reference Mobile Number</label>
               <input
                 {...getInputProps("ref2Mobile", fields.ref2Mobile)}
               />
             </div>
-            <div className="flex flex-col h-full">
+            <div className={LEAD_FIELD_WRAPPER_CLASS}>
               <label className={labelClass} style={labelStyle}>Reference Relation</label>
               <select
                 {...getSelectProps("ref2Relation", fields.ref2Relation)}
@@ -1392,7 +1400,7 @@ const LoginFormSection = forwardRef(function LoginFormSection({
                 ))}
               </select>
             </div>
-            <div className="flex flex-col h-full">
+            <div className={LEAD_FIELD_WRAPPER_CLASS}>
               <label className={labelClass} style={labelStyle}>Reference Address</label>
               <textarea
                 {...getTextareaProps("ref2Address", fields.ref2Address)}
@@ -1408,7 +1416,7 @@ const LoginFormSection = forwardRef(function LoginFormSection({
           <div className="bg-white rounded-lg max-w-full w-full max-h-[90vh] overflow-y-auto">
             {/* Header */}
             <div className="sticky top-0 bg-white border-b p-6 flex justify-between items-center">
-              <div className="flex flex-col h-full">
+              <div className={LEAD_FIELD_WRAPPER_CLASS}>
                 <h2 className="text-2xl font-bold text-[#00AEEF]">
                   Customer: {leadCustomerName || data?.customerName || data?.name || 'N/A'}
                 </h2>
@@ -1439,20 +1447,20 @@ const LoginFormSection = forwardRef(function LoginFormSection({
               <>
                 {/* 1st Reference */}
                 <div className="mt-8 mb-4 font-extrabold text-[#00AEEF] text-lg border-b pb-2">1st Reference</div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-x-4 gap-y-4">
-                  <div className="flex flex-col h-full">
+                <div className={LEAD_FIELD_GRID_CLASS}>
+                  <div className={LEAD_FIELD_WRAPPER_CLASS}>
                     <label className={labelClass} style={labelStyle}>Reference Name *</label>
                     <input
                       {...getInputProps("ref1Name", fields.ref1Name)}
                     />
                   </div>
-                  <div className="flex flex-col h-full">
+                  <div className={LEAD_FIELD_WRAPPER_CLASS}>
                     <label className={labelClass} style={labelStyle}>Reference Mobile Number *</label>
                     <input
                       {...getInputProps("ref1Mobile", fields.ref1Mobile)}
                     />
                   </div>
-                  <div className="flex flex-col h-full">
+                  <div className={LEAD_FIELD_WRAPPER_CLASS}>
                     <label className={labelClass} style={labelStyle}>Reference Relation *</label>
                     <select
                       {...getSelectProps("ref1Relation", fields.ref1Relation)}
@@ -1463,7 +1471,7 @@ const LoginFormSection = forwardRef(function LoginFormSection({
                       ))}
                     </select>
                   </div>
-                  <div className="flex flex-col h-full">
+                  <div className={LEAD_FIELD_WRAPPER_CLASS}>
                     <label className={labelClass} style={labelStyle}>Reference Address *</label>
                     <textarea
                       {...getTextareaProps("ref1Address", fields.ref1Address)}
@@ -1473,20 +1481,20 @@ const LoginFormSection = forwardRef(function LoginFormSection({
 
                 {/* 2nd Reference */}
                 <div className="mt-8 mb-4 font-extrabold text-[#00AEEF] text-lg border-b pb-2">2nd Reference</div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-x-4 gap-y-4">
-                  <div className="flex flex-col h-full">
+                <div className={LEAD_FIELD_GRID_CLASS}>
+                  <div className={LEAD_FIELD_WRAPPER_CLASS}>
                     <label className={labelClass} style={labelStyle}>Reference Name *</label>
                     <input
                       {...getInputProps("ref2Name", fields.ref2Name)}
                     />
                   </div>
-                  <div className="flex flex-col h-full">
+                  <div className={LEAD_FIELD_WRAPPER_CLASS}>
                     <label className={labelClass} style={labelStyle}>Reference Mobile Number *</label>
                     <input
                       {...getInputProps("ref2Mobile", fields.ref2Mobile)}
                     />
                   </div>
-                  <div className="flex flex-col h-full">
+                  <div className={LEAD_FIELD_WRAPPER_CLASS}>
                     <label className={labelClass} style={labelStyle}>Reference Relation *</label>
                     <select
                       {...getSelectProps("ref2Relation", fields.ref2Relation)}
@@ -1497,7 +1505,7 @@ const LoginFormSection = forwardRef(function LoginFormSection({
                       ))}
                     </select>
                   </div>
-                  <div className="flex flex-col h-full">
+                  <div className={LEAD_FIELD_WRAPPER_CLASS}>
                     <label className={labelClass} style={labelStyle}>Reference Address *</label>
                     <textarea
                       {...getTextareaProps("ref2Address", fields.ref2Address)}

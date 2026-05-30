@@ -12,7 +12,7 @@ export NODE_VERSION="20"
 export PATH="$NVM_DIR/versions/node/v$NODE_VERSION/bin:$PATH"
 
 # Configuration
-DOMAIN="crm.rupiyamakercrm.online"
+DOMAIN="crm.fixyourfinance.ai"
 HTTP_PORT="5902"
 HTTPS_PORT="5903"
 BACKEND_PORT="8049"

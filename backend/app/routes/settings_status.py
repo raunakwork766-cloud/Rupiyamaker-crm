@@ -211,7 +211,7 @@ async def update_offer_letter_template(
     roles_db: RolesDB = Depends(get_roles_db),
 ):
     """Update the offer letter template configuration"""
-    await check_permission(user_id, "settings", "edit", users_db, roles_db)
+    await check_permission(user_id, "offer_letter", "*", users_db, roles_db)
     # Remove internal fields
     data.pop("_id", None)
     data.pop("type", None)

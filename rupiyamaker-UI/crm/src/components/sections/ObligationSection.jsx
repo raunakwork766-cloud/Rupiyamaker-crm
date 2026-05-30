@@ -619,6 +619,25 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
            (product && typeof product === 'string' && product.toLowerCase() === 'cc (credit card)');
   };
 
+  // Convert option/object values to readable plain text for table rendering.
+  const normalizeObligationValue = (value, fallback = '') => {
+    if (value === undefined || value === null) return fallback;
+    if (typeof value === 'string' || typeof value === 'number') return String(value);
+    if (typeof value === 'object') {
+      const candidate =
+        value.value ??
+        value.label ??
+        value.name ??
+        value.display_key ??
+        value.display_text ??
+        value.title ??
+        fallback;
+      if (candidate === undefined || candidate === null) return fallback;
+      return String(candidate);
+    }
+    return String(value);
+  };
+
   // Helper function for AND-based company name matching
   const matchesAllWords = (companyName, searchQuery) => {
     if (!companyName || !searchQuery) return false;
@@ -1983,17 +2002,17 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
           }
           
           // Enhanced field mapping for obligations
-          const oblBankName = obl.bank_name || obl.bankName || '';
+          const oblBankName = normalizeObligationValue(obl.bank_name || obl.bankName, '');
           const oblTenure = obl.tenure;
           const oblRoi = obl.roi;
           const oblTotalLoan = obl.total_loan || obl.totalLoan || obl.loan_amount || obl.principal_amount || '';
           const oblOutstanding = obl.outstanding || '';
           const oblEmi = obl.emi || '';
-          const oblAction = obl.action || 'Obligate';
+          const oblAction = normalizeObligationValue(obl.action, 'Obligate');
           
           return {
             id: preservedId,
-            product: obl.product || '',
+            product: normalizeObligationValue(obl.product, ''),
             bankName: oblBankName,
             tenure: oblTenure && oblTenure !== 0 && oblTenure !== '0' ? 
                    (String(oblTenure).includes('Months') ? String(oblTenure) : formatTenure(String(oblTenure))) : '',
@@ -2417,14 +2436,14 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
           // Process the obligations from leadData and update state
           const processedObligations = leadObligations.map((obl, index) => ({
             id: obl.id || `${Date.now()}-sync-${index}`,
-            product: obl.product || '',
-            bankName: obl.bankName || obl.bank_name || '',
+            product: normalizeObligationValue(obl.product, ''),
+            bankName: normalizeObligationValue(obl.bankName || obl.bank_name, ''),
             tenure: obl.tenure || '',
             roi: obl.roi || '',
             totalLoan: obl.totalLoan || obl.total_loan || '',
             outstanding: obl.outstanding || '',
             emi: obl.emi || '',
-            action: obl.action || 'Obligate',
+            action: normalizeObligationValue(obl.action, 'Obligate'),
             selectedPercentage: obl.selectedPercentage || obl.selected_percentage || null,
             selectedTenurePercentage: obl.selectedTenurePercentage || obl.selected_tenure_percentage || null,
             selectedRoiPercentage: obl.selectedRoiPercentage || obl.selected_roi_percentage || null
@@ -4124,10 +4143,12 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
     setObligations(prevObligations => {
       const newObligations = [...prevObligations];
       
+      // Normalize object values (e.g. {value,label}) into readable strings first.
+      let processedValue = normalizeObligationValue(value, '');
+
       // Convert text values to uppercase for display consistency
-      let processedValue = value;
-      if (typeof value === 'string' && !['emi', 'roi', 'tenure', 'totalLoan', 'outstanding', 'action'].includes(field)) {
-        processedValue = value.toUpperCase();
+      if (typeof processedValue === 'string' && !['emi', 'roi', 'tenure', 'totalLoan', 'outstanding', 'action'].includes(field)) {
+        processedValue = processedValue.toUpperCase();
       }
       
       // Special handling for bank name field to ensure it's properly saved

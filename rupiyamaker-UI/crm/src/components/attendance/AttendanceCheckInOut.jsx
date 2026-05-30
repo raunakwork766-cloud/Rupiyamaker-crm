@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
+import { getAttendanceAuthHeaders, clearAttendanceTabSession } from '../../utils/authSession';
 
 const API_BASE = '/api';
 
@@ -112,31 +113,22 @@ const AttendanceCheckInOut = ({ userId, userInfo }) => {
   // ensures attendance-only users don't accidentally hit CRM endpoints.
   const getAttendanceHeaders = () => {
     if (typeof window === 'undefined') return {};
-    const loginType = localStorage.getItem('loginType');
-    if (loginType === 'attendance_only') {
-      const tok = localStorage.getItem('attendanceToken');
-      if (tok) return { 'X-Attendance-Token': tok };
+    const attHeaders = getAttendanceAuthHeaders();
+    if (Object.keys(attHeaders).length > 0) {
+      return attHeaders;
     }
-    // CRM session (or fallback): Authorization Bearer token stored in userData
     try {
       const userData = localStorage.getItem('userData');
       const user = userData ? JSON.parse(userData) : null;
-      if (user?.token) return { 'Authorization': `Bearer ${user.token}` };
+      if (user?.token) return { Authorization: `Bearer ${user.token}` };
     } catch (_) {}
     return {};
   };
 
-  // When an attendance session token is invalid/expired, redirect to login.
   const handleSessionExpired = () => {
-    const loginType = localStorage.getItem('loginType');
-    if (loginType === 'attendance_only') {
-      // Preserve the attendance mode flag in sessionStorage so Login.jsx detects
-      // attendance mode even if the redirect URL doesn't have ?mode=attendance
-      sessionStorage.setItem('attendanceLoginPending', 'true');
-      localStorage.removeItem('attendanceToken');
-      localStorage.removeItem('loginType');
-      localStorage.removeItem('isAuthenticated');
-      window.location.href = window.location.pathname + '?mode=attendance';
+    if (sessionStorage.getItem('loginType') === 'attendance_only') {
+      clearAttendanceTabSession();
+      window.location.href = '/attendance-login';
     }
   };
 
@@ -335,10 +327,14 @@ const AttendanceCheckInOut = ({ userId, userInfo }) => {
       const r = await axios.post(
         `${API_BASE}/attendance/${endpoint}`,
         { photo_data: photoData, geolocation: location, comments, face_descriptor: null },
-        { params: { user_id: userId }, headers: getAttendanceHeaders() }
+        {
+          params: { user_id: userId },
+          headers: getAttendanceHeaders(),
+          timeout: 30000 // 30 second timeout to prevent hanging
+        }
       );
 
-      if (r.data.success) {
+      if (r.data && r.data.success) {
         closeDialog();
         await loadCurrentStatus();
         fetchCalendar(calYear, calMonth); // refresh calendar
@@ -356,9 +352,22 @@ const AttendanceCheckInOut = ({ userId, userInfo }) => {
           ...modalData,
           time: new Date().toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit', hour12: true })
         });
+      } else if (r.data) {
+        // API returned but success was false
+        setErrorMsg(r.data.message || r.data.detail || 'Failed to mark attendance. Please try again.');
       }
     } catch (err) {
-      setErrorMsg(err.response?.data?.detail || 'Failed to mark attendance. Please try again.');
+      if (err.code === 'ECONNABORTED' || err.message?.includes('timeout')) {
+        setErrorMsg('Request timed out. Please check your connection and try again.');
+      } else if (err.response) {
+        // Server responded with error status
+        setErrorMsg(err.response.data?.detail || err.response.data?.message || 'Failed to mark attendance. Please try again.');
+      } else if (err.request) {
+        // No response received
+        setErrorMsg('No response from server. Please check your connection and try again.');
+      } else {
+        setErrorMsg('Failed to mark attendance. Please try again.');
+      }
     } finally {
       setLoading(false);
     }

@@ -74,7 +74,7 @@ const EmployeeDetails = ({ employee, onBack, onEmployeeUpdate }) => {
             getContent: () => [
                 {
                     content: (
-                        <div className="p-6 bg-white rounded-xl shadow-2xl text-[1rem] text-gray-100 border-l-4 border-cyan-500/60">
+                        <div className="p-6 bg-white rounded-xl shadow-2xl text-[1rem] text-gray-800 border-l-4 border-cyan-500/60">
                             <EmployeeRemarks employeeId={employeeData._id} />
                         </div>
                     ),
@@ -100,9 +100,6 @@ const EmployeeDetails = ({ employee, onBack, onEmployeeUpdate }) => {
             label: "EMPLOYEE ACTIVITY",
             getContent: () => {
                 const activityKey = `activity-${employeeData._id}-${activityRefreshKey}-${employeeData._refreshKey || Date.now()}`;
-                console.log('🎯 EmployeeDetails: Rendering EmployeeActivity with key:', activityKey);
-                console.log('🎯 EmployeeDetails: Employee refresh key:', employeeData._refreshKey);
-                console.log('🎯 EmployeeDetails: Activity refresh key:', activityRefreshKey);
                 return [
                     {
                         content: (
@@ -475,7 +472,6 @@ const EmployeeDetails = ({ employee, onBack, onEmployeeUpdate }) => {
                         }}
                         onClick={() => {
                             setActiveTab(idx);
-                            // Auto-open first section when switching to EMPLOYEE DETAILS tab (index 0)
                             setOpenSections(idx === 0 ? [0] : []);
                         }}
                     >
@@ -493,17 +489,13 @@ const EmployeeDetails = ({ employee, onBack, onEmployeeUpdate }) => {
                             {section.label && (
                                 <>
                                     {activeTab === 0 ? (
-                                        // Collapsible dropdown for EMPLOYEE DETAILS tab only
                                         <button
                                             className="w-full px-2 sm:px-5 py-3 font-extrabold text-base sm:text-lg lg:text-[1.05rem] text-[#03B0F5] bg-gray-50 hover:bg-gray-100 border border-gray-200 rounded-lg flex items-center justify-between transition-colors duration-200"
                                             onClick={() => {
-                                                // Toggle section in the openSections array
                                                 setOpenSections(prev => {
                                                     if (prev.includes(idx)) {
-                                                        // Remove from array if already open
                                                         return prev.filter(sectionIdx => sectionIdx !== idx);
                                                     } else {
-                                                        // Add to array if not open
                                                         return [...prev, idx];
                                                     }
                                                 });
@@ -520,7 +512,6 @@ const EmployeeDetails = ({ employee, onBack, onEmployeeUpdate }) => {
                                             </svg>
                                         </button>
                                     ) : (
-                                        // Static header for other tabs
                                         <div className="px-2 sm:px-5 py-2 font-extrabold text-base sm:text-lg lg:text-[1.05rem] text-[#03B0F5]">
                                             {section.label}
                                         </div>
@@ -528,14 +519,12 @@ const EmployeeDetails = ({ employee, onBack, onEmployeeUpdate }) => {
                                 </>
                             )}
                             {activeTab === 0 ? (
-                                // Conditional rendering for EMPLOYEE DETAILS tab only
                                 openSections.includes(idx) && (
                                     <div className="rounded-xl border-2 border-cyan-400/40 shadow-inner bg-white w-full mt-2">
                                         {section.content}
                                     </div>
                                 )
                             ) : (
-                                // Always show content for other tabs
                                 <div className="rounded-xl border-2 border-cyan-400/40 shadow-inner bg-white w-full">
                                     {section.content}
                                 </div>
@@ -545,10 +534,8 @@ const EmployeeDetails = ({ employee, onBack, onEmployeeUpdate }) => {
                 </div>
             </div>
             
-            {/* Custom Notification Container */}
             <notification.NotificationContainer />
             
-            {/* Custom Success Popup */}
             <CustomSuccessPopup
                 isVisible={showSuccessPopup}
                 onClose={() => setShowSuccessPopup(false)}

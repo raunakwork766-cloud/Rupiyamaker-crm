@@ -196,7 +196,7 @@ async def create_employee_with_photo(
     if not employee_id:
         employee_data["employee_id"] = await users_db._generate_employee_id()
     else:
-        employee_data["employee_id"] = employee_id
+        employee_data["employee_id"] = users_db.normalize_employee_id(employee_id)
     
     # Create the employee first
     created_employee_id = await users_db.create_employee(employee_data)
@@ -817,9 +817,9 @@ async def create_employee_with_all_details(
     
     # Generate employee ID if not provided
     if not employee_id:
-        employee_data["employee_id"] = users_db._generate_employee_id()
+        employee_data["employee_id"] = await users_db._generate_employee_id()
     else:
-        employee_data["employee_id"] = employee_id
+        employee_data["employee_id"] = users_db.normalize_employee_id(employee_id)
     
     # Create the employee first
     try:

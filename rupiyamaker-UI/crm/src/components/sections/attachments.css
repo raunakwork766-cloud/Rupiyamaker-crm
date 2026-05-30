@@ -7,6 +7,11 @@
     transition: box-shadow 0.3s ease;
 }
 
+.employee-details-page .attachment-card {
+    background-color: #000;
+    border-color: #2a2a3a;
+}
+
 .attachment-card:hover {
     box-shadow: 0 4px 12px rgba(0,0,0,0.08);
 }

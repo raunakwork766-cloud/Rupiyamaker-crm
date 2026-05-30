@@ -202,6 +202,7 @@ export default function CreateTask({ onClose, onSave, preselectedLead, defaultTa
   }, [form.createdBy, form.assignedTo.length]); // Re-run if createdBy changes or assignedTo becomes empty
 
   const [isOpen, setIsOpen] = useState(true);
+  const [panelVisible, setPanelVisible] = useState(false);
   const [currentDateTime, setCurrentDateTime] = useState(
     getCurrentDateTimeString()
   );
@@ -210,7 +211,24 @@ export default function CreateTask({ onClose, onSave, preselectedLead, defaultTa
   const assignDropdownRef = useRef(null);
   const assignTriggerRef = useRef(null);
   const [assignDropdownPos, setAssignDropdownPos] = useState({});
-  const [showDaysSelector, setShowDaysSelector] = useState(false);
+  // Slide-in drawer animation + lock body scroll
+  useEffect(() => {
+    const frame = requestAnimationFrame(() => setPanelVisible(true));
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      cancelAnimationFrame(frame);
+      document.body.style.overflow = prevOverflow;
+    };
+  }, []);
+
+  const closeWithAnimation = useCallback((callback) => {
+    setPanelVisible(false);
+    window.setTimeout(() => {
+      setIsOpen(false);
+      callback?.();
+    }, 280);
+  }, []);
   const messageRef = useRef(null);
   const modalRef = useRef(null);
 
@@ -535,16 +553,15 @@ export default function CreateTask({ onClose, onSave, preselectedLead, defaultTa
       });
     }
     
-    if (onClose) {
-      onClose();
-    }
-    
-    setIsOpen(false); // Close the modal locally
-  }, [form, onSave, onClose]);
+    closeWithAnimation(() => {
+      if (onClose) onClose();
+    });
+  }, [form, onSave, onClose, closeWithAnimation]);
 
   const handleClose = () => {
-    setIsOpen(false); // Close the modal locally
-    if (onClose) onClose(); // Call the parent onClose if provided
+    closeWithAnimation(() => {
+      if (onClose) onClose();
+    });
   };
 
   // Function to remove an assignee
@@ -596,9 +613,41 @@ export default function CreateTask({ onClose, onSave, preselectedLead, defaultTa
     boxShadow: form.taskType === type ? '0 2px 5px rgba(0,0,0,0.05)' : 'none',
   });
 
-  return (
-    <div className="fixed inset-0 z-[1000] flex items-center justify-center" style={{ background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(4px)', outline: 'none' }} ref={modalRef} tabIndex={-1}>
-      <div className="relative bg-white w-full max-w-[700px] max-h-[96vh] flex flex-col overflow-hidden" style={{ borderRadius: '12px', boxShadow: '0 20px 60px rgba(0,0,0,0.35)' }}>
+  return createPortal(
+    <>
+      <div
+        aria-hidden="true"
+        onClick={handleClose}
+        style={{
+          position: 'fixed',
+          inset: 0,
+          zIndex: 1000,
+          background: 'rgba(15, 23, 42, 0.55)',
+          opacity: panelVisible ? 1 : 0,
+          transition: 'opacity 0.28s ease',
+        }}
+      />
+      <div
+        className="relative bg-white flex flex-col overflow-hidden"
+        style={{
+          position: 'fixed',
+          top: 0,
+          right: 0,
+          height: '100vh',
+          width: '100%',
+          maxWidth: '560px',
+          zIndex: 1001,
+          boxShadow: '-12px 0 40px rgba(0, 0, 0, 0.28)',
+          transform: panelVisible ? 'translateX(0)' : 'translateX(100%)',
+          transition: 'transform 0.28s cubic-bezier(0.4, 0, 0.2, 1)',
+          outline: 'none',
+        }}
+        ref={modalRef}
+        tabIndex={-1}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Create New Task"
+      >
         <button
           className="absolute right-5 top-5 flex items-center justify-center z-10 cursor-pointer transition hover:text-[#334155]"
           style={{ background: '#f1f5f9', width: '28px', height: '28px', borderRadius: '50%', border: 'none', fontSize: '16px', color: '#64748b' }}
@@ -1078,7 +1127,8 @@ export default function CreateTask({ onClose, onSave, preselectedLead, defaultTa
         </form>
         </div>
       </div>
-    </div>
+    </>,
+    document.body
   );
 }
 

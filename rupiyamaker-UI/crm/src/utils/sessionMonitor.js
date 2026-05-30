@@ -100,7 +100,7 @@ class SessionMonitor {
     // Attendance sessions use a separate token (attendance_session_token) and
     // are not tracked in active_session_token, so verify-session would always
     // think they're "displaced". The backend middleware enforces scope instead.
-    if (typeof window !== 'undefined' && localStorage.getItem('loginType') === 'attendance_only') {
+    if (typeof window !== 'undefined' && sessionStorage.getItem('loginType') === 'attendance_only') {
       return;
     }
 

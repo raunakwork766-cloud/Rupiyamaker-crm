@@ -1,13 +1,13 @@
 """
 Speed Dial bookmark database.
 
-Stores per-user "speed dial" tiles (links and folders) for the navbar
-shortcut page — modelled after browser homepage bookmarks.
+Shared company-wide speed dial tiles (folders + links) — visible to all
+authenticated employees. `created_by` stores who added an item (audit only).
 
 Document shape:
 {
     _id: ObjectId,
-    user_id: str,
+    created_by: str,          # user who created (audit)
     type: "link" | "folder",
     parent_id: str | None,    # folder _id or None (root)
     title: str,
@@ -42,8 +42,8 @@ class SpeedDialDB:
 
     async def init_indexes(self):
         try:
-            await self.items.create_index("user_id")
-            await self.items.create_index([("user_id", 1), ("parent_id", 1), ("order", 1)])
+            await self.items.create_index("created_by")
+            await self.items.create_index([("parent_id", 1), ("order", 1)])
             logger.info("✓ SpeedDial indexes created")
         except Exception as e:
             logger.warning(f"SpeedDial index creation warning: {e}")
@@ -61,19 +61,15 @@ class SpeedDialDB:
 
     async def list_items(
         self,
-        user_id: str,
         parent_id: Optional[str] = None,
     ) -> List[Dict[str, Any]]:
-        query: Dict[str, Any] = {"user_id": user_id, "parent_id": parent_id}
-        cursor = self.items.find(query).sort([("type", -1), ("order", 1)])
-        # type sort -1 puts "link" before "folder" alphabetically? actually
-        # "folder" < "link"; we want folders first → sort ascending then.
+        query: Dict[str, Any] = {"parent_id": parent_id}
         cursor = self.items.find(query).sort([("order", 1)])
         docs = await cursor.to_list(length=None)
         return [self._serialize(d) for d in docs]
 
-    async def list_all_for_user(self, user_id: str) -> List[Dict[str, Any]]:
-        cursor = self.items.find({"user_id": user_id}).sort("order", 1)
+    async def list_all(self) -> List[Dict[str, Any]]:
+        cursor = self.items.find({}).sort("order", 1)
         docs = await cursor.to_list(length=None)
         return [self._serialize(d) for d in docs]
 
@@ -83,14 +79,14 @@ class SpeedDialDB:
 
     # ── Create ────────────────────────────────────────────────
 
-    async def create_item(self, user_id: str, data: Dict[str, Any]) -> str:
+    async def create_item(self, created_by: str, data: Dict[str, Any]) -> str:
         parent_id = data.get("parent_id") or None
         last = await self.items.find_one(
-            {"user_id": user_id, "parent_id": parent_id},
+            {"parent_id": parent_id},
             sort=[("order", -1)],
         )
         doc = {
-            "user_id": user_id,
+            "created_by": created_by,
             "type": data.get("type", "link"),
             "parent_id": parent_id,
             "title": (data.get("title") or "").strip(),
@@ -127,29 +123,26 @@ class SpeedDialDB:
         item = await self.items.find_one({"_id": ObjectId(item_id)})
         if not item:
             return False
-        # If folder, delete all children recursively
         if item.get("type") == "folder":
-            await self._delete_folder_children(str(item["_id"]), item.get("user_id"))
+            await self._delete_folder_children(str(item["_id"]))
         result = await self.items.delete_one({"_id": ObjectId(item_id)})
         return result.deleted_count > 0
 
-    async def _delete_folder_children(self, folder_id: str, user_id: str):
+    async def _delete_folder_children(self, folder_id: str):
         children = await self.items.find(
-            {"user_id": user_id, "parent_id": folder_id}
+            {"parent_id": folder_id}
         ).to_list(length=None)
         for child in children:
             if child.get("type") == "folder":
-                await self._delete_folder_children(str(child["_id"]), user_id)
-        await self.items.delete_many(
-            {"user_id": user_id, "parent_id": folder_id}
-        )
+                await self._delete_folder_children(str(child["_id"]))
+        await self.items.delete_many({"parent_id": folder_id})
 
     # ── Reorder ───────────────────────────────────────────────
 
-    async def reorder(self, user_id: str, parent_id: Optional[str], item_ids: List[str]) -> bool:
+    async def reorder(self, parent_id: Optional[str], item_ids: List[str]) -> bool:
         for idx, item_id in enumerate(item_ids):
             await self.items.update_one(
-                {"_id": ObjectId(item_id), "user_id": user_id},
+                {"_id": ObjectId(item_id)},
                 {"$set": {"order": idx + 1, "parent_id": parent_id, "updated_at": get_ist_now()}},
             )
         return True

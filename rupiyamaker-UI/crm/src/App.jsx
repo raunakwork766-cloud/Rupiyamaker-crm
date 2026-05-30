@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react"
-import { Routes, Route, useLocation, useNavigate } from "react-router-dom"
+import { Routes, Route, useLocation, useNavigate, Navigate } from "react-router-dom"
 import './App.css'
 import { AppProvider } from './context/AppContext'
 import useNotificationCheck from './hooks/useNotificationCheck'
@@ -22,6 +22,19 @@ import sessionMonitor, { setSessionLogoutCallback } from './utils/sessionMonitor
 import { clearProfilePhotoFromStorage } from './utils/profilePhotoUtils'
 import { API_BASE_URL } from './config/api'
 import SpeedDialPage from './components/SpeedDialPage'
+import {
+  ATTENDANCE_LOGIN_PATH,
+  CRM_LOGIN_PATH,
+  clearLegacyAttendanceLoginFlags,
+} from './utils/loginMode'
+import {
+  getAttendanceTabSession,
+  getCrmSession,
+  isAttendanceRoute,
+  clearAttendanceTabSession,
+  clearCrmSession,
+  scrubAttendanceFromLocalStorage,
+} from './utils/authSession'
 
 /**
  * computeStartPath — Priority-based redirect: finds the FIRST page a user
@@ -71,7 +84,7 @@ const computeStartPath = (perms) => {
  * routes, etc.), which causes cascading state-update loops and eventually a
  * "Maximum call stack size exceeded" stack overflow.
  */
-const AppAuthGuard = ({ loading, isAuthenticated, onLogin, children }) => {
+const AppAuthGuard = ({ loading, isAuthenticated, onLogin, children, unauthenticatedView = null }) => {
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-screen bg-black">
@@ -80,7 +93,7 @@ const AppAuthGuard = ({ loading, isAuthenticated, onLogin, children }) => {
     );
   }
   if (!isAuthenticated) {
-    return <Login onLogin={onLogin} />;
+    return unauthenticatedView ?? <Login onLogin={onLogin} />;
   }
   return children;
 };
@@ -363,40 +376,37 @@ function App() {
     };
   }, [isMobileView, location.pathname, location.search, navigate])
 
+  // One-time: migrate legacy attendance-only data out of localStorage
   useEffect(() => {
-    // Check if user is already logged in
-    const userData = localStorage.getItem('userData')
-    const authStatus = localStorage.getItem('isAuthenticated')
-
-    if (userData && authStatus === 'true') {
-      const parsedUser = JSON.parse(userData)
-      setUser(parsedUser)
-      setIsAuthenticated(true)
-      
-      // Ensure profile photo is available in the expected localStorage keys
-      if (parsedUser.profile_photo) {
-        localStorage.setItem('profile_photo', parsedUser.profile_photo)
-        localStorage.setItem('userProfilePhoto', parsedUser.profile_photo)
-      }
-
-      // NOTE: No manual redirect needed here. The root '/' route is now handled by
-      // SmartRootRedirect in OptimizedAppRoutes which reads permissions and navigates
-      // to the first accessible page without going through ProtectedRoute.
-      
-      // Start session monitoring when user is authenticated
-      // console.log('Starting session monitoring for authenticated user')
-      sessionMonitor.start()
+    if (localStorage.getItem('loginType') === 'attendance_only') {
+      scrubAttendanceFromLocalStorage();
     }
-    
-    // Set up logout callback for session monitor
+  }, []);
+
+  // CRM auth only — attendance routes mount AttendanceApp via RootRouter (AppWithProviders)
+  useEffect(() => {
+    const crm = getCrmSession()
+    if (crm?.user) {
+      setUser(crm.user)
+      setIsAuthenticated(true)
+      if (crm.user.profile_photo) {
+        localStorage.setItem('profile_photo', crm.user.profile_photo)
+        localStorage.setItem('userProfilePhoto', crm.user.profile_photo)
+      }
+      sessionMonitor.start()
+    } else {
+      setUser(null)
+      setIsAuthenticated(false)
+      sessionMonitor.stop()
+    }
+
     setSessionLogoutCallback(() => {
-      // console.log('Session monitor triggered logout - updating app state')
       setUser(null)
       setIsAuthenticated(false)
     })
-    
+
     setLoading(false)
-  }, [])
+  }, [location.pathname])
 
   // Handle window resize to maintain mobile behavior
   useEffect(() => {
@@ -603,9 +613,16 @@ function App() {
     };
   }, [])
 
-  const handleLogin = useCallback((userData) => {
+  const handleLogin = useCallback((userData, scope = 'crm') => {
     setUser(userData)
     setIsAuthenticated(true)
+
+    if (scope === 'attendance') {
+      clearLegacyAttendanceLoginFlags()
+      setPendingStartPath(null)
+      sessionMonitor.stop()
+      return
+    }
 
     // Compute the first route this user actually has permission to access.
     const perms = (() => {
@@ -620,41 +637,29 @@ function App() {
       localStorage.setItem('selectedLabel', startLabel);
     }
 
-    // Use deferred navigation via pendingStartPath state so the navigate fires AFTER
-    // React commits the isAuthenticated = true state and mounts the route tree.
-    // Direct navigate() here would race with AppAuthGuard switching from <Login> to
-    // <Routes>, causing ProtectedRoute to fire at an intermediate state → /unauthorized.
     setPendingStartPath(startPath);
-
-    // Start session monitoring when user logs in
     sessionMonitor.start()
   }, [])
 
   const handleLogout = () => {
-    // Stop session monitoring before clearing data
     sessionMonitor.stop()
-    
-    // Clear profile photo using utility function
     clearProfilePhotoFromStorage()
-    
-    // Check if this was an attendance-only session BEFORE clearing localStorage
-    const wasAttendanceSession = localStorage.getItem('loginType') === 'attendance_only';
-    
-    // Preserve attendance mode in sessionStorage so Login.jsx detects it after
-    // localStorage.clear() and the SPA navigate (no full page reload)
-    if (wasAttendanceSession) {
-      sessionStorage.setItem('attendanceLoginPending', 'true');
-    }
-    
-    // Clear ALL localStorage to prevent quota exceeded on next login
-    localStorage.clear()
-    
+    clearLegacyAttendanceLoginFlags()
+
+    const onAttendancePath = isAttendanceRoute(location.pathname)
+    const hasAttendanceTab = !!getAttendanceTabSession()
+
     setUser(null)
     setIsAuthenticated(false)
-    // Attendance sessions must return to the attendance link so ?mode=attendance
-    // is present when Login re-mounts — otherwise isAttendanceMode becomes false
-    // and OTP is triggered for the next login attempt.
-    navigate(wasAttendanceSession ? '/login?mode=attendance' : '/login')
+
+    if (onAttendancePath || hasAttendanceTab) {
+      clearAttendanceTabSession()
+      navigate(ATTENDANCE_LOGIN_PATH)
+      return
+    }
+
+    clearCrmSession()
+    navigate(CRM_LOGIN_PATH)
   }
 
   // GLOBAL: Check for global notification triggers
@@ -1254,19 +1259,29 @@ function App() {
             }
           />
 
-          {/* Protected routes (requires authentication) */}
-          <Route path="/*" element={
-            <AppAuthGuard loading={loading} isAuthenticated={isAuthenticated} onLogin={handleLogin}>
-              {/* 📱 ATTENDANCE-ONLY SESSION SHORT-CIRCUIT
-                  If the user logged in via /login?mode=attendance, render ONLY the
-                  attendance shell — no Sidebar/Navbar/CRM routes. Phone "desktop view"
-                  bypass cannot reach CRM because:
-                    1. This guard renders only AttendanceOnlyShell client-side, AND
-                    2. Backend middleware blocks the attendance token on any non-
-                       attendance API path (defense in depth). */}
-              {localStorage.getItem('loginType') === 'attendance_only' ? (
-                <AttendanceOnlyShell user={user} onLogout={handleLogout} />
+          {/* CRM login — localStorage session only */}
+          <Route
+            path={CRM_LOGIN_PATH}
+            element={
+              loading ? (
+                <div className="flex items-center justify-center min-h-screen bg-black">
+                  <div className="text-white text-xl">Loading...</div>
+                </div>
+              ) : getCrmSession() ? (
+                <Navigate to="/" replace />
               ) : (
+                <Login onLogin={handleLogin} forcedMode="crm" />
+              )
+            }
+          />
+
+          {/* Protected CRM routes — never use attendance sessionStorage here */}
+          <Route path="/*" element={
+            <AppAuthGuard
+              loading={loading}
+              isAuthenticated={!!getCrmSession()}
+              onLogin={handleLogin}
+            >
               <div style={{ display: 'flex', height: '100vh', overflow: 'hidden', background: '#000', color: '#fff' }}>
                 {/* Sidebar - Hidden on mobile view, visible on desktop view */}
                 {!isMobileView && (
@@ -1274,15 +1289,29 @@ function App() {
                 )}
                 
                 {/* Main column: fixed height column, navbar on top, scrollable content below */}
-                <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+                <div style={{ flex: 1, minWidth: 0, width: '100%', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
                   <TopNavbar
                     selectedLabel={selectedLabel}
                     userName={`${user?.first_name || ''} ${user?.last_name || ''}`}
                     onLogout={handleLogout}
                     user={user}
                   />
-                  {/* CRITICAL: minHeight:0 lets flex child shrink below content height → enables scroll */}
-                  <div id="main-scroll-container" style={{ flex: 1, minHeight: 0, overflowY: 'auto', overflowX: 'hidden' }}>
+                  {/* CRITICAL: minHeight:0 lets flex child shrink below content height → enables scroll.
+                      Flex column + alignItems stretch forces lazy route roots to span full main column width. */}
+                  <div
+                    id="main-scroll-container"
+                    style={{
+                      flex: 1,
+                      minHeight: 0,
+                      minWidth: 0,
+                      width: '100%',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      alignItems: 'stretch',
+                      overflowY: 'auto',
+                      overflowX: 'hidden',
+                    }}
+                  >
                     {/* Conditional rendering based on view mode */}
                     {isMobileView ? (
                       // Mobile view - Force Feed component only with optimized styling
@@ -1299,7 +1328,6 @@ function App() {
                 {/* Global Pop Notification Modal - REMOVED: Using new announcement modal in NotificationManagementPage */}
                 {/* <PopNotificationModal user={user} /> */}
               </div>
-              )}
             </AppAuthGuard>
           } />
         </Routes>

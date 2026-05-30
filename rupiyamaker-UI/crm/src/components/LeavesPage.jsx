@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   Add as Plus,
   Visibility as Eye,
@@ -22,6 +22,7 @@ import {
 
 import { getISTDateYMD } from '../utils/dateUtils';
 import useTabWithHistory from '../hooks/useTabWithHistory';
+import useNavbarPageSearch from '../hooks/useNavbarPageSearch';
 
 // Import simplified permission system
 import { 
@@ -41,67 +42,197 @@ import {
 // API base URL - Use proxy in development
 const API_BASE_URL = '/api'; // Always use API proxy
 
-// Status card configuration for dark UI - solid colors
+// Status card configuration — HubSpot dark KPI style
 const statusCardConfig = [
-  {
-    key: "pending",
-    label: "PENDING LEAVES",
-    icon: Clock,
-    backgroundColor: "bg-orange-500",
-    gradient: "from-orange-400 to-orange-600",
-    shadowColor: "shadow-orange-500/25",
-  },
-  {
-    key: "approved",
-    label: "APPROVED LEAVES",
-    icon: CheckCircle,
-    backgroundColor: "bg-green-500",
-    gradient: "from-green-400 to-green-600",
-    shadowColor: "shadow-green-500/25",
-  },
-  {
-    key: "rejected",
-    label: "REJECTED LEAVES",
-    icon: XCircle,
-    backgroundColor: "bg-red-500",
-    gradient: "from-red-400 to-red-600",
-    shadowColor: "shadow-red-500/25",
-  },
+  { key: 'pending', label: 'Pending', icon: Clock, kpiClass: 'leave-kpi pending' },
+  { key: 'approved', label: 'Approved', icon: CheckCircle, kpiClass: 'leave-kpi approved' },
+  { key: 'rejected', label: 'Rejected', icon: XCircle, kpiClass: 'leave-kpi rejected' },
 ];
 
-const LeaveTypeChip = ({ leavetype, label }) => {
-  const getTypeColor = (type) => {
-    switch(type) {
-      case 'paid_leave': return 'bg-blue-500';
-      case 'casual_leave': return 'bg-purple-500';
-      case 'sick_leave': return 'bg-red-500';
-      case 'emergency_leave': return 'bg-orange-500';
-      default: return 'bg-gray-500';
-    }
-  };
+const leavePageStyles = `
+  .leaves-page { padding: 0; max-width: 100%; background: #000; min-height: 100vh; font-family: -apple-system, BlinkMacSystemFont, 'Lexend Deca', sans-serif; color: #e2e8f0; }
+  .leaves-page .task-top-bar { display: flex; justify-content: space-between; align-items: flex-start; padding: 20px 24px 0; border-bottom: 1px solid #1f1f27; background: #000; gap: 16px; flex-wrap: wrap; }
+  .leaves-page .task-top-bar-left h1 { font-size: 22px; font-weight: 700; color: #f0f0f5; margin: 0 0 2px; line-height: 1.2; }
+  .leaves-page .task-top-bar-left p { font-size: 13px; color: #6b7a99; margin: 0 0 12px; }
+  .leaves-page .task-top-bar-right { display: flex; gap: 8px; align-items: center; padding-top: 4px; flex-wrap: wrap; }
+  .leaves-page .task-btn-secondary { background: #1a1a24; color: #c8d0e0; border: 1px solid #2a2a3a; padding: 7px 14px; border-radius: 3px; font-size: 13px; font-weight: 500; cursor: pointer; transition: background 0.15s, border-color 0.15s; white-space: nowrap; display: inline-flex; align-items: center; gap: 6px; }
+  .leaves-page .task-btn-secondary:hover { background: #22222e; border-color: #3a3a50; }
+  .leaves-page .task-btn-create { background: #3b82f6; color: #fff; border: none; padding: 7px 14px; border-radius: 3px; font-size: 13px; font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; transition: background 0.15s; white-space: nowrap; }
+  .leaves-page .task-btn-create:hover { background: #2563eb; }
+  .leaves-page .task-btn-settings { background: #1a1a24; color: #f97316; border: 1px solid #78350f; }
+  .leaves-page .task-btn-settings:hover { background: #2a1a00; border-color: #92400e; }
+  .leaves-page .task-view-toggle-bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 24px; background: #000; border-bottom: 1px solid #1f1f27; flex-wrap: wrap; }
+  .leaves-page .task-view-toggle-group { display: flex; gap: 0; flex-wrap: wrap; min-width: 0; overflow-x: auto; scrollbar-width: none; }
+  .leaves-page .task-view-toggle-group::-webkit-scrollbar { display: none; }
+  .leaves-page .task-view-toggle-btn { padding: 12px 16px; border: none; background: transparent; font-size: 13px; font-weight: 600; color: #6b7a99; cursor: pointer; border-bottom: 3px solid transparent; transition: color 0.15s, border-color 0.15s; white-space: nowrap; }
+  .leaves-page .task-view-toggle-btn:hover { color: #c8d0e0; }
+  .leaves-page .task-view-toggle-btn.active { color: #f97316; font-weight: 800; border-bottom-color: #f97316; }
+  .leaves-page .task-toolbar-right { display: flex; align-items: center; justify-content: flex-end; gap: 8px; margin-left: auto; flex-shrink: 0; flex-wrap: wrap; }
+  .leaves-page .task-search-box--in-bar { position: relative; width: 260px; min-width: 200px; flex-shrink: 0; }
+  .leaves-page .task-search-box--in-bar input { background: #1a1a24; border: 1px solid #2a2a3a; border-radius: 3px; padding: 6px 32px 6px 32px; color: #c8d0e0; font-size: 13px; width: 100%; outline: none; box-sizing: border-box; }
+  .leaves-page .task-search-box--in-bar input::placeholder { color: #4a5570; }
+  .leaves-page .task-search-box--in-bar input:focus { border-color: #3b82f6; box-shadow: 0 0 0 2px rgba(59,130,246,0.15); }
+  .leaves-page .task-search-box--in-bar .search-icon { position: absolute; left: 9px; top: 50%; transform: translateY(-50%); color: #4a5570; pointer-events: none; display: flex; }
+  .leaves-page .task-search-box--in-bar .search-clear { position: absolute; right: 8px; top: 50%; transform: translateY(-50%); color: #4a5570; background: none; border: none; cursor: pointer; padding: 2px; display: flex; align-items: center; }
+  .leaves-page .task-filter-dropdown { padding: 6px 28px 6px 10px; border-radius: 3px; border: 1px solid #2a2a3a; background-color: #1a1a24; color: #c8d0e0; font-size: 13px; font-weight: 500; appearance: none; min-height: 32px; cursor: pointer; outline: none; background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="%236b7a99" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>'); background-repeat: no-repeat; background-position: right 8px center; }
+  .leaves-page .task-filter-dropdown:focus { border-color: #3b82f6; }
+  .leaves-page .task-select-controls { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .leaves-page .task-select-controls label { display: flex; align-items: center; cursor: pointer; color: #c8d0e0; font-size: 13px; gap: 5px; }
+  .leaves-page .task-select-controls span { color: #6b7a99; font-size: 13px; }
+  .leaves-page .task-select-btn-del { padding: 5px 12px; background: #1a0a0a; color: #f87171; border: 1px solid #7f1d1d; border-radius: 3px; font-size: 13px; cursor: pointer; }
+  .leaves-page .task-select-btn-del:hover { background: #2a0f0f; }
+  .leaves-page .task-select-btn-cancel { padding: 5px 12px; background: #1a1a24; color: #6b7a99; border: 1px solid #2a2a3a; border-radius: 3px; font-size: 13px; cursor: pointer; }
+  .leaves-page .task-select-btn-cancel:hover { background: #22222e; }
+  .leaves-page .leave-page-content { padding: 16px 24px 24px; }
+  .leaves-page .leave-kpi-row { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-bottom: 16px; }
+  .leaves-page .leave-kpi { display: flex; align-items: center; gap: 14px; padding: 12px 16px; border-radius: 4px; border: 1px solid #1f1f27; background: #000; }
+  .leaves-page .leave-kpi.pending { border-color: #78350f; }
+  .leaves-page .leave-kpi.approved { border-color: #064e3b; }
+  .leaves-page .leave-kpi.rejected { border-color: #7f1d1d; }
+  .leaves-page .leave-kpi-icon { width: 36px; height: 36px; border-radius: 4px; background: #1a1a24; border: 1px solid #2a2a3a; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+  .leaves-page .leave-kpi.pending .leave-kpi-icon { color: #fbbf24; }
+  .leaves-page .leave-kpi.approved .leave-kpi-icon { color: #34d399; }
+  .leaves-page .leave-kpi.rejected .leave-kpi-icon { color: #f87171; }
+  .leaves-page .leave-kpi-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: #6b7a99; margin: 0 0 2px; }
+  .leaves-page .leave-kpi-val { font-size: 22px; font-weight: 800; color: #f0f0f5; line-height: 1; margin: 0; }
+  .leaves-page .leave-filter-meta { font-size: 12px; color: #6b7a99; padding: 6px 10px; border: 1px solid #2a2a3a; border-radius: 3px; background: #1a1a24; white-space: nowrap; }
+  .leaves-page .leave-table-wrap { overflow: auto; max-height: calc(100vh - 340px); border: 1px solid #1f1f27; border-radius: 4px; background: #000; }
+  .leaves-page .leave-table { width: 100%; border-collapse: collapse; min-width: 900px; text-align: left; }
+  .leaves-page .leave-table thead { background: #ffffff; position: sticky; top: 0; z-index: 10; box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1); border-bottom: 2px solid #e5e7eb; }
+  .leaves-page .leave-table-th { color: #03b0f5; font-weight: 800; font-size: 13px; text-transform: uppercase; letter-spacing: 0.05em; padding: 12px 16px; text-align: left; border-bottom: 1px solid #e5e7eb; white-space: nowrap; background: #ffffff; }
+  .leaves-page .leave-table tbody tr.leave-row { background: #000; border-bottom: 1px solid #1a1a22; cursor: pointer; transition: background 0.1s; }
+  .leaves-page .leave-table tbody tr.leave-row:hover { background: #13131c; }
+  .leaves-page .leave-table tbody td { padding: 11px 16px; font-size: 13px; color: #ffffff; font-weight: 600; vertical-align: middle; }
+  .leaves-page .leave-table tbody td.leave-name-cell { font-weight: 700; color: #ffffff; }
+  .leaves-page .leave-cell-avatar { width: 28px; height: 28px; border-radius: 50%; background: #1a1a24; border: 1px solid #2a2a3a; color: #93c5fd; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 600; flex-shrink: 0; }
+  .leaves-page .leave-cell-name-wrap { display: flex; align-items: center; gap: 10px; min-width: 0; }
+  .leaves-page .leave-cell-sub { font-size: 11px; color: #6b7a99; margin-top: 2px; }
+  .leaves-page .leave-type-badge, .leaves-page .leave-status-badge { display: inline-flex; align-items: center; padding: 2px 8px; border-radius: 2px; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.3px; }
+  .leaves-page .leave-type-badge.paid { background: #0a1a2a; color: #60a5fa; border: 1px solid #1e3a5f; }
+  .leaves-page .leave-type-badge.casual { background: #1a1030; color: #c4b5fd; border: 1px solid #4c1d95; }
+  .leaves-page .leave-type-badge.sick { background: #1a0a0a; color: #f87171; border: 1px solid #7f1d1d; }
+  .leaves-page .leave-type-badge.emergency { background: #2a1a00; color: #fbbf24; border: 1px solid #78350f; }
+  .leaves-page .leave-type-badge.default { background: #1a1a24; color: #6b7a99; border: 1px solid #2a2a3a; }
+  .leaves-page .leave-status-badge.approved { background: #0a2a22; color: #34d399; border: 1px solid #064e3b; }
+  .leaves-page .leave-status-badge.rejected { background: #1a0a0a; color: #f87171; border: 1px solid #7f1d1d; }
+  .leaves-page .leave-status-badge.pending { background: #2a1a00; color: #fbbf24; border: 1px solid #78350f; }
+  .leaves-page .leave-status-badge.default { background: #1a1a24; color: #6b7a99; border: 1px solid #2a2a3a; }
+  .leaves-page .task-loading-spinner { display: flex; flex-direction: column; justify-content: center; align-items: center; padding: 80px 20px; min-height: 50vh; }
+  .leaves-page .task-loading-spinner .spinner { width: 32px; height: 32px; border: 3px solid #1a1a24; border-top-color: #3b82f6; border-radius: 50%; animation: leaveSpin 0.7s linear infinite; margin-bottom: 12px; }
+  .leaves-page .task-loading-spinner p { color: #6b7a99; font-size: 14px; margin: 0; }
+  .leaves-page .task-empty-state { display: flex; flex-direction: column; justify-content: center; align-items: center; padding: 80px 20px; text-align: center; }
+  .leaves-page .task-empty-state-title { font-size: 17px; font-weight: 700; color: #c8d0e0; margin: 0 0 6px; }
+  .leaves-page .task-empty-state-sub { font-size: 14px; color: #4a5570; margin: 0; }
+  .leaves-page .leave-snackbar { position: fixed; top: 16px; right: 16px; z-index: 10050; padding: 10px 14px; border-radius: 4px; font-size: 13px; color: #fff; border: 1px solid; display: flex; align-items: center; gap: 10px; }
+  .leaves-page .leave-snackbar.success { background: #0a2a22; border-color: #064e3b; color: #34d399; }
+  .leaves-page .leave-snackbar.error { background: #1a0a0a; border-color: #7f1d1d; color: #f87171; }
+  .leaves-page .leave-snackbar.warning { background: #2a1a00; border-color: #78350f; color: #fbbf24; }
+  .leaves-page .leave-snackbar.info { background: #1e3a5f; border-color: #3b82f6; color: #93c5fd; }
+  .leave-modal-overlay { position: fixed; inset: 0; z-index: 1000; display: flex; align-items: center; justify-content: center; background: rgba(0,0,0,0.75); backdrop-filter: blur(4px); padding: 16px; }
+  .leave-modal-panel { background: #000; border: 1px solid #1f1f27; border-radius: 4px; box-shadow: 0 20px 60px rgba(0,0,0,0.7); max-height: 92vh; overflow-y: auto; animation: leaveModalUp 0.2s ease-out; color: #c8d0e0; }
+  .leave-modal-panel input, .leave-modal-panel select, .leave-modal-panel textarea { background: #1a1a24 !important; color: #c8d0e0 !important; border: 1px solid #2a2a3a !important; border-radius: 3px !important; }
+  .leave-modal-panel input:focus, .leave-modal-panel select:focus, .leave-modal-panel textarea:focus { border-color: #3b82f6 !important; outline: none !important; box-shadow: 0 0 0 2px rgba(59,130,246,0.15) !important; }
+  .leave-modal-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 16px 20px; border-bottom: 1px solid #1f1f27; background: #000; }
+  .leave-modal-header h2 { margin: 0; font-size: 16px; font-weight: 700; color: #f0f0f5; }
+  .leave-modal-header p { margin: 2px 0 0; font-size: 12px; color: #6b7a99; }
+  .leave-modal-close { background: #1a1a24; border: 1px solid #2a2a3a; color: #c8d0e0; width: 32px; height: 32px; border-radius: 3px; cursor: pointer; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+  .leave-modal-close:hover { background: #22222e; }
+  .leave-modal-body { padding: 16px 20px; }
+  .leave-modal-footer { display: flex; justify-content: flex-end; gap: 8px; padding: 14px 20px; border-top: 1px solid #1f1f27; background: #000; }
+  .leave-modal-btn-secondary { background: #1a1a24; color: #c8d0e0; border: 1px solid #2a2a3a; padding: 7px 14px; border-radius: 3px; font-size: 13px; font-weight: 600; cursor: pointer; }
+  .leave-modal-btn-secondary:hover { background: #22222e; }
+  .leave-modal-btn-primary { background: #3b82f6; color: #fff; border: none; padding: 7px 14px; border-radius: 3px; font-size: 13px; font-weight: 600; cursor: pointer; }
+  .leave-modal-btn-primary:hover { background: #2563eb; }
+  .leave-modal-btn-primary:disabled { opacity: 0.45; cursor: not-allowed; }
+  .leave-modal-btn-success { background: #059669; color: #fff; border: none; padding: 7px 14px; border-radius: 3px; font-size: 13px; font-weight: 600; cursor: pointer; }
+  .leave-modal-btn-success:hover { background: #047857; }
+  .leave-modal-btn-danger { background: #1a0a0a; color: #f87171; border: 1px solid #7f1d1d; padding: 8px 14px; border-radius: 3px; font-size: 13px; font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
+  .leave-modal-btn-danger:hover { background: #2a0f0f; }
+  .leave-modal-btn-success.full, .leave-modal-btn-danger.full, .leave-modal-btn-secondary.full { flex: 1; padding: 8px 14px; }
+  .leave-detail-modal { width: 100%; max-width: 560px; }
+  .leave-detail-body { padding: 16px 20px; }
+  .leave-detail-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px; }
+  .leave-detail-field { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+  .leave-detail-field.full { grid-column: 1 / -1; }
+  .leave-detail-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: #6b7a99; }
+  .leave-detail-value { border: 1px solid #2a2a3a; border-radius: 3px; padding: 9px 12px; font-size: 13px; font-weight: 500; color: #c8d0e0; min-height: 38px; background: #1a1a24; display: flex; align-items: center; }
+  .leave-detail-value.block { align-items: flex-start; white-space: pre-wrap; min-height: 64px; line-height: 1.5; }
+  .leave-detail-value.success { color: #34d399; font-weight: 600; }
+  .leave-detail-value.danger { color: #f87171; font-weight: 600; }
+  .leave-detail-value.muted { color: #6b7a99; }
+  .leave-detail-chip { display: inline-flex; align-items: center; padding: 2px 8px; border-radius: 2px; font-size: 11px; font-weight: 600; background: #1a1030; color: #c4b5fd; border: 1px solid #4c1d95; }
+  .leave-detail-banner { border-radius: 3px; padding: 10px 12px; font-size: 12px; font-weight: 600; border: 1px solid; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
+  .leave-detail-banner.success { background: #0a2a22; color: #34d399; border-color: #064e3b; }
+  .leave-detail-banner.warning { background: #2a1a00; color: #fbbf24; border-color: #78350f; }
+  .leave-detail-banner.danger { background: #1a0a0a; color: #f87171; border-color: #7f1d1d; }
+  .leave-detail-banner-btn { background: #059669; color: #fff; border: none; border-radius: 3px; padding: 4px 8px; font-size: 11px; font-weight: 600; cursor: pointer; }
+  .leave-detail-banner-btn:hover { background: #047857; }
+  .leave-detail-divider { border: none; border-top: 1px solid #1f1f27; margin: 14px 0; }
+  .leave-detail-section-title { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: #6b7a99; margin: 0 0 8px; }
+  .leave-detail-table-wrap { border: 1px solid #1f1f27; border-radius: 4px; overflow: hidden; margin-bottom: 12px; }
+  .leave-detail-table { width: 100%; border-collapse: collapse; }
+  .leave-detail-table th { background: #ffffff; color: #03b0f5; font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em; padding: 10px 12px; text-align: left; border-bottom: 1px solid #e5e7eb; }
+  .leave-detail-table th.center { text-align: center; }
+  .leave-detail-table td { padding: 10px 12px; border-bottom: 1px solid #1a1a22; font-size: 13px; color: #ffffff; font-weight: 600; vertical-align: middle; background: #000; }
+  .leave-detail-table td.center { text-align: center; }
+  .leave-detail-table tr:last-child td { border-bottom: none; }
+  .leave-detail-table tr.highlight td { background: #13131c; }
+  .leave-detail-you-pill { margin-left: 6px; font-size: 10px; font-weight: 700; padding: 1px 6px; border-radius: 2px; background: #1e3a5f; color: #93c5fd; border: 1px solid #3b82f6; }
+  .leave-detail-row-actions { display: flex; gap: 6px; justify-content: center; flex-wrap: wrap; }
+  .leave-detail-mini-btn { font-size: 11px; font-weight: 600; padding: 4px 10px; border-radius: 3px; cursor: pointer; border: 1px solid; }
+  .leave-detail-mini-btn.approve { background: #0a2a22; color: #34d399; border-color: #064e3b; }
+  .leave-detail-mini-btn.approve:hover { background: #064e3b; }
+  .leave-detail-mini-btn.reject { background: #1a0a0a; color: #f87171; border-color: #7f1d1d; }
+  .leave-detail-mini-btn.reject:hover { background: #2a0f0f; }
+  .leave-detail-status-bar { text-align: center; font-size: 13px; font-weight: 700; padding: 10px 12px; border-radius: 3px; border: 1px solid; margin-bottom: 4px; }
+  .leave-detail-status-bar.approved { background: #0a2a22; color: #34d399; border-color: #064e3b; }
+  .leave-detail-status-bar.rejected { background: #1a0a0a; color: #f87171; border-color: #7f1d1d; }
+  .leave-detail-status-bar.pending { background: #2a1a00; color: #fbbf24; border-color: #78350f; }
+  .leave-detail-footer-actions { display: flex; gap: 8px; width: 100%; }
+  .leave-approval-summary { background: #1a1a24; border: 1px solid #2a2a3a; border-radius: 4px; padding: 12px; font-size: 13px; color: #c8d0e0; }
+  .leave-approval-summary div { margin-bottom: 4px; }
+  .leave-approval-summary div:last-child { margin-bottom: 0; }
+  .leave-approval-summary span { color: #6b7a99; }
+  .leave-approval-field { margin-bottom: 12px; }
+  .leave-approval-field label { display: block; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: #6b7a99; margin-bottom: 6px; }
+  .leave-approval-field textarea { width: 100%; box-sizing: border-box; padding: 9px 12px; min-height: 72px; resize: vertical; }
+  .leave-settings-modal { width: 100%; max-width: 960px; height: 85vh; display: flex; flex-direction: column; overflow: hidden; }
+  .leave-settings-sidebar { width: 260px; border-right: 1px solid #1f1f27; background: #000; display: flex; flex-direction: column; flex-shrink: 0; }
+  .leave-settings-main { flex: 1; background: #000; display: flex; flex-direction: column; overflow: hidden; }
+  @keyframes leaveSpin { to { transform: rotate(360deg); } }
+  @keyframes leaveModalUp { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
+  @keyframes leavePopIn { from { transform: scale(0); } to { transform: scale(1); } }
+  .leave-settings-sidebar input, .leave-settings-main input, .leave-settings-sidebar button, .leave-settings-main button { font-family: inherit; }
+  .leave-settings-sidebar input, .leave-settings-main input { background: #1a1a24 !important; color: #c8d0e0 !important; border: 1px solid #2a2a3a !important; border-radius: 3px !important; }
+  .leave-settings-sidebar input:focus, .leave-settings-main input:focus { border-color: #3b82f6 !important; outline: none !important; }
+  .leave-modal-panel label { color: #6b7a99; }
+  .leave-modal-panel .text-gray-700, .leave-modal-panel .text-gray-800, .leave-modal-panel .text-gray-900 { color: #c8d0e0 !important; }
+  .leave-modal-panel .bg-white { background: #000 !important; }
+  .leave-modal-panel .bg-gray-50, .leave-modal-panel .bg-gray-100 { background: #111118 !important; }
+  .leave-modal-panel .border-gray-200, .leave-modal-panel .border-gray-300 { border-color: #2a2a3a !important; }
+  .leave-modal-panel .text-gray-500, .leave-modal-panel .text-gray-600 { color: #6b7a99 !important; }
+  @media (max-width: 768px) { .leaves-page .leave-kpi-row { grid-template-columns: 1fr; } }
+`;
 
-  return (
-    <span className={`${getTypeColor(leavetype)} text-white text-xs px-2 py-1 rounded-full font-semibold`}>
-      {label}
-    </span>
-  );
+const LeaveTypeChip = ({ leavetype, label }) => {
+  const typeClass = {
+    paid_leave: 'paid',
+    casual_leave: 'casual',
+    sick_leave: 'sick',
+    emergency_leave: 'emergency',
+  }[leavetype] || 'default';
+
+  return <span className={`leave-type-badge ${typeClass}`}>{label}</span>;
 };
 
 const StatusChip = ({ status, label }) => {
-  const getStatusColor = (status) => {
-    switch(status) {
-      case 'approved': return 'bg-green-500';
-      case 'rejected': return 'bg-red-500';
-      case 'pending': return 'bg-orange-500';
-      default: return 'bg-gray-500';
-    }
-  };
+  const statusClass = {
+    approved: 'approved',
+    rejected: 'rejected',
+    pending: 'pending',
+  }[status] || 'default';
 
-  return (
-    <span className={`${getStatusColor(status)} text-white text-xs px-2 py-1 rounded-full font-semibold`}>
-      {label}
-    </span>
-  );
+  return <span className={`leave-status-badge ${statusClass}`}>{label}</span>;
 };
 
 const LeavesPage = () => {
@@ -152,6 +283,7 @@ const LeavesPage = () => {
   // Approvers for apply modal (fetched based on current user's role)
   const [myApprovers, setMyApprovers] = useState([]);
   const [selectedApproverIds, setSelectedApproverIds] = useState(new Set());
+  const [isDefaultApprovers, setIsDefaultApprovers] = useState(false);
   
   // Filter state
   const [filters, setFilters] = useState({
@@ -159,6 +291,9 @@ const LeavesPage = () => {
     leave_type: '',
     search: ''
   });
+  useNavbarPageSearch(useCallback((query) => {
+    setFilters((prev) => ({ ...prev, search: query }));
+  }, []));
   
   // Snackbar state
   const [snackbar, setSnackbar] = useState({
@@ -702,12 +837,16 @@ const LeavesPage = () => {
       const queryParams = new URLSearchParams();
       if (userId) queryParams.append('user_id', userId);
 
+      // If approvers are the default superadmin fallback, send empty array so
+      // backend applies the "any-one" rule instead of "all-must" rule.
+      const approverIdsToSend = isDefaultApprovers ? [] : Array.from(selectedApproverIds);
+
       const response = await fetch(`${API_BASE_URL}/leaves/?${queryParams}`, {
         method: 'POST',
         headers: getAuthHeaders(),
         body: JSON.stringify({
           ...newLeave,
-          approver_ids: Array.from(selectedApproverIds),
+          approver_ids: approverIdsToSend,
         }),
       });
 
@@ -934,10 +1073,11 @@ const LeavesPage = () => {
     setNewLeave({ leave_type: 'paid_leave', from_date: '', to_date: '', reason: '', attachments: [] });
     setAttachmentFile(null);
     setSelectedApproverIds(new Set());
+    setIsDefaultApprovers(false);
     setOpenCreateDialog(true);
     await fetchLeaveBalance();
     // Fetch approvers and auto-select all of them
-    const approvers = await fetchMyApprovers();
+    const { list: approvers, isDefault } = await fetchMyApprovers();
     if (approvers && approvers.length > 0) {
       setSelectedApproverIds(new Set(approvers.map(a => a.id || a._id)));
     }
@@ -1000,10 +1140,11 @@ const LeavesPage = () => {
         const data = await response.json();
         const list = data.data || [];
         setMyApprovers(list);
-        return list;
+        setIsDefaultApprovers(!!data.is_default);
+        return { list, isDefault: !!data.is_default };
       }
     } catch (e) { console.error('Error fetching my approvers:', e); }
-    return [];
+    return { list: [], isDefault: false };
   };
 
   // Open settings modal
@@ -1277,345 +1418,232 @@ const LeavesPage = () => {
   // Progressive loading check - start with minimal UI
   if (!isReady) {
     return (
-      <div className="min-h-screen bg-black text-white flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#03B0F5] mx-auto mb-4"></div>
-          <p className="text-[#03B0F5]">Loading Leave Management...</p>
+      <div className="leaves-page task-page-container">
+        <style>{leavePageStyles}</style>
+        <div className="task-loading-spinner">
+          <div className="spinner" />
+          <p>Loading leave management...</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-black text-white text-base">
-      {/* CSS Keyframes for leave modals */}
-      <style>{`
-        @keyframes leaveModalUp {
-          from { opacity: 0; transform: translateY(22px) scale(.97); }
-          to { opacity: 1; transform: translateY(0) scale(1); }
-        }
-        @keyframes leavePopIn {
-          from { transform: scale(0); }
-          to { transform: scale(1); }
-        }
-      `}</style>
-      {/* Header */}
-      <div className="flex items-center gap-3 px-2 sm:px-4 lg:px-6 py-6 bg-[#0c1019] border-b-4 border-cyan-400/70 shadow-lg w-full">
-       
-        <div className="flex items-center gap-2">
-          {/* Select Button Controls */}
-          {(permissions.leaves_delete || permissions.leaves_select) && (
-            <div className="flex items-center gap-3">
-              {!showCheckboxes ? (
-                <button
-                  className="bg-[#03B0F5] text-white px-3 sm:px-5 py-1.5 rounded-lg font-bold shadow hover:bg-[#0280b5] transition text-sm sm:text-base"
-                  onClick={handleShowCheckboxes}
-                >
-                  {selectedRows.length > 0 ? `Select (${selectedRows.length})` : "Select"}
-                </button>
-              ) : (
-                <div className="flex items-center gap-4 bg-gray-900 rounded-lg p-2">
-                  <label className="flex items-center cursor-pointer text-[#03B0F5] font-bold text-sm">
-                    <input
-                      type="checkbox"
-                      className="accent-blue-500 mr-2"
-                      checked={selectAll}
-                      onChange={(e) => handleSelectAll(e.target.checked)}
-                      style={{ width: 16, height: 16 }}
-                    />
-                    Select All
-                  </label>
-                  <span className="text-white font-semibold text-sm">
-                    {selectedRows.length} selected
-                  </span>
-                  <button
-                    className="px-2 py-1 bg-red-600 text-white rounded font-bold hover:bg-red-700 transition text-sm"
-                    onClick={handleDeleteSelected}
-                    disabled={selectedRows.length === 0}
-                  >
-                    Delete ({selectedRows.length})
-                  </button>
-                  <button
-                    className="px-2 py-1 bg-gray-600 text-white rounded font-bold hover:bg-gray-700 transition text-sm"
-                    onClick={handleCancelSelection}
-                  >
-                    Cancel
-                  </button>
-                </div>
-              )}
-            </div>
-          )}
+    <div className="leaves-page task-page-container">
+      <style>{leavePageStyles}</style>
+
+      <div className="task-top-bar">
+        <div className="task-top-bar-left">
+          <h1>Leaves</h1>
+          <p>{stats?.total || 0} leave request{(stats?.total || 0) !== 1 ? 's' : ''}</p>
         </div>
-        <div className="flex-1"></div>
-        <div className="flex flex-wrap gap-2">
+        <div className="task-top-bar-right">
+          {(permissions.leaves_delete || permissions.leaves_select) && (
+            !showCheckboxes ? (
+              <button type="button" className="task-btn-secondary" onClick={handleShowCheckboxes}>
+                Select{selectedRows.length > 0 ? ` (${selectedRows.length})` : ''}
+              </button>
+            ) : (
+              <div className="task-select-controls">
+                <label>
+                  <input type="checkbox" checked={selectAll} onChange={(e) => handleSelectAll(e.target.checked)} />
+                  Select all
+                </label>
+                <span>{selectedRows.length} selected</span>
+                <button type="button" className="task-select-btn-del" onClick={handleDeleteSelected} disabled={selectedRows.length === 0}>
+                  Delete ({selectedRows.length})
+                </button>
+                <button type="button" className="task-select-btn-cancel" onClick={handleCancelSelection}>
+                  Cancel
+                </button>
+              </div>
+            )
+          )}
           {(permissions.leaves_create || permissions.leaves_own || permissions.leaves_show) && (
-            <button
-              onClick={handleOpenCreateDialog}
-              className="bg-gradient-to-b from-cyan-400 to-blue-700 px-3 sm:px-5 py-1.5 rounded-lg text-white font-bold shadow-lg hover:from-blue-700 hover:to-cyan-400 uppercase tracking-wide transition text-sm sm:text-base flex items-center"
-            >
-              <Plus className="mr-2 h-4 w-4" /> APPLY LEAVE
+            <button type="button" className="task-btn-create" onClick={handleOpenCreateDialog}>
+              <Plus style={{ fontSize: 16 }} /> Apply Leave
             </button>
           )}
-          {(permissions.leave_setting) && (
-            <button
-              onClick={handleOpenSettings}
-              className="bg-gradient-to-b from-orange-400 to-orange-600 px-3 sm:px-5 py-1.5 rounded-lg text-white font-bold shadow-lg hover:from-orange-600 hover:to-orange-400 uppercase tracking-wide transition text-sm sm:text-base flex items-center"
-            >
-              <SettingsIcon className="mr-2 h-4 w-4" /> SETTINGS
+          {permissions.leave_setting && (
+            <button type="button" className="task-btn-secondary task-btn-settings" onClick={handleOpenSettings}>
+              <SettingsIcon style={{ fontSize: 16 }} /> Settings
             </button>
           )}
-          <button
-            onClick={() => { fetchLeaves(); fetchStats(); }}
-            className="bg-gradient-to-b from-cyan-400 to-blue-700 px-3 sm:px-5 py-1.5 rounded-lg text-white font-bold shadow-lg hover:from-blue-700 hover:to-cyan-400 uppercase tracking-wide transition text-sm sm:text-base flex items-center"
-          >
-            <RefreshCw className="mr-2 h-4 w-4" /> REFRESH
+          <button type="button" className="task-btn-secondary" onClick={() => { fetchLeaves(); fetchStats(); }}>
+            <RefreshCw style={{ fontSize: 16 }} /> Refresh
           </button>
         </div>
       </div>
 
-      {/* Statistics Cards */}
-      <div className="px-2 sm:px-4 lg:px-6 py-6">
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6 mb-8">
-          {statusCardConfig.map((config) => {
-            const Icon = config.icon;
-            const count = stats && typeof stats[config.key] === 'number' ? stats[config.key] : 0;
-            
-            return (
-              <div
-                key={config.key}
-                className={`p-4 rounded-xl bg-gradient-to-r ${config.gradient || config.backgroundColor} shadow-lg ${config.shadowColor || 'shadow-lg'} flex-1`}
-              >
-                <div className="flex justify-between items-center">
-                  <Icon className="w-6 h-6 text-white" />
-                  <span className="text-xl font-bold text-white">{count}</span>
-                </div>
-                <p className="mt-4 text-md text-white font-medium uppercase tracking-wide">{config.label}</p>
-              </div>
-            );
-          })}
-        </div>
-
-        {/* Filter Section */}
-        <div className="flex items-center justify-between gap-4 mb-4">
-          <div className="flex items-center gap-3">
-            <div className="flex-1 min-w-[200px]">
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-[#03B0F5]" style={{ fontSize: 16 }} />
-                <input
-                  type="text"
-                  placeholder="Search leaves..."
-                  value={filters.search}
-                  onChange={(e) => setFilters({ ...filters, search: e.target.value })}
-                  className="w-full pl-12 pr-4 py-2 bg-[#1a2332] border border-[#2D3C56] rounded-lg text-white placeholder-gray-400 focus:border-[#03B0F5] focus:outline-none"
-                />
-              </div>
-            </div>
-            
-            {/* Search Results Indicator */}
-            {(filters.search || filters.status || filters.leave_type) && (
-              <div className="text-base text-gray-300 bg-[#1b2230] px-4 py-3 rounded-lg border border-gray-600">
-                {filteredLeaves.length} of {leaves.length} leaves
-                {filters.search && (
-                  <span className="ml-2">
-                    matching "<span className="text-cyan-400 font-semibold">{filters.search}</span>"
-                  </span>
-                )}
-              </div>
-            )}
-          </div>
-          
-          <div className="flex items-center gap-3">
-            <select
-              value={filters.status}
-              onChange={(e) => setFilters({ ...filters, status: e.target.value })}
-              className="px-4 py-2 bg-[#1a2332] border border-[#2D3C56] rounded-lg text-white focus:border-[#03B0F5] focus:outline-none"
-            >
-              <option value="">All Status</option>
-              <option value="pending">Pending</option>
-              <option value="approved">Approved</option>
-              <option value="rejected">Rejected</option>
-            </select>
-            <select
-              value={filters.leave_type}
-              onChange={(e) => setFilters({ ...filters, leave_type: e.target.value })}
-              className="px-4 py-2 bg-[#1a2332] border border-[#2D3C56] rounded-lg text-white focus:border-[#03B0F5] focus:outline-none"
-            >
-              <option value="">All Types</option>
-              <option value="paid_leave">Paid Leave</option>
-              <option value="casual_leave">Casual Leave</option>
-              <option value="sick_leave">Sick Leave</option>
-              <option value="emergency_leave">Emergency Leave</option>
-            </select>
-          </div>
-        </div>
-
-        {/* Tabs */}
-        <div className="flex flex-wrap items-center gap-2 mb-6 overflow-x-auto">
+      <div className="task-view-toggle-bar">
+        <div className="task-view-toggle-group">
           {[
             { label: `Pending (${stats?.pending || 0})`, value: 0 },
             { label: `Approved (${stats?.approved || 0})`, value: 1 },
-            { label: `Rejected (${stats?.rejected || 0})`, value: 2 }
-          ].map((tab, idx) => (
+            { label: `Rejected (${stats?.rejected || 0})`, value: 2 },
+          ].map((tab) => (
             <button
-              key={idx}
-              className={`
-                flex items-center px-4 py-3 rounded-3xl font-extrabold border shadow-md text-sm sm:text-base transition whitespace-nowrap
-                ${idx === selectedTab
-                  ? "bg-[#03B0F5] via-blue-700 to-cyan-500 text-white border-cyan-400 shadow-lg scale-105"
-                  : "bg-white text-[#03b0f5] border-[#2D3C56] hover:bg-cyan-400/10 hover:text-cyan-400"
-                }
-                focus:outline-none
-              `}
-              onClick={() => handleTabChange(null, idx)}
+              key={tab.value}
+              type="button"
+              className={`task-view-toggle-btn${selectedTab === tab.value ? ' active' : ''}`}
+              onClick={() => handleTabChange(null, tab.value)}
             >
               {tab.label}
             </button>
           ))}
         </div>
-
-        {/* Loading */}
-        {loading && (
-          <div className="bg-[#1a2332] border border-[#2D3C56] rounded-lg p-4 mb-6 shadow-lg">
-            <div className="flex items-center justify-center">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#03B0F5]"></div>
-              <span className="ml-2 text-[#03B0F5]">Loading leaves...</span>
-            </div>
+        <div className="task-toolbar-right">
+          <div className="task-search-box--in-bar">
+            <Search className="search-icon" style={{ fontSize: 14 }} />
+            <input
+              type="text"
+              placeholder="Search leaves..."
+              value={filters.search}
+              onChange={(e) => setFilters({ ...filters, search: e.target.value })}
+            />
+            {filters.search && (
+              <button type="button" className="search-clear" onClick={() => setFilters({ ...filters, search: '' })} aria-label="Clear search">
+                <X style={{ fontSize: 14 }} />
+              </button>
+            )}
           </div>
-        )}
-
-        {/* Table Section */}
-        <div className="overflow-auto rounded-xl">
-          <div className="overflow-x-auto bg-transparent rounded-lg">
-            <table className="min-w-full w-full bg-transparent">
-              <thead className="bg-white">
-                <tr>
-                  {/* Checkbox column header - only show when in selection mode */}
-                  {permissions.leaves_delete && showCheckboxes && (
-                    <th className="bg-white px-4 py-3 text-md font-extrabold text-[#03b0f5] uppercase tracking-wider text-left">
-                      <input
-                        type="checkbox"
-                        className="accent-blue-500"
-                        checked={selectAll}
-                        onChange={(e) => handleSelectAll(e.target.checked)}
-                        style={{ width: 18, height: 18 }}
-                      />
-                    </th>
-                  )}
-                  <th className="bg-white px-4 py-3 text-md font-extrabold text-[#03b0f5] uppercase tracking-wider text-left">S.No</th>
-                  <th className="bg-white px-4 py-3 text-md font-extrabold text-[#03b0f5] uppercase tracking-wider text-left">Applied On</th>
-                  <th className="bg-white px-4 py-3 text-md font-extrabold text-[#03b0f5] uppercase tracking-wider text-left">Employee Name</th>
-                  <th className="bg-white px-4 py-3 text-md font-extrabold text-[#03b0f5] uppercase tracking-wider text-left">From</th>
-                  <th className="bg-white px-4 py-3 text-md font-extrabold text-[#03b0f5] uppercase tracking-wider text-left">To</th>
-                  <th className="bg-white px-4 py-3 text-md font-extrabold text-[#03b0f5] uppercase tracking-wider text-left">Leave Duration</th>
-                </tr>
-              </thead>
-              <tbody className="bg-transparent">
-                {filteredLeaves.length === 0 ? (
-                  <tr>
-                    <td colSpan={showCheckboxes ? "7" : "6"} className="py-20 text-center text-gray-400 text-lg bg-transparent">
-                      <div className="flex items-center justify-center gap-3">
-                        {loading && <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>}
-                        <span className="text-xl font-semibold">
-                          {loading ? 'Loading Leaves...' : 'No leaves found'}
-                        </span>
-                      </div>
-                    </td>
-                  </tr>
-                ) : (
-                  filteredLeaves
-                    .map((leave, index) => (
-                      <tr 
-                        key={leave.id} 
-                        className="border-b border-gray-800 hover:bg-gray-900/50 transition cursor-pointer bg-transparent"
-                        onDoubleClick={() => handleViewLeave(leave.id)}
-                        onClick={() => handleViewLeave(leave.id)}
-                        title="Double-click to view leave details"
-                      >
-                        {/* Checkbox column - only show when in selection mode */}
-                        {permissions.leaves_delete && showCheckboxes && (
-                          <td className="py-2 px-4 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
-                            <input
-                              type="checkbox"
-                              className="accent-blue-500"
-                              checked={selectedRows.includes(leave.id)}
-                              onChange={(e) => handleRowSelect(leave.id, e.target.checked)}
-                              style={{ width: 18, height: 18 }}
-                            />
-                          </td>
-                        )}
-                        <td className="text-md font-semibold py-2 px-4 whitespace-nowrap text-white">{index + 1}</td>
-                        <td className="text-md font-semibold py-2 px-4 whitespace-nowrap text-white">{formatDate(leave.created_at)}</td>
-                        <td className="text-md font-semibold py-2 px-4 whitespace-nowrap text-white">
-                          <div className="flex items-center gap-3">
-                            <div className="w-8 h-8 rounded-full bg-gradient-to-r from-green-500 to-blue-600 flex items-center justify-center text-white font-bold text-sm">
-                              {(leave.employee_name || 'U').charAt(0).toUpperCase()}
-                            </div>
-                            <div className="flex flex-col">
-                              <span className="text-md">{leave.employee_name || 'Unknown'}</span>
-                              {leave.department_name && (
-                                <span className="text-xs text-gray-400">{leave.department_name}</span>
-                              )}
-                            </div>
-                          </div>
-                        </td>
-                        <td className="text-md font-semibold py-2 px-4 whitespace-nowrap text-white">{formatDate(leave.from_date)}</td>
-                        <td className="text-md font-semibold py-2 px-4 whitespace-nowrap text-white">{formatDate(leave.to_date)}</td>
-                        <td className="text-md font-semibold py-2 px-4 whitespace-nowrap text-white">{leave.duration_days} day{leave.duration_days > 1 ? 's' : ''}</td>
-                      </tr>
-                    ))
-                )}
-              </tbody>
-            </table>
-          </div>
+          <select
+            value={filters.status}
+            onChange={(e) => setFilters({ ...filters, status: e.target.value })}
+            className="task-filter-dropdown"
+          >
+            <option value="">All Status</option>
+            <option value="pending">Pending</option>
+            <option value="approved">Approved</option>
+            <option value="rejected">Rejected</option>
+          </select>
+          <select
+            value={filters.leave_type}
+            onChange={(e) => setFilters({ ...filters, leave_type: e.target.value })}
+            className="task-filter-dropdown"
+          >
+            <option value="">All Types</option>
+            <option value="paid_leave">Paid Leave</option>
+            <option value="casual_leave">Casual Leave</option>
+            <option value="sick_leave">Sick Leave</option>
+            <option value="emergency_leave">Emergency Leave</option>
+          </select>
+          {(filters.search || filters.status || filters.leave_type) && (
+            <span className="leave-filter-meta">
+              {filteredLeaves.length} of {leaves.length}
+            </span>
+          )}
         </div>
       </div>
 
-      
-      {/* Snackbar */}
-      {snackbar.open && (
-        <div className="fixed top-4 right-4 z-50">
-          <div className={`px-4 py-2 rounded-lg text-white ${
-            snackbar.severity === 'success' ? 'bg-green-600' :
-            snackbar.severity === 'error' ? 'bg-red-600' :
-            snackbar.severity === 'warning' ? 'bg-orange-600' :
-            'bg-blue-600'
-          }`}>
-            <div className="flex items-center justify-between gap-2">
-              <span>{snackbar.message}</span>
-              <button 
-                onClick={() => setSnackbar({ ...snackbar, open: false })}
-                className="text-white hover:text-gray-200"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
+      <div className="leave-page-content">
+        <div className="leave-kpi-row">
+          {statusCardConfig.map((config) => {
+            const Icon = config.icon;
+            const count = stats && typeof stats[config.key] === 'number' ? stats[config.key] : 0;
+            return (
+              <div key={config.key} className={config.kpiClass}>
+                <div className="leave-kpi-icon"><Icon style={{ fontSize: 18 }} /></div>
+                <div>
+                  <p className="leave-kpi-label">{config.label}</p>
+                  <p className="leave-kpi-val">{count}</p>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        {loading ? (
+          <div className="task-loading-spinner">
+            <div className="spinner" />
+            <p>Loading leaves...</p>
           </div>
+        ) : filteredLeaves.length === 0 ? (
+          <div className="task-empty-state">
+            <p className="task-empty-state-title">No leaves found</p>
+            <p className="task-empty-state-sub">Try adjusting your search or filters.</p>
+          </div>
+        ) : (
+          <div className="leave-table-wrap">
+            <table className="leave-table">
+              <thead>
+                <tr>
+                  {permissions.leaves_delete && showCheckboxes && (
+                    <th className="leave-table-th">
+                      <input type="checkbox" checked={selectAll} onChange={(e) => handleSelectAll(e.target.checked)} />
+                    </th>
+                  )}
+                  <th className="leave-table-th">S.No</th>
+                  <th className="leave-table-th">Applied On</th>
+                  <th className="leave-table-th">Employee Name</th>
+                  <th className="leave-table-th">From</th>
+                  <th className="leave-table-th">To</th>
+                  <th className="leave-table-th">Duration</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredLeaves.map((leave, index) => (
+                  <tr
+                    key={leave.id}
+                    className="leave-row"
+                    onDoubleClick={() => handleViewLeave(leave.id)}
+                    onClick={() => handleViewLeave(leave.id)}
+                    title="Click to view leave details"
+                  >
+                    {permissions.leaves_delete && showCheckboxes && (
+                      <td onClick={(e) => e.stopPropagation()}>
+                        <input
+                          type="checkbox"
+                          checked={selectedRows.includes(leave.id)}
+                          onChange={(e) => handleRowSelect(leave.id, e.target.checked)}
+                        />
+                      </td>
+                    )}
+                    <td>{index + 1}</td>
+                    <td>{formatDate(leave.created_at)}</td>
+                    <td className="leave-name-cell">
+                      <div className="leave-cell-name-wrap">
+                        <div className="leave-cell-avatar">
+                          {(leave.employee_name || 'U').charAt(0).toUpperCase()}
+                        </div>
+                        <div>
+                          <div>{leave.employee_name || 'Unknown'}</div>
+                          {leave.department_name && (
+                            <div className="leave-cell-sub">{leave.department_name}</div>
+                          )}
+                        </div>
+                      </div>
+                    </td>
+                    <td>{formatDate(leave.from_date)}</td>
+                    <td>{formatDate(leave.to_date)}</td>
+                    <td>{leave.duration_days} day{leave.duration_days > 1 ? 's' : ''}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {snackbar.open && (
+        <div className={`leave-snackbar ${snackbar.severity}`}>
+          <span>{snackbar.message}</span>
+          <button type="button" onClick={() => setSnackbar({ ...snackbar, open: false })} className="leave-modal-close" style={{ width: 24, height: 24 }}>
+            <X style={{ fontSize: 14 }} />
+          </button>
         </div>
       )}
 
-      {/* Create Leave Dialog */}
       {openCreateDialog && (
-        <div className="fixed inset-0 z-[1000] flex items-center justify-center"
-             style={{ background: 'rgba(10,5,30,0.78)', backdropFilter: 'blur(6px)' }}
-             onClick={(e) => { if (e.target === e.currentTarget) setOpenCreateDialog(false); }}>
-          <div className="relative w-full max-w-[520px] max-h-[92vh] overflow-y-auto bg-white"
-               style={{ borderRadius: '22px', boxShadow: '0 30px 70px rgba(0,0,0,.28)', animation: 'leaveModalUp 0.28s cubic-bezier(.34,1.4,.64,1)' }}>
+        <div className="leave-modal-overlay" onClick={(e) => { if (e.target === e.currentTarget) setOpenCreateDialog(false); }}>
+          <div className="leave-modal-panel" style={{ width: '100%', maxWidth: '520px' }}>
 
-            {/* Header */}
-            <div className="flex items-center justify-between gap-3 px-6 pt-5">
-              <div className="flex items-center gap-3">
-                <div className="w-[42px] h-[42px] flex items-center justify-center text-xl flex-shrink-0"
-                     style={{ borderRadius: '11px', background: '#DCFCE7' }}>📅</div>
-                <div>
-                  <div className="text-[17px] font-extrabold" style={{ color: '#16A34A' }}>Apply for Leave</div>
-                  <div className="text-xs" style={{ color: '#9CA3AF' }}>
-                    {getUserDisplayName().name}{getUserDisplayName().department ? ` · ${getUserDisplayName().department}` : ''}
-                  </div>
-                </div>
+            <div className="leave-modal-header">
+              <div>
+                <h2>Apply for Leave</h2>
+                <p>{getUserDisplayName().name}{getUserDisplayName().department ? ` · ${getUserDisplayName().department}` : ''}</p>
               </div>
-              <button onClick={() => setOpenCreateDialog(false)}
-                      className="w-8 h-8 rounded-full flex items-center justify-center text-sm flex-shrink-0 hover:bg-red-50 hover:text-red-500 transition"
-                      style={{ background: '#F3F4F6', color: '#6B7280' }}>✕</button>
+              <button type="button" onClick={() => setOpenCreateDialog(false)} className="leave-modal-close">✕</button>
             </div>
 
             {!showSuccess ? (
@@ -2004,270 +2032,177 @@ const LeavesPage = () => {
         const legacyApproverName = selectedLeave.approved_by_name || selectedLeave.rejected_by_name || null;
 
         return (
-        <div className="fixed inset-0 z-[1000] flex items-center justify-center"
-             style={{ background: 'rgba(10,5,30,0.78)', backdropFilter: 'blur(6px)' }}
-             onClick={(e) => { if (e.target === e.currentTarget) setOpenViewDialog(false); }}>
-          <div className="w-full max-w-[480px] max-h-[92vh] overflow-y-auto bg-white"
-               style={{ borderRadius: '22px', boxShadow: '0 30px 70px rgba(0,0,0,.28)', animation: 'leaveModalUp 0.28s cubic-bezier(.34,1.4,.64,1)' }}>
-
-            {/* det-hd */}
-            <div className="flex items-center justify-between gap-3" style={{ padding: '20px 24px 0', marginBottom: '18px' }}>
-              <h2 className="text-[15px] font-extrabold uppercase" style={{ color: '#16A34A', letterSpacing: '.05em' }}>
-                Leave Application Details
-              </h2>
-              <button onClick={() => setOpenViewDialog(false)}
-                      className="w-8 h-8 rounded-full flex items-center justify-center text-sm flex-shrink-0 hover:bg-red-50 hover:text-red-500 transition"
-                      style={{ background: '#F3F4F6', color: '#6B7280' }}>✕</button>
+        <div className="leave-modal-overlay" onClick={(e) => { if (e.target === e.currentTarget) setOpenViewDialog(false); }}>
+          <div className="leave-modal-panel leave-detail-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="leave-modal-header">
+              <div>
+                <h2>Leave Application Details</h2>
+                <div className="leave-detail-meta">
+                  <StatusChip status={status} label={status.charAt(0).toUpperCase() + status.slice(1)} />
+                </div>
+              </div>
+              <button type="button" onClick={() => setOpenViewDialog(false)} className="leave-modal-close">✕</button>
             </div>
 
-            {/* det-bd */}
-            <div style={{ padding: '0 24px' }}>
-
-              {/* Row 1: Employee Name + Applied On */}
-              <div className="grid grid-cols-2 gap-2.5 mb-3">
-                <div className="flex flex-col" style={{ gap: '5px' }}>
-                  <div className="text-[11px] font-semibold" style={{ color: '#6B7280' }}>Employee Name</div>
-                  <div className="flex items-center" style={{ border: '2px solid #67E8F9', borderRadius: '9px', padding: '9px 12px', fontSize: '13px', fontWeight: 600, color: '#1F2937', minHeight: '38px', background: '#fff' }}>
-                    {selectedLeave.employee_name || 'Unknown'}
+            <div className="leave-detail-body">
+              <div className="leave-detail-grid">
+                <div className="leave-detail-field">
+                  <div className="leave-detail-label">Employee Name</div>
+                  <div className="leave-detail-value">{selectedLeave.employee_name || 'Unknown'}</div>
+                </div>
+                <div className="leave-detail-field">
+                  <div className="leave-detail-label">Applied On</div>
+                  <div className="leave-detail-value">{formatDate(selectedLeave.created_at)}</div>
+                </div>
+                <div className="leave-detail-field">
+                  <div className="leave-detail-label">From Date</div>
+                  <div className="leave-detail-value">{formatDate(selectedLeave.from_date)}</div>
+                </div>
+                <div className="leave-detail-field">
+                  <div className="leave-detail-label">To Date</div>
+                  <div className="leave-detail-value">{formatDate(selectedLeave.to_date)}</div>
+                </div>
+                <div className="leave-detail-field">
+                  <div className="leave-detail-label">Leave Duration</div>
+                  <div className="leave-detail-value">{totalDays} day{totalDays > 1 ? 's' : ''}</div>
+                </div>
+                <div className="leave-detail-field">
+                  <div className="leave-detail-label">Leave of This Month</div>
+                  <div className="leave-detail-value">
+                    <span className="leave-detail-chip">{toOrdinal(totalDays)} leave day</span>
                   </div>
                 </div>
-                <div className="flex flex-col" style={{ gap: '5px' }}>
-                  <div className="text-[11px] font-semibold" style={{ color: '#6B7280' }}>Applied On</div>
-                  <div className="flex items-center" style={{ border: '2px solid #67E8F9', borderRadius: '9px', padding: '9px 12px', fontSize: '13px', fontWeight: 600, color: '#1F2937', minHeight: '38px', background: '#fff' }}>
-                    {formatDate(selectedLeave.created_at)}
+                <div className="leave-detail-field">
+                  <div className="leave-detail-label">Paid Days</div>
+                  <div className={`leave-detail-value${paidDays > 0 ? ' success' : ' muted'}`}>
+                    {paidDays > 0 ? `${paidDays} day${paidDays > 1 ? 's' : ''} — paid` : '—'}
                   </div>
+                </div>
+                <div className="leave-detail-field">
+                  <div className="leave-detail-label">Salary Deduction</div>
+                  <div className={`leave-detail-value${unpaidDays > 0 ? ' danger' : ' success'}`}>
+                    {unpaidDays > 0 ? `${unpaidDays} day${unpaidDays > 1 ? 's' : ''} salary cut` : 'None'}
+                  </div>
+                </div>
+                <div className="leave-detail-field full">
+                  <div className="leave-detail-label">Reason / Remarks</div>
+                  <div className="leave-detail-value block">{selectedLeave.reason || '—'}</div>
                 </div>
               </div>
 
-              {/* Row 2: From + To */}
-              <div className="grid grid-cols-2 gap-2.5 mb-3">
-                <div className="flex flex-col" style={{ gap: '5px' }}>
-                  <div className="text-[11px] font-semibold" style={{ color: '#6B7280' }}>From Date</div>
-                  <div className="flex items-center" style={{ border: '2px solid #67E8F9', borderRadius: '9px', padding: '9px 12px', fontSize: '13px', fontWeight: 600, color: '#1F2937', minHeight: '38px', background: '#fff' }}>
-                    {formatDate(selectedLeave.from_date)}
-                  </div>
-                </div>
-                <div className="flex flex-col" style={{ gap: '5px' }}>
-                  <div className="text-[11px] font-semibold" style={{ color: '#6B7280' }}>To Date</div>
-                  <div className="flex items-center" style={{ border: '2px solid #67E8F9', borderRadius: '9px', padding: '9px 12px', fontSize: '13px', fontWeight: 600, color: '#1F2937', minHeight: '38px', background: '#fff' }}>
-                    {formatDate(selectedLeave.to_date)}
-                  </div>
-                </div>
-              </div>
-
-              {/* Row 3: Duration + Leave of This Month (ordinal badge) */}
-              <div className="grid grid-cols-2 gap-2.5 mb-3">
-                <div className="flex flex-col" style={{ gap: '5px' }}>
-                  <div className="text-[11px] font-semibold" style={{ color: '#6B7280' }}>Leave Duration</div>
-                  <div className="flex items-center" style={{ border: '2px solid #67E8F9', borderRadius: '9px', padding: '9px 12px', fontSize: '13px', fontWeight: 600, color: '#1F2937', minHeight: '38px', background: '#fff' }}>
-                    {totalDays} day{totalDays > 1 ? 's' : ''}
-                  </div>
-                </div>
-                <div className="flex flex-col" style={{ gap: '5px' }}>
-                  <div className="text-[11px] font-semibold" style={{ color: '#6B7280' }}>Leave of This Month</div>
-                  <div className="flex items-center" style={{ border: '2px solid #67E8F9', borderRadius: '9px', padding: '9px 12px', minHeight: '38px', background: '#fff' }}>
-                    <span className="inline-flex items-center gap-1.5" style={{ background: '#F5F3FF', border: '1.5px solid #DDD6FE', borderRadius: '7px', padding: '4px 10px', fontSize: '12px', fontWeight: 700, color: '#7C3AED' }}>
-                      {toOrdinal(totalDays)} leave day
-                    </span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Row 4: Paid Days + Salary Deduction */}
-              <div className="grid grid-cols-2 gap-2.5 mb-3">
-                <div className="flex flex-col" style={{ gap: '5px' }}>
-                  <div className="text-[11px] font-semibold" style={{ color: '#6B7280' }}>Paid Days ✔</div>
-                  <div className="flex items-center" style={{ border: '2px solid #67E8F9', borderRadius: '9px', padding: '9px 12px', fontSize: '13px', fontWeight: 600, minHeight: '38px', background: '#fff' }}>
-                    {paidDays > 0
-                      ? <span style={{ color: '#166534', fontWeight: 800 }}>{paidDays} day{paidDays > 1 ? 's' : ''} — paid ✔</span>
-                      : <span style={{ color: '#9CA3AF' }}>—</span>
-                    }
-                  </div>
-                </div>
-                <div className="flex flex-col" style={{ gap: '5px' }}>
-                  <div className="text-[11px] font-semibold" style={{ color: '#6B7280' }}>Salary Deduction</div>
-                  <div className="flex items-center" style={{ border: '2px solid #67E8F9', borderRadius: '9px', padding: '9px 12px', fontSize: '13px', fontWeight: 600, minHeight: '38px', background: '#fff' }}>
-                    {unpaidDays > 0
-                      ? <span style={{ color: '#DC2626', fontWeight: 800 }}>{unpaidDays} day{unpaidDays > 1 ? 's' : ''} salary cut ⚠</span>
-                      : <span style={{ color: '#16A34A', fontWeight: 700 }}>None ✔</span>
-                    }
-                  </div>
-                </div>
-              </div>
-
-              {/* Full-width: Reason / Remarks */}
-              <div className="flex flex-col mb-3" style={{ gap: '5px' }}>
-                <div className="text-[11px] font-semibold" style={{ color: '#6B7280' }}>Reason / Remarks</div>
-                <div className="flex items-start" style={{ border: '2px solid #67E8F9', borderRadius: '9px', padding: '9px 12px', fontSize: '13px', fontWeight: 600, color: '#1F2937', minHeight: '64px', background: '#fff', whiteSpace: 'pre-wrap' }}>
-                  {selectedLeave.reason || '—'}
-                </div>
-              </div>
-
-              {/* Document Status Row */}
               {(hasAttachment || status === 'pending') && (
-                <div className="mb-3">
-                  <div className="text-[11px] font-semibold mb-1.5" style={{ color: '#6B7280' }}>Document</div>
+                <div className="leave-detail-field full">
+                  <div className="leave-detail-label">Document</div>
                   {hasAttachment ? (
-                    <div className="flex items-center gap-2" style={{ borderRadius: '9px', padding: '10px 13px', fontSize: '12px', fontWeight: 600, background: '#DCFCE7', color: '#166534', border: '1.5px solid #86EFAC' }}>
-                      ✔ Document uploaded
+                    <div className="leave-detail-banner success">
+                      Document uploaded
                       {selectedLeave.attachments.map((att, i) => (
-                        <button key={i} onClick={() => handleDownloadAttachment(att)}
-                                className="ml-1 px-2 py-1 rounded text-xs font-bold transition hover:opacity-80"
-                                style={{ background: '#16A34A', color: '#fff' }}>
-                          📎 {att.filename || `File ${i + 1}`}
+                        <button key={i} type="button" onClick={() => handleDownloadAttachment(att)} className="leave-detail-banner-btn">
+                          {att.filename || `File ${i + 1}`}
                         </button>
                       ))}
                     </div>
                   ) : (
-                    <div className="flex items-center gap-2" style={{ borderRadius: '9px', padding: '10px 13px', fontSize: '12px', fontWeight: 600, background: '#FFFBEB', color: '#92400E', border: '1.5px solid #FCD34D' }}>
-                      ⚠️ Document not uploaded — leave may be rejected
-                    </div>
+                    <div className="leave-detail-banner warning">Document not uploaded — leave may be rejected</div>
                   )}
                 </div>
               )}
 
-              {/* Rejection Reason */}
               {selectedLeave.rejection_reason && (
-                <div className="flex flex-col mb-3" style={{ gap: '5px' }}>
-                  <div className="text-[11px] font-semibold" style={{ color: '#6B7280' }}>Rejection Reason</div>
-                  <div className="flex items-start" style={{ border: '2px solid #FECACA', borderRadius: '9px', padding: '9px 12px', fontSize: '13px', fontWeight: 600, color: '#991B1B', background: '#FEF2F2', minHeight: '38px', whiteSpace: 'pre-wrap' }}>
-                    {selectedLeave.rejection_reason}
-                  </div>
+                <div className="leave-detail-field full">
+                  <div className="leave-detail-label">Rejection Reason</div>
+                  <div className="leave-detail-value block danger">{selectedLeave.rejection_reason}</div>
                 </div>
               )}
 
-              {/* Approval Comments */}
               {selectedLeave.approval_comments && (
-                <div className="flex flex-col mb-3" style={{ gap: '5px' }}>
-                  <div className="text-[11px] font-semibold" style={{ color: '#6B7280' }}>
-                    {status === 'approved' ? 'Approval Comments' : 'Comments'}
-                  </div>
-                  <div className="flex items-start" style={{ border: '2px solid #86EFAC', borderRadius: '9px', padding: '9px 12px', fontSize: '13px', fontWeight: 600, color: '#166534', background: '#DCFCE7', minHeight: '38px', whiteSpace: 'pre-wrap' }}>
-                    {selectedLeave.approval_comments}
-                  </div>
+                <div className="leave-detail-field full">
+                  <div className="leave-detail-label">{status === 'approved' ? 'Approval Comments' : 'Comments'}</div>
+                  <div className="leave-detail-value block success">{selectedLeave.approval_comments}</div>
                 </div>
               )}
 
-              <hr style={{ border: 'none', borderTop: '1.5px solid #F3F4F6', margin: '12px 0' }} />
+              <hr className="leave-detail-divider" />
 
-              {/* ═══ MULTI-APPROVER STATUS TABLE ═══ */}
-              <div className="text-[11px] font-semibold mb-2" style={{ color: '#6B7280' }}>Approval Status</div>
-              <table className="w-full mb-1" style={{ borderCollapse: 'collapse', borderRadius: '10px', overflow: 'hidden', border: '1.5px solid #E5E7EB' }}>
-                <thead>
-                  <tr>
-                    <th className="text-left" style={{ fontSize: '10px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.06em', color: '#6B7280', padding: '8px 12px', background: '#F9FAFB' }}>Approver</th>
-                    <th className="text-left" style={{ fontSize: '10px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.06em', color: '#6B7280', padding: '8px 12px', background: '#F9FAFB' }}>Role</th>
-                    <th className="text-center" style={{ fontSize: '10px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.06em', color: '#6B7280', padding: '8px 12px', background: '#F9FAFB' }}>Status</th>
-                    <th className="text-center" style={{ fontSize: '10px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.06em', color: '#6B7280', padding: '8px 12px', background: '#F9FAFB' }}>Action</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {hasMultiApproval ? approvers.map((apr, idx) => {
-                    const aprStatus = (apr.status || 'pending').toLowerCase();
-                    const isCurrentUserRow = apr.approver_id === currentUserId;
-                    const canAct = isCurrentUserRow && !isCreator && aprStatus === 'pending';
-                    return (
-                      <tr key={apr.approver_id || idx} style={{ background: isCurrentUserRow ? '#FFFBEB' : '#fff' }}>
-                        <td style={{ padding: '10px 12px', borderTop: '1px solid #F3F4F6', fontSize: '13px', verticalAlign: 'middle' }}>
-                          <div style={{ fontWeight: 700, color: '#1F2937' }}>
-                            {apr.name || 'Unknown'}
-                            {isCurrentUserRow && <span className="ml-1.5 text-[10px] font-bold px-1.5 py-0.5 rounded" style={{ background: '#DBEAFE', color: '#1D4ED8' }}>You</span>}
-                          </div>
+              <p className="leave-detail-section-title">Approval Status</p>
+              <div className="leave-detail-table-wrap">
+                <table className="leave-detail-table">
+                  <thead>
+                    <tr>
+                      <th>Approver</th>
+                      <th>Role</th>
+                      <th className="center">Status</th>
+                      <th className="center">Action</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {hasMultiApproval ? approvers.map((apr, idx) => {
+                      const aprStatus = (apr.status || 'pending').toLowerCase();
+                      const isCurrentUserRow = apr.approver_id === currentUserId;
+                      const canAct = isCurrentUserRow && !isCreator && aprStatus === 'pending';
+                      return (
+                        <tr key={apr.approver_id || idx} className={isCurrentUserRow ? 'highlight' : undefined}>
+                          <td>
+                            <span style={{ fontWeight: 600 }}>{apr.name || 'Unknown'}</span>
+                            {isCurrentUserRow && <span className="leave-detail-you-pill">You</span>}
+                          </td>
+                          <td className="muted" style={{ color: '#6b7a99' }}>{apr.role || '—'}</td>
+                          <td className="center">
+                            <StatusChip status={aprStatus} label={aprStatus === 'approved' ? 'Approved' : aprStatus === 'rejected' ? 'Rejected' : 'Pending'} />
+                          </td>
+                          <td className="center">
+                            {canAct ? (
+                              <div className="leave-detail-row-actions">
+                                <button type="button" className="leave-detail-mini-btn approve" onClick={() => { setOpenViewDialog(false); openApprovalDialogHandler(selectedLeave, 'approved'); }}>Approve</button>
+                                <button type="button" className="leave-detail-mini-btn reject" onClick={() => { setOpenViewDialog(false); openApprovalDialogHandler(selectedLeave, 'rejected'); }}>Reject</button>
+                              </div>
+                            ) : aprStatus !== 'pending' ? (
+                              <span style={{ color: '#4a5570' }}>—</span>
+                            ) : isCreator ? (
+                              <span style={{ color: '#4a5570', fontSize: 11 }}>Own leave</span>
+                            ) : (
+                              <span style={{ color: '#4a5570' }}>—</span>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    }) : (
+                      <tr>
+                        <td style={{ fontWeight: 600 }}>{legacyApproverName || '—'}</td>
+                        <td style={{ color: '#6b7a99' }}>—</td>
+                        <td className="center">
+                          <StatusChip status={status} label={status.charAt(0).toUpperCase() + status.slice(1)} />
                         </td>
-                        <td style={{ padding: '10px 12px', borderTop: '1px solid #F3F4F6', fontSize: '12px', verticalAlign: 'middle', color: '#6B7280' }}>
-                          {apr.role || '—'}
-                        </td>
-                        <td className="text-center" style={{ padding: '10px 12px', borderTop: '1px solid #F3F4F6', fontSize: '13px', verticalAlign: 'middle' }}>
-                          {aprStatus === 'approved' ? (
-                            <span className="inline-block px-2.5 py-0.5 font-bold text-xs" style={{ borderRadius: '999px', background: '#DCFCE7', color: '#166534' }}>✔ Approved</span>
-                          ) : aprStatus === 'rejected' ? (
-                            <span className="inline-block px-2.5 py-0.5 font-bold text-xs" style={{ borderRadius: '999px', background: '#FEF2F2', color: '#991B1B' }}>✖ Rejected</span>
-                          ) : (
-                            <span className="inline-block px-2.5 py-0.5 font-bold text-xs" style={{ borderRadius: '999px', background: '#FFFBEB', color: '#92400E' }}>⏳ Pending</span>
-                          )}
-                        </td>
-                        <td className="text-center" style={{ padding: '10px 12px', borderTop: '1px solid #F3F4F6', fontSize: '13px', verticalAlign: 'middle' }}>
-                          {canAct ? (
-                            <div className="flex gap-1.5 justify-center">
-                              <button onClick={() => { setOpenViewDialog(false); openApprovalDialogHandler(selectedLeave, 'approved'); }}
-                                      className="text-xs font-bold px-3 py-1 transition hover:opacity-80"
-                                      style={{ borderRadius: '7px', background: '#DCFCE7', color: '#166534', border: '1.5px solid #86EFAC' }}>Approve</button>
-                              <button onClick={() => { setOpenViewDialog(false); openApprovalDialogHandler(selectedLeave, 'rejected'); }}
-                                      className="text-xs font-bold px-3 py-1 transition hover:opacity-80"
-                                      style={{ borderRadius: '7px', background: '#FEF2F2', color: '#DC2626', border: '1.5px solid #FECACA' }}>Reject</button>
-                            </div>
-                          ) : aprStatus !== 'pending' ? (
-                            <span className="text-xs" style={{ color: '#9CA3AF' }}>—</span>
-                          ) : isCreator ? (
-                            <span className="text-[10px] font-semibold" style={{ color: '#9CA3AF' }}>Own leave</span>
-                          ) : (
-                            <span className="text-xs" style={{ color: '#9CA3AF' }}>—</span>
-                          )}
+                        <td className="center" style={{ color: '#4a5570' }}>
+                          {status === 'pending' ? 'Awaiting…' : '—'}
                         </td>
                       </tr>
-                    );
-                  }) : (
-                    /* Legacy single approver fallback for older leaves */
-                    <tr>
-                      <td style={{ padding: '10px 12px', borderTop: '1px solid #F3F4F6', fontSize: '13px', verticalAlign: 'middle' }}>
-                        <div style={{ fontWeight: 700, color: '#1F2937' }}>{legacyApproverName || '—'}</div>
-                      </td>
-                      <td style={{ padding: '10px 12px', borderTop: '1px solid #F3F4F6', fontSize: '12px', color: '#6B7280' }}>—</td>
-                      <td className="text-center" style={{ padding: '10px 12px', borderTop: '1px solid #F3F4F6', fontSize: '13px', verticalAlign: 'middle' }}>
-                        {status === 'approved' ? (
-                          <span className="inline-block px-2.5 py-0.5 font-bold text-xs" style={{ borderRadius: '999px', background: '#DCFCE7', color: '#166534' }}>✔ Approved</span>
-                        ) : status === 'rejected' ? (
-                          <span className="inline-block px-2.5 py-0.5 font-bold text-xs" style={{ borderRadius: '999px', background: '#FEF2F2', color: '#991B1B' }}>✖ Rejected</span>
-                        ) : (
-                          <span className="inline-block px-2.5 py-0.5 font-bold text-xs" style={{ borderRadius: '999px', background: '#FFFBEB', color: '#92400E' }}>⏳ Pending</span>
-                        )}
-                      </td>
-                      <td className="text-center" style={{ padding: '10px 12px', borderTop: '1px solid #F3F4F6', fontSize: '13px', color: '#9CA3AF' }}>
-                        {status === 'pending' ? 'Awaiting…' : '—'}
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
+                    )}
+                  </tbody>
+                </table>
+              </div>
 
-              {/* Final Status Bar with approval counts */}
-              <div className="text-center text-sm font-extrabold py-3 mb-1"
-                   style={{
-                     borderRadius: '10px',
-                     marginTop: '4px',
-                     ...(status === 'approved'
-                       ? { background: '#DCFCE7', color: '#166534', border: '1.5px solid #86EFAC' }
-                       : status === 'rejected'
-                         ? { background: '#FEF2F2', color: '#DC2626', border: '1.5px solid #FECACA' }
-                         : { background: '#FFFBEB', color: '#92400E', border: '1.5px solid #FCD34D' })
-                   }}>
+              <div className={`leave-detail-status-bar ${status}`}>
                 {status === 'approved'
-                  ? `✔ APPROVED — All approvers confirmed${hasMultiApproval ? ` (${approvedCount}/${totalApprovers})` : ''}`
+                  ? `Approved — All approvers confirmed${hasMultiApproval ? ` (${approvedCount}/${totalApprovers})` : ''}`
                   : status === 'rejected'
-                    ? `✖ REJECTED — ${hasMultiApproval ? `${rejectedCount}/${totalApprovers} rejected` : 'Approver rejected'}`
-                    : `⏳ PENDING — Awaiting approvals${hasMultiApproval ? ` (${approvedCount}/${totalApprovers} approved)` : ''}`}
+                    ? `Rejected — ${hasMultiApproval ? `${rejectedCount}/${totalApprovers} rejected` : 'Approver rejected'}`
+                    : `Pending — Awaiting approvals${hasMultiApproval ? ` (${approvedCount}/${totalApprovers} approved)` : ''}`}
               </div>
             </div>
 
-            {/* det-ft: Action Buttons — only for approvers who can act, NOT for creator */}
-            <div style={{ padding: '14px 24px 22px' }}>
+            <div className="leave-modal-footer">
               {canCurrentUserAct && status === 'pending' ? (
-                <div className="flex gap-2.5">
-                  <button onClick={() => { setOpenViewDialog(false); openApprovalDialogHandler(selectedLeave, 'approved'); }}
-                          className="flex-1 px-4 py-2.5 text-sm font-bold text-white flex items-center justify-center gap-2 transition hover:opacity-90"
-                          style={{ borderRadius: '10px', background: '#16A34A', boxShadow: '0 3px 12px rgba(22,163,74,0.3)' }}>
-                    <CheckCircle className="w-4 h-4" /> Approve
+                <div className="leave-detail-footer-actions">
+                  <button type="button" className="leave-modal-btn-success full" onClick={() => { setOpenViewDialog(false); openApprovalDialogHandler(selectedLeave, 'approved'); }}>
+                    <CheckCircle style={{ fontSize: 16 }} /> Approve
                   </button>
-                  <button onClick={() => { setOpenViewDialog(false); openApprovalDialogHandler(selectedLeave, 'rejected'); }}
-                          className="flex-1 px-4 py-2.5 text-sm font-bold text-white flex items-center justify-center gap-2 transition hover:opacity-90"
-                          style={{ borderRadius: '10px', background: '#DC2626', boxShadow: '0 3px 12px rgba(220,38,38,0.3)' }}>
-                    <XCircle className="w-4 h-4" /> Reject
+                  <button type="button" className="leave-modal-btn-danger full" onClick={() => { setOpenViewDialog(false); openApprovalDialogHandler(selectedLeave, 'rejected'); }}>
+                    <XCircle style={{ fontSize: 16 }} /> Reject
                   </button>
                 </div>
               ) : (
-                <button onClick={() => setOpenViewDialog(false)}
-                        className="w-full px-4 py-2.5 text-sm font-bold transition hover:opacity-90"
-                        style={{ borderRadius: '10px', background: '#F3F4F6', color: '#4B5563' }}>
+                <button type="button" className="leave-modal-btn-secondary full" onClick={() => setOpenViewDialog(false)} style={{ width: '100%' }}>
                   Close
                 </button>
               )}
@@ -2279,80 +2214,62 @@ const LeavesPage = () => {
 
       {/* Approval Dialog */}
       {openApprovalDialog && approvalLeave && (
-        <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-transparent" style={{ backdropFilter: "blur(3px)" }}>
-          <div className="relative bg-white p-6 rounded-xl shadow-2xl w-full max-w-lg mx-auto space-y-6">
-            <button
-              className="absolute right-2 top-2 text-gray-500 hover:text-red-500 transition text-2xl font-bold"
-              onClick={() => setOpenApprovalDialog(false)}
-              aria-label="Close"
-              type="button"
-            >
-              ×
-            </button>
-            <h2 className="text-xl font-bold text-green-600 mb-4">
-              {approvalData.status === 'approved' ? 'APPROVE LEAVE' : 'REJECT LEAVE'}
-            </h2>
-            
-            <div className="space-y-4">
-              <div>
-                <h4 className="block font-bold text-gray-700 mb-2">Leave Details</h4>
-                <div className="bg-gray-50 p-4 rounded border border-gray-300 space-y-2 text-sm">
-                  <div><span className="font-semibold">Employee:</span> {approvalLeave.employee_name}</div>
-                  <div><span className="font-semibold">Leave Type:</span> {approvalLeave.leave_type.replace('_', ' ').toUpperCase()}</div>
-                  <div><span className="font-semibold">Duration:</span> {approvalLeave.duration_days} days</div>
-                  <div><span className="font-semibold">From:</span> {formatDate(approvalLeave.from_date)}</div>
-                  <div><span className="font-semibold">To:</span> {formatDate(approvalLeave.to_date)}</div>
-                  <div><span className="font-semibold">Reason:</span> {approvalLeave.reason}</div>
+        <div className="leave-modal-overlay" onClick={(e) => { if (e.target === e.currentTarget) setOpenApprovalDialog(false); }}>
+          <div className="leave-modal-panel leave-detail-modal" style={{ maxWidth: '520px' }} onClick={(e) => e.stopPropagation()}>
+            <div className="leave-modal-header">
+              <h2>{approvalData.status === 'approved' ? 'Approve Leave' : 'Reject Leave'}</h2>
+              <button type="button" onClick={() => setOpenApprovalDialog(false)} className="leave-modal-close">✕</button>
+            </div>
+
+            <div className="leave-modal-body">
+              <div className="leave-approval-field">
+                <label>Leave Details</label>
+                <div className="leave-approval-summary">
+                  <div><span>Employee: </span>{approvalLeave.employee_name}</div>
+                  <div><span>Type: </span>{approvalLeave.leave_type.replace('_', ' ')}</div>
+                  <div><span>Duration: </span>{approvalLeave.duration_days} days</div>
+                  <div><span>From: </span>{formatDate(approvalLeave.from_date)}</div>
+                  <div><span>To: </span>{formatDate(approvalLeave.to_date)}</div>
+                  <div><span>Reason: </span>{approvalLeave.reason}</div>
                 </div>
               </div>
-              
+
               {approvalData.status === 'rejected' && (
-                <div>
-                  <label className="block font-bold text-gray-700 mb-1">Rejection Reason *</label>
+                <div className="leave-approval-field">
+                  <label>Rejection Reason *</label>
                   <textarea
                     rows={3}
                     value={approvalData.rejection_reason}
                     onChange={(e) => setApprovalData({ ...approvalData, rejection_reason: e.target.value })}
-                    className="w-full px-3 py-2 border border-cyan-400 rounded text-black font-bold resize-none"
                     placeholder="Please provide a reason for rejection..."
                     required
                   />
                 </div>
               )}
-              
-              <div>
-                <label className="block font-bold text-gray-700 mb-1">
-                  Comments (Optional - for {approvalData.status === 'approved' ? 'approval' : 'rejection'})
-                </label>
+
+              <div className="leave-approval-field">
+                <label>Comments (Optional)</label>
                 <textarea
                   rows={2}
                   value={approvalData.comments}
                   onChange={(e) => setApprovalData({ ...approvalData, comments: e.target.value })}
                   placeholder="Add any additional comments..."
-                  className="w-full px-3 py-2 border border-cyan-400 rounded text-black font-bold resize-none"
                 />
               </div>
-              
-              <div className="flex gap-4 mt-6">
-                <button
-                  type="button"
-                  onClick={() => setOpenApprovalDialog(false)}
-                  className="flex-1 px-6 py-3 bg-gray-400 text-white font-bold rounded-lg shadow hover:bg-gray-500 transition text-lg"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={handleApproveReject}
-                  disabled={approvalData.status === 'rejected' && !approvalData.rejection_reason.trim()}
-                  className={`flex-1 px-6 py-3 text-white font-bold rounded-lg shadow transition text-lg disabled:opacity-50 disabled:cursor-not-allowed ${
-                    approvalData.status === 'approved' 
-                      ? 'bg-green-600 hover:bg-green-700' 
-                      : 'bg-red-600 hover:bg-red-700'
-                  }`}
-                >
-                  {approvalData.status === 'approved' ? 'Approve' : 'Reject'}
-                </button>
-              </div>
+            </div>
+
+            <div className="leave-modal-footer">
+              <button type="button" onClick={() => setOpenApprovalDialog(false)} className="leave-modal-btn-secondary">
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleApproveReject}
+                disabled={approvalData.status === 'rejected' && !approvalData.rejection_reason.trim()}
+                className={approvalData.status === 'approved' ? 'leave-modal-btn-success' : 'leave-modal-btn-danger'}
+              >
+                {approvalData.status === 'approved' ? 'Approve' : 'Reject'}
+              </button>
             </div>
           </div>
         </div>
@@ -2362,25 +2279,19 @@ const LeavesPage = () => {
 
       {/* ═══ LEAVE APPROVAL SETTINGS MODAL — Enterprise CRM Style ═══ */}
       {openSettingsModal && (
-        <div className="fixed inset-0 z-[1100] flex items-center justify-center" style={{ backdropFilter: 'blur(6px)', background: 'rgba(0,0,0,0.5)' }}>
-          <div className="relative bg-white w-full max-w-5xl mx-4 overflow-hidden"
-               style={{ borderRadius: '16px', animation: 'leaveModalUp 0.3s ease-out', boxShadow: '0 25px 80px rgba(0,0,0,0.25)', height: '85vh', display: 'flex', flexDirection: 'column' }}>
+        <div className="leave-modal-overlay" onClick={(e) => { if (e.target === e.currentTarget) { setOpenSettingsModal(false); setSettingsRoleSearch(''); setSettingsEmpSearch(''); } }}>
+          <div className="leave-modal-panel leave-settings-modal" onClick={(e) => e.stopPropagation()}>
 
-            {/* ── Top Bar ── */}
-            <div className="flex items-center justify-between px-6 py-3.5 shrink-0"
-                 style={{ background: '#1E293B', borderBottom: '2px solid #334155' }}>
+            <div className="leave-modal-header">
               <div className="flex items-center gap-3">
-                <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: '#F97316' }}>
-                  <SettingsIcon style={{ color: '#fff', fontSize: '18px' }} />
-                </div>
+                <div className="leave-kpi-icon" style={{ color: '#f97316' }}><SettingsIcon style={{ fontSize: 18 }} /></div>
                 <div>
-                  <h2 className="text-[15px] font-bold text-white tracking-wide">Leave Approval Routing</h2>
-                  <div className="text-[11px] text-slate-400">Configure which employees approve leaves for each role</div>
+                  <h2>Leave Approval Routing</h2>
+                  <p>Configure which employees approve leaves for each role</p>
                 </div>
               </div>
-              <button onClick={() => { setOpenSettingsModal(false); setSettingsRoleSearch(''); setSettingsEmpSearch(''); }}
-                      className="w-8 h-8 flex items-center justify-center rounded-lg text-slate-400 hover:text-white hover:bg-white/10 transition">
-                <X style={{ fontSize: '18px' }} />
+              <button type="button" onClick={() => { setOpenSettingsModal(false); setSettingsRoleSearch(''); setSettingsEmpSearch(''); }} className="leave-modal-close">
+                <X style={{ fontSize: 16 }} />
               </button>
             </div>
 
@@ -2388,7 +2299,7 @@ const LeavesPage = () => {
             <div className="flex flex-1 overflow-hidden">
 
               {/* ═══ LEFT PANEL — Roles List ═══ */}
-              <div className="shrink-0 flex flex-col" style={{ width: '260px', borderRight: '1px solid #E2E8F0', background: '#F8FAFC' }}>
+              <div className="leave-settings-sidebar">
                 {/* Role search */}
                 <div className="px-3 py-3 shrink-0" style={{ borderBottom: '1px solid #E2E8F0' }}>
                   <div className="relative">
@@ -2461,7 +2372,7 @@ const LeavesPage = () => {
               </div>
 
               {/* ═══ RIGHT PANEL — Approver Config ═══ */}
-              <div className="flex-1 flex flex-col overflow-hidden" style={{ background: '#fff' }}>
+              <div className="leave-settings-main">
 
                 {!settingsSelectedRole ? (
                   /* Empty state */

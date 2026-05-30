@@ -5,6 +5,7 @@ import { hrmsService } from '../../services/hrmsService';
 const BASE = '/api';
 const uid = () => { try { const u = JSON.parse(localStorage.getItem('userData') || 'null'); return u?.user_id || u?._id || ''; } catch { return ''; } };
 const uname = () => { try { const u = JSON.parse(localStorage.getItem('userData') || 'null'); return u?.first_name ? `${u.first_name} ${u.last_name || ''}`.trim() : 'Admin'; } catch { return 'Admin'; } };
+const empLeaveId = e => e.employee_id || e.employee_code || e._id || e.id;
 const empName = e => `${e.first_name || ''} ${e.last_name || ''}`.trim() || 'Unknown';
 const empInit = e => empName(e).split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2);
 const fmt = d => { if (!d) return '—'; try { return new Date(d).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }); } catch { return String(d); } };
@@ -45,7 +46,7 @@ const PaidLeaveManagement = () => {
       const allEmps = Array.isArray(empResp?.data) ? empResp.data : [];
       const list = allEmps.filter(e => e.employee_status === 'active');
       const bals = await Promise.allSettled(
-        list.map(e => axios.get(`${BASE}/settings/leave-balance/${e._id || e.id}?user_id=${uid()}&period=${period}`).then(r => r.data?.data || null))
+        list.map(e => axios.get(`${BASE}/settings/leave-balance/${empLeaveId(e)}?user_id=${uid()}&period=${period}`).then(r => r.data?.data || null))
       );
       const newRows = list.map((e, i) => ({ e, b: bals[i].status === 'fulfilled' ? bals[i].value : null }));
       setRows(newRows);
@@ -67,7 +68,7 @@ const PaidLeaveManagement = () => {
     const isAdd = amt > 0;
     try {
       await axios.post(`${BASE}/settings/leave-balance/${isAdd ? 'allocate' : 'deduct'}?user_id=${uid()}`, {
-        employee_id: emp._id || emp.id, leave_type: lt.k,
+        employee_id: empLeaveId(emp), leave_type: lt.k,
         quantity: Math.abs(amt),
         reason: `${isAdd ? '+' : ''}${amt} ${lt.s} by ${uname()}`,
         period,
@@ -84,7 +85,7 @@ const PaidLeaveManagement = () => {
   const loadHist = async (emp) => {
     setHistLoad(true); setHist([]);
     try {
-      const id = (emp || popup?.emp)?._id || (emp || popup?.emp)?.id;
+      const id = empLeaveId(emp || popup?.emp);
       const r = await axios.get(`${BASE}/settings/leave-balance/history/${id}?user_id=${uid()}&period=${period}`);
       setHist(Array.isArray(r.data) ? r.data : []);
     } catch { setHist([]); } finally { setHistLoad(false); }
@@ -129,7 +130,7 @@ const PaidLeaveManagement = () => {
         <div>
           <h3 style={{ margin: 0, fontSize: 17, fontWeight: 800, color: '#fff' }}>Leave Management</h3>
           <p style={{ margin: '3px 0 0', fontSize: 11, color: '#52525b' }}>
-            Click on any value to adjust &bull; {rows.length} employees &bull; <span style={{ color: '#38bdf8', fontWeight: 700 }}>{periodLabel(period)}</span>
+            Click on any value to adjust &bull; Defaults from Attendance Settings &bull; {rows.length} employees &bull; <span style={{ color: '#38bdf8', fontWeight: 700 }}>{periodLabel(period)}</span>
           </p>
         </div>
         <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>

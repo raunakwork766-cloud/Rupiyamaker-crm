@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
 import { useNavigationType } from 'react-router-dom';
+import useNavbarPageSearch from '../hooks/useNavbarPageSearch';
 import { 
   Bell, 
   Plus, 
@@ -27,37 +28,131 @@ import { API_BASE_URL } from '../config/api';
 import { formatDateTime } from '../utils/dateUtils';
 import { getUserPermissions, hasPermission, isSuperAdmin } from '../utils/permissions';
 
-// Status card configuration for Notification Management (LeadCRM Style)
-const statusCardConfig = [
-  {
-    key: 'total_sent',
-    label: 'TOTAL SENT',
-    icon: MessageSquare,
-    gradient: 'from-blue-500 to-cyan-400',
-    shadowColor: 'shadow-blue-500/25',
-  },
-  {
-    key: 'active',
-    label: 'ACTIVE',
-    icon: CheckCircle,
-    gradient: 'from-green-500 to-green-400',
-    shadowColor: 'shadow-green-500/25',
-  },
-  {
-    key: 'complete',
-    label: 'COMPLETE',
-    icon: CheckCircle2,
-    gradient: 'from-emerald-500 to-teal-400',
-    shadowColor: 'shadow-emerald-500/25',
-  },
-  {
-    key: 'deactivate',
-    label: 'DEACTIVATE',
-    icon: XCircle,
-    gradient: 'from-red-500 to-pink-400',
-    shadowColor: 'shadow-red-500/25',
-  },
-];
+const announcementPageStyles = `
+  .task-page-container { padding: 0; max-width: 100%; background: #000; min-height: 100vh; font-family: -apple-system, BlinkMacSystemFont, 'Lexend Deca', sans-serif; color: #e2e8f0; }
+  .task-top-bar { display: flex; justify-content: space-between; align-items: flex-start; padding: 20px 24px 0; border-bottom: 1px solid #1f1f27; background: #000; }
+  .task-top-bar-left h1 { font-size: 22px; font-weight: 700; color: #f0f0f5; margin: 0 0 2px; line-height: 1.2; }
+  .task-top-bar-left p { font-size: 13px; color: #6b7a99; margin: 0 0 12px; }
+  .task-top-bar-right { display: flex; gap: 8px; align-items: center; padding-top: 4px; }
+  .task-btn-secondary { background: #1a1a24; color: #c8d0e0; border: 1px solid #2a2a3a; padding: 7px 14px; border-radius: 3px; font-size: 13px; font-weight: 500; cursor: pointer; transition: background 0.15s, border-color 0.15s; white-space: nowrap; }
+  .task-btn-secondary:hover { background: #22222e; border-color: #3a3a50; }
+  .task-btn-create { background: #3b82f6; color: #fff; border: none; padding: 7px 14px; border-radius: 3px; font-size: 13px; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 6px; transition: background 0.15s; white-space: nowrap; }
+  .task-btn-create:hover { background: #2563eb; }
+  .task-btn-select { background: #1a1a24; color: #c8d0e0; border: 1px solid #2a2a3a; padding: 7px 14px; border-radius: 3px; font-size: 13px; font-weight: 500; cursor: pointer; }
+  .task-btn-select:hover { background: #22222e; }
+  .task-view-toggle-bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 24px; background: #000; border-bottom: 1px solid #1f1f27; flex-wrap: wrap; }
+  .task-view-toggle-group { display: flex; gap: 0; flex-wrap: wrap; flex: 0 1 auto; min-width: 0; }
+  .task-view-toggle-btn { padding: 12px 16px; border: none; background: transparent; font-size: 13px; font-weight: 600; color: #6b7a99; cursor: pointer; border-bottom: 3px solid transparent; transition: color 0.15s, border-color 0.15s; white-space: nowrap; display: inline-flex; align-items: center; gap: 6px; }
+  .task-view-toggle-btn:hover { color: #c8d0e0; }
+  .task-view-toggle-btn.active { color: #f97316; font-weight: 800; border-bottom-color: #f97316; }
+  .task-view-toggle-btn.active-logout { color: #f87171; border-bottom-color: #f87171; }
+  .task-search-box--in-bar { position: relative; width: 260px; min-width: 200px; flex-shrink: 0; }
+  .task-search-box--in-bar input { background: #1a1a24; border: 1px solid #2a2a3a; border-radius: 3px; padding: 6px 14px 6px 32px; color: #c8d0e0; font-size: 13px; width: 100%; outline: none; transition: border-color 0.15s; box-sizing: border-box; }
+  .task-search-box--in-bar input::placeholder { color: #4a5570; }
+  .task-search-box--in-bar input:focus { border-color: #3b82f6; box-shadow: 0 0 0 2px rgba(59,130,246,0.15); }
+  .task-search-box--in-bar svg { position: absolute; left: 9px; top: 50%; transform: translateY(-50%); color: #4a5570; }
+  .task-toolbar-right { display: flex; align-items: center; justify-content: flex-end; gap: 8px; margin-left: auto; flex-shrink: 0; flex-wrap: wrap; }
+  .task-select-controls { display: flex; align-items: center; gap: 8px; }
+  .task-select-controls label { display: flex; align-items: center; cursor: pointer; color: #c8d0e0; font-size: 13px; gap: 5px; }
+  .task-select-controls span { color: #6b7a99; font-size: 13px; }
+  .task-select-btn-del { padding: 5px 12px; background: #1a0a0a; color: #f87171; border: 1px solid #7f1d1d; border-radius: 3px; font-size: 13px; cursor: pointer; }
+  .task-select-btn-del:hover { background: #2a0f0f; }
+  .task-select-btn-del:disabled { opacity: 0.4; cursor: not-allowed; }
+  .task-select-btn-cancel { padding: 5px 12px; background: #1a1a24; color: #6b7a99; border: 1px solid #2a2a3a; border-radius: 3px; font-size: 13px; cursor: pointer; }
+  .task-select-btn-cancel:hover { background: #22222e; }
+  .task-data-table-header { background: #ffffff; border-top: 1px solid #e5e7eb; border-bottom: 2px solid #e5e7eb; display: flex; padding: 12px 24px; align-items: center; box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1); position: sticky; top: 0; z-index: 20; }
+  .task-th { color: #03b0f5; font-weight: 800; font-size: 11px; text-transform: uppercase; letter-spacing: 0.6px; text-align: left; flex: 1; }
+  .task-th.number { flex: 0 0 36px; }
+  .task-th.checkbox { flex: 0 0 36px; }
+  .task-th.date { flex: 1.2; }
+  .task-th.created { flex: 1.2; }
+  .task-th.subject { flex: 2; }
+  .task-th.target { flex: 1.5; }
+  .task-th.progress { flex: 1.2; }
+  .task-th.action { flex: 0 0 100px; }
+  .task-data-table-body { display: flex; flex-direction: column; max-height: calc(100vh - 220px); overflow-y: auto; }
+  .task-row { background: #000; border-bottom: 1px solid #1a1a22; display: flex; padding: 11px 24px; align-items: center; cursor: pointer; transition: background 0.1s; }
+  .task-row:hover { background: #13131c; }
+  .task-row.selected { background: #0a1a2a; }
+  .task-row.deactivated { opacity: 0.55; }
+  .task-td { font-size: 13px; color: #ffffff; font-weight: 600; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding-right: 12px; }
+  .task-td.number { flex: 0 0 36px; color: #60a5fa; font-size: 12px; font-weight: 700; }
+  .task-td.checkbox { flex: 0 0 36px; }
+  .task-td.date { flex: 1.2; }
+  .task-td.created { flex: 1.2; }
+  .task-td.subject { flex: 2; font-weight: 700; white-space: normal; }
+  .task-td.target { flex: 1.5; white-space: normal; }
+  .task-td.progress { flex: 1.2; white-space: normal; }
+  .task-td.action { flex: 0 0 100px; }
+  .ann-deactivated-badge { display: inline-flex; align-items: center; padding: 2px 6px; border-radius: 2px; font-size: 10px; font-weight: 700; background: #1a0a0a; color: #f87171; border: 1px solid #7f1d1d; margin-left: 8px; }
+  .ann-type-badge { display: inline-flex; align-items: center; padding: 2px 6px; border-radius: 2px; font-size: 10px; font-weight: 700; text-transform: uppercase; margin-right: 6px; }
+  .ann-type-general { background: #0a1a2a; color: #60a5fa; border: 1px solid #1e3a5f; }
+  .ann-type-logout { background: #1a0a0a; color: #f87171; border: 1px solid #7f1d1d; }
+  .ann-target-all { color: #34d399; }
+  .ann-target-dept { color: #60a5fa; }
+  .ann-target-ind { color: #c084fc; }
+  .ann-progress-wrap { display: flex; flex-direction: column; gap: 4px; min-width: 90px; }
+  .ann-progress-stats { display: flex; gap: 8px; font-size: 11px; }
+  .ann-progress-stats .accepted { color: #34d399; }
+  .ann-progress-stats .pending { color: #fbbf24; }
+  .ann-progress-stats .total { color: #6b7a99; }
+  .ann-progress-bar { width: 100%; height: 4px; background: #1a1a24; border-radius: 2px; overflow: hidden; }
+  .ann-progress-fill { height: 100%; background: linear-gradient(90deg, #34d399, #10b981); transition: width 0.3s; }
+  .ann-progress-pct { font-size: 11px; color: #6b7a99; }
+  .ann-action-btn { display: inline-flex; align-items: center; padding: 4px 10px; border-radius: 2px; font-size: 11px; font-weight: 700; cursor: pointer; border: 1px solid transparent; letter-spacing: 0.3px; }
+  .ann-action-btn--start { background: #0a2a22; color: #34d399; border-color: #064e3b; }
+  .ann-action-btn--start:hover { background: #0f3d32; }
+  .ann-action-btn--stop { background: #1a0a0a; color: #f87171; border-color: #7f1d1d; }
+  .ann-action-btn--stop:hover { background: #2a0f0f; }
+  .ann-action-btn--done { background: #0a2a22; color: #34d399; border-color: #064e3b; cursor: default; }
+  .task-empty-state { display: flex; flex-direction: column; justify-content: center; align-items: center; padding: 80px 20px; text-align: center; }
+  .task-empty-state-title { font-size: 17px; font-weight: 700; color: #c8d0e0; margin: 0 0 6px; }
+  .task-empty-state-sub { font-size: 14px; color: #4a5570; margin: 0; }
+  .task-loading-spinner { display: flex; flex-direction: column; justify-content: center; align-items: center; padding: 80px 20px; }
+  .task-loading-spinner .spinner { width: 32px; height: 32px; border: 3px solid #1a1a24; border-top-color: #3b82f6; border-radius: 50%; animation: annSpin 0.7s linear infinite; margin-bottom: 12px; }
+  @keyframes annSpin { to { transform: rotate(360deg); } }
+  .task-error-banner { margin: 12px 24px 0; padding: 12px 16px; background: #1a0a0a; border: 1px solid #7f1d1d; border-radius: 3px; color: #f87171; font-size: 13px; }
+  .task-success-banner { margin: 12px 24px 0; padding: 12px 16px; background: #0a2a22; border: 1px solid #064e3b; border-radius: 3px; color: #34d399; font-size: 13px; }
+  .task-modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); display: flex; justify-content: center; align-items: center; z-index: 1000; backdrop-filter: blur(4px); padding: 16px; box-sizing: border-box; }
+  .task-modal-container { background: #000; border: 1px solid #1f1f27; width: 100%; max-width: 760px; max-height: 96vh; border-radius: 4px; position: relative; box-shadow: 0 20px 60px rgba(0,0,0,0.7); display: flex; flex-direction: column; overflow: hidden; animation: annModalIn 0.2s ease-out; }
+  .task-modal-container--wide { max-width: 960px; }
+  .task-modal-close { position: absolute; right: 12px; top: 12px; background: transparent; border: none; color: #6b7a99; font-size: 22px; cursor: pointer; z-index: 10; line-height: 1; padding: 4px; }
+  .task-modal-close:hover { color: #f87171; }
+  .task-modal-header { padding: 20px 24px; border-bottom: 1px solid #1f1f27; flex-shrink: 0; }
+  .task-modal-header h2 { margin: 0; font-size: 18px; font-weight: 700; color: #f0f0f5; }
+  .task-modal-body { padding: 20px 24px; overflow-y: auto; flex: 1; }
+  .ann-form-label { display: block; font-size: 11px; font-weight: 700; color: #6b7a99; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px; }
+  .ann-form-input, .ann-form-textarea, .ann-form-select { width: 100%; background: #1a1a24; border: 1px solid #2a2a3a; border-radius: 3px; padding: 8px 12px; color: #f0f0f5; font-size: 13px; outline: none; box-sizing: border-box; font-weight: 500; }
+  .ann-form-input:focus, .ann-form-textarea:focus, .ann-form-select:focus { border-color: #3b82f6; }
+  .ann-form-input--readonly { opacity: 0.75; cursor: default; }
+  .ann-form-textarea { resize: vertical; min-height: 80px; }
+  .ann-form-hint { font-size: 12px; color: #6b7a99; margin-top: 6px; }
+  .ann-form-row { display: flex; gap: 16px; flex-wrap: wrap; }
+  .ann-form-row > * { flex: 1; min-width: 200px; }
+  .ann-form-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px; padding-top: 16px; border-top: 1px solid #1f1f27; }
+  .ann-dropdown-trigger { width: 100%; background: #1a1a24; border: 1px solid #2a2a3a; border-radius: 3px; padding: 8px 12px; color: #f0f0f5; font-size: 13px; cursor: pointer; display: flex; align-items: center; justify-content: space-between; min-height: 38px; box-sizing: border-box; }
+  .ann-dropdown-panel { position: fixed; background: #0d0d12; border: 1px solid #2a2a3a; border-radius: 4px; box-shadow: 0 12px 40px rgba(0,0,0,0.6); z-index: 10001; max-height: 280px; display: flex; flex-direction: column; overflow: hidden; }
+  .ann-dropdown-search { padding: 10px; border-bottom: 1px solid #1f1f27; background: #0d0d12; }
+  .ann-dropdown-search input { width: 100%; background: #1a1a24; border: 1px solid #2a2a3a; border-radius: 3px; padding: 7px 10px; color: #f0f0f5; font-size: 13px; outline: none; box-sizing: border-box; }
+  .ann-dropdown-list { overflow-y: auto; max-height: 220px; }
+  .ann-dropdown-item { padding: 10px 12px; cursor: pointer; display: flex; align-items: center; gap: 10px; color: #c8d0e0; font-size: 13px; }
+  .ann-dropdown-item:hover { background: #1a1a24; }
+  .ann-chip { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; background: #0a1a2a; color: #60a5fa; border: 1px solid #1e3a5f; border-radius: 2px; font-size: 11px; font-weight: 600; margin: 2px; }
+  .ann-chip-remove { background: none; border: none; color: #6b7a99; cursor: pointer; padding: 0; line-height: 1; }
+  .ann-chip-remove:hover { color: #f87171; }
+  .ann-stat-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin: 16px 0; }
+  .ann-stat-card { background: #1a1a24; border: 1px solid #2a2a3a; border-radius: 4px; padding: 14px; display: flex; align-items: center; gap: 12px; }
+  .ann-stat-card p { margin: 0; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.4px; }
+  .ann-stat-card span { font-size: 22px; font-weight: 700; color: #f0f0f5; }
+  .ann-stat-accepted p { color: #34d399; }
+  .ann-stat-pending p { color: #fbbf24; }
+  .ann-stat-rate p { color: #60a5fa; }
+  .ann-user-list { background: #1a1a24; border: 1px solid #2a2a3a; border-radius: 4px; max-height: 140px; overflow-y: auto; padding: 8px; }
+  .ann-user-row { display: flex; align-items: center; justify-content: space-between; padding: 8px 10px; border-bottom: 1px solid #1f1f27; font-size: 12px; color: #c8d0e0; }
+  .ann-user-row:last-child { border-bottom: none; }
+  .ann-user-empty { text-align: center; padding: 24px; color: #4a5570; font-size: 13px; }
+  @keyframes annModalIn { from { transform: scale(0.97) translateY(8px); opacity: 0; } to { transform: scale(1) translateY(0); opacity: 1; } }
+`;
 
 /**
  * NotificationManagementPage - Admin interface for global notifications
@@ -132,6 +227,7 @@ const NotificationManagementPage = () => {
   
   // Search state
   const [searchTerm, setSearchTerm] = useState("");
+  useNavbarPageSearch(setSearchTerm);
   
   // Filter notifications by type
   const getFilteredNotifications = () => {
@@ -1080,535 +1176,308 @@ const NotificationManagementPage = () => {
     }
   }, [showAnnouncementModal]);
 
+  const tabCounts = {
+    all: notifications.length,
+    general: notifications.filter((n) => n.notification_type === 'general').length,
+    logout: notifications.filter((n) => n.notification_type === 'logout').length,
+  };
+
+  const displayedNotifications = getFilteredNotifications().filter((notification) => {
+    if (!searchTerm) return true;
+    const searchLower = searchTerm.toLowerCase();
+    return (
+      notification.title?.toLowerCase().includes(searchLower) ||
+      notification.message?.toLowerCase().includes(searchLower) ||
+      notification.sender_name?.toLowerCase().includes(searchLower) ||
+      notification.target_type?.toLowerCase().includes(searchLower)
+    );
+  });
+
+  const renderNotificationAction = (notification, totalTargetUsers, acceptedCount) => {
+    if (!notification.is_active) {
+      return (
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            activateNotification(notification.id || notification._id);
+          }}
+          className="ann-action-btn ann-action-btn--start"
+          title="Activate Notification"
+        >
+          START
+        </button>
+      );
+    }
+    if (notification.is_active && totalTargetUsers > 0 && acceptedCount === totalTargetUsers) {
+      return <span className="ann-action-btn ann-action-btn--done">COMPLETED</span>;
+    }
+    return (
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation();
+          deactivateNotification(notification.id || notification._id);
+        }}
+        className="ann-action-btn ann-action-btn--stop"
+        title="Deactivate Notification"
+      >
+        STOP
+      </button>
+    );
+  };
+
   return (
-    <div className="min-h-screen bg-black text-white">
-      <div className="w-full p-6">
-        {/* Header */}
-        <div className="mb-8 bg-black">
-          <div className="flex items-center justify-between mb-6">
-            <div className="flex items-center gap-4">
-              <h1 className="text-3xl font-bold text-white">Announcements</h1>
-            </div>
+    <>
+      <style>{announcementPageStyles}</style>
+      <div className="task-page-container">
+        <div className="task-top-bar">
+          <div className="task-top-bar-left">
+            <h1>Announcements</h1>
+            <p>Manage company-wide announcements and logout notifications</p>
+          </div>
+          <div className="task-top-bar-right">
             {(permissions.send || isSuperAdmin(getUserPermissions())) && (
-              <button
-                onClick={() => setShowCreateForm(true)}
-                className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg font-semibold text-lg transition-all duration-300 flex items-center gap-3"
-              >
-                <Plus className="h-5 w-5" />
+              <button type="button" className="task-btn-create" onClick={() => setShowCreateForm(true)}>
+                <Plus size={16} />
                 Create Announcement
               </button>
             )}
           </div>
+        </div>
 
-          {/* Notification Type Tabs */}
-          <div className="flex gap-2 border-b border-gray-700">
+        <div className="task-view-toggle-bar">
+          <div className="task-view-toggle-group">
             <button
+              type="button"
+              className={`task-view-toggle-btn ${activeTab === 'all' ? 'active' : ''}`}
               onClick={() => setActiveTab('all')}
-              className={`px-6 py-3 font-semibold text-sm transition-all duration-300 ${
-                activeTab === 'all'
-                  ? 'text-blue-400 border-b-2 border-blue-400 bg-blue-900/20'
-                  : 'text-gray-400 hover:text-white hover:bg-gray-800'
-              }`}
             >
-              All Notifications ({notifications.length})
+              All ({tabCounts.all})
             </button>
             <button
+              type="button"
+              className={`task-view-toggle-btn ${activeTab === 'general' ? 'active' : ''}`}
               onClick={() => setActiveTab('general')}
-              className={`px-6 py-3 font-semibold text-sm transition-all duration-300 ${
-                activeTab === 'general'
-                  ? 'text-blue-400 border-b-2 border-blue-400 bg-blue-900/20'
-                  : 'text-gray-400 hover:text-white hover:bg-gray-800'
-              }`}
             >
-              General ({notifications.filter(n => n.notification_type === 'general').length})
+              General ({tabCounts.general})
             </button>
             <button
+              type="button"
+              className={`task-view-toggle-btn ${activeTab === 'logout' ? 'active-logout' : ''}`}
               onClick={() => setActiveTab('logout')}
-              className={`px-6 py-3 font-semibold text-sm transition-all duration-300 flex items-center gap-2 ${
-                activeTab === 'logout'
-                  ? 'text-red-400 border-b-2 border-red-400 bg-red-900/20'
-                  : 'text-gray-400 hover:text-red-400 hover:bg-gray-800'
-              }`}
             >
-              <Power className="h-4 w-4" />
-              Logout ({notifications.filter(n => n.notification_type === 'logout').length})
+              <Power size={14} />
+              Logout ({tabCounts.logout})
             </button>
           </div>
-        </div>
 
-        {/* Status Cards - LeadCRM Style */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-4 gap-6 mb-8">
-          {statusCardConfig.map(({ key, label, icon: Icon, gradient, shadowColor }, index) => {
-            let value = 0;
-            
-            // Calculate values based on notifications array
-            if (notifications && notifications.length > 0) {
-              switch(key) {
-                case 'total_sent':
-                  value = notifications.length;
-                  break;
-                case 'active':
-                  // Active = notifications that are active but NOT yet complete (not 100% acceptance)
-                  value = notifications.filter(n => {
-                    if (!n.is_active) return false;
-                    const stats = n.acceptance_stats || {};
-                    const totalUsers = stats.total_users || 0;
-                    const acceptedCount = stats.accepted_count || 0;
-                    // Active means is_active=true AND not 100% complete
-                    return !(totalUsers > 0 && acceptedCount === totalUsers);
-                  }).length;
-                  break;
-                case 'complete':
-                  // Complete = active notifications with 100% acceptance rate
-                  value = notifications.filter(n => {
-                    if (!n.is_active) return false;
-                    const stats = n.acceptance_stats || {};
-                    const totalUsers = stats.total_users || 0;
-                    const acceptedCount = stats.accepted_count || 0;
-                    return totalUsers > 0 && acceptedCount === totalUsers;
-                  }).length;
-                  break;
-                case 'deactivate':
-                  // Deactivate = notifications that are inactive (stopped/deactivated)
-                  value = notifications.filter(n => !n.is_active).length;
-                  break;
-                default:
-                  value = 0;
-              }
-            }
-              
-              return (
-                <div 
-                  key={index} 
-                  className={`p-4 rounded-xl bg-gradient-to-r ${gradient} shadow-lg ${shadowColor || 'shadow-lg'} flex-1 cursor-pointer transition-transform hover:scale-105`}
-                >
-                  <div className="flex justify-between items-center">
-                    <Icon className="w-6 h-6 text-white" />
-                    <span className="text-xl font-bold text-white">{value}</span>
-                  </div>
-                  <p className="mt-4 text-md text-white font-medium uppercase tracking-wide">{label}</p>
-                </div>
-              );
-            })}
-        </div>
-
-        {/* Messages */}
-        {success && (
-          <div className="mb-6 p-4 bg-gradient-to-r from-green-500/20 to-green-600/20 border border-green-500 text-green-300 rounded-lg backdrop-blur-sm">
-            {success}
-          </div>
-        )}
-        {error && (
-          <div className="mb-6 p-4 bg-gradient-to-r from-red-500/20 to-red-600/20 border border-red-500 text-red-300 rounded-lg backdrop-blur-sm">
-            {error}
-          </div>
-        )}
-
-        {/* Select Button / Selection Toolbar - LeadCRM Style with Search */}
-        <div className="flex items-center justify-between gap-4 mb-4 mt-5">
-          {/* Left Side: Select Button or Toolbar */}
-          <div className="flex items-center gap-3">
-            {/* Only show Select button if user has delete permission */}
+          <div className="task-toolbar-right">
             {(permissions.delete || isSuperAdmin(getUserPermissions())) && (
-              <>
-                {!showCheckboxes ? (
-                  <button
-                    className="bg-[#03B0F5] text-white px-5 py-3 rounded-lg font-bold shadow hover:bg-[#0280b5] transition text-base"
-                    onClick={handleShowCheckboxes}
-                  >
-                    {selectedNotifications.length > 0
-                      ? `Select (${selectedNotifications.length})`
-                      : "Select"}
-                  </button>
-                ) : (
-                  <div className="flex items-center gap-6 bg-gray-900 rounded-lg p-3">
-                    <label className="flex items-center cursor-pointer text-[#03B0F5] font-bold">
-                      <input
-                        type="checkbox"
-                        className="accent-blue-500 mr-2"
-                        checked={selectAll}
-                        onChange={handleSelectAll}
-                        style={{ width: 18, height: 18 }}
-                      />
-                      Select All
-                    </label>
-                    <span className="text-white font-semibold">
-                      {selectedNotifications.length} row{selectedNotifications.length !== 1 ? "s" : ""} selected
-                    </span>
-                    <button
-                      className="px-3 py-1 bg-red-600 text-white rounded font-bold hover:bg-red-700 transition"
-                      onClick={handleDeleteSelected}
-                      disabled={selectedNotifications.length === 0}
-                    >
-                      Delete ({selectedNotifications.length})
-                    </button>
-                    <button
-                      className="px-3 py-1 bg-gray-600 text-white rounded font-bold hover:bg-gray-700 transition"
-                      onClick={handleCancelSelection}
-                    >
-                      Cancel
-                    </button>
-                  </div>
-                )}
-              </>
-            )}
-
-            {/* Search Results Indicator */}
-            {searchTerm && (
-              <div className="text-base text-gray-300 bg-[#1b2230] px-4 py-3 rounded-lg border border-gray-600">
-                {notifications.filter(n => {
-                  const searchLower = searchTerm.toLowerCase();
-                  return (
-                    n.title?.toLowerCase().includes(searchLower) ||
-                    n.message?.toLowerCase().includes(searchLower) ||
-                    n.sender_name?.toLowerCase().includes(searchLower)
-                  );
-                }).length} of {notifications.length} notifications
-                <span className="ml-2">
-                  matching "<span className="text-cyan-400 font-semibold">{searchTerm}</span>"
-                </span>
-              </div>
-            )}
-          </div>
-
-          {/* Right Side: Search Box */}
-          <div className="relative w-[320px]">
-            <input
-              type="text"
-              placeholder="Search announcements..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full px-4 py-3 pl-12 bg-[#1b2230] text-white border border-gray-600 rounded-lg focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 text-base"
-            />
-            <svg
-              className="absolute left-4 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth="2"
-                d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
-              />
-            </svg>
-            {searchTerm && (
-              <button
-                onClick={() => setSearchTerm('')}
-                className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-white transition"
-              >
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </button>
-            )}
-          </div>
-        </div>
-
-        {/* Notifications Table - LeadCRM Style */}
-        <div className="bg-black rounded-lg overflow-x-auto max-h-[calc(100vh-200px)] overflow-y-auto">
-          <table className="min-w-full w-full bg-black relative">
-            <thead className="bg-white sticky top-0 z-50 shadow-lg border-b-2 border-gray-200">
-              <tr>
-                {showCheckboxes && (
-                  <th className="bg-white px-4 py-3 text-md font-extrabold text-[#03b0f5] uppercase tracking-wider sticky top-0 z-50 shadow-sm border-b border-gray-200 text-center w-16">
+              !showCheckboxes ? (
+                <button type="button" className="task-btn-select" onClick={handleShowCheckboxes}>
+                  {selectedNotifications.length > 0 ? `Select (${selectedNotifications.length})` : 'Select'}
+                </button>
+              ) : (
+                <div className="task-select-controls">
+                  <label>
                     <input
                       type="checkbox"
                       checked={selectAll}
                       onChange={handleSelectAll}
-                      className="w-5 h-5 accent-blue-500 cursor-pointer"
+                      style={{ width: 16, height: 16 }}
                     />
-                  </th>
-                )}
-                <th className="bg-white px-4 py-3 text-md font-extrabold text-[#03b0f5] uppercase tracking-wider sticky top-0 z-50 shadow-sm border-b border-gray-200 text-left">
-                  #
-                </th>
-                <th className="bg-white px-4 py-3 text-md font-extrabold text-[#03b0f5] uppercase tracking-wider sticky top-0 z-50 shadow-sm border-b border-gray-200 text-left">
-                  Date & Time
-                </th>
-                <th className="bg-white px-4 py-3 text-md font-extrabold text-[#03b0f5] uppercase tracking-wider sticky top-0 z-50 shadow-sm border-b border-gray-200 text-left">
-                  Created By
-                </th>
-                <th className="bg-white px-4 py-3 text-md font-extrabold text-[#03b0f5] uppercase tracking-wider sticky top-0 z-50 shadow-sm border-b border-gray-200 text-left">
-                  Subject
-                </th>
-                <th className="bg-white px-4 py-3 text-md font-extrabold text-[#03b0f5] uppercase tracking-wider sticky top-0 z-50 shadow-sm border-b border-gray-200 text-left">
-                  Target
-                </th>
-                <th className="bg-white px-4 py-3 text-md font-extrabold text-[#03b0f5] uppercase tracking-wider sticky top-0 z-50 shadow-sm border-b border-gray-200 text-left">
-                  Progress
-                </th>
-                <th className="bg-white px-4 py-3 text-md font-extrabold text-[#03b0f5] uppercase tracking-wider sticky top-0 z-50 shadow-sm border-b border-gray-200 text-left">
-                  Action
-                </th>
-              </tr>
-            </thead>
-            <tbody className="bg-black">
-              {loading ? (
-                <tr>
-                  <td colSpan={showCheckboxes ? 8 : 7} className="py-20 text-center text-gray-400 text-lg bg-black">
-                    <div className="flex items-center justify-center gap-3">
-                      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
-                      <span className="text-xl font-semibold">Loading Notifications...</span>
-                    </div>
-                  </td>
-                </tr>
-              ) : notifications.length === 0 ? (
-                <tr>
-                  <td colSpan={showCheckboxes ? 8 : 7} className="py-20 text-center text-gray-400 text-lg bg-black">
-                    <div className="flex flex-col items-center justify-center gap-3">
-                      <Bell className="w-12 h-12 text-gray-600" />
-                      <span className="text-xl font-semibold">No Notifications Found</span>
-                      <p className="text-sm text-gray-500">Create your first notification to get started</p>
-                    </div>
-                  </td>
-                </tr>
-              ) : (() => {
-                // Filter notifications based on tab and search term
-                let filteredNotifications = getFilteredNotifications();
-                
-                filteredNotifications = filteredNotifications.filter(notification => {
-                  if (!searchTerm) return true;
-                  const searchLower = searchTerm.toLowerCase();
-                  return (
-                    notification.title?.toLowerCase().includes(searchLower) ||
-                    notification.message?.toLowerCase().includes(searchLower) ||
-                    notification.sender_name?.toLowerCase().includes(searchLower) ||
-                    notification.target_type?.toLowerCase().includes(searchLower)
-                  );
-                });
+                    Select All
+                  </label>
+                  <span>{selectedNotifications.length} selected</span>
+                  <button
+                    type="button"
+                    className="task-select-btn-del"
+                    onClick={handleDeleteSelected}
+                    disabled={selectedNotifications.length === 0}
+                  >
+                    Delete ({selectedNotifications.length})
+                  </button>
+                  <button type="button" className="task-select-btn-cancel" onClick={handleCancelSelection}>
+                    Cancel
+                  </button>
+                </div>
+              )
+            )}
 
-                // Show "no results" message if search filters out all notifications
-                if (filteredNotifications.length === 0) {
-                  return (
-                    <tr>
-                      <td colSpan={showCheckboxes ? 8 : 7} className="py-20 text-center text-gray-400 text-lg bg-black">
-                        <div className="flex flex-col items-center justify-center gap-3">
-                          <Bell className="w-12 h-12 text-gray-600" />
-                          <span className="text-xl font-semibold">No Notifications Match Your Search</span>
-                          <p className="text-sm text-gray-500">Try different search terms</p>
+            <div className="task-search-box--in-bar">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <circle cx="11" cy="11" r="8" />
+                <path d="m21 21-4.3-4.3" />
+              </svg>
+              <input
+                type="text"
+                placeholder="Search announcements..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+              />
+            </div>
+          </div>
+        </div>
+
+        {success && <div className="task-success-banner">{success}</div>}
+        {error && <div className="task-error-banner">{error}</div>}
+
+        <div className="task-data-table-header">
+          {showCheckboxes && (
+            <div className="task-th checkbox">
+              <input type="checkbox" checked={selectAll} onChange={handleSelectAll} style={{ width: 16, height: 16 }} />
+            </div>
+          )}
+          <div className="task-th number">#</div>
+          <div className="task-th date">Date & Time</div>
+          <div className="task-th created">Created By</div>
+          <div className="task-th subject">Subject</div>
+          <div className="task-th target">Target</div>
+          <div className="task-th progress">Progress</div>
+          <div className="task-th action">Action</div>
+        </div>
+
+        <div className="task-data-table-body">
+          {loading ? (
+            <div className="task-loading-spinner">
+              <div className="spinner" />
+              <p style={{ color: '#6b7a99', margin: 0, fontSize: 14 }}>Loading announcements...</p>
+            </div>
+          ) : notifications.length === 0 ? (
+            <div className="task-empty-state">
+              <Bell size={40} color="#4a5570" style={{ marginBottom: 12 }} />
+              <p className="task-empty-state-title">No Announcements Found</p>
+              <p className="task-empty-state-sub">Create your first announcement to get started</p>
+            </div>
+          ) : displayedNotifications.length === 0 ? (
+            <div className="task-empty-state">
+              <Bell size={40} color="#4a5570" style={{ marginBottom: 12 }} />
+              <p className="task-empty-state-title">No Announcements Match Your Search</p>
+              <p className="task-empty-state-sub">Try different search terms or tabs</p>
+            </div>
+          ) : (
+            displayedNotifications.map((notification, index) => {
+              const stats = notification.acceptance_stats || {};
+              const totalTargetUsers = stats.total_users || 0;
+              const acceptedCount = stats.accepted_count || 0;
+              const pendingCount = Math.max(0, totalTargetUsers - acceptedCount);
+              const acceptanceRate = totalTargetUsers > 0 ? (acceptedCount / totalTargetUsers * 100) : 0;
+              const notificationId = notification.id || notification._id;
+              const isSelected = selectedNotifications.includes(notificationId);
+              const isDeactivated = notification.is_active === false;
+
+              return (
+                <div
+                  key={notificationId}
+                  className={`task-row ${isSelected && showCheckboxes ? 'selected' : ''} ${isDeactivated ? 'deactivated' : ''}`}
+                  onClick={() => viewHistory(notification.id || notification._id)}
+                  title={isDeactivated ? 'Deactivated announcement - Click to view details' : 'Click to view announcement details'}
+                >
+                  {showCheckboxes && (
+                    <div className="task-td checkbox" onClick={(e) => e.stopPropagation()}>
+                      <input
+                        type="checkbox"
+                        checked={isSelected}
+                        onChange={(e) => handleSelectNotification(notificationId, e)}
+                        style={{ width: 16, height: 16 }}
+                      />
+                    </div>
+                  )}
+                  <div className="task-td number">{index + 1}</div>
+                  <div className="task-td date">{formatDate(notification.created_at)}</div>
+                  <div className="task-td created">{notification.sender_name || 'Unknown'}</div>
+                  <div className="task-td subject">
+                    <span className={`ann-type-badge ${notification.notification_type === 'logout' ? 'ann-type-logout' : 'ann-type-general'}`}>
+                      {notification.notification_type === 'logout' ? 'Logout' : 'General'}
+                    </span>
+                    {notification.title}
+                    {isDeactivated && <span className="ann-deactivated-badge">DEACTIVATED</span>}
+                  </div>
+                  <div className="task-td target">
+                    {notification.target_type === 'all' && (
+                      <span className="ann-target-all">All Employees</span>
+                    )}
+                    {notification.target_type === 'department' && (
+                      <div>
+                        <span className="ann-target-dept">Departments</span>
+                        <div style={{ fontSize: 11, color: '#6b7a99', marginTop: 2 }}>
+                          {getDepartmentNames(notification.target_departments).length > 0
+                            ? getDepartmentNames(notification.target_departments).slice(0, 2).join(', ')
+                            : `${notification.target_departments?.length || 0} selected`}
                         </div>
-                      </td>
-                    </tr>
-                  );
-                }
-
-                return filteredNotifications.map((notification, index) => {
-                  const config = priorityConfig[notification.priority] || priorityConfig.normal;
-                  const IconComponent = config.icon;
-                  const stats = notification.acceptance_stats || {};
-                  const totalTargetUsers = stats.total_users || 0;
-                  const acceptedCount = stats.accepted_count || 0;
-                  const pendingCount = Math.max(0, totalTargetUsers - acceptedCount);
-                  const acceptanceRate = totalTargetUsers > 0 ? (acceptedCount / totalTargetUsers * 100) : 0;
-                  const notificationId = notification.id || notification._id;
-                  const isSelected = selectedNotifications.includes(notificationId);
-                  const isDeactivated = notification.is_active === false;
-                  
-                  return (
-                    <tr 
-                      key={notification.id} 
-                      className={`border-b border-gray-800 hover:bg-gray-800/50 transition-colors cursor-pointer ${isSelected && showCheckboxes ? 'bg-blue-900/20' : ''} ${isDeactivated ? 'opacity-50 bg-red-900/10' : ''}`}
-                      onClick={() => viewHistory(notification.id || notification._id)}
-                      title={isDeactivated ? "Deactivated notification - Click to view history" : "Click to view notification history"}
-                    >
-                        {/* Checkbox Column - Only show when showCheckboxes is true */}
-                        {showCheckboxes && (
-                          <td className="px-4 py-3 text-center" onClick={(e) => e.stopPropagation()}>
-                            <input
-                              type="checkbox"
-                              checked={isSelected}
-                              onChange={(e) => handleSelectNotification(notificationId, e)}
-                              className="w-5 h-5 accent-blue-500 cursor-pointer"
-                            />
-                          </td>
-                        )}
-
-                        {/* # Column */}
-                        <td className="px-4 py-3 text-white">
-                          <span className="text-blue-400 font-bold text-lg">
-                            {index + 1}
-                          </span>
-                        </td>
-                        
-                        {/* Date & Time Column */}
-                        <td className="px-4 py-3 text-white">
-                          <div className="text-white font-medium text-sm">
-                            {formatDate(notification.created_at)}
-                          </div>
-                        </td>
-                        
-                        {/* Created By Column */}
-                        <td className="px-4 py-3 text-white">
-                          <div className="text-white font-medium text-sm">
-                            {notification.sender_name || 'Unknown'}
-                          </div>
-                        </td>
-                        
-                        {/* Subject Column */}
-                        <td className="px-4 py-3 text-white">
-                          <div className="flex items-center gap-2">
-                            <div className="font-medium text-white text-sm">
-                              {notification.title}
-                            </div>
-                            {isDeactivated && (
-                              <span className="px-2 py-0.5 text-xs font-semibold bg-red-600/20 text-red-400 border border-red-600 rounded">
-                                DEACTIVATED
-                              </span>
-                            )}
-                          </div>
-                        </td>
-                        
-                        {/* Target Column */}
-                        <td className="px-4 py-3 text-white">
-                          {notification.target_type === 'all' && (
-                            <span className="text-green-400 font-medium text-sm">All Employees</span>
-                          )}
-                          {notification.target_type === 'department' && (
-                            <div>
-                              <span className="text-blue-400 font-medium text-sm">Departments:</span>
-                              <div className="text-xs text-gray-300 mt-1 max-w-xs">
-                                {getDepartmentNames(notification.target_departments).length > 0 ? (
-                                  <div className="space-y-0.5">
-                                    {getDepartmentNames(notification.target_departments).map((name, idx) => (
-                                      <div key={idx} className="truncate" title={name}>• {name}</div>
-                                    ))}
-                                  </div>
-                                ) : (
-                                  <span className="text-gray-500">{notification.target_departments?.length || 0} department(s)</span>
-                                )}
-                              </div>
-                            </div>
-                          )}
-                          {notification.target_type === 'individual' && (
-                            <div>
-                              <span className="text-purple-400 font-medium text-sm">Specific Employees:</span>
-                              <div className="text-xs text-gray-300 mt-1 max-w-xs">
-                                {getEmployeeNames(notification.target_employees).length > 0 ? (
-                                  <div className="space-y-0.5">
-                                    {getEmployeeNames(notification.target_employees).map((name, idx) => (
-                                      <div key={idx} className="truncate" title={name}>• {name}</div>
-                                    ))}
-                                  </div>
-                                ) : (
-                                  <span className="text-gray-500">{notification.target_employees?.length || 0} employee(s)</span>
-                                )}
-                              </div>
-                            </div>
-                          )}
-                          {!notification.target_type && (
-                            <span className="text-green-400 font-medium text-sm">All Employees</span>
-                          )}
-                        </td>
-                        
-                        {/* Progress Column */}
-                        <td className="px-4 py-3 text-white">
-                          <div className="flex flex-col gap-1 min-w-32">
-                            <div className="flex items-center gap-2 text-sm">
-                              <span className="text-green-400 font-medium" title="Accepted">{acceptedCount}</span>
-                              <span className="text-yellow-400 font-medium" title="Pending">{pendingCount}</span>
-                              <span className="text-white font-medium" title="Total Targeted">{totalTargetUsers}</span>
-                            </div>
-                            <div className="w-full h-2 bg-gray-700 rounded-full overflow-hidden">
-                              <div 
-                                className="h-full bg-gradient-to-r from-green-400 to-green-500 transition-all duration-300"
-                                style={{ width: `${acceptanceRate}%` }}
-                              ></div>
-                            </div>
-                            <span className="text-white font-medium text-center text-xs">
-                              {acceptanceRate.toFixed(1)}%
-                            </span>
-                          </div>
-                        </td>
-                        <td className="px-4 py-3">
-                          <div className="flex items-center gap-2">
-                            {/* Status-based Action Button */}
-                            {(() => {
-                              // Inactive notification = Start button  
-                              if (!notification.is_active) {
-                                return (
-                                  <button
-                                    onClick={(e) => {
-                                      e.stopPropagation(); // Prevent row click
-                                      activateNotification(notification.id || notification._id);
-                                    }}
-                                    className="bg-gradient-to-r from-green-500 to-green-700 hover:from-green-600 hover:to-green-800 text-white px-4 py-2 rounded-lg font-bold text-sm uppercase tracking-wide transition-all duration-300 transform hover:-translate-y-1"
-                                    title="Activate Notification"
-                                  >
-                                    START
-                                  </button>
-                                );
-                              }
-                              // Active notification with 100% acceptance rate = Completed
-                              else if (notification.is_active && totalTargetUsers > 0 && acceptedCount === totalTargetUsers) {
-                                return (
-                                  <span className="bg-gradient-to-r from-green-500 to-green-600 text-white px-4 py-2 rounded-lg font-bold text-sm uppercase tracking-wide">
-                                    COMPLETED
-                                  </span>
-                                );
-                              }
-                              // Active notification = Stop button
-                              else {
-                                return (
-                                  <button
-                                    onClick={(e) => {
-                                      e.stopPropagation(); // Prevent row click
-                                      deactivateNotification(notification.id || notification._id);
-                                    }}
-                                    className="bg-gradient-to-r from-red-500 to-red-700 hover:from-red-600 hover:to-red-800 text-white px-4 py-2 rounded-lg font-bold text-sm uppercase tracking-wide transition-all duration-300 transform hover:-translate-y-1"
-                                    title="Deactivate Notification"
-                                  >
-                                    STOP
-                                  </button>
-                                );
-                              }
-                            })()}
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  });
-                })()
-              }
-            </tbody>
-          </table>
+                      </div>
+                    )}
+                    {notification.target_type === 'individual' && (
+                      <div>
+                        <span className="ann-target-ind">Specific Employees</span>
+                        <div style={{ fontSize: 11, color: '#6b7a99', marginTop: 2 }}>
+                          {getEmployeeNames(notification.target_employees).length > 0
+                            ? getEmployeeNames(notification.target_employees).slice(0, 2).join(', ')
+                            : `${notification.target_employees?.length || 0} selected`}
+                        </div>
+                      </div>
+                    )}
+                    {!notification.target_type && <span className="ann-target-all">All Employees</span>}
+                  </div>
+                  <div className="task-td progress">
+                    <div className="ann-progress-wrap">
+                      <div className="ann-progress-stats">
+                        <span className="accepted" title="Accepted">{acceptedCount}</span>
+                        <span className="pending" title="Pending">{pendingCount}</span>
+                        <span className="total" title="Total">{totalTargetUsers}</span>
+                      </div>
+                      <div className="ann-progress-bar">
+                        <div className="ann-progress-fill" style={{ width: `${acceptanceRate}%` }} />
+                      </div>
+                      <span className="ann-progress-pct">{acceptanceRate.toFixed(1)}%</span>
+                    </div>
+                  </div>
+                  <div className="task-td action" onClick={(e) => e.stopPropagation()}>
+                    {renderNotificationAction(notification, totalTargetUsers, acceptedCount)}
+                  </div>
+                </div>
+              );
+            })
+          )}
         </div>
       </div>
-
       {/* Create Announcement Modal */}
       {showCreateForm && (
-        <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-transparent bg-opacity-20">
-          <div className="relative bg-white rounded-xl shadow-2xl w-full max-w-3xl max-h-[90vh] flex flex-col">
+        <div className="task-modal-overlay" onClick={() => setShowCreateForm(false)}>
+          <div className="task-modal-container" onClick={(e) => e.stopPropagation()}>
             <button
-              className="absolute right-2 top-2 text-gray-500 hover:text-red-500 transition text-2xl font-bold z-10"
+              className="task-modal-close"
               onClick={() => setShowCreateForm(false)}
               aria-label="Close"
               type="button"
             >
               ×
             </button>
-            <div className="overflow-y-auto p-6 space-y-6">
+            <div className="task-modal-header">
+              <h2>Create Announcement</h2>
+            </div>
+            <div className="task-modal-body">
               <form onSubmit={sendNotification}>
-              <div className="flex flex-col md:flex-row gap-4">
+              <div className="ann-form-row">
                 <div className="flex-1">
-                  <label className="block font-bold text-gray-700 mb-1">
+                  <label className="ann-form-label">
                     Date & Time
                   </label>
                   <input
                     type="text"
-                    className="w-full px-3 py-2 border border-cyan-400 rounded text-black font-bold bg-gray-100"
+                    className="ann-form-input ann-form-input--readonly"
                     value={formatDate(new Date())}
                     readOnly
                   />
                 </div>
                 <div className="flex-1">
-                  <label className="block font-bold text-gray-700 mb-1">
+                  <label className="ann-form-label">
                     Created By
                   </label>
                   <input
                     type="text"
-                    className="w-full px-3 py-2 border border-cyan-400 rounded text-black font-bold bg-gray-100"
+                    className="ann-form-input ann-form-input--readonly"
                     value={getCurrentUserName()}
                     readOnly
                   />
@@ -1616,7 +1485,7 @@ const NotificationManagementPage = () => {
               </div>
 
               <div className="mt-4">
-                <label className="block font-bold text-gray-700 mb-1">
+                <label className="ann-form-label">
                   Subject *
                 </label>
                 <input
@@ -1624,21 +1493,21 @@ const NotificationManagementPage = () => {
                   value={formData.title}
                   onChange={(e) => setFormData({ ...formData, title: e.target.value })}
                   onBlur={() => handleBlur('title')}
-                  className="w-full px-3 py-2 border border-cyan-400 rounded text-black font-bold"
+                  className="ann-form-input"
                   placeholder="Enter announcement subject"
                   required
                 />
               </div>
 
               <div className="mt-4">
-                <label className="block font-bold text-gray-700 mb-1">
+                <label className="ann-form-label">
                   Announcment Details *
                 </label>
                 <textarea
                   ref={notificationDetailsRef}
                   value={formData.message}
                   onChange={handleNotificationDetailsChange}
-                  className="w-full px-3 py-2 border border-cyan-400 rounded text-black font-bold resize-none overflow-hidden"
+                  className="ann-form-textarea"
                   rows="3"
                   placeholder="Enter announcement details..."
                   required
@@ -1647,13 +1516,13 @@ const NotificationManagementPage = () => {
               </div>
 
               <div className="mt-4">
-                <label className="block font-bold text-gray-700 mb-1">
+                <label className="ann-form-label">
                   Target Type
                 </label>
                 <select
                   value={formData.targetType}
                   onChange={(e) => setFormData({ ...formData, targetType: e.target.value })}
-                  className="w-full px-3 py-2 border border-cyan-400 rounded text-black font-bold bg-gray-100"
+                  className="ann-form-input ann-form-input--readonly"
                 >
                   <option value="all">All Employees</option>
                   <option value="department">Specific Departments</option>
@@ -1662,18 +1531,18 @@ const NotificationManagementPage = () => {
               </div>
 
               <div className="mt-4">
-                <label className="block font-bold text-gray-700 mb-1">
+                <label className="ann-form-label">
                   Notification Type
                 </label>
                 <select
                   value={formData.notificationType}
                   onChange={(e) => setFormData({ ...formData, notificationType: e.target.value })}
-                  className="w-full px-3 py-2 border border-cyan-400 rounded text-black font-bold bg-gray-100"
+                  className="ann-form-input ann-form-input--readonly"
                 >
                   <option value="general">General Announcement</option>
                   <option value="logout">Logout Announcement</option>
                 </select>
-                <p className="text-sm text-gray-600 mt-1">
+                <p className="ann-form-hint">
                   {formData.notificationType === 'logout' 
                     ? '⚠️ Logout notifications will show a logout button to users. Users will be logged out when they acknowledge.'
                     : '📢 General announcements for standard communications.'
@@ -1684,12 +1553,12 @@ const NotificationManagementPage = () => {
               {/* Department Selection */}
               {formData.targetType === 'department' && (
                 <div className="mt-4">
-                  <label className="block font-bold text-gray-700 mb-1">
+                  <label className="ann-form-label">
                     Select Departments
                   </label>
                   <div className="relative z-[10000]" ref={departmentDropdownRef}>
                     <div 
-                      className="w-full px-3 py-2 border border-cyan-400 rounded text-black font-bold bg-white cursor-pointer flex items-center justify-between min-h-[40px]"
+                      className="ann-dropdown-trigger"
                       onClick={() => {
                         if (!showDepartmentDropdown) {
                           calculateDropdownPosition(departmentDropdownRef, setDepartmentDropdownOpenUp, setDepartmentDropdownPosition);
@@ -1725,7 +1594,7 @@ const NotificationManagementPage = () => {
                     </div>
                     {showDepartmentDropdown && (
                       <div 
-                        className="fixed bg-white border-2 border-cyan-400 rounded-lg shadow-2xl"
+                        className="ann-dropdown-panel"
                         style={{
                           top: `${departmentDropdownPosition.top}px`,
                           left: `${departmentDropdownPosition.left}px`,
@@ -1735,14 +1604,14 @@ const NotificationManagementPage = () => {
                         }}
                       >
                         {/* Search Bar */}
-                        <div className="sticky top-0 bg-white p-3 border-b-2 border-cyan-400 z-10">
+                        <div className="ann-dropdown-search">
                           <input
                             type="text"
                             placeholder="Search departments..."
                             value={departmentSearch}
                             onChange={(e) => setDepartmentSearch(e.target.value)}
                             onClick={(e) => e.stopPropagation()}
-                            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-black focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                            className="ann-form-input"
                           />
                         </div>
                         
@@ -1757,7 +1626,7 @@ const NotificationManagementPage = () => {
                             return (
                               <div
                                 key={deptId}
-                                className="p-3 hover:bg-gray-100 cursor-pointer flex items-center gap-3 text-black"
+                                className="ann-dropdown-item"
                                 onClick={() => {
                                   if (isSelected) {
                                     setSelectedDepartments(selectedDepartments.filter(d => d.id !== deptId));
@@ -1773,7 +1642,7 @@ const NotificationManagementPage = () => {
                               </div>
                             );
                           }) : (
-                            <div className="p-3 text-gray-500 text-center">
+                            <div className="ann-user-empty">
                               {departmentSearch ? 'No departments found matching your search' : (departments.length === 0 ? 'Loading departments...' : 'No departments found')}
                             </div>
                           )}
@@ -1787,12 +1656,12 @@ const NotificationManagementPage = () => {
               {/* Employee Selection */}
               {formData.targetType === 'individual' && (
                 <div className="mt-4">
-                  <label className="block font-bold text-gray-700 mb-1">
+                  <label className="ann-form-label">
                     Select Employees
                   </label>
                   <div className="relative z-[10000]" ref={employeeDropdownRef}>
                     <div 
-                      className="w-full px-3 py-2 border border-cyan-400 rounded text-black font-bold bg-white cursor-pointer flex items-center justify-between min-h-[40px]"
+                      className="ann-dropdown-trigger"
                       onClick={() => {
                         if (!showEmployeeDropdown) {
                           calculateDropdownPosition(employeeDropdownRef, setEmployeeDropdownOpenUp, setEmployeeDropdownPosition);
@@ -1828,7 +1697,7 @@ const NotificationManagementPage = () => {
                     </div>
                     {showEmployeeDropdown && (
                       <div 
-                        className="fixed bg-white border-2 border-cyan-400 rounded-lg shadow-2xl"
+                        className="ann-dropdown-panel"
                         style={{
                           top: `${employeeDropdownPosition.top}px`,
                           left: `${employeeDropdownPosition.left}px`,
@@ -1838,14 +1707,14 @@ const NotificationManagementPage = () => {
                         }}
                       >
                         {/* Search Bar */}
-                        <div className="sticky top-0 bg-white p-3 border-b-2 border-cyan-400 z-10">
+                        <div className="ann-dropdown-search">
                           <input
                             type="text"
                             placeholder="Search employees..."
                             value={employeeSearch}
                             onChange={(e) => setEmployeeSearch(e.target.value)}
                             onClick={(e) => e.stopPropagation()}
-                            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-black focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                            className="ann-form-input"
                           />
                         </div>
 
@@ -1861,7 +1730,7 @@ const NotificationManagementPage = () => {
                             return (
                               <div
                                 key={empId}
-                                className="p-3 hover:bg-gray-100 cursor-pointer flex items-center gap-3 text-black"
+                                className="ann-dropdown-item"
                                 onClick={() => {
                                   if (isSelected) {
                                     setSelectedEmployees(selectedEmployees.filter(e => e.id !== empId));
@@ -1877,7 +1746,7 @@ const NotificationManagementPage = () => {
                               </div>
                             );
                           }) : (
-                            <div className="p-3 text-gray-500 text-center">
+                            <div className="ann-user-empty">
                               {employeeSearch ? 'No matching employees found' : (employees.length === 0 ? 'Loading employees...' : 'No employees found')}
                             </div>
                           )}
@@ -1888,18 +1757,18 @@ const NotificationManagementPage = () => {
                 </div>
               )}
 
-              <div className="flex justify-end gap-4 mt-6">
+              <div className="ann-form-actions">
                 <button
                   type="button"
                   onClick={() => setShowCreateForm(false)}
-                  className="px-6 py-3 bg-gray-400 text-white rounded-xl shadow hover:bg-gray-500 transition"
+                  className="task-btn-secondary"
                   disabled={loading}
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="px-6 py-3 bg-cyan-600 text-white rounded-xl shadow hover:bg-cyan-700 transition flex items-center gap-2 font-bold"
+                  className="task-btn-create"
                   disabled={loading}
                 >
                   {loading ? (
@@ -1923,38 +1792,41 @@ const NotificationManagementPage = () => {
 
       {/* History Modal */}
       {showHistory && selectedNotification && (
-        <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-transparent" style={{ backdropFilter: "blur(3px)" }}>
-          <div className="relative bg-white p-6 rounded-xl shadow-2xl w-full max-w-5xl mx-auto space-y-6 max-h-[90vh] overflow-y-auto">
+        <div className="task-modal-overlay" onClick={() => setShowHistory(false)}>
+          <div className="task-modal-container task-modal-container--wide" onClick={(e) => e.stopPropagation()}>
             <button
-              className="absolute right-2 top-2 text-gray-500 hover:text-red-500 transition text-2xl font-bold"
+              className="task-modal-close"
               onClick={() => setShowHistory(false)}
               aria-label="Close"
               type="button"
             >
               ×
             </button>
-            <h2 className="text-xl font-bold text-green-600 mb-4">ANNOUNCEMENT DETAILS</h2>
+            <div className="task-modal-header">
+              <h2>Announcement Details</h2>
+            </div>
+            <div className="task-modal-body">
 
             {/* Notification Details Form */}
-            <div className="flex flex-col md:flex-row gap-4">
+            <div className="ann-form-row">
               <div className="flex-1">
-                <label className="block font-bold text-gray-700 mb-1">
+                <label className="ann-form-label">
                   Title
                 </label>
                 <input
                   type="text"
-                  className="w-full px-3 py-2 border border-cyan-400 rounded text-black font-bold bg-gray-100"
+                  className="ann-form-input ann-form-input--readonly"
                   value={selectedNotification.title || ''}
                   readOnly
                 />
               </div>
               <div className="flex-1">
-                <label className="block font-bold text-gray-700 mb-1">
+                <label className="ann-form-label">
                   Priority
                 </label>
                 <input
                   type="text"
-                  className="w-full px-3 py-2 border border-cyan-400 rounded text-black font-bold bg-gray-100"
+                  className="ann-form-input ann-form-input--readonly"
                   value={selectedNotification.priority ? selectedNotification.priority.toUpperCase() : ''}
                   readOnly
                 />
@@ -1962,11 +1834,11 @@ const NotificationManagementPage = () => {
             </div>
 
             <div className="mt-4">
-              <label className="block font-bold text-gray-700 mb-1">
+              <label className="ann-form-label">
                 Message
               </label>
               <textarea
-                className="w-full px-3 py-2 border border-cyan-400 rounded text-black font-bold resize-none bg-gray-100"
+                className="ann-form-textarea ann-form-input--readonly"
                 rows={3}
                 value={selectedNotification.message || ''}
                 readOnly
@@ -1977,25 +1849,25 @@ const NotificationManagementPage = () => {
               />
             </div>
 
-            <div className="flex flex-col md:flex-row gap-4 mt-4">
+            <div className="ann-form-row" style={{ marginTop: 16 }}>
               <div className="flex-1">
-                <label className="block font-bold text-gray-700 mb-1">
+                <label className="ann-form-label">
                   Sent By
                 </label>
                 <input
                   type="text"
-                  className="w-full px-3 py-2 border border-cyan-400 rounded text-black font-bold bg-gray-100"
+                  className="ann-form-input ann-form-input--readonly"
                   value={selectedNotification.sender_name || 'Unknown'}
                   readOnly
                 />
               </div>
               <div className="flex-1">
-                <label className="block font-bold text-gray-700 mb-1">
+                <label className="ann-form-label">
                   Date & Time
                 </label>
                 <input
                   type="text"
-                  className="w-full px-3 py-2 border border-cyan-400 rounded text-black font-bold bg-gray-100"
+                  className="ann-form-input ann-form-input--readonly"
                   value={formatDate(selectedNotification.created_at)}
                   readOnly
                 />
@@ -2003,12 +1875,12 @@ const NotificationManagementPage = () => {
             </div>
 
             <div className="mt-4">
-              <label className="block font-bold text-gray-700 mb-1">
+              <label className="ann-form-label">
                 Target Type
               </label>
               <input
                 type="text"
-                className="w-full px-3 py-2 border border-cyan-400 rounded text-black font-bold bg-gray-100"
+                className="ann-form-input ann-form-input--readonly"
                 value={
                   selectedNotification.target_type === 'all' ? 'All Employees' :
                   selectedNotification.target_type === 'department' ? `Departments (${selectedNotification.target_departments?.length || 0} selected)` :
@@ -2020,62 +1892,56 @@ const NotificationManagementPage = () => {
             </div>
 
             {/* Statistics */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-6 mb-6">
-              <div className="bg-white border border-cyan-400 rounded-xl p-4">
-                <div className="flex items-center gap-3">
-                  <CheckCircle2 className="h-8 w-8 text-green-600" />
-                  <div>
-                    <p className="text-green-600 text-sm font-bold">Accepted</p>
-                    <p className="text-2xl font-bold text-black">{selectedNotification.accepted_by?.length || 0}</p>
-                  </div>
+            <div className="ann-stat-grid">
+              <div className="ann-stat-card ann-stat-accepted">
+                <CheckCircle2 size={28} color="#34d399" />
+                <div>
+                  <p>Accepted</p>
+                  <span>{selectedNotification.accepted_by?.length || 0}</span>
                 </div>
               </div>
-              <div className="bg-white border border-cyan-400 rounded-xl p-4">
-                <div className="flex items-center gap-3">
-                  <Clock className="h-8 w-8 text-yellow-600" />
-                  <div>
-                    <p className="text-yellow-600 text-sm font-bold">Pending</p>
-                    <p className="text-2xl font-bold text-black">{selectedNotification.pending_users?.length || 0}</p>
-                  </div>
+              <div className="ann-stat-card ann-stat-pending">
+                <Clock size={28} color="#fbbf24" />
+                <div>
+                  <p>Pending</p>
+                  <span>{selectedNotification.pending_users?.length || 0}</span>
                 </div>
               </div>
-              <div className="bg-white border border-cyan-400 rounded-xl p-4">
-                <div className="flex items-center gap-3">
-                  <BarChart3 className="h-8 w-8 text-blue-600" />
-                  <div>
-                    <p className="text-blue-600 text-sm font-bold">Acceptance Rate</p>
-                    <p className="text-2xl font-bold text-black">
-                      {selectedNotification.total_active_users > 0 
-                        ? ((selectedNotification.accepted_by?.length || 0) / selectedNotification.total_active_users * 100).toFixed(1)
-                        : 0}%
-                    </p>
-                  </div>
+              <div className="ann-stat-card ann-stat-rate">
+                <BarChart3 size={28} color="#60a5fa" />
+                <div>
+                  <p>Acceptance Rate</p>
+                  <span>
+                    {selectedNotification.total_active_users > 0 
+                      ? ((selectedNotification.accepted_by?.length || 0) / selectedNotification.total_active_users * 100).toFixed(1)
+                      : 0}%
+                  </span>
                 </div>
               </div>
             </div>
 
             {/* Accepted Users */}
             <div className="mb-6">
-              <label className="block font-bold text-gray-700 mb-1">
+              <label className="ann-form-label">
                 Accepted Users ({selectedNotification.accepted_by?.length || 0})
               </label>
-              <div className="w-full px-3 py-2 border border-cyan-400 rounded bg-gray-100 max-h-32 overflow-y-auto">
+              <div className="ann-user-list">
                 {selectedNotification.accepted_by?.length > 0 ? (
                   <div className="space-y-2">
                     {selectedNotification.accepted_by.map((acceptance, index) => (
-                      <div key={index} className="flex items-center justify-between py-2 px-3 bg-white border border-gray-200 rounded">
+                      <div key={index} className="ann-user-row">
                         <div className="flex items-center gap-3">
                           <div className="w-2 h-2 bg-green-600 rounded-full"></div>
-                          <span className="font-medium text-black text-sm">{acceptance.user_name}</span>
+                          <span className="font-medium text-sm" style={{ color: "#c8d0e0" }}>{acceptance.user_name}</span>
                         </div>
-                        <span className="text-xs text-gray-600">
+                        <span className="text-xs" style={{ color: "#6b7a99" }}>
                           {formatDate(acceptance.accepted_at)}
                         </span>
                       </div>
                     ))}
                   </div>
                 ) : (
-                  <div className="text-center py-4 text-gray-600">
+                  <div className="ann-user-empty">
                     <CheckCircle2 className="h-8 w-8 mx-auto mb-2 text-gray-400" />
                     <p className="text-sm">No acceptances yet</p>
                   </div>
@@ -2085,29 +1951,30 @@ const NotificationManagementPage = () => {
 
             {/* Pending Users */}
             <div>
-              <label className="block font-bold text-gray-700 mb-1">
+              <label className="ann-form-label">
                 Pending Users ({selectedNotification.pending_users?.length || 0})
               </label>
-              <div className="w-full px-3 py-2 border border-cyan-400 rounded bg-gray-100 max-h-32 overflow-y-auto">
+              <div className="ann-user-list">
                 {selectedNotification.pending_users && selectedNotification.pending_users.length > 0 ? (
                   <div className="space-y-2">
                     {selectedNotification.pending_users.map((user, idx) => (
-                      <div key={user.user_id || idx} className="flex items-center justify-between py-2 px-3 bg-white border border-gray-200 rounded">
+                      <div key={user.user_id || idx} className="ann-user-row">
                         <div className="flex items-center gap-3">
                           <div className="w-2 h-2 bg-yellow-600 rounded-full animate-pulse"></div>
-                          <span className="font-medium text-black text-sm">{user.user_name}</span>
+                          <span className="font-medium text-sm" style={{ color: "#c8d0e0" }}>{user.user_name}</span>
                         </div>
-                        <span className="text-xs text-yellow-600">Waiting for response</span>
+                        <span className="text-xs" style={{ color: "#fbbf24" }}>Waiting for response</span>
                       </div>
                     ))}
                   </div>
                 ) : (
-                  <div className="text-center py-4 text-gray-600">
+                  <div className="ann-user-empty">
                     <CheckCircle2 className="h-8 w-8 mx-auto mb-2 text-gray-400" />
                     <p className="text-sm">All users have accepted this announcement!</p>
                   </div>
                 )}
               </div>
+            </div>
             </div>
           </div>
         </div>
@@ -2116,7 +1983,7 @@ const NotificationManagementPage = () => {
       {/* Announcement Popup Modal - MOVED TO APP.JSX FOR GLOBAL ACCESS */}
       {/* This modal now shows on ALL pages, not just the notifications page */}
       {/* The modal is rendered globally in App.jsx and controlled via localStorage */}
-    </div>
+    </>
   );
 };
 

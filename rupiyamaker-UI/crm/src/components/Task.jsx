@@ -7,6 +7,7 @@ import { getUserPermissions, hasPermission, isSuperAdmin } from '../utils/permis
 import { formatDate as formatDateUtil, formatDateTime, getISTDateYMD, toISTDateYMD, getISTTimestamp, getISTToday } from '../utils/dateUtils';
 import useTabWithHistory from '../hooks/useTabWithHistory';
 import useModalHistory from '../hooks/useModalHistory';
+import useNavbarPageSearch from '../hooks/useNavbarPageSearch';
 
 // Lazy load heavy components for faster initial loading
 const CreateTask = lazy(() => import("./CreateTask"));
@@ -267,114 +268,124 @@ const initialTaskForm = {
 export default function Task({ onTaskStatusChange, onTaskUpdate } = {}) {
   // CSS styles matching task_creation.html design
   const taskPageStyles = `
-    .task-page-container { padding: 20px 30px; max-width: 1600px; margin: 0 auto; }
-    .task-top-bar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 25px; }
-    .task-btn-create { background-color: #00aaff; color: white; border: none; padding: 10px 24px; border-radius: 30px; font-size: 15px; font-weight: 700; cursor: pointer; display: flex; align-items: center; gap: 8px; box-shadow: 0 4px 10px rgba(0, 170, 255, 0.3); transition: transform 0.2s, background-color 0.2s; }
-    .task-btn-create:hover { transform: translateY(-1px); background-color: #0088cc; }
-    .task-btn-select { background-color: #0077bb; color: white; border: none; padding: 8px 20px; border-radius: 6px; font-size: 14px; font-weight: 600; cursor: pointer; transition: opacity 0.2s; }
-    .task-btn-select:hover { opacity: 0.9; }
+    /* ── Dark Task Page ── */
+    .task-page-container { padding: 0; max-width: 100%; background: #000; min-height: 100vh; font-family: -apple-system, BlinkMacSystemFont, 'Lexend Deca', sans-serif; color: #e2e8f0; }
 
-    .task-view-toggle-bar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; }
-    .task-view-toggle-info { display: flex; align-items: center; gap: 8px; }
-    .task-view-toggle-role { display: flex; align-items: center; gap: 6px; padding: 4px 10px; background: #1e293b; border-radius: 20px; }
-    .task-view-toggle-role-dot { width: 8px; height: 8px; background: #22c55e; border-radius: 50%; }
-    .task-view-toggle-role-name { font-size: 11px; font-weight: 700; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.4px; }
-    .task-view-toggle-group { display: flex; background: #1a1a1a; border: 1px solid #333; border-radius: 30px; padding: 3px; gap: 2px; }
-    .task-view-toggle-btn { padding: 6px 16px; border: none; border-radius: 20px; font-size: 12px; font-weight: 700; cursor: pointer; background: transparent; color: #666; transition: all 0.2s; }
-    .task-view-toggle-btn.active { background: #00aaff; color: #fff; box-shadow: 0 2px 8px rgba(0,170,255,0.3); }
-    .task-view-toggle-btn:hover:not(.active) { color: #aaa; }
+    /* Header */
+    .task-top-bar { display: flex; justify-content: space-between; align-items: flex-start; padding: 20px 24px 0; border-bottom: 1px solid #1f1f27; background: #000; }
+    .task-top-bar-left h1 { font-size: 22px; font-weight: 700; color: #f0f0f5; margin: 0 0 2px; line-height: 1.2; }
+    .task-top-bar-left p { font-size: 13px; color: #6b7a99; margin: 0 0 12px; }
+    .task-top-bar-right { display: flex; gap: 8px; align-items: center; padding-top: 4px; }
 
-    .task-filters-section { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 15px; }
-    .task-status-pills { display: flex; gap: 12px; flex-wrap: wrap; }
-    .task-pill { background-color: #ffffff; color: #00aaff; border-radius: 30px; padding: 6px 14px; font-size: 13px; font-weight: 700; display: inline-flex; align-items: center; gap: 8px; cursor: pointer; border: none; transition: all 0.2s; }
-    .task-pill .task-pill-count { background-color: #ececec; color: #555555; border-radius: 50%; width: 20px; height: 20px; display: inline-flex; justify-content: center; align-items: center; font-size: 11px; font-weight: bold; transition: all 0.2s; }
-    .task-pill.active { background-color: #00aaff; color: white; box-shadow: 0 3px 8px rgba(0, 170, 255, 0.3); }
-    .task-pill.active .task-pill-count { background-color: white; color: #00aaff; }
-    .task-search-area { display: flex; align-items: center; gap: 12px; }
-    .task-filter-dropdown { padding: 8px 16px; border-radius: 20px; border: none; background-color: white; color: #00aaff; font-size: 13px; font-weight: 600; appearance: none; padding-right: 30px; background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="%2300aaff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>'); background-repeat: no-repeat; background-position: right 10px center; cursor: pointer; outline: none; }
-    .task-search-box { position: relative; }
-    .task-search-box input { background-color: transparent; border: 1px solid #444; border-radius: 20px; padding: 8px 16px 8px 36px; color: white; font-size: 13px; width: 280px; outline: none; transition: border-color 0.2s; }
-    .task-search-box input:focus { border-color: #00aaff; }
-    .task-search-box svg { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: #666; }
+    /* Top buttons */
+    .task-btn-secondary { background: #1a1a24; color: #c8d0e0; border: 1px solid #2a2a3a; padding: 7px 14px; border-radius: 3px; font-size: 13px; font-weight: 500; cursor: pointer; transition: background 0.15s, border-color 0.15s; white-space: nowrap; }
+    .task-btn-secondary:hover { background: #22222e; border-color: #3a3a50; }
+    .task-btn-create { background: #3b82f6; color: #fff; border: none; padding: 7px 14px; border-radius: 3px; font-size: 13px; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 6px; transition: background 0.15s; white-space: nowrap; }
+    .task-btn-create:hover { background: #2563eb; }
+    .task-btn-select { background: #1a1a24; color: #c8d0e0; border: 1px solid #2a2a3a; padding: 7px 14px; border-radius: 3px; font-size: 13px; font-weight: 500; cursor: pointer; }
+    .task-btn-select:hover { background: #22222e; }
 
-    .task-data-table-header { background-color: #ffffff; border-radius: 4px; display: flex; padding: 12px 15px; align-items: center; margin-bottom: 10px; }
-    .task-th { color: #00aaff; font-weight: 800; font-size: 13px; text-transform: uppercase; text-align: left; flex: 1; }
-    .task-th.number { flex: 0 0 40px; }
+    /* Single toolbar row: tabs (left) | search + dropdowns (right) */
+    .task-view-toggle-bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 24px; background: #000; border-bottom: 1px solid #1f1f27; flex-wrap: wrap; }
+    .task-view-toggle-group { display: flex; gap: 0; flex-wrap: wrap; flex: 0 1 auto; min-width: 0; }
+    .task-view-toggle-btn { padding: 12px 16px; border: none; background: transparent; font-size: 13px; font-weight: 600; color: #6b7a99; cursor: pointer; border-bottom: 3px solid transparent; transition: color 0.15s, border-color 0.15s; white-space: nowrap; }
+    .task-view-toggle-btn:hover { color: #c8d0e0; }
+    .task-view-toggle-btn.active { color: #f97316; font-weight: 800; border-bottom-color: #f97316; }
+
+    .task-filter-dropdown { padding: 6px 28px 6px 10px; border-radius: 3px; border: 1px solid #2a2a3a; background-color: #1a1a24; color: #c8d0e0; font-size: 13px; font-weight: 500; appearance: none; min-height: 32px; background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="%236b7a99" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>'); background-repeat: no-repeat; background-position: right 8px center; cursor: pointer; outline: none; }
+    .task-filter-dropdown:focus { border-color: #3b82f6; }
+    .task-filter-dropdown-assign { min-width: 140px; }
+
+    .task-search-box--in-bar { position: relative; width: 260px; min-width: 200px; flex-shrink: 0; }
+    .task-search-box--in-bar input { background: #1a1a24; border: 1px solid #2a2a3a; border-radius: 3px; padding: 6px 14px 6px 32px; color: #c8d0e0; font-size: 13px; width: 100%; outline: none; transition: border-color 0.15s; box-sizing: border-box; }
+    .task-search-box--in-bar input::placeholder { color: #4a5570; }
+    .task-search-box--in-bar input:focus { border-color: #3b82f6; box-shadow: 0 0 0 2px rgba(59,130,246,0.15); }
+    .task-search-box--in-bar svg { position: absolute; left: 9px; top: 50%; transform: translateY(-50%); color: #4a5570; }
+
+    .task-toolbar-right { display: flex; align-items: center; justify-content: flex-end; gap: 8px; margin-left: auto; flex-shrink: 0; flex-wrap: wrap; }
+
+    /* Select controls */
+    .task-select-controls { display: flex; align-items: center; gap: 8px; }
+    .task-select-controls label { display: flex; align-items: center; cursor: pointer; color: #c8d0e0; font-size: 13px; gap: 5px; }
+    .task-select-controls span { color: #6b7a99; font-size: 13px; }
+    .task-select-btn-del { padding: 5px 12px; background: #1a0a0a; color: #f87171; border: 1px solid #7f1d1d; border-radius: 3px; font-size: 13px; cursor: pointer; }
+    .task-select-btn-del:hover { background: #2a0f0f; }
+    .task-select-btn-cancel { padding: 5px 12px; background: #1a1a24; color: #6b7a99; border: 1px solid #2a2a3a; border-radius: 3px; font-size: 13px; cursor: pointer; }
+    .task-select-btn-cancel:hover { background: #22222e; }
+
+    /* Table */
+    .task-data-table-header { background: #ffffff; border-top: 1px solid #e5e7eb; border-bottom: 2px solid #e5e7eb; display: flex; padding: 12px 24px; align-items: center; box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1); }
+    .task-th { color: #03b0f5; font-weight: 800; font-size: 11px; text-transform: uppercase; letter-spacing: 0.6px; text-align: left; flex: 1; }
+    .task-th.number { flex: 0 0 36px; }
     .task-th.type { flex: 0 0 110px; }
     .task-th.created { flex: 1.2; }
     .task-th.subject { flex: 2; }
     .task-th.record { flex: 1.5; }
     .task-th.assigned { flex: 1.5; }
-    .task-th.status { flex: 0 0 90px; }
+    .task-th.status { flex: 0 0 100px; }
     .task-th.date { flex: 1.2; }
 
-    .task-data-table-body { display: flex; flex-direction: column; gap: 8px; min-height: 100px; }
-    .task-row { background-color: #1a1a1a; border: 1px solid #333; border-radius: 6px; display: flex; padding: 12px 15px; align-items: center; transition: background-color 0.2s, border-color 0.2s; animation: taskSlideIn 0.3s ease-out; cursor: pointer; }
-    .task-row:hover { background-color: #222; border-color: #444; }
-    .task-td { font-size: 13px; color: #ececec; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding-right: 10px; }
-    .task-td.number { flex: 0 0 40px; color: #888; font-weight: bold; }
+    .task-data-table-body { display: flex; flex-direction: column; }
+    .task-row { background: #000; border-bottom: 1px solid #1a1a22; display: flex; padding: 11px 24px; align-items: center; cursor: pointer; transition: background 0.1s; animation: taskSlideIn 0.2s ease-out; }
+    .task-row:hover { background: #13131c; }
+    .task-td { font-size: 13px; color: #ffffff; font-weight: 600; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding-right: 12px; }
+    .task-td.number { flex: 0 0 36px; color: #ffffff; font-size: 12px; font-weight: 600; }
     .task-td.type { flex: 0 0 110px; }
     .task-td.created { flex: 1.2; }
-    .task-td.subject { flex: 2; font-weight: 600; color: #fff; }
-    .task-td.record { flex: 1.5; font-weight: 600; }
+    .task-td.subject { flex: 2; font-weight: 700; color: #ffffff; }
+    .task-td.record { flex: 1.5; }
     .task-td.assigned { flex: 1.5; }
-    .task-td.status { flex: 0 0 90px; }
+    .task-td.status { flex: 0 0 100px; }
     .task-td.date { flex: 1.2; }
 
-    .task-type-badge { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 20px; font-size: 11px; font-weight: 700; text-transform: uppercase; }
-    .badge-callback { background-color: rgba(46, 204, 113, 0.15); color: #2ecc71; border: 1px solid rgba(46, 204, 113, 0.3); }
-    .badge-pendency { background-color: rgba(243, 156, 18, 0.15); color: #f39c12; border: 1px solid rgba(243, 156, 18, 0.3); }
-    .badge-todo { background-color: rgba(0, 170, 255, 0.15); color: #00aaff; border: 1px solid rgba(0, 170, 255, 0.3); }
+    .task-type-badge { display: inline-flex; align-items: center; gap: 5px; padding: 3px 8px; border-radius: 2px; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.3px; }
+    .badge-callback { background: #0a2a22; color: #34d399; border: 1px solid #064e3b; }
+    .badge-pendency { background: #2a1a00; color: #fbbf24; border: 1px solid #78350f; }
+    .badge-todo { background: #0a1a2a; color: #60a5fa; border: 1px solid #1e3a5f; }
 
-    .task-status-badge { display: inline-block; padding: 3px 8px; border-radius: 4px; font-size: 11px; font-weight: bold; color: #fff; }
-    .task-sts-pending { background-color: #555; }
-    .task-sts-complete { background-color: #2ecc71; }
-    .task-sts-failed { background-color: #ff4757; }
-    .task-sts-inprogress { background-color: #f39c12; }
-    .task-sts-cancelled { background-color: #e74c3c; }
+    .task-status-badge { display: inline-flex; align-items: center; padding: 3px 8px; border-radius: 2px; font-size: 11px; font-weight: 600; }
+    .task-sts-pending { background: #1a1a24; color: #6b7a99; border: 1px solid #2a2a3a; }
+    .task-sts-complete { background: #0a2a22; color: #34d399; border: 1px solid #064e3b; }
+    .task-sts-failed { background: #1a0a0a; color: #f87171; border: 1px solid #7f1d1d; }
+    .task-sts-inprogress { background: #1a1200; color: #fbbf24; border: 1px solid #78350f; }
+    .task-sts-cancelled { background: #1a0a0a; color: #f87171; border: 1px solid #7f1d1d; }
 
-    .task-created-meta-col, .task-due-meta-col { display: flex; flex-direction: column; gap: 2px; }
-    .task-created-meta-name { font-weight: 600; color: #00aaff; font-size: 12px; white-space: nowrap; text-overflow: ellipsis; overflow: hidden; }
-    .task-created-meta-date { font-size: 11px; color: #888; }
-    .task-due-meta-date { font-weight: 700; color: #fff; font-size: 12px; }
-    .task-due-meta-time { font-size: 11px; color: #aaa; }
-    .task-due-overdue { color: #ff6b81; }
+    .task-created-meta-col, .task-due-meta-col { display: flex; flex-direction: column; gap: 1px; }
+    .task-created-meta-name { font-weight: 600; color: #ffffff; font-size: 12px; white-space: nowrap; text-overflow: ellipsis; overflow: hidden; }
+    .task-created-meta-date { font-size: 11px; color: #ffffff; font-weight: 500; }
+    .task-due-meta-date { font-weight: 600; color: #ffffff; font-size: 13px; }
+    .task-due-meta-time { font-size: 11px; color: #ffffff; font-weight: 500; }
+    .task-due-overdue { color: #f87171; font-weight: 700; }
 
+    .task-tag-lead { background: #0a1a2a; color: #60a5fa; padding: 2px 6px; border-radius: 2px; font-size: 10px; font-weight: 700; text-transform: uppercase; margin-right: 4px; border: 1px solid #1e3a5f; }
+    .task-record-name { color: #60a5fa; font-weight: 500; cursor: pointer; }
+    .task-record-name:hover { text-decoration: underline; }
+    .task-record-number { color: #4a5570; font-size: 11px; margin-left: 4px; }
+
+    /* Empty state */
     .task-empty-state { display: flex; flex-direction: column; justify-content: center; align-items: center; padding: 80px 20px; text-align: center; }
-    .task-empty-state p { color: #00aaff; font-size: 18px; font-weight: 700; margin-bottom: 5px; }
+    .task-empty-state-title { font-size: 17px; font-weight: 700; color: #c8d0e0; margin: 0 0 6px; }
+    .task-empty-state-sub { font-size: 14px; color: #4a5570; margin: 0; }
+    .task-empty-state p { color: #4a5570; font-size: 14px; font-weight: 400; margin: 0; }
 
-    .task-tag-lead { background: rgba(0, 170, 255, 0.1); color: #00aaff; padding: 2px 6px; border-radius: 4px; font-size: 10px; font-weight: 800; text-transform: uppercase; margin-right: 6px; }
-    .task-tag-login { background: rgba(243, 156, 18, 0.1); color: #f39c12; padding: 2px 6px; border-radius: 4px; font-size: 10px; font-weight: 800; text-transform: uppercase; margin-right: 6px; }
+    /* Show more */
+    .task-show-more-btn { background: #1a1a24; color: #60a5fa; border: 1px solid #2a2a3a; padding: 8px 20px; border-radius: 3px; font-size: 13px; font-weight: 600; cursor: pointer; transition: all 0.15s; }
+    .task-show-more-btn:hover { background: #22222e; border-color: #3a3a50; }
 
-    .task-record-name { color: #00aaff; font-weight: 700; cursor: pointer; }
-    .task-record-name:hover { color: #0077bb; text-decoration: underline; }
-    .task-record-number { color: #94a3b8; font-size: 11px; margin-left: 6px; }
+    /* Scroll top */
+    .task-scroll-top-btn { position: fixed; bottom: 24px; right: 24px; background: #3b82f6; color: white; border: none; padding: 10px; border-radius: 50%; cursor: pointer; box-shadow: 0 2px 12px rgba(59,130,246,0.4); transition: all 0.2s; z-index: 50; }
+    .task-scroll-top-btn:hover { background: #2563eb; }
 
-    @keyframes taskSlideIn { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; transform: translateY(0); } }
-
-    .task-modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.7); display: flex; justify-content: center; align-items: center; z-index: 1000; backdrop-filter: blur(4px); }
-    .task-modal-container { background-color: #ffffff; width: 100%; max-width: 700px; max-height: 96vh; border-radius: 12px; position: relative; box-shadow: 0 15px 50px rgba(0,0,0,0.6); display: flex; flex-direction: column; border: 1px solid rgba(0,0,0,0.1); overflow: hidden; transform: scale(1); animation: taskModalIn 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275); }
-    @keyframes taskModalIn { from { transform: scale(0.95) translateY(10px); opacity: 0; } to { transform: scale(1) translateY(0); opacity: 1; } }
-
-    .task-select-controls { display: flex; align-items: center; gap: 10px; background: #111; border: 1px solid #333; border-radius: 8px; padding: 8px 14px; }
-    .task-select-controls label { display: flex; align-items: center; cursor: pointer; color: #00aaff; font-weight: 700; font-size: 13px; gap: 6px; }
-    .task-select-controls span { color: #fff; font-weight: 600; font-size: 12px; }
-    .task-select-btn-del { padding: 4px 12px; background: #dc2626; color: #fff; border: none; border-radius: 6px; font-weight: 700; font-size: 12px; cursor: pointer; }
-    .task-select-btn-del:hover { background: #b91c1c; }
-    .task-select-btn-cancel { padding: 4px 12px; background: #4b5563; color: #fff; border: none; border-radius: 6px; font-weight: 700; font-size: 12px; cursor: pointer; }
-    .task-select-btn-cancel:hover { background: #374151; }
-
-    .task-show-more-btn { background: linear-gradient(135deg, #00aaff, #0088cc); color: white; border: none; padding: 12px 28px; border-radius: 8px; font-size: 14px; font-weight: 700; cursor: pointer; display: flex; align-items: center; gap: 8px; transition: all 0.2s; box-shadow: 0 4px 12px rgba(0, 170, 255, 0.2); }
-    .task-show-more-btn:hover { transform: translateY(-2px); box-shadow: 0 6px 15px rgba(0, 170, 255, 0.3); }
-
-    .task-scroll-top-btn { position: fixed; bottom: 24px; right: 24px; background: #00aaff; color: white; border: none; padding: 12px; border-radius: 50%; cursor: pointer; box-shadow: 0 4px 10px rgba(0,170,255,0.3); transition: all 0.2s; z-index: 50; }
-    .task-scroll-top-btn:hover { background: #0088cc; transform: translateY(-2px); }
-
+    /* Spinner */
     .task-loading-spinner { display: flex; flex-direction: column; justify-content: center; align-items: center; padding: 80px 20px; }
-    .task-loading-spinner .spinner { width: 40px; height: 40px; border: 3px solid transparent; border-top-color: #00aaff; border-radius: 50%; animation: taskSpin 0.8s linear infinite; margin-bottom: 12px; }
+    .task-loading-spinner .spinner { width: 32px; height: 32px; border: 3px solid #1a1a24; border-top-color: #3b82f6; border-radius: 50%; animation: taskSpin 0.7s linear infinite; margin-bottom: 12px; }
     @keyframes taskSpin { to { transform: rotate(360deg); } }
 
-    .task-error-banner { margin-bottom: 20px; padding: 16px; background: #1a0000; border: 1px solid #ff4757; border-radius: 8px; }
+    .task-error-banner { margin: 0 24px 16px; padding: 12px 16px; background: #1a0a0a; border: 1px solid #7f1d1d; border-radius: 3px; color: #f87171; }
+    .task-modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); display: flex; justify-content: center; align-items: center; z-index: 1000; backdrop-filter: blur(4px); }
+    .task-modal-container { background: #000; border: 1px solid #1f1f27; width: 100%; max-width: 700px; max-height: 96vh; border-radius: 4px; position: relative; box-shadow: 0 20px 60px rgba(0,0,0,0.7); display: flex; flex-direction: column; overflow: hidden; animation: taskModalIn 0.2s ease-out; }
+    @keyframes taskModalIn { from { transform: scale(0.97) translateY(8px); opacity: 0; } to { transform: scale(1) translateY(0); opacity: 1; } }
+    @keyframes taskSlideIn { from { opacity: 0; } to { opacity: 1; } }
     @keyframes slideInRight { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
   `;
 
@@ -428,8 +439,9 @@ export default function Task({ onTaskStatusChange, onTaskUpdate } = {}) {
   const [loading, setLoading] = useState(!cachedData); // Show loading only if no cache
   const [error, setError] = useState(null);
   const [search, setSearch] = useState("");
+  useNavbarPageSearch(setSearch);
   const [activeFilter, setActiveFilter] = useTabWithHistory('filter', 'due_today', { localStorageKey: 'taskActiveFilter' });
-  const [assignmentFilter, setAssignmentFilter] = useState("me");
+  const [assignmentFilter, setAssignmentFilter] = useState("all");
   const [taskTypeFilter, setTaskTypeFilter] = useState("all");
   const [editTask, setEditTask] = useState(null);
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -2232,67 +2244,81 @@ export default function Task({ onTaskStatusChange, onTaskUpdate } = {}) {
     return (
       <>
         <style>{taskPageStyles}</style>
-        <div style={{ backgroundColor: '#000', color: '#fff', minHeight: '100vh' }}>
         <div className="task-page-container">
 
-          {/* Top Bar */}
-          <div className="task-top-bar" style={{ justifyContent: 'flex-end' }}>
-            <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
-              {/* Select Button Controls */}
-              {(permissions.delete || isSuperAdmin(getUserPermissions())) && (
-                <>
-                  {!showCheckboxes ? (
-                    <button className="task-btn-select" onClick={handleShowCheckboxes}>
-                      Select
-                    </button>
-                  ) : (
-                    <div className="task-select-controls">
-                      <label>
-                        <input
-                          type="checkbox"
-                          checked={selectAll}
-                          onChange={(e) => handleSelectAll(e.target.checked)}
-                          style={{ width: 16, height: 16, accentColor: '#00aaff' }}
-                        />
-                        Select All
-                      </label>
-                      <span>{selectedRows.length} row{selectedRows.length !== 1 ? 's' : ''} selected</span>
-                      <button className="task-select-btn-del" onClick={handleDeleteSelected} disabled={selectedRows.length === 0}>
-                        Delete ({selectedRows.length})
-                      </button>
-                      <button className="task-select-btn-cancel" onClick={handleCancelSelection}>
-                        Cancel
-                      </button>
-                    </div>
-                  )}
-                </>
+          {/* ── Top Bar: Title + Action Buttons ── */}
+          <div className="task-top-bar">
+            <div className="task-top-bar-left">
+              <h1>Tasks</h1>
+              <p>{filteredTasks.length} record{filteredTasks.length !== 1 ? 's' : ''}</p>
+            </div>
+            <div className="task-top-bar-right">
+              {(permissions.delete || isSuperAdmin(getUserPermissions())) && !showCheckboxes && (
+                <button className="task-btn-secondary" onClick={handleShowCheckboxes}>Select</button>
               )}
-
+              {showCheckboxes && (
+                <div className="task-select-controls">
+                  <label>
+                    <input type="checkbox" checked={selectAll} onChange={(e) => handleSelectAll(e.target.checked)} style={{ width: 14, height: 14, accentColor: '#0091ae' }} />
+                    Select All
+                  </label>
+                  <span>{selectedRows.length} selected</span>
+                  <button className="task-select-btn-del" onClick={handleDeleteSelected} disabled={selectedRows.length === 0}>Delete ({selectedRows.length})</button>
+                  <button className="task-select-btn-cancel" onClick={handleCancelSelection}>Cancel</button>
+                </div>
+              )}
               {(permissions.show || isSuperAdmin(getUserPermissions())) && (
                 <button className="task-btn-create" onClick={openCreateModal}>
-                  <Plus size={18} />
-                  Create Task
+                  <Plus size={15} />
+                  Create task
                 </button>
               )}
             </div>
           </div>
 
-          {/* View Toggle Bar */}
+          {/* ── One row: view tabs (left) | search + dropdowns (right) ── */}
           <div className="task-view-toggle-bar">
             <div className="task-view-toggle-group">
-              {[
-                { key: 'me', label: '👤 My', visible: true },
-                { key: 'others', label: '👥 Team', visible: permissions.view_others || isSuperAdmin(getUserPermissions()) },
-                { key: 'all', label: '📋 All', visible: permissions.view_all || isSuperAdmin(getUserPermissions()) }
-              ].filter(v => v.visible).map(v => (
+              {FILTERS.map(f => (
                 <button
-                  key={v.key}
-                  className={`task-view-toggle-btn${assignmentFilter === v.key ? ' active' : ''}`}
-                  onClick={() => handleAssignmentFilterChange(v.key)}
+                  key={f.key}
+                  className={`task-view-toggle-btn${activeFilter === f.key ? ' active' : ''}`}
+                  onClick={() => handleFilterChange(f.key)}
                 >
-                  {v.label}
+                  {f.label}
+                  {f.count > 0 && <span style={{ marginLeft: 5, fontSize: 11, color: activeFilter === f.key ? '#ff7a59' : '#99acc2' }}>{f.count}</span>}
                 </button>
               ))}
+            </div>
+            <div className="task-toolbar-right">
+              <div className="task-search-box--in-bar">
+                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                <input type="text" placeholder="Search task title and note" value={search} onChange={(e) => setSearch(e.target.value)} />
+              </div>
+              <select
+                className="task-filter-dropdown task-filter-dropdown-assign"
+                value={
+                  (assignmentFilter === 'all' && !(permissions.view_all || isSuperAdmin(getUserPermissions())))
+                  || (assignmentFilter === 'others' && !(permissions.view_others || isSuperAdmin(getUserPermissions())))
+                    ? 'me'
+                    : assignmentFilter
+                }
+                onChange={(e) => handleAssignmentFilterChange(e.target.value)}
+              >
+                <option value="me">My Tasks</option>
+                {(permissions.view_others || isSuperAdmin(getUserPermissions())) && (
+                  <option value="others">Team Tasks</option>
+                )}
+                {(permissions.view_all || isSuperAdmin(getUserPermissions())) && (
+                  <option value="all">All Tasks</option>
+                )}
+              </select>
+              <select className="task-filter-dropdown" value={taskTypeFilter} onChange={(e) => setTaskTypeFilter(e.target.value)}>
+                <option value="all">Task type</option>
+                <option value="callback">Callback</option>
+                <option value="pendency">Pendency</option>
+                <option value="todo">To-Do</option>
+              </select>
             </div>
           </div>
 
@@ -2300,50 +2326,14 @@ export default function Task({ onTaskStatusChange, onTaskUpdate } = {}) {
           {error && (
             <div className="task-error-banner">
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <p style={{ color: '#ff6b6b', flex: 1 }}>{error}</p>
+                <p style={{ color: '#c87872', flex: 1, margin: 0, fontSize: 13 }}>{error}</p>
                 <div style={{ display: 'flex', gap: 8, marginLeft: 12 }}>
-                  <button onClick={() => { setError(null); fetchTasks(); }} style={{ background: '#dc2626', color: '#fff', border: 'none', padding: '4px 12px', borderRadius: 6, fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>Retry</button>
-                  <button onClick={() => setError(null)} style={{ background: 'none', border: 'none', color: '#ff6b6b', fontSize: 18, fontWeight: 700, cursor: 'pointer' }}>×</button>
+                  <button onClick={() => { setError(null); fetchTasks(); }} style={{ background: '#c87872', color: '#fff', border: 'none', padding: '4px 10px', borderRadius: 3, fontSize: 12, cursor: 'pointer' }}>Retry</button>
+                  <button onClick={() => setError(null)} style={{ background: 'none', border: 'none', color: '#99acc2', fontSize: 16, cursor: 'pointer' }}>×</button>
                 </div>
               </div>
             </div>
           )}
-
-          {/* Filters Section */}
-          <div className="task-filters-section">
-            <div className="task-status-pills">
-              {FILTERS.map(f => (
-                <button
-                  key={f.key}
-                  className={`task-pill${activeFilter === f.key ? ' active' : ''}`}
-                  onClick={() => handleFilterChange(f.key)}
-                >
-                  {f.label} <span className="task-pill-count">{f.count}</span>
-                </button>
-              ))}
-            </div>
-            <div className="task-search-area">
-              <select
-                className="task-filter-dropdown"
-                value={taskTypeFilter}
-                onChange={(e) => setTaskTypeFilter(e.target.value)}
-              >
-                <option value="all">All Task Types</option>
-                <option value="callback">Callback</option>
-                <option value="pendency">Pendency</option>
-                <option value="todo">To-Do</option>
-              </select>
-              <div className="task-search-box">
-                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
-                <input
-                  type="text"
-                  placeholder="Search tasks..."
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                />
-              </div>
-            </div>
-          </div>
 
           {/* Loading state */}
           {loading && tasks.length === 0 && (
@@ -2382,7 +2372,9 @@ export default function Task({ onTaskStatusChange, onTaskUpdate } = {}) {
               <div className="task-data-table-body">
                 {displayedTasks.length === 0 ? (
                   <div className="task-empty-state">
-                    <p>{loading ? 'Loading tasks...' : 'No Tasks Found'}</p>
+                    <svg width="80" height="80" viewBox="0 0 120 120" fill="none" style={{ marginBottom: 20, opacity: 0.35 }}><rect x="20" y="30" width="80" height="60" rx="6" fill="#cbd6e2"/><rect x="35" y="50" width="50" height="6" rx="3" fill="#99acc2"/><rect x="35" y="64" width="35" height="5" rx="2.5" fill="#b8c6d5"/><circle cx="90" cy="85" r="18" fill="#e5e7eb"/><path d="M84 85h12M90 79v12" stroke="#99acc2" strokeWidth="2.5" strokeLinecap="round"/></svg>
+                    <p className="task-empty-state-title">{loading ? 'Loading tasks…' : "You're all caught up on tasks."}</p>
+                    {!loading && <p className="task-empty-state-sub">Nice work.</p>}
                   </div>
                 ) : (
                   displayedTasks.map((task, idx) => {
@@ -2581,7 +2573,6 @@ export default function Task({ onTaskStatusChange, onTaskUpdate } = {}) {
             </div>
           </div>
         )}
-      </div>
       </>
     );
   };

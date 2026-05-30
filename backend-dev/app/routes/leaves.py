@@ -22,12 +22,15 @@ import os
 import uuid
 from datetime import datetime, date
 
+from bson import ObjectId
+
 from app.database import get_database_instances
 from app.database.Leaves import LeavesDB
 from app.database import get_database_instances
 from app.database.Users import UsersDB
 from app.database.Roles import RolesDB
 from app.database.Notifications import NotificationsDB
+from app.database.Settings import SettingsDB
 from app.schemas.leave_schemas import (
     LeaveCreateSchema, LeaveUpdateSchema, LeaveResponseSchema,
     LeaveListResponseSchema, LeaveApprovalSchema, LeaveStatsSchema,
@@ -39,6 +42,8 @@ from app.utils.timezone import get_ist_now
 
 router = APIRouter(prefix="/leaves", tags=["leaves"])
 security = HTTPBearer()
+
+_LEAVE_ALL_VISIBILITY_ACTIONS = frozenset({"*", "all", "view_all", "edit", "leave_admin"})
 
 # Dependency injection functions
 def get_leaves_db():
@@ -53,9 +58,261 @@ def get_roles_db():
     from app.database import get_roles_db as get_roles_db_instance
     return get_roles_db_instance()
 
+def get_settings_db():
+    from app.database import get_settings_db as get_settings_db_instance
+    return get_settings_db_instance()
+
 def get_notifications_db():
     from app.database import get_notifications_db as get_notifications_db_instance
     return get_notifications_db_instance()
+
+
+def _norm_leave_user_id(val) -> Optional[str]:
+    """Normalize user/employee ids from Mongo (string vs ObjectId) for comparisons."""
+    if val is None:
+        return None
+    if isinstance(val, ObjectId):
+        return str(val)
+    s = str(val).strip()
+    return s if s else None
+
+
+def _is_leaves_page_perm(perm: dict) -> bool:
+    page = perm.get("page")
+    if page == "leaves":
+        return True
+    if isinstance(page, str) and page.lower() in ("leaves", "leave"):
+        return True
+    return False
+
+
+_JUNIOR_VISIBILITY_ACTIONS = frozenset({"junior", "view_team"})
+
+
+def _iter_perm_action_names(perm: dict):
+    """Role actions may be str, list[str], or dict[str, bool] (UI / migrated roles)."""
+    acts = perm.get("actions")
+    if acts is None:
+        return
+    if isinstance(acts, str):
+        yield acts
+        return
+    if isinstance(acts, list):
+        for a in acts:
+            if isinstance(a, str):
+                yield a
+        return
+    if isinstance(acts, dict):
+        for k, v in acts.items():
+            if v:
+                yield str(k)
+        return
+
+
+async def _dedupe_expand_user_and_hr_ids(raw_user_ids: List[str], users_db: UsersDB) -> List[str]:
+    """Mongo user _id plus each user's HR employee_id (leave rows may store either)."""
+    seen: set = set()
+    out: List[str] = []
+    for uid in raw_user_ids:
+        n = _norm_leave_user_id(uid)
+        if n and n not in seen:
+            seen.add(n)
+            out.append(n)
+        if n and ObjectId.is_valid(n):
+            u = await users_db.get_user(n)
+            if u and u.get("employee_id"):
+                e = _norm_leave_user_id(u.get("employee_id"))
+                if e and e not in seen:
+                    seen.add(e)
+                    out.append(e)
+    return out
+
+
+def _mongo_employee_values_for_query(allowed_ids: List[str]) -> List[Any]:
+    """
+    Build values for employee_id $in / equality so Mongo matches both string and ObjectId
+    stored shapes (fixes list row visible but GET 403).
+    """
+    seen = set()
+    out: List[Any] = []
+    for raw in allowed_ids:
+        s = _norm_leave_user_id(raw) or (str(raw).strip() if raw is not None else "")
+        if not s:
+            continue
+        if s in seen:
+            continue
+        seen.add(s)
+        out.append(s)
+        if ObjectId.is_valid(s):
+            oid = ObjectId(s)
+            os = str(oid)
+            if os not in seen:
+                seen.add(os)
+                out.append(oid)
+    return out
+
+
+def build_employee_id_filter_clause(ctx: Dict[str, Any], current_user_id: str) -> Optional[Dict[str, Any]]:
+    """None = no restriction (see all). Else Mongo fragment for employee_id."""
+    if ctx.get("can_see_all_leaves"):
+        return None
+    allowed = ctx.get("allowed_user_ids") or []
+    if not allowed:
+        allowed = [_norm_leave_user_id(current_user_id) or str(current_user_id).strip()]
+    vals = _mongo_employee_values_for_query(allowed)
+    if not vals:
+        return {"employee_id": {"$in": []}}
+    if len(vals) == 1:
+        return {"employee_id": vals[0]}
+    return {"employee_id": {"$in": vals}}
+
+
+async def resolve_leave_access_scope(
+    current_user_id: str,
+    users_db: UsersDB,
+    roles_db: RolesDB,
+) -> Dict[str, Any]:
+    """
+    Single source of truth for which leaves a user may see (matches list_leaves + fixes
+    drift with get_leave). Used by list_leaves and get_one leave detail.
+    """
+    permissions = await PermissionManager.get_user_permissions(
+        current_user_id, users_db, roles_db
+    )
+
+    can_see_all_leaves = False
+    is_super_admin = False
+
+    for perm in permissions:
+        page = perm.get("page")
+        if page in ["*", "any"]:
+            for an in _iter_perm_action_names(perm):
+                if an == "*":
+                    can_see_all_leaves = True
+                    is_super_admin = True
+                    break
+            if is_super_admin:
+                break
+        elif _is_leaves_page_perm(perm):
+            for an in _iter_perm_action_names(perm):
+                if an in _LEAVE_ALL_VISIBILITY_ACTIONS:
+                    can_see_all_leaves = True
+                    break
+            if can_see_all_leaves:
+                break
+
+    if can_see_all_leaves:
+        perm_level = "all"
+        allowed_user_ids = None
+    else:
+        has_junior = False
+        for perm in permissions:
+            if not _is_leaves_page_perm(perm):
+                continue
+            for an in _iter_perm_action_names(perm):
+                if an in _JUNIOR_VISIBILITY_ACTIONS:
+                    has_junior = True
+                    break
+            if has_junior:
+                break
+        if has_junior:
+            perm_level = "junior"
+            subordinate_user_ids = await PermissionManager.get_subordinate_users(
+                current_user_id, users_db, roles_db
+            )
+            raw_allowed = [current_user_id] + subordinate_user_ids
+            allowed_user_ids = await _dedupe_expand_user_and_hr_ids(raw_allowed, users_db)
+        else:
+            perm_level = "own"
+            allowed_user_ids = await _dedupe_expand_user_and_hr_ids(
+                [_norm_leave_user_id(current_user_id) or str(current_user_id).strip()],
+                users_db,
+            )
+
+    return {
+        "can_see_all_leaves": can_see_all_leaves,
+        "is_super_admin": is_super_admin,
+        "perm_level": perm_level,
+        "allowed_user_ids": allowed_user_ids,
+    }
+
+
+async def _norm_approver_user_id(raw, users_db: UsersDB) -> Optional[str]:
+    nid = _norm_leave_user_id(raw)
+    if not nid:
+        return None
+    if ObjectId.is_valid(nid):
+        return nid
+    u = await users_db.get_user_by_employee_id(nid)
+    if u and u.get("_id"):
+        return str(u["_id"])
+    return nid
+
+
+async def _resolve_leave_subject_user_ids(leave: dict, users_db: UsersDB) -> set:
+    """All string ids that identify the leave applicant (Mongo + HR code)."""
+    out: set = set()
+    for key in ("employee_id", "user_id", "applicant_id", "applied_by", "created_by"):
+        raw = leave.get(key)
+        if raw is None:
+            continue
+        nid = _norm_leave_user_id(raw)
+        if nid:
+            out.add(str(nid).strip())
+        if nid and not ObjectId.is_valid(nid):
+            u = await users_db.get_user_by_employee_id(nid)
+            if u and u.get("_id"):
+                out.add(str(u["_id"]))
+    return out
+
+
+async def leave_open_allowed_for_user(
+    leave: Dict[str, Any],
+    ctx: Dict[str, Any],
+    current_user_id: str,
+    users_db: UsersDB,
+    leaves_db: LeavesDB,
+) -> bool:
+    """
+    Same rule as GET /leaves/ list: if this document would match the list query for this user,
+    they may open the detail popup. No extra 'detail' permission. Optional approver access.
+    """
+    if ctx.get("can_see_all_leaves") or ctx.get("perm_level") == "all":
+        return True
+
+    filt = build_employee_id_filter_clause(ctx, current_user_id)
+    if filt:
+        lid = leave.get("_id")
+        try:
+            oid = ObjectId(lid) if isinstance(lid, str) and ObjectId.is_valid(lid) else lid
+        except Exception:
+            oid = lid
+        doc = await leaves_db.collection.find_one({"_id": oid, **filt})
+        if doc:
+            return True
+
+    subject_ids = await _resolve_leave_subject_user_ids(leave, users_db)
+    allowed_raw = ctx.get("allowed_user_ids") or [
+        _norm_leave_user_id(current_user_id) or str(current_user_id).strip()
+    ]
+    allowed_s = {str(x).strip() for x in allowed_raw if x}
+    sub_s = subject_ids
+    if sub_s & allowed_s:
+        return True
+
+    viewer_ids = await _dedupe_expand_user_and_hr_ids([current_user_id], users_db)
+    view_s = {str(x).strip() for x in viewer_ids if x}
+    if sub_s & view_s:
+        return True
+
+    viewer = _norm_leave_user_id(current_user_id)
+    for ap in leave.get("approvers") or []:
+        raw = ap.get("approver_id") or ap.get("approverId") or ap.get("user_id")
+        aid = await _norm_approver_user_id(raw, users_db)
+        if aid and viewer and aid == viewer:
+            return True
+    return False
+
 
 async def get_hierarchical_permissions(
     user_id: str, 
@@ -168,26 +425,30 @@ async def get_user_details(user_id: str, users_db: UsersDB) -> Dict[str, Any]:
     
     return result
 
-async def enrich_leave_data(leave: Dict[str, Any], users_db: UsersDB) -> Dict[str, Any]:
-    """Enrich leave data with user details"""
-    # Get employee details
+async def enrich_leave_data(
+    leave: Dict[str, Any],
+    users_db: UsersDB,
+    roles_db: "RolesDB | None" = None,
+) -> Dict[str, Any]:
+    """Enrich leave data with user details.
+
+    When roles_db is provided and the leave has no approvers configured,
+    superadmin users are injected as default approvers for display purposes.
+    """
     if leave.get("employee_id"):
         employee_details = await get_user_details(leave["employee_id"], users_db)
         leave["employee_name"] = employee_details.get("name")
         leave["employee_email"] = employee_details.get("email")
         leave["department_name"] = employee_details.get("department_name")
-    
-    # Get approver details
+
     if leave.get("approved_by"):
         approver_details = await get_user_details(leave["approved_by"], users_db)
         leave["approved_by_name"] = approver_details.get("name")
-    
-    # Get rejector details
+
     if leave.get("rejected_by"):
         rejector_details = await get_user_details(leave["rejected_by"], users_db)
         leave["rejected_by_name"] = rejector_details.get("name")
-    
-    # Enrich individual approvers in the approvers array (refresh names + roles)
+
     if leave.get("approvers"):
         for ap in leave["approvers"]:
             if ap.get("approver_id"):
@@ -198,40 +459,118 @@ async def enrich_leave_data(leave: Dict[str, Any], users_db: UsersDB) -> Dict[st
                     full_name = f"{first} {last}".strip() if (first or last) else ap_user.get("name", ap_user.get("username", "Unknown"))
                     ap["name"] = full_name
                     ap["role"] = ap_user.get("role_name", ap_user.get("designation", ap.get("role", "")))
-    
+
+    # No approvers configured → inject superadmins for display
+    if not leave.get("approvers") and roles_db is not None:
+        sa_ids = await _get_superadmin_user_ids(users_db, roles_db)
+        default_approvers = []
+        for sa_id in sa_ids:
+            sa_user = await users_db.get_user(sa_id)
+            if sa_user:
+                first = sa_user.get("first_name", "")
+                last = sa_user.get("last_name", "")
+                full_name = (
+                    f"{first} {last}".strip()
+                    if (first or last)
+                    else sa_user.get("name", sa_user.get("username", "Unknown"))
+                )
+                default_approvers.append({
+                    "approver_id": sa_id,
+                    "name": full_name,
+                    "role": sa_user.get("role_name", sa_user.get("designation", "")),
+                    "status": leave.get("status", "pending"),
+                    "action_at": leave.get("approved_at") or leave.get("rejected_at"),
+                    "comments": leave.get("approval_comments") or leave.get("rejection_reason"),
+                    "is_default": True,
+                })
+        if default_approvers:
+            leave["approvers"] = default_approvers
+
     return leave
+
+async def _get_superadmin_user_ids(users_db: UsersDB, roles_db: RolesDB) -> List[str]:
+    """Return Mongo _id strings of all active super-admin users."""
+    result: List[str] = []
+    seen: set = set()
+
+    super_role_ids: List[str] = []
+    async for role in roles_db.collection.find(
+        {"permissions": {"$elemMatch": {"page": "*", "actions": "*"}}}, {"_id": 1}
+    ):
+        super_role_ids.append(str(role["_id"]))
+    async for role in roles_db.collection.find({"is_super_admin": True}, {"_id": 1}):
+        rid = str(role["_id"])
+        if rid not in super_role_ids:
+            super_role_ids.append(rid)
+
+    if super_role_ids:
+        async for u in users_db.collection.find(
+            {"role_id": {"$in": super_role_ids}}, {"_id": 1}
+        ):
+            uid = str(u["_id"])
+            if uid not in seen:
+                seen.add(uid)
+                result.append(uid)
+
+    async for u in users_db.collection.find({"is_super_admin": True}, {"_id": 1}):
+        uid = str(u["_id"])
+        if uid not in seen:
+            seen.add(uid)
+            result.append(uid)
+
+    return result
+
 
 @router.post("/", response_model=LeaveResponseSchema)
 async def create_leave(
     leave_data: LeaveCreateSchema,
     current_user_id: str = Depends(get_current_user_id),
     leaves_db: LeavesDB = Depends(get_leaves_db),
-    users_db: UsersDB = Depends(get_users_db)
+    users_db: UsersDB = Depends(get_users_db),
+    roles_db: RolesDB = Depends(get_roles_db),
+    settings_db: SettingsDB = Depends(get_settings_db),
 ):
     """
-    Create a new leave application
-    
-    Any authenticated user can create a leave application for themselves.
+    Create a new leave application.
+
+    Approver resolution (in order):
+    1. Approver IDs explicitly sent by the frontend.
+    2. Approvers configured in Settings → Leave Approval Routes for the employee's role.
+    3. Fallback: all super-admin users receive the leave for approval.
     """
     try:
-        # Prepare leave data
         leave_dict = leave_data.dict()
         leave_dict["employee_id"] = current_user_id
         leave_dict["status"] = "pending"
-        
-        # Convert dates to datetime objects for storage
+
         leave_dict["from_date"] = datetime.combine(leave_data.from_date, datetime.min.time())
         leave_dict["to_date"] = datetime.combine(leave_data.to_date, datetime.min.time())
-        
-        # Build approvers array with individual statuses
-        approver_ids = leave_dict.pop("approver_ids", [])
+
+        # ── Resolve approvers ─────────────────────────────────────────────────
+        approver_ids: List[str] = leave_dict.pop("approver_ids", []) or []
+        is_default_approval = False
+
+        if not approver_ids:
+            current_user = await users_db.get_user(current_user_id)
+            role_id = str(current_user.get("role_id") or current_user.get("role") or "") if current_user else ""
+            if role_id:
+                approver_ids = await settings_db.get_approvers_for_employee(role_id) or []
+
+        if not approver_ids:
+            approver_ids = await _get_superadmin_user_ids(users_db, roles_db)
+            is_default_approval = True
+
         approvers_list = []
         for aid in approver_ids:
             approver_user = await users_db.get_user(aid)
             if approver_user:
                 first = approver_user.get("first_name", "")
                 last = approver_user.get("last_name", "")
-                full_name = f"{first} {last}".strip() if (first or last) else approver_user.get("name", approver_user.get("username", "Unknown"))
+                full_name = (
+                    f"{first} {last}".strip()
+                    if (first or last)
+                    else approver_user.get("name", approver_user.get("username", "Unknown"))
+                )
                 approvers_list.append({
                     "approver_id": aid,
                     "name": full_name,
@@ -239,6 +578,7 @@ async def create_leave(
                     "status": "pending",
                     "action_at": None,
                     "comments": None,
+                    "is_default": is_default_approval,
                 })
         leave_dict["approvers"] = approvers_list
         
@@ -254,7 +594,7 @@ async def create_leave(
             )
         
         # Enrich with user details
-        leave = await enrich_leave_data(leave, users_db)
+        leave = await enrich_leave_data(leave, users_db, roles_db)
         
         # Normalize the response
         leave["id"] = leave["_id"]
@@ -355,63 +695,20 @@ async def list_leaves(
     - own: Can only see own leaves
     """
     try:
-        # Use the same permission logic as the working overview endpoint
-        permissions = await PermissionManager.get_user_permissions(
-            current_user_id, users_db, roles_db
-        )
-        
-        # Check if user can see all leaves (same logic as overview endpoint)
-        can_see_all_leaves = False
-        is_super_admin = False
-        for perm in permissions:
-            if (perm.get("page") in ["*", "any"] and perm.get("actions") == "*") or \
-               (perm.get("page") == "leaves" and 
-                (perm.get("actions") == "*" or 
-                 (isinstance(perm.get("actions"), list) and ("*" in perm.get("actions") or "all" in perm.get("actions"))) or
-                 perm.get("actions") == "all")):
-                can_see_all_leaves = True
-                if perm.get("page") in ["*", "any"] and perm.get("actions") == "*":
-                    is_super_admin = True
-                break
-        
-        # Convert to hierarchical permission format for compatibility
-        if can_see_all_leaves:
-            perm_level = "all"
-        else:
-            # Check for junior permissions (can see subordinates)
-            has_junior = False
-            for perm in permissions:
-                if perm.get("page") == "leaves" and \
-                   (perm.get("actions") in ("junior", "view_team") or (isinstance(perm.get("actions"), list) and any(a in ("junior", "view_team") for a in perm.get("actions", [])))):
-                    has_junior = True
-                    break
-            perm_level = "junior" if has_junior else "own"
-        
+        ctx = await resolve_leave_access_scope(current_user_id, users_db, roles_db)
+        can_see_all_leaves = ctx["can_see_all_leaves"]
+        is_super_admin = ctx["is_super_admin"]
+        perm_level = ctx["perm_level"]
+        allowed_user_ids_junior = ctx["allowed_user_ids"]
+
         print(f"🔍 Backend leaves API: User {current_user_id}, Permission level: {perm_level}, Super admin: {is_super_admin}")
         print(f"🔍 Backend leaves API: Can see all leaves: {can_see_all_leaves}")
-        print(f"🔍 Backend leaves API: All permissions: {permissions}")
         
-        # Build filter based on permissions
+        # Build filter: same Mongo employee_id rule as GET /leaves/{id} (detail never stricter than list)
         filter_dict = {}
-        
-        if can_see_all_leaves:
-            # User can see all leaves
-            print(f"🔍 Backend leaves API: User has 'all' access - returning all leaves")
-            pass  # No filter, see everything
-        elif perm_level == "junior":
-            # Junior permission - see own + subordinate leaves
-            print(f"🔍 Backend leaves API: User has 'junior' access - getting subordinate leaves")
-            subordinate_user_ids = await PermissionManager.get_subordinate_users(
-                current_user_id, users_db, roles_db
-            )
-            # Include own leaves and subordinate leaves
-            allowed_user_ids = [current_user_id] + subordinate_user_ids
-            filter_dict["employee_id"] = {"$in": allowed_user_ids}
-            print(f"🔍 Backend leaves API: Allowed user IDs: {allowed_user_ids}")
-        else:
-            # "own" permission - only own leaves
-            print(f"🔍 Backend leaves API: User has 'own' access - returning only user's leaves")
-            filter_dict["employee_id"] = current_user_id
+        emp_clause = build_employee_id_filter_clause(ctx, current_user_id)
+        if emp_clause is not None:
+            filter_dict.update(emp_clause)
         
         # Apply additional filters
         if leave_status:
@@ -465,7 +762,7 @@ async def list_leaves(
         # Enrich leaves with user details and apply search filter
         enriched_leaves = []
         for leave in leaves:
-            leave = await enrich_leave_data(leave, users_db)
+            leave = await enrich_leave_data(leave, users_db, roles_db)
             
             # Apply search filter after enrichment
             if search:
@@ -501,87 +798,57 @@ async def get_leave(
     users_db: UsersDB = Depends(get_users_db),
     roles_db: RolesDB = Depends(get_roles_db)
 ):
-    """
-    Get a specific leave application using hierarchical permissions
-    
-    Permission Levels:
-    - superadmin: Can view any leave
-    - all: Can view any leave 
-    - junior: Can view own + subordinate leaves
-    - own: Can only view own leaves
-    """
+    """Get a specific leave. Access = same user who can see it in the list."""
     try:
-        print(f"🔍 Backend get_leave: User {current_user_id} requesting leave {leave_id}")
-        
-        # Get the leave
         leave = await leaves_db.get_leave(leave_id)
         if not leave:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Leave application not found"
-            )
-        
-        print(f"🔍 Backend get_leave: Found leave for employee {leave.get('employee_id')}")
-        
-        # Use hierarchical permissions instead of complex permission checks
-        permissions = await get_hierarchical_permissions(current_user_id, "leaves")
-        perm_level = permissions.get("permission_level", "own")
-        is_super_admin = permissions.get("is_super_admin", False)
-        
-        print(f"🔍 Backend get_leave: User permission level: {perm_level}, Super admin: {is_super_admin}")
-        
-        # Check if user can view this leave based on hierarchical permissions
-        can_view_leave = False
-        
-        if is_super_admin or perm_level == "all":
-            # Super admin or "all" permission - can view any leave
-            print(f"🔍 Backend get_leave: User has 'all' access - allowing view")
-            can_view_leave = True
-        elif perm_level == "junior":
-            # Junior permission - can view own + subordinate leaves
-            print(f"🔍 Backend get_leave: User has 'junior' access - checking subordinates")
-            subordinate_user_ids = await PermissionManager.get_subordinate_users(
-                current_user_id, users_db, roles_db
-            )
-            allowed_user_ids = [current_user_id] + subordinate_user_ids
-            if leave.get("employee_id") in allowed_user_ids:
-                can_view_leave = True
-                print(f"🔍 Backend get_leave: Leave belongs to allowed user")
-            else:
-                print(f"🔍 Backend get_leave: Leave employee not in allowed list: {allowed_user_ids}")
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
+                                detail="Leave application not found")
+
+        ctx = await resolve_leave_access_scope(current_user_id, users_db, roles_db)
+        access_ok = False
+
+        if ctx["can_see_all_leaves"]:
+            access_ok = True
         else:
-            # "own" permission - only own leaves
-            print(f"🔍 Backend get_leave: User has 'own' access - checking if own leave")
-            if leave.get("employee_id") == current_user_id:
-                can_view_leave = True
-                print(f"🔍 Backend get_leave: User viewing own leave")
-            else:
-                print(f"🔍 Backend get_leave: Leave belongs to different user")
-        
-        # Also allow if user is an approver for this leave
-        if not can_view_leave:
-            approvers = leave.get("approvers", [])
-            for ap in approvers:
-                if ap.get("approver_id") == current_user_id:
-                    can_view_leave = True
-                    break
-        
-        if not can_view_leave:
-            print(f"🔍 Backend get_leave: Access denied - insufficient permissions")
+            emp_clause = build_employee_id_filter_clause(ctx, current_user_id)
+            try:
+                oid = ObjectId(leave_id) if ObjectId.is_valid(leave_id) else None
+                if oid and emp_clause:
+                    doc = await leaves_db.collection.find_one({"_id": oid, **emp_clause})
+                    if doc:
+                        access_ok = True
+            except Exception:
+                pass
+
+            if not access_ok:
+                leave_emp_str = str(leave.get("employee_id") or "").strip()
+                allowed = ctx.get("allowed_user_ids") or []
+                allowed_s = {str(x).strip() for x in allowed if x}
+                allowed_s.add(str(current_user_id).strip())
+                if leave_emp_str and leave_emp_str in allowed_s:
+                    access_ok = True
+
+            if not access_ok:
+                viewer_str = str(current_user_id).strip()
+                for ap in leave.get("approvers") or []:
+                    ap_id = str(ap.get("approver_id") or
+                                ap.get("approverId") or
+                                ap.get("user_id") or "").strip()
+                    if ap_id and ap_id == viewer_str:
+                        access_ok = True
+                        break
+
+        if not access_ok:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="You don't have permission to view this leave application"
             )
-        
-        print(f"🔍 Backend get_leave: Access granted - returning leave data")
-        
-        # Enrich with user details
-        leave = await enrich_leave_data(leave, users_db)
-        
-        # Normalize the response
+
+        leave = await enrich_leave_data(leave, users_db, roles_db)
         leave["id"] = leave["_id"]
         return leave
-        
+
     except HTTPException:
         raise
     except Exception as e:
@@ -734,23 +1001,32 @@ async def approve_reject_leave(
                     ap["action_at"] = now
                     ap["comments"] = approval_data.comments or approval_data.rejection_reason or None
                     break
-            
-            # Recalculate overall leave status
+
+            # is_default=True → any-one rule; False → all-must rule
+            is_default_leave = any(ap.get("is_default") for ap in approvers)
             all_statuses = [ap.get("status") for ap in approvers]
-            if all(s == "approved" for s in all_statuses):
-                new_overall_status = "approved"
-            elif all(s == "rejected" for s in all_statuses):
-                new_overall_status = "rejected"
+
+            if is_default_leave:
+                if approval_data.status == "approved":
+                    new_overall_status = "approved"
+                elif approval_data.status == "rejected":
+                    new_overall_status = "rejected"
+                else:
+                    new_overall_status = "pending"
             else:
-                new_overall_status = "pending"
-            
-            # Build update data
+                if all(s == "approved" for s in all_statuses):
+                    new_overall_status = "approved"
+                elif all(s == "rejected" for s in all_statuses):
+                    new_overall_status = "rejected"
+                else:
+                    new_overall_status = "pending"
+
             update_data = {
                 "approvers": approvers,
                 "status": new_overall_status,
                 "updated_at": now,
             }
-            
+
             if new_overall_status == "approved":
                 update_data["approved_by"] = current_user_id
                 update_data["approved_at"] = now
@@ -761,37 +1037,65 @@ async def approve_reject_leave(
                 update_data["rejected_at"] = now
                 if approval_data.rejection_reason:
                     update_data["rejection_reason"] = approval_data.rejection_reason
-            
+
             success = await leaves_db.update_leave(leave_id, update_data)
             if not success:
                 raise HTTPException(status_code=500, detail="Failed to update leave status")
         
         else:
-            # Legacy: no approvers array — fall back to old single-approval logic
-            permissions = await get_hierarchical_permissions(current_user_id, "leaves")
-            perm_level = permissions.get("permission_level", "own")
-            is_super_admin = permissions.get("is_super_admin", False)
-            
-            can_approve = False
-            if is_super_admin or perm_level == "all":
-                can_approve = True
-            elif perm_level == "junior":
+            # No approvers array → check if current user has approve permission
+            ctx = await resolve_leave_access_scope(current_user_id, users_db, roles_db)
+            can_approve = ctx.get("can_see_all_leaves") or ctx.get("is_super_admin") or ctx.get("perm_level") == "all"
+
+            if not can_approve and ctx.get("perm_level") == "junior":
                 subordinate_user_ids = await PermissionManager.get_subordinate_users(current_user_id, users_db, roles_db)
                 if leave_employee_id in subordinate_user_ids:
                     can_approve = True
-            
+
             if not can_approve:
-                raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You don't have permission to approve/reject leave applications")
-            
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="You don't have permission to approve/reject leave applications"
+                )
+
             if leave.get("status") != "pending":
                 raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Leave has already been processed")
-            
-            success = await leaves_db.update_leave_status(
-                leave_id, approval_data.status,
-                approved_by=current_user_id,
-                rejection_reason=approval_data.rejection_reason,
-                comments=approval_data.comments
+
+            approver_user = await users_db.get_user(current_user_id)
+            first = approver_user.get("first_name", "") if approver_user else ""
+            last = approver_user.get("last_name", "") if approver_user else ""
+            full_name = (
+                f"{first} {last}".strip()
+                if (first or last)
+                else (approver_user.get("name", approver_user.get("username", "Unknown")) if approver_user else "Unknown")
             )
+            now = get_ist_now()
+            new_approver_entry = {
+                "approver_id": current_user_id,
+                "name": full_name,
+                "role": approver_user.get("role_name", approver_user.get("designation", "")) if approver_user else "",
+                "status": approval_data.status,
+                "action_at": now,
+                "comments": approval_data.comments or approval_data.rejection_reason or None,
+                "is_default": True,
+            }
+            update_data: Dict[str, Any] = {
+                "approvers": [new_approver_entry],
+                "status": approval_data.status,
+                "updated_at": now,
+            }
+            if approval_data.status == "approved":
+                update_data["approved_by"] = current_user_id
+                update_data["approved_at"] = now
+                if approval_data.comments:
+                    update_data["approval_comments"] = approval_data.comments
+            elif approval_data.status == "rejected":
+                update_data["rejected_by"] = current_user_id
+                update_data["rejected_at"] = now
+                if approval_data.rejection_reason:
+                    update_data["rejection_reason"] = approval_data.rejection_reason
+
+            success = await leaves_db.update_leave(leave_id, update_data)
             if not success:
                 raise HTTPException(status_code=500, detail="Failed to update leave status")
         
@@ -945,24 +1249,10 @@ async def get_leave_statistics(
     Returns statistics for the current user's leaves only unless they have "leave:all" permission.
     """
     try:
-        # Get user permissions
-        permissions = await PermissionManager.get_user_permissions(
-            current_user_id, users_db, roles_db
-        )
-        
-        # Check if user can see all leaves
-        can_see_all_leaves = False
-        for perm in permissions:
-            if (perm.get("page") in ["*", "any"] and perm.get("actions") == "*") or \
-               (perm.get("page") == "leaves" and 
-                (perm.get("actions") == "*" or 
-                 (isinstance(perm.get("actions"), list) and ("*" in perm.get("actions") or "all" in perm.get("actions"))) or
-                 perm.get("actions") == "all")):
-                can_see_all_leaves = True
-                break
+        ctx = await resolve_leave_access_scope(current_user_id, users_db, roles_db)
         
         # Get statistics
-        if can_see_all_leaves:
+        if ctx["can_see_all_leaves"]:
             stats = await leaves_db.get_leave_statistics()
         else:
             stats = await leaves_db.get_leave_statistics(employee_id=current_user_id)
@@ -1104,23 +1394,9 @@ async def download_attachment(
                 detail="Leave application not found"
             )
         
-        # Check permissions - user can view their own leaves or all leaves if they have permission
-        permissions = await PermissionManager.get_user_permissions(
-            current_user_id, users_db, roles_db
-        )
-        
-        can_see_all_leaves = False
-        for perm in permissions:
-            if (perm.get("page") in ["*", "any"] and perm.get("actions") == "*") or \
-               (perm.get("page") == "leaves" and 
-                (perm.get("actions") == "*" or 
-                 (isinstance(perm.get("actions"), list) and ("*" in perm.get("actions") or "edit" in perm.get("actions"))) or
-                 perm.get("actions") == "edit")):
-                can_see_all_leaves = True
-                break
-        
-        # Check if user can view this leave
-        if not can_see_all_leaves and leave.get("employee_id") != current_user_id:
+        # Check permissions - same rule as GET leave detail
+        ctx = await resolve_leave_access_scope(current_user_id, users_db, roles_db)
+        if not await leave_open_allowed_for_user(leave, ctx, current_user_id, users_db, leaves_db):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="You don't have permission to download attachments from this leave"

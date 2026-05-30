@@ -29,7 +29,7 @@ if [ "$EUID" -ne 0 ]; then
 fi
 
 # Configuration
-DOMAIN="crm.rupiyamakercrm.online"
+DOMAIN="crm.fixyourfinance.ai"
 CONTAINER_NAME="rupiyamaker"
 EMAIL="admin@bhoomi.cloud"
 HTTP_PORT="5902"

@@ -103,6 +103,7 @@ async def list_posts(
     page_size: int = 20,
     user_id: Optional[str] = None,
     created_by: Optional[str] = None,
+    include_comments: bool = False,
     feeds_db: FeedsDB = Depends(get_feeds_db),
     users_db: UsersDB = Depends(get_users_db),
     roles_db: RolesDB = Depends(get_roles_db)
@@ -139,6 +140,21 @@ async def list_posts(
     # Get total count for pagination
     total_posts = await feeds_db.count_posts(filter_dict)
     
+    post_ids = [str(post["_id"]) for post in posts if post.get("_id")]
+    creator_ids = {post.get("created_by") for post in posts if post.get("created_by")}
+    liked_post_ids = await feeds_db.get_user_liked_post_ids(post_ids, user_id) if user_id else set()
+    comments_by_post = {}
+
+    if include_comments and post_ids:
+        comments_by_post = await feeds_db.get_comments_for_posts(post_ids)
+        for comments in comments_by_post.values():
+            creator_ids.update(comment.get("created_by") for comment in comments if comment.get("created_by"))
+
+    users_by_id = await users_db.get_users_batch(
+        list(creator_ids),
+        projection={"first_name": 1, "last_name": 1, "username": 1}
+    )
+
     # Enhance posts with user info and convert ObjectIds
     enhanced_posts = []
     for post in posts:
@@ -149,15 +165,37 @@ async def list_posts(
             post_dict["id"] = post_dict["_id"]
         
         # Add user data
-        post_creator = await users_db.get_user(post["created_by"])
+        post_creator = users_by_id.get(post.get("created_by"))
         if post_creator:
             post_dict["creator_name"] = f"{post_creator.get('first_name', '')} {post_creator.get('last_name', '')}"
             post_dict["creator_username"] = post_creator.get("username", "")
         
         # Add like info if user_id provided
         if user_id:
-            post_dict["liked_by_user"] = await feeds_db.has_user_liked_post(str(post["_id"]), user_id)
-            
+            post_dict["liked_by_user"] = post_dict["id"] in liked_post_ids
+
+        if include_comments:
+            post_comments = []
+            for comment in comments_by_post.get(post_dict["id"], []):
+                comment_dict = convert_object_id(comment)
+                if "_id" in comment_dict:
+                    comment_dict["id"] = comment_dict["_id"]
+
+                comment_creator = users_by_id.get(comment.get("created_by"))
+                if comment_creator:
+                    comment_dict["user_name"] = f"{comment_creator.get('first_name', '')} {comment_creator.get('last_name', '')}"
+                    comment_dict["username"] = comment_creator.get("username", "")
+                else:
+                    comment_dict["user_name"] = "Unknown User"
+                    comment_dict["username"] = "unknown"
+
+                if user_id:
+                    comment_dict["can_edit"] = user_id == comment.get("created_by")
+
+                post_comments.append(comment_dict)
+
+            post_dict["comments"] = post_comments
+
         enhanced_posts.append(post_dict)
     
     # Build response with pagination info

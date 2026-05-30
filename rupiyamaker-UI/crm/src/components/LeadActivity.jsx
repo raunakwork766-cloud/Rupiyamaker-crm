@@ -73,6 +73,43 @@ function fmtDate(dt) {
   } catch { return ''; }
 }
 
+function normalizeDisplayValue(value) {
+  if (value === undefined || value === null) return 'Not set';
+  const text = String(value).trim();
+  if (!text || text.toLowerCase() === 'null' || text.toLowerCase() === 'undefined') return 'Not set';
+  return text;
+}
+
+function ChangeRow({ label = 'Change', oldValue, newValue, compact = false }) {
+  const fromValue = normalizeDisplayValue(oldValue);
+  const toValue = normalizeDisplayValue(newValue);
+  const cellStyle = {
+    flex: 1,
+    minWidth: compact ? 120 : 180,
+    borderRadius: 8,
+    padding: compact ? '7px 9px' : '8px 10px',
+    border: '1px solid #e5e7eb',
+    background: '#ffffff'
+  };
+
+  return (
+    <div style={{ marginTop: 8 }}>
+      <div style={{ fontSize: 11, fontWeight: 700, color: '#6b7280', marginBottom: 6, letterSpacing: '0.02em' }}>{label}</div>
+      <div style={{ display: 'flex', alignItems: 'stretch', gap: 8, flexWrap: 'wrap' }}>
+        <div style={{ ...cellStyle, borderColor: '#fecaca', background: '#fef2f2' }}>
+          <div style={{ fontSize: 10, fontWeight: 700, color: '#b91c1c', marginBottom: 4 }}>OLD VALUE</div>
+          <div style={{ fontSize: 12, color: '#7f1d1d', wordBreak: 'break-word' }}>{fromValue}</div>
+        </div>
+        <div style={{ alignSelf: 'center', color: '#9ca3af', fontSize: 14, fontWeight: 700 }}>→</div>
+        <div style={{ ...cellStyle, borderColor: '#bbf7d0', background: '#f0fdf4' }}>
+          <div style={{ fontSize: 10, fontWeight: 700, color: '#15803d', marginBottom: 4 }}>NEW VALUE</div>
+          <div style={{ fontSize: 12, color: '#14532d', wordBreak: 'break-word' }}>{toValue}</div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /* ─────────────────── PILL COMPONENT ─────────────────── */
 function Pill({ label, value, color }) {
   if (!value) return null;
@@ -167,7 +204,7 @@ function ActivityCard({ activity, isLast }) {
           {oldStr && oldStr !== 'Not Set' && oldStr !== 'Updated' && !oldStr.includes('\n') && (
             <div style={{ fontSize: 11, color: '#9ca3af', marginBottom: 4 }}>Previous: {oldStr}</div>
           )}
-          <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 7, padding: '6px 10px' }}>
+          <div style={{ background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: 8, padding: '8px 10px' }}>
             {lines.map((line, i) => {
               // Each line is like "Field Label: old → new" or "Field Label: value"
               const arrowIdx = line.indexOf(' → ');
@@ -178,11 +215,8 @@ function ActivityCard({ activity, isLast }) {
                 const fromVal = parts[0]?.trim();
                 const toVal = parts[1]?.trim();
                 return (
-                  <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, padding: '2px 0', borderBottom: i < lines.length - 1 ? '1px dashed #d1fae5' : 'none', flexWrap: 'wrap' }}>
-                    <span style={{ color: '#6b7280', minWidth: 80 }}>{label}:</span>
-                    {fromVal && <span style={{ color: '#dc2626', textDecoration: 'line-through', fontSize: 11 }}>{fromVal}</span>}
-                    {fromVal && <span style={{ color: '#9ca3af' }}>→</span>}
-                    <span style={{ color: '#15803d', fontWeight: 500 }}>{toVal || fromVal}</span>
+                  <div key={i} style={{ padding: i < lines.length - 1 ? '0 0 8px 0' : 0, borderBottom: i < lines.length - 1 ? '1px dashed #e5e7eb' : 'none', marginBottom: i < lines.length - 1 ? 8 : 0 }}>
+                    <ChangeRow label={label} oldValue={fromVal} newValue={toVal || fromVal} compact />
                   </div>
                 );
               }
@@ -194,62 +228,24 @@ function ActivityCard({ activity, isLast }) {
         </div>
       );
     } else {
-      // Simple single-line field change
-      const hasOld = oldStr && oldStr !== '' && oldStr !== 'Not Set' && oldStr !== 'null';
-      desc = (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', marginTop: 6 }}>
-          {hasOld && (
-            <span style={{ background: '#fee2e2', color: '#b91c1c', padding: '2px 8px', borderRadius: 5, fontSize: 12, maxWidth: 240, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-              {oldStr.slice(0, 100)}
-            </span>
-          )}
-          {hasOld && <span style={{ color: '#9ca3af', fontSize: 14 }}>→</span>}
-          <span style={{ background: '#dcfce7', color: '#15803d', padding: '2px 8px', borderRadius: 5, fontSize: 12, maxWidth: 240, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-            {newStr.slice(0, 100) || '(empty)'}
-          </span>
-        </div>
-      );
+      desc = <ChangeRow label={cardLabel} oldValue={oldStr} newValue={newStr} />;
     }
   } else if (type === 'status_change' || type === 'status_changed') {
     const from = d.from_status || d.from_status_name;
     const to = d.to_status || d.to_status_name;
-    if (from || to) desc = (
-      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 6 }}>
-        {from && <span style={{ background: '#fee2e2', color: '#b91c1c', padding: '2px 8px', borderRadius: 5, fontSize: 12 }}>{from}</span>}
-        {from && <span style={{ color: '#9ca3af', fontSize: 14 }}>→</span>}
-        {to && <span style={{ background: '#dcfce7', color: '#15803d', padding: '2px 8px', borderRadius: 5, fontSize: 12 }}>{to}</span>}
-      </div>
-    );
+    if (from || to) desc = <ChangeRow label="Status" oldValue={from} newValue={to} />;
   } else if (type === 'sub_status_change') {
     const from = d.from_sub_status;
     const to = d.to_sub_status;
-    if (from || to) desc = (
-      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 6 }}>
-        {from && <span style={{ background: '#fee2e2', color: '#b91c1c', padding: '2px 8px', borderRadius: 5, fontSize: 12 }}>{from}</span>}
-        {from && <span style={{ color: '#9ca3af', fontSize: 14 }}>→</span>}
-        {to && <span style={{ background: '#dcfce7', color: '#15803d', padding: '2px 8px', borderRadius: 5, fontSize: 12 }}>{to}</span>}
-      </div>
-    );
+    if (from || to) desc = <ChangeRow label="Sub-status" oldValue={from} newValue={to} />;
   } else if (type === 'assignment' || type === 'assigned') {
     const from = d.from_user_name;
     const to = d.to_user_name || d.assigned_to_name;
-    if (from || to) desc = (
-      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 6 }}>
-        {from && <span style={{ background: '#fee2e2', color: '#b91c1c', padding: '2px 8px', borderRadius: 5, fontSize: 12 }}>From: {from}</span>}
-        {from && to && <span style={{ color: '#9ca3af', fontSize: 14 }}>→</span>}
-        {to && <span style={{ background: '#dcfce7', color: '#15803d', padding: '2px 8px', borderRadius: 5, fontSize: 12 }}>To: {to}</span>}
-      </div>
-    );
+    if (from || to) desc = <ChangeRow label="Assigned To" oldValue={from} newValue={to} />;
   } else if (type === 'department_transfer' || type === 'transfer' || type === 'transferred') {
     const from = d.from_department_name;
     const to = d.to_department_name || d.department;
-    if (from || to) desc = (
-      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 6 }}>
-        {from && <span style={{ background: '#fee2e2', color: '#b91c1c', padding: '2px 8px', borderRadius: 5, fontSize: 12 }}>{from}</span>}
-        {from && to && <span style={{ color: '#9ca3af', fontSize: 14 }}>→</span>}
-        {to && <span style={{ background: '#dcfce7', color: '#15803d', padding: '2px 8px', borderRadius: 5, fontSize: 12 }}>{to}</span>}
-      </div>
-    );
+    if (from || to) desc = <ChangeRow label="Department" oldValue={from} newValue={to} />;
   } else if (type === 'note' || type === 'remark_added') {
     if (d.note_text) desc = (
       <div style={{ marginTop: 6, fontSize: 12, color: '#374151', fontStyle: 'italic', background: '#fff', padding: '6px 10px', borderRadius: 6, borderLeft: '3px solid #94a3b8' }}>
@@ -273,13 +269,7 @@ function ActivityCard({ activity, isLast }) {
   } else if (type === 'reporting_change') {
     const from = d.from_reporting_name || d.from_user_name;
     const to = d.to_reporting_name || d.to_user_name;
-    if (from || to) desc = (
-      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 6 }}>
-        {from && <span style={{ background: '#f1f5f9', color: '#475569', padding: '2px 8px', borderRadius: 5, fontSize: 12 }}>{from}</span>}
-        {from && to && <span style={{ color: '#9ca3af', fontSize: 14 }}>→</span>}
-        {to && <span style={{ background: '#e0f2fe', color: '#0369a1', padding: '2px 8px', borderRadius: 5, fontSize: 12 }}>{to}</span>}
-      </div>
-    );
+    if (from || to) desc = <ChangeRow label="Reporting To" oldValue={from} newValue={to} />;
   }
 
   return (
@@ -298,8 +288,8 @@ function ActivityCard({ activity, isLast }) {
       {/* Card body */}
       <div style={{
         flex: 1, background: '#fff', border: '1px solid #e5e7eb',
-        borderRadius: 10, padding: '10px 13px', marginBottom: 2,
-        boxShadow: '0 1px 3px rgba(0,0,0,0.05)'
+        borderRadius: 10, padding: '12px 14px', marginBottom: 2,
+        boxShadow: '0 2px 8px rgba(15,23,42,0.04)'
       }}>
         {/* Header: badge + user + time */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6, flexWrap: 'wrap' }}>

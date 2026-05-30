@@ -531,6 +531,10 @@ class LeadsDB:
             return False
             
         logger.info(f"✅ Current lead found: {current_lead.get('first_name', '')} {current_lead.get('last_name', '')}")
+
+        status_change_remark = update_data.pop("status_change_remark", None)
+        if status_change_remark is not None:
+            status_change_remark = str(status_change_remark).strip() or None
         
         # Log current dynamic_fields state
         if current_lead.get("dynamic_fields"):
@@ -551,6 +555,28 @@ class LeadsDB:
                 update_data["created_at"] = original_created_at
             else:
                 del update_data["created_at"]
+
+        # Re-attribute creator (superadmin): lead must belong only to the new creator for
+        # list visibility ($or uses created_by, assigned_to, assign_report_to). Purana
+        # creator + baaki assignees hata kar sirf naya creator assign karo.
+        if "created_by" in update_data:
+            def _lead_uid(val):
+                if val is None:
+                    return None
+                if isinstance(val, ObjectId):
+                    return str(val)
+                return str(val).strip()
+
+            old_creator = _lead_uid(current_lead.get("created_by"))
+            new_creator = _lead_uid(update_data.get("created_by"))
+            if old_creator and new_creator and old_creator != new_creator:
+                update_data["assigned_to"] = new_creator
+                update_data["assign_report_to"] = []
+                logger.info(
+                    "Lead creator re-attributed %s -> %s: assigned_to=new creator only, assign_report_to cleared",
+                    old_creator,
+                    new_creator,
+                )
         
         # CRITICAL FIX: Handle dynamic_fields with deep copy to preserve nested structures
         if "dynamic_fields" not in update_data:
@@ -718,6 +744,13 @@ class LeadsDB:
             return True
         
         print(f"✅ MongoDB update successful")
+
+        status_field_changed = (
+            "status" in update_data and update_data["status"] != current_lead.get("status")
+        )
+        sub_status_field_changed = (
+            "sub_status" in update_data and update_data["sub_status"] != current_lead.get("sub_status")
+        )
         
         # Track all changes for activity log
         changes = {}
@@ -736,7 +769,7 @@ class LeadsDB:
                 }
         
         # Track status change
-        if "status" in update_data and update_data["status"] != current_lead.get("status"):
+        if status_field_changed:
             old_status = await self.get_status_by_id(current_lead.get("status")) or {"name": current_lead.get("status")}
             new_status = await self.get_status_by_id(update_data["status"]) or {"name": update_data["status"]}
             
@@ -758,14 +791,15 @@ class LeadsDB:
                     "from_status": current_lead.get("status"),
                     "from_status_name": old_status.get("name"),
                     "to_status": update_data["status"],
-                    "to_status_name": new_status.get("name")
+                    "to_status_name": new_status.get("name"),
+                    **({"remark": status_change_remark} if status_change_remark and not sub_status_field_changed else {})
                 },
                 "created_at": update_data["updated_at"]
             }
             await self.activity_collection.insert_one(activity_data)
             
         # Track sub-status change
-        if "sub_status" in update_data and update_data["sub_status"] != current_lead.get("sub_status"):
+        if sub_status_field_changed:
             old_substatus = await self.get_sub_status_by_id(current_lead.get("sub_status")) or {"name": current_lead.get("sub_status")}
             new_substatus = await self.get_sub_status_by_id(update_data["sub_status"]) or {"name": update_data["sub_status"]}
             
@@ -773,16 +807,22 @@ class LeadsDB:
                 "from": old_substatus.get("name"),
                 "to": new_substatus.get("name")
             }
+
+            sub_status_changed_by_name = await self._get_user_name(user_id)
             
             # Record sub-status change activity
             activity_data = {
                 "lead_id": lead_id,
                 "user_id": user_id,
+                "user_name": sub_status_changed_by_name,
                 "activity_type": "sub_status_change",
                 "description": f"Sub-status changed from '{old_substatus.get('name')}' to '{new_substatus.get('name')}'",
                 "details": {
                     "from_sub_status": current_lead.get("sub_status"),
-                    "to_sub_status": update_data["sub_status"]
+                    "from_sub_status_name": old_substatus.get("name"),
+                    "to_sub_status": update_data["sub_status"],
+                    "to_sub_status_name": new_substatus.get("name"),
+                    **({"remark": status_change_remark} if status_change_remark else {})
                 },
                 "created_at": update_data["updated_at"]
             }
@@ -1979,7 +2019,7 @@ class LeadsDB:
     
     async def update_comment(self, comment_id: str, update_data: dict) -> bool:
         """Update a comment/note - alias for update_note"""
-        return self.update_note(comment_id, update_data)
+        return await self.update_note(comment_id, update_data)
     
     async def update_note(self, note_id: str, update_data: dict) -> bool:
         """Update a note's metadata or content"""
@@ -2013,7 +2053,7 @@ class LeadsDB:
     
     async def delete_comment(self, comment_id: str) -> bool:
         """Delete a comment/note - alias for delete_note"""
-        return self.delete_note(comment_id)
+        return await self.delete_note(comment_id)
     
     async def delete_note(self, note_id: str) -> bool:
         """Delete a note"""
@@ -2336,8 +2376,19 @@ class LeadsDB:
         return await self.statuses_collection.find_one({"id": status_id})
         
     async def get_status_by_name(self, status_name: str) -> Optional[dict]:
-        """Get a status by its name"""
-        return await self.statuses_collection.find_one({"name": status_name})
+        """Get a status by its name (case-insensitive fallback)."""
+        if not status_name:
+            return None
+
+        name = str(status_name).strip()
+        exact = await self.statuses_collection.find_one({"name": name})
+        if exact:
+            return exact
+
+        import re
+        return await self.statuses_collection.find_one(
+            {"name": {"$regex": f"^{re.escape(name)}$", "$options": "i"}}
+        )
         
     async def get_statuses_for_department(self, department_name: str) -> List[dict]:
         """Get all statuses available for a specific department"""
@@ -2522,6 +2573,42 @@ class LeadsDB:
                 query["parent_status_id"] = str(parent_status["_id"])
         
         return await self.sub_statuses_collection.find_one(query)
+
+    async def requires_remark_for_target(
+        self,
+        status_name: str,
+        sub_status_name: Optional[str] = None,
+        *,
+        check_sub: bool = True
+    ) -> bool:
+        """Return True if selecting this status/sub-status requires a mandatory remark."""
+        if not status_name:
+            return False
+
+        status_obj = await self.get_status_by_name(status_name)
+        if not status_obj:
+            return False
+
+        # Parent/main status flag applies to any selection under it
+        if bool(status_obj.get("requires_remark_on_change")):
+            return True
+
+        if check_sub and sub_status_name:
+            target_sub = str(sub_status_name).strip().lower()
+            embedded_sub_statuses = status_obj.get("sub_statuses", [])
+            for sub_status in embedded_sub_statuses:
+                sub_name = sub_status.get("name") if isinstance(sub_status, dict) else sub_status
+                if sub_name and str(sub_name).strip().lower() == target_sub:
+                    if isinstance(sub_status, dict):
+                        return bool(sub_status.get("requires_remark_on_change"))
+                    return False
+
+            sub_obj = await self.get_sub_status_by_name(sub_status_name, status_name)
+            if sub_obj:
+                return bool(sub_obj.get("requires_remark_on_change"))
+            return False
+
+        return False
         
     # ========= Permission & Visibility =========
     

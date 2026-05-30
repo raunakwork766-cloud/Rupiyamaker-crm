@@ -397,7 +397,7 @@ export default function LeadDetails({ lead, user, onBack, onLeadUpdate, readOnly
                 lead_id: lead._id,
                 expires_in_days: 7,
                 purpose: "public_form",
-                base_url: "https://raunakcrm.bhoomitechzone.us:4521",
+                base_url: window.location.origin,
                 allow_update: true,
                 one_time_use: false
             };

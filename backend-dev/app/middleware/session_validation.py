@@ -9,7 +9,10 @@ from fastapi import Request, HTTPException, status
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import JSONResponse
 from datetime import datetime
+from typing import Optional
 import logging
+import json
+import re
 
 logger = logging.getLogger(__name__)
 
@@ -47,7 +50,43 @@ ATTENDANCE_ALLOWED_PREFIXES = [
     "/attendance/check-in",
     "/attendance/check-out",
     "/attendance/status/current",
+    "/attendance/calendar",
+    "/attendance/my-calendar",
+    "/attendance/detail",
+    "/attendance/details",
 ]
+
+def _reinject_request_body(request: Request, body: bytes) -> None:
+    """Restore request body after middleware read so route handlers can still parse it."""
+    async def receive():
+        return {"type": "http.request", "body": body, "more_body": False}
+    request._receive = receive
+
+def _extract_user_id_from_form_body(body: bytes, content_type: str) -> Optional[str]:
+    """Best-effort user_id extraction from multipart or urlencoded bodies."""
+    if not body:
+        return None
+
+    if "application/x-www-form-urlencoded" in content_type:
+        from urllib.parse import parse_qs
+        parsed = parse_qs(body.decode("utf-8", errors="ignore"))
+        for key in ("user_id", "requesting_user_id"):
+            values = parsed.get(key)
+            if values and values[0]:
+                return values[0]
+        return None
+
+    if "multipart/form-data" in content_type:
+        for field in (b"user_id", b"requesting_user_id"):
+            match = re.search(
+                rb'name="' + field + rb'"\r\n\r\n([^\r\n]+)',
+                body,
+            )
+            if match:
+                value = match.group(1).decode("utf-8", errors="ignore").strip()
+                if value:
+                    return value
+    return None
 
 class SessionValidationMiddleware(BaseHTTPMiddleware):
     """
@@ -157,20 +196,24 @@ class SessionValidationMiddleware(BaseHTTPMiddleware):
             if not user_id and hasattr(request, "path_params"):
                 user_id = request.path_params.get("user_id")
             
-            # Try to get from request body (if JSON)
+            # Try to get from request body (JSON / form / multipart)
             if not user_id and request.method in ["POST", "PUT", "PATCH"]:
+                content_type = request.headers.get("content-type", "")
                 try:
-                    # Clone the body for reading (important!)
-                    body = await request.body()
-                    if body:
-                        import json
-                        body_json = json.loads(body.decode())
-                        user_id = body_json.get("user_id") or body_json.get("requesting_user_id")
-                        
-                        # Re-inject the body so the route can still read it
-                        async def receive():
-                            return {"type": "http.request", "body": body}
-                        request._receive = receive
+                    if "application/json" in content_type:
+                        body = await request.body()
+                        if body:
+                            _reinject_request_body(request, body)
+                            body_json = json.loads(body.decode())
+                            user_id = body_json.get("user_id") or body_json.get("requesting_user_id")
+                    elif (
+                        "multipart/form-data" in content_type
+                        or "application/x-www-form-urlencoded" in content_type
+                    ):
+                        body = await request.body()
+                        if body:
+                            _reinject_request_body(request, body)
+                            user_id = _extract_user_id_from_form_body(body, content_type)
                 except Exception as body_error:
                     logger.debug(f"Could not parse body for user_id: {str(body_error)}")
             
@@ -192,9 +235,9 @@ class SessionValidationMiddleware(BaseHTTPMiddleware):
                     # Check if user's login is still enabled
                     if not user.get("login_enabled", True):
                         logger.warning(f"🚫 Session validation FAILED: User {user_id} - login disabled")
-                        raise HTTPException(
+                        return JSONResponse(
+                            {"detail": "Login access disabled - session terminated"},
                             status_code=status.HTTP_403_FORBIDDEN,
-                            detail="Login access disabled - session terminated"
                         )
                     
                     # Check if session was invalidated after last login
@@ -204,16 +247,13 @@ class SessionValidationMiddleware(BaseHTTPMiddleware):
                     if session_invalidated_at:
                         if not last_login or session_invalidated_at > last_login:
                             logger.warning(f"🚫 Session validation FAILED: User {user_id} - session invalidated at {session_invalidated_at}, last login {last_login}")
-                            raise HTTPException(
+                            return JSONResponse(
+                                {"detail": "Your session has been invalidated - please login again"},
                                 status_code=status.HTTP_403_FORBIDDEN,
-                                detail="Your session has been invalidated - please login again"
                             )
                     
                     logger.info(f"✅ Session validation PASSED: User {user_id}")
         
-        except HTTPException:
-            # Re-raise HTTPException (these are intentional)
-            raise
         except Exception as e:
             # Log but don't block on unexpected errors
             logger.error(f"⚠️ Session validation error: {str(e)}", exc_info=True)

@@ -1,12 +1,14 @@
 "use client"
 
 import { useState, useEffect, useRef, useCallback, useMemo } from "react"
+import { createPortal } from "react-dom"
 import { ChevronLeft, ChevronRight, Download, Calendar, X, Frown, User, Send, Plus, Trash2, History } from "lucide-react"
 import axios from "axios"
 import { formatDateTime, getISTToday } from '../utils/dateUtils';
 import hrmsService from '../services/hrmsService';
 import PaidLeaveManagement from './attendance/PaidLeaveManagement';
 import useTabWithHistory from '../hooks/useTabWithHistory';
+import useNavbarPageSearch from '../hooks/useNavbarPageSearch';
 // import jsPDF from "jspdf"
 // import "jspdf-autotable"
 
@@ -29,6 +31,78 @@ import {
 
 // API Configuration
 const BASE_URL = '/api'
+
+// Render above sticky attendance table headers and main scroll container.
+const ATTENDANCE_MODAL_Z_INDEX = 10050
+
+const attendancePageStyles = `
+  .attendance-page { padding: 0; max-width: 100%; background: #000; min-height: 100vh; font-family: -apple-system, BlinkMacSystemFont, 'Lexend Deca', sans-serif; color: #e2e8f0; }
+  .attendance-page .task-top-bar { display: flex; justify-content: space-between; align-items: flex-start; padding: 20px 24px 0; border-bottom: 1px solid #1f1f27; background: #000; gap: 16px; flex-wrap: wrap; }
+  .attendance-page .task-top-bar-left h1 { font-size: 22px; font-weight: 700; color: #f0f0f5; margin: 0 0 2px; line-height: 1.2; }
+  .attendance-page .task-top-bar-left p { font-size: 13px; color: #6b7a99; margin: 0 0 12px; }
+  .attendance-page .task-top-bar-right { display: flex; gap: 8px; align-items: center; padding-top: 4px; flex-wrap: wrap; }
+  .attendance-page .task-btn-secondary { background: #1a1a24; color: #c8d0e0; border: 1px solid #2a2a3a; padding: 7px 14px; border-radius: 3px; font-size: 13px; font-weight: 500; cursor: pointer; transition: background 0.15s, border-color 0.15s; white-space: nowrap; display: inline-flex; align-items: center; gap: 6px; }
+  .attendance-page .task-btn-secondary:hover:not(:disabled) { background: #22222e; border-color: #3a3a50; }
+  .attendance-page .task-btn-secondary:disabled { opacity: 0.4; cursor: default; }
+  .attendance-page .task-view-toggle-bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 24px; background: #000; border-bottom: 1px solid #1f1f27; flex-wrap: wrap; }
+  .attendance-page .task-view-toggle-group { display: flex; gap: 0; flex-wrap: wrap; min-width: 0; overflow-x: auto; scrollbar-width: none; }
+  .attendance-page .task-view-toggle-group::-webkit-scrollbar { display: none; }
+  .attendance-page .task-view-toggle-btn { padding: 12px 16px; border: none; background: transparent; font-size: 13px; font-weight: 600; color: #6b7a99; cursor: pointer; border-bottom: 3px solid transparent; transition: color 0.15s, border-color 0.15s; white-space: nowrap; }
+  .attendance-page .task-view-toggle-btn:hover { color: #c8d0e0; }
+  .attendance-page .task-view-toggle-btn.active { color: #f97316; font-weight: 800; border-bottom-color: #f97316; }
+  .attendance-page .task-toolbar-right { display: flex; align-items: center; justify-content: flex-end; gap: 8px; margin-left: auto; flex-shrink: 0; flex-wrap: wrap; }
+  .attendance-page .attendance-month-nav { display: inline-flex; align-items: center; gap: 4px; background: #1a1a24; border: 1px solid #2a2a3a; border-radius: 3px; padding: 4px 6px; }
+  .attendance-page .attendance-month-label { font-size: 13px; font-weight: 600; color: #f0f0f5; min-width: 140px; text-align: center; display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
+  .attendance-page .attendance-page-content { padding: 16px 24px 24px; }
+  .attendance-page .attendance-legend { display: flex; justify-content: center; gap: 20px; margin-bottom: 16px; flex-wrap: wrap; padding: 8px 0; }
+  .attendance-page .attendance-legend-item { display: flex; align-items: center; gap: 8px; }
+  .attendance-page .attendance-legend-label { color: #6b7a99; font-size: 11px; font-weight: 700; letter-spacing: 0.5px; text-transform: uppercase; }
+  .attendance-page .attendance-kpi-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 0; border: 1px solid #1f1f27; border-radius: 4px; overflow: hidden; margin-bottom: 16px; background: #000; }
+  .attendance-page .attendance-kpi { padding: 12px 14px; border-right: 1px solid #1f1f27; min-width: 0; }
+  .attendance-page .attendance-kpi:last-child { border-right: none; }
+  .attendance-page .attendance-kpi-label { font-size: 10px; font-weight: 700; letter-spacing: 0.6px; text-transform: uppercase; color: #6b7a99; margin-bottom: 4px; white-space: nowrap; }
+  .attendance-page .attendance-kpi-val { font-size: 20px; font-weight: 800; line-height: 1; margin-bottom: 3px; }
+  .attendance-page .attendance-kpi-sub { font-size: 10px; font-weight: 500; color: #4a5570; white-space: nowrap; }
+  .attendance-page .attendance-kpi-bar { height: 2px; background: #1a1a24; border-radius: 2px; margin-top: 6px; overflow: hidden; }
+  .attendance-page .attendance-kpi-bar-fill { height: 100%; border-radius: 2px; }
+  .attendance-page .task-search-box--in-bar { position: relative; width: 220px; min-width: 180px; flex-shrink: 0; }
+  .attendance-page .task-search-box--in-bar input { background: #1a1a24; border: 1px solid #2a2a3a; border-radius: 3px; padding: 7px 12px 7px 34px; color: #c8d0e0; font-size: 13px; width: 100%; outline: none; box-sizing: border-box; }
+  .attendance-page .task-search-box--in-bar input::placeholder { color: #4a5570; }
+  .attendance-page .task-search-box--in-bar input:focus { border-color: #3b82f6; box-shadow: 0 0 0 2px rgba(59,130,246,0.15); }
+  .attendance-page .task-search-box--in-bar .search-icon { position: absolute; left: 10px; top: 50%; transform: translateY(-50%); color: #4a5570; pointer-events: none; display: flex; }
+  .attendance-page .attendance-filter-dropdown { position: relative; min-width: 140px; flex-shrink: 0; }
+  .attendance-page .attendance-filter-trigger { background: #1a1a24; border: 1px solid #2a2a3a; border-radius: 3px; padding: 7px 28px 7px 10px; color: #c8d0e0; font-size: 13px; cursor: pointer; outline: none; user-select: none; position: relative; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-height: 34px; box-sizing: border-box; display: flex; align-items: center; }
+  .attendance-page .attendance-filter-trigger.placeholder { color: #4a5570; }
+  .attendance-page .attendance-filter-trigger.open { border-color: #3b82f6; box-shadow: 0 0 0 2px rgba(59,130,246,0.15); }
+  .attendance-page .attendance-filter-chevron { position: absolute; right: 8px; top: 50%; transform: translateY(-50%); color: #6b7a99; transition: transform 0.2s; pointer-events: none; }
+  .attendance-page .attendance-filter-chevron.open { transform: translateY(-50%) rotate(180deg); }
+  .attendance-page .attendance-filter-menu { position: absolute; top: calc(100% + 4px); left: 0; right: 0; background: #0a0a0f; border: 1px solid #2a2a3a; border-radius: 3px; z-index: 1000; box-shadow: 0 8px 24px rgba(0,0,0,0.7); min-width: 160px; }
+  .attendance-page .attendance-filter-menu-search { padding: 6px 8px; border-bottom: 1px solid #1f1f27; }
+  .attendance-page .attendance-filter-menu-search input { width: 100%; background: #1a1a24; border: 1px solid #2a2a3a; border-radius: 3px; padding: 5px 8px; color: #c8d0e0; font-size: 12px; outline: none; box-sizing: border-box; }
+  .attendance-page .attendance-filter-option { padding: 8px 12px; cursor: pointer; font-size: 13px; color: #c8d0e0; border-bottom: 1px solid #1a1a22; transition: background 0.1s; }
+  .attendance-page .attendance-filter-option:hover { background: #13131c; }
+  .attendance-page .attendance-filter-option.selected { color: #93c5fd; background: rgba(59,130,246,0.08); }
+  .attendance-page .attendance-filter-meta { font-size: 12px; color: #6b7a99; white-space: nowrap; padding: 6px 10px; border: 1px solid #2a2a3a; border-radius: 3px; background: #1a1a24; }
+  .attendance-page .attendance-table-shell { border: 1px solid #1f1f27; border-radius: 4px; overflow: hidden; background: #000; }
+  .attendance-page .attendance-table-shell thead { background: #ffffff; box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1); border-bottom: 2px solid #e5e7eb; }
+  .attendance-page .attendance-table-shell tbody td { color: #ffffff; font-weight: 600; }
+  .attendance-page .attendance-table-head-group { background: #ffffff !important; color: #03b0f5 !important; border: 1px solid #e5e7eb !important; font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em; }
+  .attendance-page .attendance-table-head-col { background: #ffffff !important; color: #03b0f5 !important; border: 1px solid #e5e7eb !important; font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em; font-size: 11px; }
+  .attendance-page .attendance-table-head-day { background: #ffffff !important; color: #03b0f5 !important; border: 1px solid #e5e7eb !important; font-weight: 800; text-align: center; }
+  .attendance-page .attendance-table-head-col.sortable:hover { background: #f9fafb !important; }
+  .attendance-page .attendance-table-scroll-bar { display: flex; align-items: center; justify-content: flex-end; gap: 4px; padding: 4px 10px; border-bottom: 1px solid #1f1f27; background: #000; }
+  .attendance-page .attendance-table-scroll-btn { background: #1a1a24; border: 1px solid #2a2a3a; border-radius: 3px; color: #c8d0e0; cursor: pointer; padding: 3px 8px; font-size: 12px; display: flex; align-items: center; transition: background 0.15s; }
+  .attendance-page .attendance-table-scroll-btn:hover:not(:disabled) { background: #22222e; }
+  .attendance-page .attendance-table-scroll-btn:disabled { opacity: 0.35; cursor: default; }
+  .attendance-page .task-loading-spinner { display: flex; flex-direction: column; justify-content: center; align-items: center; padding: 80px 20px; min-height: 50vh; }
+  .attendance-page .task-loading-spinner .spinner { width: 32px; height: 32px; border: 3px solid #1a1a24; border-top-color: #3b82f6; border-radius: 50%; animation: attendanceSpin 0.7s linear infinite; margin-bottom: 12px; }
+  .attendance-page .task-loading-spinner p { color: #6b7a99; font-size: 14px; margin: 0; }
+  .attendance-page .task-error-state { display: flex; flex-direction: column; justify-content: center; align-items: center; padding: 80px 20px; min-height: 50vh; text-align: center; }
+  .attendance-page .task-error-state p { color: #f87171; font-size: 15px; margin: 0 0 12px; }
+  .attendance-page .task-btn-retry { background: #3b82f6; color: #fff; border: none; padding: 8px 16px; border-radius: 3px; font-size: 13px; font-weight: 600; cursor: pointer; }
+  .attendance-page .task-btn-retry:hover { background: #2563eb; }
+  @keyframes attendanceSpin { to { transform: rotate(360deg); } }
+`
 
 // Helper function to get user data
 const getUserData = () => {
@@ -976,8 +1050,8 @@ const HolidayManagementModal = ({ isOpen, onClose, holidays, onUpdateHolidays, s
     }
   }
 
-  return (
-    <div style={{position:'fixed',inset:0,backgroundColor:'rgba(0,0,0,0.85)',backdropFilter:'blur(4px)',display:'flex',alignItems:'center',justifyContent:'center',zIndex:50,padding:'16px'}}>
+  return createPortal(
+    <div style={{position:'fixed',inset:0,backgroundColor:'rgba(0,0,0,0.85)',backdropFilter:'blur(4px)',display:'flex',alignItems:'center',justifyContent:'center',zIndex:ATTENDANCE_MODAL_Z_INDEX,padding:'16px'}}>
       <div style={{backgroundColor:'#09090b',border:'1px solid #27272a',borderRadius:'10px',maxWidth:'640px',width:'100%',maxHeight:'80vh',overflowY:'auto',boxShadow:'0 25px 50px rgba(0,0,0,0.8)'}}>
         {/* Header */}
         <div style={{padding:'16px 20px',borderBottom:'1px solid #27272a',display:'flex',alignItems:'center',justifyContent:'space-between'}}>
@@ -1193,7 +1267,8 @@ const HolidayManagementModal = ({ isOpen, onClose, holidays, onUpdateHolidays, s
           </div>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   )
 }
 
@@ -1231,6 +1306,14 @@ const EditHistoryModal = ({ isOpen, onClose, employee, historyData, loading }) =
   // Fall back to field_updated if no summary entries exist (older records)
   const summaryEntries = (historyData || []).filter(e => e.action_type === 'attendance_edited' || e.action_type === 'attendance_created')
   const displayEntries = summaryEntries.length > 0 ? summaryEntries : (historyData || []).filter(e => e.action_type === 'field_updated' && e.new_value !== undefined)
+  const sortedDisplayEntries = [...displayEntries].sort((a, b) => {
+    const dateA = a.date ? new Date(`${a.date}T00:00:00`).getTime() : 0
+    const dateB = b.date ? new Date(`${b.date}T00:00:00`).getTime() : 0
+    if (dateA !== dateB) return dateA - dateB
+    const timeA = new Date(a.created_at || a.changed_at || a.timestamp || 0).getTime()
+    const timeB = new Date(b.created_at || b.changed_at || b.timestamp || 0).getTime()
+    return timeA - timeB
+  })
 
   // Helper: Generate a short, clear explanation for auto-status
   const getAutoReasonExplanation = (commentText) => {
@@ -1263,8 +1346,8 @@ const EditHistoryModal = ({ isOpen, onClose, employee, historyData, loading }) =
     return commentText
   }
 
-  return (
-    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={onClose}>
+  return createPortal(
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4" style={{ zIndex: ATTENDANCE_MODAL_Z_INDEX }} onClick={onClose}>
       <div className="bg-[#111117] border border-white/10 rounded-xl max-w-3xl w-full max-h-[85vh] overflow-y-auto shadow-2xl" onClick={(e) => e.stopPropagation()}>
         {/* Header */}
         <div className="bg-gradient-to-r from-amber-600 to-orange-600 text-white p-5 rounded-t-xl relative sticky top-0 z-10">
@@ -1277,7 +1360,7 @@ const EditHistoryModal = ({ isOpen, onClose, employee, historyData, loading }) =
           </h2>
           {employee && (
             <p className="text-amber-100 text-sm mt-0.5">
-              {getDisplayEmployeeName(employee)} — {displayEntries.length} edit{displayEntries.length !== 1 ? 's' : ''} this month
+              {getDisplayEmployeeName(employee)} — {sortedDisplayEntries.length} edit{sortedDisplayEntries.length !== 1 ? 's' : ''} this month
             </p>
           )}
         </div>
@@ -1287,8 +1370,8 @@ const EditHistoryModal = ({ isOpen, onClose, employee, historyData, loading }) =
             <div className="flex justify-center items-center py-12">
               <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-amber-500"></div>
             </div>
-          ) : displayEntries.length > 0 ? (
-            displayEntries.map((entry, index) => {
+          ) : sortedDisplayEntries.length > 0 ? (
+            sortedDisplayEntries.map((entry, index) => {
               const attendanceDate = entry.date ? new Date(entry.date + 'T00:00:00') : null
               const editedAt = new Date(entry.created_at || entry.changed_at || entry.timestamp)
               const editorName = getDisplayEditorName(entry)
@@ -1433,7 +1516,8 @@ const EditHistoryModal = ({ isOpen, onClose, employee, historyData, loading }) =
           </div>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   )
 }
 
@@ -1454,8 +1538,8 @@ const DeductionDetailModal = ({ isOpen, onClose, data, onRevoke }) => {
     setRevoking(null)
   }
 
-  return (
-    <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+  return createPortal(
+    <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4" style={{ zIndex: ATTENDANCE_MODAL_Z_INDEX }}>
       <div className="bg-gray-900 border border-gray-700 rounded-lg max-w-2xl w-full max-h-[85vh] overflow-y-auto shadow-2xl">
         <div className="bg-gradient-to-r from-red-700 to-rose-700 text-white p-4 rounded-t-lg relative">
           <button onClick={onClose} className="absolute top-4 right-4 text-white hover:text-gray-200">
@@ -1547,7 +1631,8 @@ const DeductionDetailModal = ({ isOpen, onClose, data, onRevoke }) => {
           </div>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   )
 }
 
@@ -1809,8 +1894,8 @@ const SalaryDetailModal = ({ isOpen, onClose, salaryData }) => {
 
   const monthName = months[selectedMonth - 1]
 
-  return (
-    <div className="fixed inset-0 bg-transparent bg-opacity-70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+  return createPortal(
+    <div className="fixed inset-0 bg-transparent bg-opacity-70 backdrop-blur-sm flex items-center justify-center p-4" style={{ zIndex: ATTENDANCE_MODAL_Z_INDEX }}>
       <div className="bg-gray-900 border border-gray-700 rounded-lg max-w-3xl w-full max-h-[85vh] overflow-y-auto shadow-2xl">
         {/* Header */}
         <div className="bg-gradient-to-r from-green-600 to-emerald-600 text-white p-4 rounded-t-lg relative">
@@ -1973,7 +2058,8 @@ const SalaryDetailModal = ({ isOpen, onClose, salaryData }) => {
           </div>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   )
 }
 
@@ -2225,8 +2311,8 @@ const EmployeeDetailModal = ({ employee, selectedDate, isOpen, onClose, onUpdate
     }
   }
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6">
+  return createPortal(
+    <div className="fixed inset-0 flex items-center justify-center p-4 sm:p-6" style={{ zIndex: ATTENDANCE_MODAL_Z_INDEX }}>
       {/* Backdrop */}
       <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={onClose} />
 
@@ -2672,7 +2758,8 @@ const EmployeeDetailModal = ({ employee, selectedDate, isOpen, onClose, onUpdate
           </div>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   )
 }
 
@@ -2785,6 +2872,7 @@ export default function MonthlyAttendanceTable() {
 
   const [salaryModalOpen, setSalaryModalOpen] = useState(false)
   const [selectedSalaryData, setSelectedSalaryData] = useState(null)
+  const [canViewSalaryState, setCanViewSalaryState] = useState(false)
   const [monthlyLeaves, setMonthlyLeaves] = useState([])
   const [leavesMap, setLeavesMap] = useState(new Map())
   const [editHistoryModalOpen, setEditHistoryModalOpen] = useState(false)
@@ -2793,6 +2881,7 @@ export default function MonthlyAttendanceTable() {
   const [editCounts, setEditCounts] = useState({}) // { [empId]: count } — increments on each edit
   const [modalLoading, setModalLoading] = useState(false) // secondary loading (modal fetch) — does NOT replace full page
   const [searchQuery, setSearchQuery] = useState('')
+  useNavbarPageSearch(setSearchQuery)
   const [empDropdownOpen, setEmpDropdownOpen] = useState(false)
   const [teamFilter, setTeamFilter] = useState('')
   const [empStatusFilter, setEmpStatusFilter] = useState('active') // 'all' | 'active' | 'inactive'
@@ -2964,6 +3053,50 @@ export default function MonthlyAttendanceTable() {
            hasPermission(userPermissions, 'leave_management', 'show') ||
            hasPermission(userPermissions, 'leaves', 'show');
   })();
+
+  // Salary column visibility — requires EXPLICIT 'view_salary' permission on attendance.
+  // Wildcards ('*' actions) do NOT grant this; it must be explicitly assigned.
+  const computeCanViewSalary = () => {
+    try {
+      const raw = localStorage.getItem('userPermissions');
+      if (!raw) return false;
+      const userPermissions = JSON.parse(raw);
+      // SuperAdmin: pages:"*" && actions:"*"
+      if (userPermissions && typeof userPermissions === 'object' && !Array.isArray(userPermissions)) {
+        if (userPermissions['pages'] === '*' && userPermissions['actions'] === '*') return true;
+        if (userPermissions['*'] === '*') return true;
+      }
+      // Array format (new backend format): explicit check only, skip wildcards
+      if (Array.isArray(userPermissions)) {
+        // SuperAdmin in array format: {page:'*', actions:'*'}
+        if (userPermissions.some(p => p && p.page === '*' && (p.actions === '*' || (Array.isArray(p.actions) && p.actions.includes('*'))))) return true;
+        // Explicit view_salary check
+        return userPermissions.some(perm => {
+          if (!perm || perm.page !== 'attendance') return false;
+          return Array.isArray(perm.actions) && perm.actions.includes('view_salary');
+        });
+      }
+      // Legacy object format: {attendance: {show:true, view_salary:true}}
+      if (userPermissions && typeof userPermissions === 'object') {
+        const att = userPermissions['attendance'] || userPermissions['Attendance'];
+        if (!att) return false;
+        if (att === '*') return false; // wildcard attendance does NOT grant salary
+        if (Array.isArray(att)) return att.includes('view_salary');
+        if (typeof att === 'object') return att['view_salary'] === true;
+      }
+    } catch (e) { /* ignore */ }
+    return false;
+  };
+
+  useEffect(() => {
+    setCanViewSalaryState(computeCanViewSalary());
+    const handler = () => setCanViewSalaryState(computeCanViewSalary());
+    window.addEventListener('permissionsUpdated', handler);
+    return () => window.removeEventListener('permissionsUpdated', handler);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const canViewSalary = canViewSalaryState;
   
   // Permission check functions  
   const canUserViewAll = () => canViewAll('attendance');
@@ -3242,19 +3375,19 @@ export default function MonthlyAttendanceTable() {
             const bal = balanceMap[record.id] || {}
             return {
               ...record,
-              earnedLeavesTotal: bal.earned_leaves_total ?? 0,
+              earnedLeavesTotal: bal.earned_leaves_total ?? settingsData.default_earned_leave_monthly ?? 0,
               earnedLeavesUsed: bal.earned_leaves_used ?? 0,
-              earnedLeavesRemaining: bal.earned_leaves_remaining ?? 0,
-              paidLeavesTotal: bal.paid_leaves_total ?? 0,
+              earnedLeavesRemaining: bal.earned_leaves_remaining ?? settingsData.default_earned_leave_monthly ?? 0,
+              paidLeavesTotal: bal.paid_leaves_total ?? settingsData.default_paid_leave_monthly ?? 1,
               paidLeavesUsed: bal.paid_leaves_used ?? 0,
-              paidLeavesRemaining: bal.paid_leaves_remaining ?? 0,
-              graceTotal: settingsData.grace_usage_limit ?? settingsData.auto_grace_monthly_limit ?? bal.grace_leaves_total ?? 3,
+              paidLeavesRemaining: bal.paid_leaves_remaining ?? settingsData.default_paid_leave_monthly ?? 1,
+              graceTotal: bal.grace_leaves_total ?? settingsData.auto_grace_monthly_limit ?? settingsData.grace_usage_limit ?? 3,
               graceUsed: bal.grace_leaves_used ?? 0,
-              graceRemaining: bal.grace_leaves_remaining ?? settingsData.grace_usage_limit ?? settingsData.auto_grace_monthly_limit ?? 3,
+              graceRemaining: bal.grace_leaves_remaining ?? bal.grace_leaves_total ?? settingsData.auto_grace_monthly_limit ?? settingsData.grace_usage_limit ?? 3,
               // Settings-based monthly allotments kept for reference (used by auto-credit logic)
-              elMonthly: settingsData.default_earned_leave_monthly ?? 1.5,
+              elMonthly: settingsData.default_earned_leave_monthly ?? 0,
               plMonthly: settingsData.default_paid_leave_monthly ?? 1.0,
-              graceMonthlyLimit: settingsData.grace_usage_limit ?? settingsData.auto_grace_monthly_limit ?? 3,
+              graceMonthlyLimit: bal.grace_leaves_total ?? settingsData.auto_grace_monthly_limit ?? settingsData.grace_usage_limit ?? 3,
             }
           })
 
@@ -3596,10 +3729,13 @@ export default function MonthlyAttendanceTable() {
       
       if (historyResponse?.history) {
         console.log('✅ [EDIT HISTORY] Found', historyResponse.history.length, 'history entries')
-        // Sort by timestamp descending (most recent first)
-        const sortedHistory = historyResponse.history.sort((a, b) => 
-          new Date(b.changed_at || b.timestamp || b.created_at) - new Date(a.changed_at || a.timestamp || a.created_at)
-        )
+        // Sort by attendance date ascending (1st at top), then edit time ascending
+        const sortedHistory = historyResponse.history.sort((a, b) => {
+          const dateA = a.date ? new Date(`${a.date}T00:00:00`).getTime() : 0
+          const dateB = b.date ? new Date(`${b.date}T00:00:00`).getTime() : 0
+          if (dateA !== dateB) return dateA - dateB
+          return new Date(a.changed_at || a.timestamp || a.created_at || 0) - new Date(b.changed_at || b.timestamp || b.created_at || 0)
+        })
         console.log('📊 [EDIT HISTORY] First entry:', sortedHistory[0])
         setEditHistoryData(sortedHistory)
         // Only update count if history returned entries (never wipe an existing count with 0)
@@ -3808,28 +3944,22 @@ export default function MonthlyAttendanceTable() {
 
   if (loading || (user && permissions === null && !isAdmin())) {
     return (
-      <div className="flex items-center justify-center min-h-screen bg-black">
-        <div className="flex flex-col items-center">
-          <svg className="animate-spin h-8 w-8 text-blue-500 mb-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"></path>
-          </svg>
-          <span className="text-white text-lg">
-            {permissions === null ? 'Loading permissions...' : 'Loading attendance data...'}
-          </span>
+      <div className="attendance-page task-page-container">
+        <style>{attendancePageStyles}</style>
+        <div className="task-loading-spinner">
+          <div className="spinner" />
+          <p>{permissions === null ? 'Loading permissions...' : 'Loading attendance data...'}</p>
         </div>
       </div>
     )
   }
   if (error) {
     return (
-      <div className="flex items-center justify-center min-h-screen bg-black">
-        <div className="flex flex-col items-center">
-          <span className="text-red-500 text-lg mb-2">{error}</span>
-          <button
-            onClick={() => window.location.reload()}
-            className="mt-2 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
-          >
+      <div className="attendance-page task-page-container">
+        <style>{attendancePageStyles}</style>
+        <div className="task-error-state">
+          <p>{error}</p>
+          <button type="button" className="task-btn-retry" onClick={() => window.location.reload()}>
             Retry
           </button>
         </div>
@@ -3837,307 +3967,277 @@ export default function MonthlyAttendanceTable() {
     )
   }
   return (
-    <div className="w-full bg-black" style={{lineHeight:'1.5',padding:'12px 16px'}}>
-      {/* Header */}
-      <div className="bg-black" style={{marginBottom:'8px'}}>
-        <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center" style={{margin: '0', padding: '0'}}>
-          {/* Tab switcher: Attendance | Leave Management */}
-          <div style={{display:'flex',background:'#09090b',border:'1px solid #27272a',borderRadius:'8px',overflow:'hidden',gap:0}}>
-            <button
-              onClick={() => setPageTab('attendance')}
-              style={{padding:'6px 16px',fontSize:'12px',fontWeight:700,border:'none',cursor:'pointer',background:pageTab==='attendance'?'#0ea5e9':'transparent',color:pageTab==='attendance'?'#000':'#a1a1aa',transition:'all 0.2s',fontFamily:'inherit',display:'flex',alignItems:'center',gap:'6px'}}
-            >
-              📅 Attendance
+    <div className="attendance-page task-page-container">
+      <style>{attendancePageStyles}</style>
+
+      <div className="task-top-bar">
+        <div className="task-top-bar-left">
+          <h1>Attendance</h1>
+          <p>{months[selectedMonth - 1]} {selectedYear} · {statsCount} employee{statsCount !== 1 ? 's' : ''}</p>
+        </div>
+        <div className="task-top-bar-right">
+          <div className="attendance-month-nav">
+            <button type="button" className="task-btn-secondary" style={{ padding: '4px 6px' }} onClick={() => navigateMonth('prev')} aria-label="Previous month">
+              <ChevronLeft className="h-4 w-4" />
             </button>
-            {canShowLeaveManagement && (
-              <button
-                onClick={() => setPageTab('leave')}
-                style={{padding:'6px 16px',fontSize:'12px',fontWeight:700,border:'none',cursor:'pointer',background:pageTab==='leave'?'#10b981':'transparent',color:pageTab==='leave'?'#000':'#a1a1aa',transition:'all 0.2s',fontFamily:'inherit',display:'flex',alignItems:'center',gap:'6px'}}
-              >
-                📋 Leave Management
-              </button>
-            )}
-          </div>
-
-          <div className="flex items-center gap-1">
-            <div className="flex items-center gap-1">
-              <button
-                onClick={() => navigateMonth("prev")}
-                className="border border-gray-600 bg-black text-white hover:bg-gray-800 px-2 py-0.5 rounded-md transition-colors"
-              >
-                <ChevronLeft className="h-4 w-4" />
-              </button>
-                <div className="flex items-center gap-1 min-w-[200px] justify-center">
-                  <Calendar className="h-4 w-4 text-gray-400" />
-                  <span className="font-semibold text-xs text-white">
-                    {months[selectedMonth - 1]} {selectedYear}
-                  </span>
-              </div>
-              <button
-                onClick={() => navigateMonth("next")}
-                className="border border-gray-600 bg-black text-white hover:bg-gray-800 px-2 py-0.5 rounded-md transition-colors"
-              >
-                <ChevronRight className="h-4 w-4" />
-              </button>
-            </div>
-
-            {canViewAllRecords() && (
-              <button
-                onClick={() => setHolidayModalOpen(true)}
-                className="border border-gray-600 bg-black text-white hover:bg-gray-800 px-2 py-0.5 rounded-md transition-colors flex items-center gap-1 text-xs"
-              >
-                <Calendar className="h-3 w-3 mr-1" />
-                Holidays
-              </button>
-            )}
-
-            <button
-              onClick={() => exportToPDF(attendanceData, selectedYear, selectedMonth, holidays).catch(e => alert('Export failed: ' + e.message))}
-              className="border border-gray-600 bg-black text-white hover:bg-gray-800 px-2 py-0.5 rounded-md transition-colors flex items-center gap-1 text-xs"
-            >
-              <Download className="h-3 w-3 mr-1" />
-              Export Excel
+            <span className="attendance-month-label">
+              <Calendar className="h-4 w-4" style={{ color: '#6b7a99' }} />
+              {months[selectedMonth - 1]} {selectedYear}
+            </span>
+            <button type="button" className="task-btn-secondary" style={{ padding: '4px 6px' }} onClick={() => navigateMonth('next')} aria-label="Next month">
+              <ChevronRight className="h-4 w-4" />
             </button>
           </div>
+          {canViewAllRecords() && (
+            <button type="button" className="task-btn-secondary" onClick={() => setHolidayModalOpen(true)}>
+              <Calendar className="h-4 w-4" /> Holidays
+            </button>
+          )}
+          <button
+            type="button"
+            className="task-btn-secondary"
+            onClick={() => exportToPDF(attendanceData, selectedYear, selectedMonth, holidays).catch(e => alert('Export failed: ' + e.message))}
+          >
+            <Download className="h-4 w-4" /> Export Excel
+          </button>
         </div>
       </div>
 
-      {/* ── Leave Management Tab ── */}
+      <div className="task-view-toggle-bar">
+        <div className="task-view-toggle-group">
+          <button
+            type="button"
+            className={`task-view-toggle-btn${pageTab === 'attendance' ? ' active' : ''}`}
+            onClick={() => setPageTab('attendance')}
+          >
+            Attendance
+          </button>
+          {canShowLeaveManagement && (
+            <button
+              type="button"
+              className={`task-view-toggle-btn${pageTab === 'leave' ? ' active' : ''}`}
+              onClick={() => setPageTab('leave')}
+            >
+              Leave Management
+            </button>
+          )}
+        </div>
+        {pageTab === 'attendance' && (
+          <div className="task-toolbar-right">
+            <div className="task-search-box--in-bar">
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={e => { setSearchQuery(e.target.value); setEmpDropdownOpen(true) }}
+                placeholder="Search by name or employee ID..."
+                onFocus={() => setEmpDropdownOpen(true)}
+                onBlur={() => setTimeout(() => setEmpDropdownOpen(false), 160)}
+              />
+              <span className="search-icon">
+                <svg style={{width:'14px',height:'14px'}} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-4.35-4.35M17 11A6 6 0 1 1 5 11a6 6 0 0 1 12 0z"/></svg>
+              </span>
+              {empDropdownOpen && (() => {
+                const q = searchQuery.trim().toLowerCase()
+                const empList = attendanceData.filter(r =>
+                  !q || r.name?.toLowerCase().includes(q) || String(r.employeeId || '').toLowerCase().includes(q)
+                )
+                return empList.length > 0 ? (
+                  <div className="attendance-filter-menu" style={{ maxHeight: '220px', overflowY: 'auto' }}>
+                    {empList.map(r => (
+                      <div
+                        key={r.mongoId || r.id}
+                        className="attendance-filter-option"
+                        onMouseDown={() => { setSearchQuery(r.name); setEmpDropdownOpen(false) }}
+                        style={{ display: 'flex', alignItems: 'center', gap: '8px' }}
+                      >
+                        <span style={{color:'#4a5570',minWidth:'36px',fontSize:'11px'}}>#{r.employeeId || '—'}</span>
+                        <span>{r.name}</span>
+                        {r.department && <span style={{marginLeft:'auto',color:'#6b7a99',fontSize:'11px'}}>{r.department}</span>}
+                      </div>
+                    ))}
+                  </div>
+                ) : null
+              })()}
+            </div>
+            <div className="attendance-filter-dropdown">
+              <div
+                className={`attendance-filter-trigger${teamFilter ? '' : ' placeholder'}${teamDropdownOpen ? ' open' : ''}`}
+                onClick={() => { setTeamDropdownOpen(o => !o); setTeamSearchText('') }}
+                onBlur={e => { if (!e.currentTarget.contains(e.relatedTarget)) setTimeout(() => setTeamDropdownOpen(false), 160) }}
+                tabIndex={0}
+              >
+                {teamFilter || 'All Teams'}
+                <svg className={`attendance-filter-chevron${teamDropdownOpen ? ' open' : ''}`} style={{width:'10px',height:'10px'}} fill="none" stroke="currentColor" viewBox="0 0 10 6"><path d="M1 1l4 4 4-4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
+              </div>
+              {teamDropdownOpen && (
+                <div className="attendance-filter-menu">
+                  <div className="attendance-filter-menu-search">
+                    <input
+                      autoFocus
+                      type="text"
+                      value={teamSearchText}
+                      onChange={e => setTeamSearchText(e.target.value)}
+                      placeholder="Search team..."
+                    />
+                  </div>
+                  <div style={{maxHeight:'200px',overflowY:'auto'}}>
+                    {[{label:'All Teams', value:''}, ...allTeams.map(t => ({label:t, value:t}))]
+                      .filter(opt => !teamSearchText.trim() || opt.label.toLowerCase().includes(teamSearchText.trim().toLowerCase()))
+                      .map(opt => (
+                        <div
+                          key={opt.value || '__all__'}
+                          className={`attendance-filter-option${opt.value === teamFilter ? ' selected' : ''}`}
+                          onMouseDown={() => { setTeamFilter(opt.value); setTeamDropdownOpen(false) }}
+                        >
+                          {opt.label}
+                        </div>
+                      ))
+                    }
+                  </div>
+                </div>
+              )}
+            </div>
+            <div className="attendance-filter-dropdown" style={{ minWidth: '150px' }}>
+              <div
+                className={`attendance-filter-trigger${empStatusFilter !== 'all' ? '' : ' placeholder'}${empStatusDropdownOpen ? ' open' : ''}`}
+                onClick={() => setEmpStatusDropdownOpen(o => !o)}
+                onBlur={e => { if (!e.currentTarget.contains(e.relatedTarget)) setTimeout(() => setEmpStatusDropdownOpen(false), 160) }}
+                tabIndex={0}
+              >
+                {empStatusFilter === 'all' ? 'All Employees' : empStatusFilter === 'active' ? 'Active Only' : 'Inactive Only'}
+                <svg className={`attendance-filter-chevron${empStatusDropdownOpen ? ' open' : ''}`} style={{width:'10px',height:'10px'}} fill="none" stroke="currentColor" viewBox="0 0 10 6"><path d="M1 1l4 4 4-4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
+              </div>
+              {empStatusDropdownOpen && (
+                <div className="attendance-filter-menu">
+                  <div style={{maxHeight:'200px',overflowY:'auto'}}>
+                    {[{label:'All Employees', value:'all'}, {label:'Active Only', value:'active'}, {label:'Inactive Only', value:'inactive'}]
+                      .map(opt => (
+                        <div
+                          key={opt.value}
+                          className={`attendance-filter-option${opt.value === empStatusFilter ? ' selected' : ''}`}
+                          onMouseDown={() => { setEmpStatusFilter(opt.value); setEmpStatusDropdownOpen(false) }}
+                        >
+                          {opt.label}
+                        </div>
+                      ))
+                    }
+                  </div>
+                </div>
+              )}
+            </div>
+            <div className="attendance-filter-meta">
+              {filteredData.length} / {attendanceData.length}
+            </div>
+          </div>
+        )}
+      </div>
+
       {pageTab === 'leave' && (
-        <div style={{marginTop:'12px'}}>
+        <div className="attendance-page-content">
           <PaidLeaveManagement />
         </div>
       )}
 
-      {/* ── Attendance Tab content ── */}
       {pageTab === 'attendance' && <>
+      <div className="attendance-page-content">
       {/* Legend */}
-      <div style={{display:'flex',justifyContent:'center',gap:'24px',marginBottom:'20px',marginTop:'8px',fontSize:'11px',fontWeight:700,letterSpacing:'0.5px',flexWrap:'wrap',padding:'6px 0'}}>
-        <div style={{display:'flex',alignItems:'center',gap:'8px'}}>
+      <div className="attendance-legend">
+        <div className="attendance-legend-item">
           <span style={{width:'32px',height:'20px',display:'inline-flex',alignItems:'center',justifyContent:'center',borderRadius:'12px',backgroundColor:'#10b981',color:'#000',fontWeight:700,fontSize:'11px'}}>1</span>
-          <span style={{color:'#a1a1aa',fontSize:'11px',fontWeight:700,letterSpacing:'0.5px'}}>FULL DAY</span>
+          <span className="attendance-legend-label">Full Day</span>
         </div>
-        <div style={{display:'flex',alignItems:'center',gap:'8px'}}>
+        <div className="attendance-legend-item">
           <span style={{width:'32px',height:'20px',display:'inline-flex',alignItems:'center',justifyContent:'center',borderRadius:'12px',backgroundColor:'#ffdd00',color:'#000',fontWeight:700,fontSize:'11px'}}>0.5</span>
-          <span style={{color:'#a1a1aa',fontSize:'11px',fontWeight:700,letterSpacing:'0.5px'}}>HALF DAY</span>
+          <span className="attendance-legend-label">Half Day</span>
         </div>
-        <div style={{display:'flex',alignItems:'center',gap:'8px'}}>
+        <div className="attendance-legend-item">
           <span style={{width:'32px',height:'20px',display:'inline-flex',alignItems:'center',justifyContent:'center',borderRadius:'12px',backgroundColor:'#ffffff',color:'#000',fontWeight:700,fontSize:'11px'}}>0</span>
-          <span style={{color:'#a1a1aa',fontSize:'11px',fontWeight:700,letterSpacing:'0.5px'}}>ABSENT</span>
+          <span className="attendance-legend-label">Absent</span>
         </div>
-        <div style={{display:'flex',alignItems:'center',gap:'8px'}}>
+        <div className="attendance-legend-item">
           <span style={{width:'32px',height:'20px',display:'inline-flex',alignItems:'center',justifyContent:'center',borderRadius:'12px',backgroundColor:'#ff7b00',color:'#000',fontWeight:700,fontSize:'11px'}}>0</span>
-          <span style={{color:'#a1a1aa',fontSize:'11px',fontWeight:700,letterSpacing:'0.5px'}}>LEAVE</span>
+          <span className="attendance-legend-label">Leave</span>
         </div>
-        <div style={{display:'flex',alignItems:'center',gap:'8px'}}>
+        <div className="attendance-legend-item">
           <span style={{width:'32px',height:'20px',display:'inline-flex',alignItems:'center',justifyContent:'center',borderRadius:'12px',backgroundColor:'#ff2a2a',color:'#fff',fontWeight:700,fontSize:'11px'}}>-1</span>
-          <span style={{color:'#a1a1aa',fontSize:'11px',fontWeight:700,letterSpacing:'0.5px'}}>ABSCONDING</span>
+          <span className="attendance-legend-label">Absconding</span>
         </div>
-        <div style={{display:'flex',alignItems:'center',gap:'8px'}}>
+        <div className="attendance-legend-item">
           <span style={{width:'32px',height:'20px',display:'inline-flex',alignItems:'center',justifyContent:'center',borderRadius:'12px',backgroundColor:'#06b6d4',color:'#000',fontWeight:700,fontSize:'11px'}}>1</span>
-          <span style={{color:'#a1a1aa',fontSize:'11px',fontWeight:700,letterSpacing:'0.5px'}}>HOLIDAY</span>
+          <span className="attendance-legend-label">Holiday</span>
         </div>
-        <div style={{display:'flex',alignItems:'center',gap:'8px'}}>
+        <div className="attendance-legend-item">
           <span className="animate-pulse" style={{width:'32px',height:'20px',display:'inline-flex',alignItems:'center',justifyContent:'center',borderRadius:'12px',backgroundColor:'#3b82f6',color:'#fff',fontWeight:700,fontSize:'11px'}}>IN</span>
-          <span style={{color:'#a1a1aa',fontSize:'11px',fontWeight:700,letterSpacing:'0.5px'}}>PUNCHED IN</span>
+          <span className="attendance-legend-label">Punched In</span>
         </div>
       </div>
 
       {/* Dashboard Stat Strip */}
-      <div style={{background:'#09090b',border:'1px solid #27272a',borderRadius:'10px',overflow:'hidden',display:'flex',flexWrap:'wrap',marginBottom:'16px',marginTop:'8px'}}>
-        <div style={{flex:'1 1 110px',padding:'10px 14px',borderRight:'1px solid #27272a'}}>
-          <div style={{fontSize:'9px',fontWeight:800,letterSpacing:'1px',textTransform:'uppercase',color:'#fff',marginBottom:'4px',whiteSpace:'nowrap'}}>Employees</div>
-          <div style={{fontSize:'20px',fontWeight:800,lineHeight:1,marginBottom:'3px',color:'#0ea5e9'}}>{statsCount}</div>
-          <div style={{fontSize:'9px',fontWeight:600,color:'rgba(255,255,255,0.65)',whiteSpace:'nowrap'}}>{months[selectedMonth-1]} {selectedYear}</div>
+      <div className="attendance-kpi-row">
+        <div className="attendance-kpi">
+          <div className="attendance-kpi-label">Employees</div>
+          <div className="attendance-kpi-val" style={{color:'#93c5fd'}}>{statsCount}</div>
+          <div className="attendance-kpi-sub">{months[selectedMonth-1]} {selectedYear}</div>
         </div>
-        <div style={{flex:'1 1 110px',padding:'10px 14px',borderRight:'1px solid #27272a'}}>
-          <div style={{fontSize:'9px',fontWeight:800,letterSpacing:'1px',textTransform:'uppercase',color:'#fff',marginBottom:'4px',whiteSpace:'nowrap'}}>Attendance</div>
-          <div style={{fontSize:'20px',fontWeight:800,lineHeight:1,marginBottom:'3px',color:'#10b981'}}>{avgAttendancePct}%</div>
-          <div style={{fontSize:'9px',fontWeight:600,color:'rgba(255,255,255,0.65)',whiteSpace:'nowrap'}}>monthly average</div>
-          <div style={{height:'2px',background:'#1f1f22',borderRadius:'2px',marginTop:'5px',overflow:'hidden'}}>
-            <div style={{height:'100%',borderRadius:'2px',background:'#10b981',width:`${Math.min(100,parseFloat(avgAttendancePct))}%`}}></div>
-          </div>
+        <div className="attendance-kpi">
+          <div className="attendance-kpi-label">Attendance</div>
+          <div className="attendance-kpi-val" style={{color:'#34d399'}}>{avgAttendancePct}%</div>
+          <div className="attendance-kpi-sub">monthly average</div>
+          <div className="attendance-kpi-bar"><div className="attendance-kpi-bar-fill" style={{background:'#34d399',width:`${Math.min(100,parseFloat(avgAttendancePct))}%`}} /></div>
         </div>
-        <div style={{flex:'1 1 130px',padding:'10px 14px',borderRight:'1px solid #27272a'}}>
-          <div style={{fontSize:'9px',fontWeight:800,letterSpacing:'1px',textTransform:'uppercase',color:'#fff',marginBottom:'4px',whiteSpace:'nowrap'}}>Present Today</div>
-          <div style={{fontSize:'20px',fontWeight:800,lineHeight:1,marginBottom:'3px',color:'#10b981',display:'flex',alignItems:'center',gap:'6px'}}>
+        <div className="attendance-kpi">
+          <div className="attendance-kpi-label">Present Today</div>
+          <div className="attendance-kpi-val" style={{color:'#34d399',display:'flex',alignItems:'center',gap:'6px'}}>
             {isCurrentMonth ? presentToday : '—'}
-            {isCurrentMonth && <span style={{fontSize:'11px',color:'#3b82f6',display:'inline-flex',alignItems:'center',gap:'3px'}}><span className="animate-pulse" style={{width:'6px',height:'6px',borderRadius:'50%',background:'#3b82f6',display:'inline-block'}}></span>IN</span>}
+            {isCurrentMonth && <span style={{fontSize:'11px',color:'#3b82f6',display:'inline-flex',alignItems:'center',gap:'3px'}}><span className="animate-pulse" style={{width:'6px',height:'6px',borderRadius:'50%',background:'#3b82f6',display:'inline-block'}} />IN</span>}
           </div>
-          <div style={{fontSize:'9px',fontWeight:600,color:'rgba(255,255,255,0.65)',whiteSpace:'nowrap'}}>out of {statsCount} employees</div>
-          <div style={{height:'2px',background:'#1f1f22',borderRadius:'2px',marginTop:'5px',overflow:'hidden'}}>
-            <div style={{height:'100%',borderRadius:'2px',background:'#10b981',width:`${statsCount>0&&isCurrentMonth?Math.min(100,(presentToday/statsCount)*100):0}%`}}></div>
-          </div>
+          <div className="attendance-kpi-sub">out of {statsCount} employees</div>
+          <div className="attendance-kpi-bar"><div className="attendance-kpi-bar-fill" style={{background:'#34d399',width:`${statsCount>0&&isCurrentMonth?Math.min(100,(presentToday/statsCount)*100):0}%`}} /></div>
         </div>
-        <div style={{flex:'1 1 110px',padding:'10px 14px',borderRight:'1px solid #27272a'}}>
-          <div style={{fontSize:'9px',fontWeight:800,letterSpacing:'1px',textTransform:'uppercase',color:'#fff',marginBottom:'4px',whiteSpace:'nowrap'}}>Absent Today</div>
-          <div style={{fontSize:'20px',fontWeight:800,lineHeight:1,marginBottom:'3px',color:'#e4e4e7'}}>{isCurrentMonth ? absentToday : '—'}</div>
-          <div style={{fontSize:'9px',fontWeight:600,color:'rgba(255,255,255,0.65)',whiteSpace:'nowrap'}}>no check-in recorded</div>
-          <div style={{height:'2px',background:'#1f1f22',borderRadius:'2px',marginTop:'5px',overflow:'hidden'}}>
-            <div style={{height:'100%',borderRadius:'2px',background:'#e4e4e7',width:`${statsCount>0&&isCurrentMonth?Math.min(100,(absentToday/statsCount)*100):0}%`}}></div>
-          </div>
+        <div className="attendance-kpi">
+          <div className="attendance-kpi-label">Absent Today</div>
+          <div className="attendance-kpi-val" style={{color:'#c8d0e0'}}>{isCurrentMonth ? absentToday : '—'}</div>
+          <div className="attendance-kpi-sub">no check-in recorded</div>
+          <div className="attendance-kpi-bar"><div className="attendance-kpi-bar-fill" style={{background:'#6b7a99',width:`${statsCount>0&&isCurrentMonth?Math.min(100,(absentToday/statsCount)*100):0}%`}} /></div>
         </div>
-        <div style={{flex:'1 1 110px',padding:'10px 14px',borderRight:'1px solid #27272a'}}>
-          <div style={{fontSize:'9px',fontWeight:800,letterSpacing:'1px',textTransform:'uppercase',color:'#fff',marginBottom:'4px',whiteSpace:'nowrap'}}>Leave Taken</div>
-          <div style={{fontSize:'20px',fontWeight:800,lineHeight:1,marginBottom:'3px',color:'#ff7b00'}}>{totalLeave}</div>
-          <div style={{fontSize:'9px',fontWeight:600,color:'rgba(255,255,255,0.65)',whiteSpace:'nowrap'}}>days this month</div>
-          <div style={{height:'2px',background:'#1f1f22',borderRadius:'2px',marginTop:'5px',overflow:'hidden'}}>
-            <div style={{height:'100%',borderRadius:'2px',background:'#ff7b00',width:`${statsCount>0?Math.min(100,(totalLeave/statsCount)*100):0}%`}}></div>
-          </div>
+        <div className="attendance-kpi">
+          <div className="attendance-kpi-label">Leave Taken</div>
+          <div className="attendance-kpi-val" style={{color:'#fb923c'}}>{totalLeave}</div>
+          <div className="attendance-kpi-sub">days this month</div>
+          <div className="attendance-kpi-bar"><div className="attendance-kpi-bar-fill" style={{background:'#fb923c',width:`${statsCount>0?Math.min(100,(totalLeave/statsCount)*100):0}%`}} /></div>
         </div>
-        <div style={{flex:'1 1 110px',padding:'10px 14px',borderRight:'1px solid #27272a'}}>
-          <div style={{fontSize:'9px',fontWeight:800,letterSpacing:'1px',textTransform:'uppercase',color:'#fff',marginBottom:'4px',whiteSpace:'nowrap'}}>Absconding</div>
-          <div style={{fontSize:'20px',fontWeight:800,lineHeight:1,marginBottom:'3px',color:'#ff2a2a'}}>{totalAbsconding}</div>
-          <div style={{fontSize:'9px',fontWeight:600,color:'rgba(255,255,255,0.65)',whiteSpace:'nowrap'}}>instances this month</div>
-          <div style={{height:'2px',background:'#1f1f22',borderRadius:'2px',marginTop:'5px',overflow:'hidden'}}>
-            <div style={{height:'100%',borderRadius:'2px',background:'#ff2a2a',width:`${statsCount>0?Math.min(100,(totalAbsconding/statsCount)*100):0}%`}}></div>
-          </div>
+        <div className="attendance-kpi">
+          <div className="attendance-kpi-label">Absconding</div>
+          <div className="attendance-kpi-val" style={{color:'#f87171'}}>{totalAbsconding}</div>
+          <div className="attendance-kpi-sub">instances this month</div>
+          <div className="attendance-kpi-bar"><div className="attendance-kpi-bar-fill" style={{background:'#f87171',width:`${statsCount>0?Math.min(100,(totalAbsconding/statsCount)*100):0}%`}} /></div>
         </div>
-        <div style={{flex:'1 1 110px',padding:'10px 14px'}}>
-          <div style={{fontSize:'9px',fontWeight:800,letterSpacing:'1px',textTransform:'uppercase',color:'#fff',marginBottom:'4px',whiteSpace:'nowrap'}}>Grace Used</div>
-          <div style={{fontSize:'20px',fontWeight:800,lineHeight:1,marginBottom:'3px',color:'#06b6d4'}}>{totalGraceUsed}</div>
-          <div style={{fontSize:'9px',fontWeight:600,color:'rgba(255,255,255,0.65)',whiteSpace:'nowrap'}}>mins consumed</div>
-          <div style={{height:'2px',background:'#1f1f22',borderRadius:'2px',marginTop:'5px',overflow:'hidden'}}>
-            <div style={{height:'100%',borderRadius:'2px',background:'#06b6d4',width:'20%'}}></div>
-          </div>
-        </div>
-      </div>
-
-      {/* Search & Filter Bar */}
-      <div style={{display:'flex',gap:'10px',marginBottom:'14px',flexWrap:'wrap',alignItems:'center'}}>
-        {/* Employee search combobox */}
-        <div style={{flex:'1',minWidth:'180px',position:'relative'}}>
-          <input
-            type="text"
-            value={searchQuery}
-            onChange={e => { setSearchQuery(e.target.value); setEmpDropdownOpen(true) }}
-            placeholder="Search by Name or Emp ID..."
-            style={{width:'100%',background:'#0d0d10',border:'1px solid ' + (empDropdownOpen ? '#0ea5e9' : '#27272a'),borderRadius:'6px',padding:'7px 12px 7px 34px',color:'white',fontFamily:'inherit',fontSize:'12px',outline:'none',boxSizing:'border-box',transition:'border-color 0.2s'}}
-            onFocus={() => setEmpDropdownOpen(true)}
-            onBlur={() => setTimeout(() => setEmpDropdownOpen(false), 160)}
-          />
-          <svg style={{position:'absolute',left:'10px',top:'50%',transform:'translateY(-50%)',width:'14px',height:'14px',color:'#a1a1aa',pointerEvents:'none'}} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-4.35-4.35M17 11A6 6 0 1 1 5 11a6 6 0 0 1 12 0z"/></svg>
-          {empDropdownOpen && (() => {
-            const q = searchQuery.trim().toLowerCase()
-            const empList = attendanceData.filter(r =>
-              !q || r.name?.toLowerCase().includes(q) || String(r.employeeId || '').toLowerCase().includes(q)
-            )
-            return empList.length > 0 ? (
-              <div style={{position:'absolute',top:'calc(100% + 4px)',left:0,right:0,background:'#121214',border:'1px solid #3f3f46',borderRadius:'6px',zIndex:1000,maxHeight:'220px',overflowY:'auto',boxShadow:'0 8px 24px rgba(0,0,0,0.7)'}}>
-                {empList.map(r => (
-                  <div
-                    key={r.mongoId || r.id}
-                    onMouseDown={() => { setSearchQuery(r.name); setEmpDropdownOpen(false) }}
-                    style={{padding:'7px 12px',cursor:'pointer',fontSize:'12px',color:'#e4e4e7',display:'flex',alignItems:'center',gap:'8px',borderBottom:'1px solid #1f1f22'}}
-                    onMouseEnter={e => e.currentTarget.style.background='#1f1f22'}
-                    onMouseLeave={e => e.currentTarget.style.background='transparent'}
-                  >
-                    <span style={{color:'#52525b',minWidth:'36px',fontSize:'11px'}}>#{r.employeeId || '—'}</span>
-                    <span>{r.name}</span>
-                    {r.department && <span style={{marginLeft:'auto',color:'#71717a',fontSize:'11px'}}>{r.department}</span>}
-                  </div>
-                ))}
-              </div>
-            ) : null
-          })()}
-        </div>
-        {/* Team searchable dropdown */}
-        <div style={{position:'relative',minWidth:'140px'}}>
-          <div
-            onClick={() => { setTeamDropdownOpen(o => !o); setTeamSearchText('') }}
-            onBlur={e => { if (!e.currentTarget.contains(e.relatedTarget)) setTimeout(() => setTeamDropdownOpen(false), 160) }}
-            tabIndex={0}
-            style={{background:'#0d0d10',border:'1px solid ' + (teamDropdownOpen ? '#0ea5e9' : '#27272a'),borderRadius:'6px',padding:'7px 28px 7px 10px',color: teamFilter ? '#e4e4e7' : '#71717a',fontFamily:'inherit',fontSize:'12px',cursor:'pointer',outline:'none',userSelect:'none',position:'relative',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}
-          >
-            {teamFilter || 'All Teams'}
-            <svg style={{position:'absolute',right:'8px',top:'50%',transform:'translateY(-50%) rotate(' + (teamDropdownOpen ? '180deg' : '0deg') + ')',width:'10px',height:'10px',color:'#a1a1aa',transition:'transform 0.2s',pointerEvents:'none'}} fill="none" stroke="currentColor" viewBox="0 0 10 6"><path d="M1 1l4 4 4-4" stroke="#a1a1aa" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
-          </div>
-          {teamDropdownOpen && (
-            <div style={{position:'absolute',top:'calc(100% + 4px)',left:0,right:0,background:'#121214',border:'1px solid #3f3f46',borderRadius:'6px',zIndex:1000,boxShadow:'0 8px 24px rgba(0,0,0,0.7)',minWidth:'160px'}}>
-              <div style={{padding:'6px 8px',borderBottom:'1px solid #27272a'}}>
-                <input
-                  autoFocus
-                  type="text"
-                  value={teamSearchText}
-                  onChange={e => setTeamSearchText(e.target.value)}
-                  placeholder="Search team..."
-                  style={{width:'100%',background:'#0d0d10',border:'1px solid #3f3f46',borderRadius:'4px',padding:'5px 8px',color:'#e4e4e7',fontFamily:'inherit',fontSize:'11px',outline:'none',boxSizing:'border-box'}}
-                />
-              </div>
-              <div style={{maxHeight:'200px',overflowY:'auto'}}>
-                {[{label:'All Teams', value:''}, ...allTeams.map(t => ({label:t, value:t}))]
-                  .filter(opt => !teamSearchText.trim() || opt.label.toLowerCase().includes(teamSearchText.trim().toLowerCase()))
-                  .map(opt => (
-                    <div
-                      key={opt.value || '__all__'}
-                      onMouseDown={() => { setTeamFilter(opt.value); setTeamDropdownOpen(false) }}
-                      style={{padding:'7px 12px',cursor:'pointer',fontSize:'12px',color: opt.value === teamFilter ? '#38bdf8' : '#e4e4e7',background: opt.value === teamFilter ? 'rgba(56,189,248,0.08)' : 'transparent',borderBottom:'1px solid #1f1f22'}}
-                      onMouseEnter={e => { if(opt.value !== teamFilter) e.currentTarget.style.background='#1f1f22' }}
-                      onMouseLeave={e => { if(opt.value !== teamFilter) e.currentTarget.style.background='transparent' }}
-                    >
-                      {opt.label}
-                    </div>
-                  ))
-                }
-              </div>
-            </div>
-          )}
-        </div>
-        {/* Employee Status filter dropdown */}
-        <div style={{position:'relative',flexShrink:0,minWidth:'120px'}}>
-          <div
-            onClick={() => setEmpStatusDropdownOpen(o => !o)}
-            onBlur={e => { if (!e.currentTarget.contains(e.relatedTarget)) setTimeout(() => setEmpStatusDropdownOpen(false), 160) }}
-            tabIndex={0}
-            style={{background:'#0d0d10',border:'1px solid ' + (empStatusDropdownOpen ? '#0ea5e9' : '#27272a'),borderRadius:'6px',padding:'7px 28px 7px 10px',color: empStatusFilter !== 'all' ? '#e4e4e7' : '#71717a',fontFamily:'inherit',fontSize:'12px',cursor:'pointer',outline:'none',userSelect:'none',position:'relative',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}
-          >
-            {empStatusFilter === 'all' ? 'All Employees' : empStatusFilter === 'active' ? 'Active Only' : 'Inactive Only'}
-            <svg style={{position:'absolute',right:'8px',top:'50%',transform:'translateY(-50%) rotate(' + (empStatusDropdownOpen ? '180deg' : '0deg') + ')',width:'10px',height:'10px',color:'#a1a1aa',transition:'transform 0.2s',pointerEvents:'none'}} fill="none" stroke="currentColor" viewBox="0 0 10 6"><path d="M1 1l4 4 4-4" stroke="#a1a1aa" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
-          </div>
-          {empStatusDropdownOpen && (
-            <div style={{position:'absolute',top:'calc(100% + 4px)',left:0,right:0,background:'#121214',border:'1px solid #3f3f46',borderRadius:'6px',zIndex:1000,boxShadow:'0 8px 24px rgba(0,0,0,0.7)',minWidth:'140px'}}>
-              <div style={{maxHeight:'200px',overflowY:'auto'}}>
-                {[{label:'All Employees', value:'all'}, {label:'Active Only', value:'active'}, {label:'Inactive Only', value:'inactive'}]
-                  .map(opt => (
-                    <div
-                      key={opt.value}
-                      onMouseDown={() => { setEmpStatusFilter(opt.value); setEmpStatusDropdownOpen(false) }}
-                      style={{padding:'7px 12px',cursor:'pointer',fontSize:'12px',color: opt.value === empStatusFilter ? '#38bdf8' : '#e4e4e7',background: opt.value === empStatusFilter ? 'rgba(56,189,248,0.08)' : 'transparent',borderBottom:'1px solid #1f1f22'}}
-                      onMouseEnter={e => { if(opt.value !== empStatusFilter) e.currentTarget.style.background='#1f1f22' }}
-                      onMouseLeave={e => { if(opt.value !== empStatusFilter) e.currentTarget.style.background='transparent' }}
-                    >
-                      {opt.label}
-                    </div>
-                  ))
-                }
-              </div>
-            </div>
-          )}
-        </div>
-        {/* Results count */}
-        <div style={{fontSize:'11px',color:'#52525b',marginLeft:'auto',whiteSpace:'nowrap'}}>
-          {filteredData.length} / {attendanceData.length}
+        <div className="attendance-kpi">
+          <div className="attendance-kpi-label">Grace Used</div>
+          <div className="attendance-kpi-val" style={{color:'#22d3ee'}}>{totalGraceUsed}</div>
+          <div className="attendance-kpi-sub">mins consumed</div>
+          <div className="attendance-kpi-bar"><div className="attendance-kpi-bar-fill" style={{background:'#22d3ee',width:'20%'}} /></div>
         </div>
       </div>
 
       {/* Attendance Table */}
-      <div style={{background:'#000',border:'1px solid #27272a',borderRadius:'4px',overflow:'hidden',marginTop:'0'}}>
-        {/* Scroll navigation — sits above the table, no overlap */}
-        <div style={{display:'flex',alignItems:'center',justifyContent:'flex-end',gap:'4px',padding:'4px 8px',borderBottom:'1px solid #1a1a1a',background:'#09090b'}}>
-          <span style={{fontSize:'10px',color:'#52525b',marginRight:'auto'}}>← scroll →</span>
+      <div className="attendance-table-shell">
+        <div className="attendance-table-scroll-bar">
           <button
+            type="button"
+            className="attendance-table-scroll-btn"
             onClick={() => scrollTable('left')}
             disabled={!canScrollLeft}
             aria-label="Scroll left"
-            style={{background:canScrollLeft?'#1f1f22':'transparent',border:'1px solid #27272a',borderRadius:'4px',color:canScrollLeft?'#fff':'#3f3f3f',cursor:canScrollLeft?'pointer':'default',padding:'3px 8px',fontSize:'12px',display:'flex',alignItems:'center',gap:'2px',transition:'all 0.2s'}}
           >
             <ChevronLeft style={{width:'12px',height:'12px'}} />
           </button>
           <button
+            type="button"
+            className="attendance-table-scroll-btn"
             onClick={() => scrollTable('right')}
             disabled={!canScrollRight}
             aria-label="Scroll right"
-            style={{background:canScrollRight?'#1f1f22':'transparent',border:'1px solid #27272a',borderRadius:'4px',color:canScrollRight?'#fff':'#3f3f3f',cursor:canScrollRight?'pointer':'default',padding:'3px 8px',fontSize:'12px',display:'flex',alignItems:'center',gap:'2px',transition:'all 0.2s'}}
           >
             <ChevronRight style={{width:'12px',height:'12px'}} />
           </button>
@@ -4152,7 +4252,7 @@ export default function MonthlyAttendanceTable() {
             <thead>
               {/* Row 1: main headers */}
               <tr>
-                <th colSpan={3} className="sticky left-0 z-[4]" style={{backgroundColor:'#ffffff',color:'#0ea5e9',padding:'10px',textAlign:'center',fontWeight:800,fontSize:'13px',border:'1px solid #27272a',borderRight:'2px solid #27272a'}}>
+                <th colSpan={3} className="sticky left-0 z-[4] attendance-table-head-group" style={{padding:'10px',textAlign:'center',fontSize:'13px',borderRight:'2px solid #e5e7eb'}}>
                   Employee Details
                 </th>
                 {Array.from({ length: visibleDays }, (_, i) => i + 1).map((day) => {
@@ -4161,20 +4261,21 @@ export default function MonthlyAttendanceTable() {
                   const isHoliday = holidays.some(h => h.date === dateStr)
                   const isSunday = dayName === 'Sun'
                   
-                  // Sunday → purple, Holiday → cyan, Normal → white
-                  const headerBg = isSunday ? '#7c3aed' : isHoliday ? '#06b6d4' : '#ffffff'
-                  const headerColor = (isSunday || isHoliday) ? '#ffffff' : '#0ea5e9'
+                  // Leads-style header: white background + cyan text
+                  const headerBg = '#ffffff'
+                  const headerColor = '#03b0f5'
                   
                   return (
                     <th
                       key={day}
                       rowSpan={2}
+                      className="attendance-table-head-day"
                       style={{
                         backgroundColor: headerBg,
                         color: headerColor,
                         padding: '6px 4px',
                         minWidth: '34px',
-                        border: isSunday ? '1px solid #5b21b6' : '1px solid #1f1f22',
+                        border: '1px solid #e5e7eb',
                         fontWeight: 800,
                         textAlign: 'center',
                         verticalAlign: 'middle',
@@ -4187,29 +4288,29 @@ export default function MonthlyAttendanceTable() {
                     </th>
                   )
                 })}
-                <th colSpan={8} style={{backgroundColor:'#ffffff',color:'#0ea5e9',padding:'10px',textAlign:'center',fontWeight:800,fontSize:'13px',border:'1px solid #27272a'}}>
+                <th colSpan={canViewSalary ? 8 : 6} className="attendance-table-head-group" style={{padding:'10px',textAlign:'center',fontSize:'13px'}}>
                   Summary
                 </th>
               </tr>
               {/* Row 2: sub-columns for Employee Details + Summary */}
-              <tr style={{backgroundColor:'#0c0c0e'}}>
-                <th className="cursor-pointer select-none" style={{position:'sticky',left:0,zIndex:3,backgroundColor:'#0d0d11',color:'#0ea5e9',padding:'8px 10px',textAlign:'left',border:'1px solid #1f1f22',minWidth:'90px',width:'90px',boxSizing:'border-box'}} onClick={() => handleSort('employeeId')}>
+              <tr style={{backgroundColor:'#ffffff'}}>
+                <th className="cursor-pointer select-none attendance-table-head-col sortable" style={{position:'sticky',left:0,zIndex:3,padding:'8px 10px',textAlign:'left',minWidth:'90px',width:'90px',boxSizing:'border-box'}} onClick={() => handleSort('employeeId')}>
                   <span style={{display:'flex',alignItems:'center',gap:'4px'}}>Emp ID <span style={{opacity:sortConfig.key==='employeeId'?1:0.4}}>{sortConfig.key==='employeeId'?(sortConfig.dir==='asc'?'↑':'↓'):'⇅'}</span></span>
                 </th>
-                <th className="cursor-pointer select-none" style={{position:'sticky',left:'90px',zIndex:3,backgroundColor:'#0d0d11',color:'#ffffff',padding:'8px 10px',textAlign:'left',border:'1px solid #1f1f22',minWidth:'150px',width:'150px',boxSizing:'border-box'}} onClick={() => handleSort('name')}>
+                <th className="cursor-pointer select-none attendance-table-head-col sortable" style={{position:'sticky',left:'90px',zIndex:3,padding:'8px 10px',textAlign:'left',minWidth:'150px',width:'150px',boxSizing:'border-box'}} onClick={() => handleSort('name')}>
                   <span style={{display:'flex',alignItems:'center',gap:'4px'}}>Name <span style={{opacity:sortConfig.key==='name'?1:0.4}}>{sortConfig.key==='name'?(sortConfig.dir==='asc'?'↑':'↓'):'⇅'}</span></span>
                 </th>
-                <th className="cursor-pointer select-none" style={{position:'sticky',left:'240px',zIndex:3,backgroundColor:'#0d0d11',color:'#0ea5e9',padding:'8px 10px',textAlign:'left',border:'1px solid #1f1f22',borderRight:'2px solid #3a3a42',minWidth:'130px',width:'130px',boxSizing:'border-box',boxShadow:'3px 0 8px rgba(0,0,0,0.8)'}} onClick={() => handleSort('department')}>
+                <th className="cursor-pointer select-none attendance-table-head-col sortable" style={{position:'sticky',left:'240px',zIndex:3,padding:'8px 10px',textAlign:'left',borderRight:'2px solid #e5e7eb',minWidth:'130px',width:'130px',boxSizing:'border-box',boxShadow:'3px 0 8px rgba(0,0,0,0.08)'}} onClick={() => handleSort('department')}>
                   <span style={{display:'flex',alignItems:'center',gap:'4px'}}>Team <span style={{opacity:sortConfig.key==='department'?1:0.4}}>{sortConfig.key==='department'?(sortConfig.dir==='asc'?'↑':'↓'):'⇅'}</span></span>
                 </th>
-                <th style={{backgroundColor:'#0c0c0e',color:'#ffdd00',fontSize:'10px',fontWeight:700,textTransform:'uppercase',letterSpacing:'0.5px',border:'1px solid #1f1f22',minWidth:'50px',padding:'6px'}}>EDIT</th>
-                <th style={{backgroundColor:'#0c0c0e',color:'#06b6d4',fontSize:'10px',fontWeight:700,textTransform:'uppercase',letterSpacing:'0.5px',border:'1px solid #1f1f22',minWidth:'60px',padding:'6px'}}>present</th>
-                <th style={{backgroundColor:'#0c0c0e',color:'#ffffff',fontSize:'10px',fontWeight:700,textTransform:'uppercase',letterSpacing:'0.5px',border:'1px solid #1f1f22',minWidth:'60px',padding:'6px'}}>Grace</th>
-                <th style={{backgroundColor:'#0c0c0e',color:'#d946ef',fontSize:'10px',fontWeight:700,textTransform:'uppercase',letterSpacing:'0.5px',border:'1px solid #1f1f22',minWidth:'50px',padding:'6px'}}>PL</th>
-                <th style={{backgroundColor:'#0c0c0e',color:'#ffdd00',fontSize:'10px',fontWeight:700,textTransform:'uppercase',letterSpacing:'0.5px',border:'1px solid #1f1f22',minWidth:'50px',padding:'6px'}}>EL</th>
-                <th style={{backgroundColor:'#0c0c0e',color:'#ffdd00',fontSize:'10px',fontWeight:700,textTransform:'uppercase',letterSpacing:'0.5px',border:'1px solid #1f1f22',minWidth:'60px',padding:'6px'}}>FINAL</th>
-                <th style={{backgroundColor:'#0c0c0e',color:'#ff2a2a',fontSize:'10px',fontWeight:700,textTransform:'uppercase',letterSpacing:'0.5px',border:'1px solid #1f1f22',minWidth:'75px',padding:'6px'}}>DEDUCTION</th>
-                <th style={{backgroundColor:'#0c0c0e',color:'#10b981',fontSize:'10px',fontWeight:700,textTransform:'uppercase',letterSpacing:'0.5px',border:'1px solid #1f1f22',minWidth:'75px',padding:'6px'}}>SALARY</th>
+                <th className="attendance-table-head-col" style={{minWidth:'50px',padding:'6px'}}>Edit</th>
+                <th className="attendance-table-head-col" style={{minWidth:'60px',padding:'6px'}}>Present</th>
+                <th className="attendance-table-head-col" style={{minWidth:'60px',padding:'6px'}}>Grace</th>
+                <th className="attendance-table-head-col" style={{minWidth:'50px',padding:'6px'}}>PL</th>
+                <th className="attendance-table-head-col" style={{minWidth:'50px',padding:'6px'}}>EL</th>
+                <th className="attendance-table-head-col" style={{minWidth:'60px',padding:'6px'}}>Final</th>
+                {canViewSalary && <th className="attendance-table-head-col" style={{minWidth:'75px',padding:'6px'}}>Deduction</th>}
+                {canViewSalary && <th className="attendance-table-head-col" style={{minWidth:'75px',padding:'6px'}}>Salary</th>}
               </tr>
             </thead>
             <tbody className="bg-black">
@@ -4233,16 +4334,16 @@ export default function MonthlyAttendanceTable() {
                 return (
                   <tr
                     key={record.id}
-                    className="hover:bg-[#0a0a0c] transition-colors"
-                    style={{borderBottom:'1px solid #1f1f22'}}
+                    className="hover:bg-[#13131c] transition-colors"
+                    style={{borderBottom:'1px solid #1f1f27'}}
                   >
-                    <td className="sticky left-0 z-[2] cursor-pointer" style={{backgroundColor:'#0a0a0d',padding:'6px 12px',border:'1px solid #2a2a30',color:'#0ea5e9',fontWeight:600,fontSize:'11px',minWidth:'90px',width:'90px',boxSizing:'border-box',boxShadow:'2px 0 0 0 #2a2a30'}} onClick={() => handleEmployeeClick(record)}>
+                    <td className="sticky left-0 z-[2] cursor-pointer" style={{backgroundColor:'#000',padding:'6px 12px',border:'1px solid #1f1f27',color:'#ffffff',fontWeight:700,fontSize:'11px',minWidth:'90px',width:'90px',boxSizing:'border-box',boxShadow:'2px 0 0 0 #2a2a3a'}} onClick={() => handleEmployeeClick(record)}>
                       {record.employeeId}
                     </td>
-                    <td className="sticky z-[2] cursor-pointer" style={{left:'90px',backgroundColor:'#0a0a0d',padding:'6px 12px',border:'1px solid #2a2a30',color:'#ffffff',fontWeight:700,fontSize:'11px',letterSpacing:'0.3px',minWidth:'150px',width:'150px',boxSizing:'border-box'}} onClick={() => handleEmployeeClick(record)}>
+                    <td className="sticky z-[2] cursor-pointer" style={{left:'90px',backgroundColor:'#000',padding:'6px 12px',border:'1px solid #1f1f27',color:'#ffffff',fontWeight:700,fontSize:'11px',letterSpacing:'0.2px',minWidth:'150px',width:'150px',boxSizing:'border-box'}} onClick={() => handleEmployeeClick(record)}>
                       {record.name}
                     </td>
-                    <td className="sticky z-[2]" style={{left:'240px',backgroundColor:'#0a0a0d',padding:'6px 12px',border:'1px solid #2a2a30',borderRight:'2px solid #3a3a42',color:'rgba(255,255,255,0.75)',fontWeight:700,fontSize:'9px',textTransform:'uppercase',letterSpacing:'0.5px',minWidth:'130px',width:'130px',boxSizing:'border-box',boxShadow:'3px 0 8px rgba(0,0,0,0.8)'}}>
+                    <td className="sticky z-[2]" style={{left:'240px',backgroundColor:'#000',padding:'6px 12px',border:'1px solid #1f1f27',borderRight:'2px solid #2a2a3a',color:'#ffffff',fontWeight:600,fontSize:'10px',textTransform:'uppercase',letterSpacing:'0.4px',minWidth:'130px',width:'130px',boxSizing:'border-box',boxShadow:'3px 0 8px rgba(0,0,0,0.8)'}}>
                       {record.department}
                     </td>
                     {Array.from({ length: visibleDays }, (_, i) => i + 1).map((day) => {
@@ -4282,37 +4383,37 @@ export default function MonthlyAttendanceTable() {
                         </td>
                       )
                     })}
-                    <td
-                      className="px-2 py-1 text-center cursor-pointer hover:bg-gray-700 transition-colors"
-                      style={{border:'1px solid #1f1f22'}}
-                      onClick={() => handleEditHistoryClick(record)}
-                    >
+                    <td className="px-2 py-1 text-center cursor-pointer hover:bg-gray-700 transition-colors" style={{border:'1px solid #1f1f27'}} onClick={() => handleEditHistoryClick(record)}>
                       <span style={{width:'20px',height:'20px',background:'#ffdd00',color:'#000',borderRadius:'50%',fontSize:'10px',fontWeight:700,display:'inline-flex',alignItems:'center',justifyContent:'center'}}>
                         {editCounts[record.id] || 0}
                       </span>
                     </td>
-                    <td className="px-2 py-1 text-center font-bold text-sm" style={{border:'1px solid #1f1f22',color:'#10b981'}}>{Math.max(0, stats.actualPresent)}</td>
-                    <td className="px-2 py-1 text-center font-bold text-sm" style={{border:'1px solid #1f1f22',color:'#e5e5e5'}}>{stats.graceRemaining}/{stats.graceTotal}</td>
-                    <td className="px-2 py-1 text-center font-bold text-sm" style={{border:'1px solid #1f1f22',color:'#a1a1aa'}}>{stats.plDays}</td>
-                    <td className="px-2 py-1 text-center font-bold text-sm" style={{border:'1px solid #1f1f22',color:'#a1a1aa'}}>{stats.elDays}</td>
-                    <td className="px-2 py-1 text-center font-bold text-sm" style={{border:'1px solid #1f1f22',color:'#ffdd00'}}>{stats.finalScore}</td>
-                    <td
-                      className="px-2 py-1 text-center font-bold text-sm cursor-pointer hover:bg-red-900/20 transition-colors"
-                      style={{border:'1px solid #1f1f22',color: totalDeduction > 0 ? '#ff2a2a' : '#4b5563'}}
-                      title={totalDeduction > 0 ? `Warning fine: ₹${totalDeduction.toLocaleString('en-IN')} — click for details` : 'No warning fines'}
-                      onClick={() => handleDeductionClick(record, stats, calculatedSalary)}
-                    >
-                      ₹{totalDeduction.toLocaleString('en-IN')}
-                      {warningFine > 0 && <span style={{display:'block',fontSize:'9px',color:'#ef4444',fontWeight:600}}>⚠ fine</span>}
-                    </td>
-                    <td
-                      className="px-2 py-1 text-center font-bold text-sm cursor-pointer hover:bg-gray-700 transition-colors"
-                      style={{border:'1px solid #1f1f22',color: warningFine > 0 ? '#f59e0b' : '#10b981'}}
-                      onClick={() => handleSalaryClick(record, stats, calculatedSalary)}
-                    >
-                      ₹{netSalary.toLocaleString('en-IN')}
-                      {warningFine > 0 && <span style={{display:'block',fontSize:'9px',color:'#f59e0b',fontWeight:600}}>net pay</span>}
-                    </td>
+                    <td className="px-2 py-1 text-center text-sm" style={{border:'1px solid #1f1f27',color:'#ffffff',fontWeight:700}}>{Math.max(0, stats.actualPresent)}</td>
+                    <td className="px-2 py-1 text-center text-sm" style={{border:'1px solid #1f1f27',color:'#ffffff',fontWeight:700}}>{stats.graceRemaining}/{stats.graceTotal}</td>
+                    <td className="px-2 py-1 text-center text-sm" style={{border:'1px solid #1f1f27',color:'#ffffff',fontWeight:700}}>{stats.plDays}</td>
+                    <td className="px-2 py-1 text-center text-sm" style={{border:'1px solid #1f1f27',color:'#ffffff',fontWeight:700}}>{stats.elDays}</td>
+                    <td className="px-2 py-1 text-center text-sm" style={{border:'1px solid #1f1f27',color:'#ffffff',fontWeight:700}}>{stats.finalScore}</td>
+                    {canViewSalary && (
+                      <td
+                        className="px-2 py-1 text-center text-sm cursor-pointer hover:bg-red-900/20 transition-colors"
+                        style={{border:'1px solid #1f1f27',color:'#ffffff',fontWeight:700}}
+                        title={totalDeduction > 0 ? `Warning fine: ₹${totalDeduction.toLocaleString('en-IN')} — click for details` : 'No warning fines'}
+                        onClick={() => handleDeductionClick(record, stats, calculatedSalary)}
+                      >
+                        ₹{totalDeduction.toLocaleString('en-IN')}
+                        {warningFine > 0 && <span style={{display:'block',fontSize:'9px',color:'#ffffff',fontWeight:600}}>⚠ fine</span>}
+                      </td>
+                    )}
+                    {canViewSalary && (
+                      <td
+                        className="px-2 py-1 text-center text-sm cursor-pointer hover:bg-gray-700 transition-colors"
+                        style={{border:'1px solid #1f1f27',color:'#ffffff',fontWeight:700}}
+                        onClick={() => handleSalaryClick(record, stats, calculatedSalary)}
+                      >
+                        ₹{netSalary.toLocaleString('en-IN')}
+                        {warningFine > 0 && <span style={{display:'block',fontSize:'9px',color:'#ffffff',fontWeight:600}}>net pay</span>}
+                      </td>
+                    )}
                   </tr>
                 )
               })}
@@ -4320,6 +4421,7 @@ export default function MonthlyAttendanceTable() {
           </table>
           </div>
         </div>
+      </div>
       </div>
 
       {/* Employee Detail Modal */}

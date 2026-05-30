@@ -308,7 +308,7 @@ const DesignationSettings = () => {
     const renderDesignationTree = (nodes, isChild = false) => {
         return nodes.map(node => (
             <div key={node._id} className={`tree-item my-2 ${isChild ? 'child-item' : ''}`}>
-                <div className="item-content bg-gray-900/50 hover:bg-gray-800/70 transition-colors duration-200 rounded-lg p-4 grid grid-cols-12 gap-4 items-center">
+                <div className="item-content bg-white hover:bg-[#f5f8fa] border border-[#eaf0f6] transition-colors duration-200 rounded-lg p-4 grid grid-cols-12 gap-4 items-center">
                     <div className="col-span-3 flex items-center">
                         <span 
                             className={`toggle-icon cursor-pointer user-select-none inline-flex items-center justify-center w-6 h-6 text-gray-400 transition-transform duration-300 ${
@@ -374,13 +374,13 @@ const DesignationSettings = () => {
     const designationTree = buildTree(designations);
 
     return (
-        <div className="w-full bg-gray-900/90 backdrop-blur-sm border border-white/10 rounded-xl shadow-2xl p-6 text-white" style={{ fontFamily: 'Inter, sans-serif' }}>
+        <div className="hs-card hs-subpanel">
             {/* Header */}
-            <div className="flex justify-between items-center mb-6 px-2">
-                <h1 className="text-3xl font-bold text-white">Designations</h1>
+            <div className="hs-subpanel-header">
+                <h1 className="hs-subpanel-title">Designations</h1>
                 <button 
                     onClick={() => openModal()}
-                    className="bg-gradient-to-r from-yellow-500 to-orange-600 text-white font-bold py-2 px-5 rounded-lg flex items-center space-x-2 transform hover:scale-105 transition-transform"
+                    className="hs-btn-primary"
                 >
                     <Plus className="h-5 w-5" />
                     <span>Add Designation</span>
@@ -409,7 +409,7 @@ const DesignationSettings = () => {
 
             {/* Designation Form Modal */}
             {isModalVisible && (
-                <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+                <div className="fixed inset-0 bg-[rgba(45,62,80,0.55)] backdrop-blur-sm flex items-center justify-center z-50 p-4">
                     <div className="bg-gray-800 border border-white/10 p-8 rounded-xl w-full max-w-2xl">
                         <h2 className="text-2xl font-bold text-white mb-6">
                             {editingDesignation ? 'Edit Designation' : 'Add Designation'}
@@ -778,7 +778,7 @@ const DesignationSettings = () => {
 
             {/* Delete Confirmation Modal */}
             {deleteModalVisible && (
-                <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50">
+                <div className="fixed inset-0 bg-[rgba(45,62,80,0.55)] backdrop-blur-sm flex items-center justify-center z-50">
                     <div className="bg-gray-800 border border-white/10 p-8 rounded-xl max-w-md text-center">
                         <h2 className="text-2xl font-bold text-white mb-4">Are you sure?</h2>
                         <p className="text-gray-400 mb-6">

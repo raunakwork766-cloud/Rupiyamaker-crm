@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { CheckCircle, AlertCircle, Send, Loader2, ChevronDown, ChevronUp } from 'lucide-react';
 import { hasPermission, getUserPermissions } from '../../utils/permissions';
 import { getISTTimestamp } from '../../utils/dateUtils';
+import { LEAD_SECTION_CARD_CLASS } from './leadSectionStyles';
 
 // API base URL - Use proxy in development
 const API_BASE_URL = '/api'; // Always use proxy
@@ -310,7 +311,7 @@ export default function ImportantQuestionsSection({ leadData, onUpdate, currentU
 
     return (
         <>
-        <div className="p-4">
+        <div className={LEAD_SECTION_CARD_CLASS}>
             {/* Progress and Send Button Section */}
             <div className="flex items-center justify-between mb-4">
                 <div className="flex items-center">

@@ -9,6 +9,7 @@ const SearchableSelect = ({
   disabled = false,
   required = false,
   className = "",
+  id: triggerId,
   emptyMessage = "No options available",
   variant = "dark" // "dark" or "light"
 }) => {
@@ -71,34 +72,40 @@ const SearchableSelect = ({
     return selectedOption ? selectedOption.label : '';
   };
 
+  const fillParent = className.includes('h-full');
+  const iconSize = fillParent ? "w-4 h-4" : "w-5 h-5";
+
   const getButtonStyles = () => {
-    const baseStyles = "w-full px-3 py-2 border rounded-lg cursor-pointer flex items-center justify-between";
-    
+    const baseStyles = fillParent
+      ? "w-full h-full min-h-0 px-2.5 py-0 border rounded-md cursor-pointer flex items-center justify-between text-sm leading-snug"
+      : "w-full px-3 py-2 border rounded-lg cursor-pointer flex items-center justify-between";
+
     if (disabled) {
       return `${baseStyles} bg-gray-100 text-gray-400 border-gray-300 cursor-not-allowed`;
     }
-    
+
     if (variant === "light") {
       return `${baseStyles} bg-white text-black border-neutral-800 hover:border-sky-400 focus:border-sky-400 ${isOpen ? 'border-sky-400' : ''}`;
     }
-    
+
     // Default dark variant
     return `${baseStyles} bg-neutral-800 text-white border-neutral-800 hover:border-sky-400 focus:border-sky-400 ${isOpen ? 'border-sky-400' : ''}`;
   };
 
   return (
-    <div className={`relative ${className}`} ref={dropdownRef}>
+    <div className={`relative ${fillParent ? 'flex min-h-0 h-full' : ''} ${className}`} ref={dropdownRef}>
       {/* Main select button */}
       <div
         ref={triggerRef}
-        className={getButtonStyles()}
+        id={triggerId}
+        className={`${getButtonStyles()} ${fillParent ? 'flex-1' : ''}`}
         onClick={toggleDropdown}
       >
         <span className={`flex-1 ${!value ? 'text-gray-400' : ''}`}>
           {value ? getSelectedLabel() : placeholder}
         </span>
         <svg 
-          className={`w-5 h-5 transition-transform ${isOpen ? 'rotate-180' : ''}`} 
+          className={`${iconSize} shrink-0 transition-transform ${isOpen ? 'rotate-180' : ''}`} 
           fill="none" 
           stroke="currentColor" 
           viewBox="0 0 24 24"
