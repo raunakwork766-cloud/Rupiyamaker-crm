@@ -4,6 +4,7 @@ import dayjs from 'dayjs';
 import hrmsService from '../../services/hrmsService';
 import { getMediaUrl, getProfilePictureUrlWithCacheBusting } from '../../utils/mediaUtils';
 import { isSuperAdmin, getUserPermissions, getUserId } from '../../utils/permissions';
+import CurrencyInput from '../common/CurrencyInput';
 import './EmployeeFormNew.css';
 
 const EmployeeForm = ({
@@ -48,7 +49,7 @@ const EmployeeForm = ({
         permanent_city: employee?.permanent_address?.city || employee?.permanent_city || '',
         permanent_pincode: employee?.permanent_address?.pincode || '',
         address_property_type: employee?.address_property_type || 'owned',
-        same_as_current: employee?.address_property_type === 'owned',
+        same_as_current: (employee?.address_property_type || 'owned') === 'owned',
         
         // Emergency Contacts - handle both schema formats
         emergency_contact_1_name: employee?.emergency_contacts?.[0]?.name || employee?.emergency_contact_name || '',
@@ -62,6 +63,7 @@ const EmployeeForm = ({
         joining_date: employee?.joining_date ? dayjs(employee.joining_date).format('YYYY-MM-DD') : '',
         monthly_salary: employee?.salary || '',
         monthly_target: employee?.monthly_target || '',
+        settled_target: employee?.settled_target || '',
         incentive: employee?.incentive || '',
         department_id: employee?.department_id || '',
         role_id: employee?.role_id || '',
@@ -164,7 +166,7 @@ const EmployeeForm = ({
                 permanent_city: employee?.permanent_address?.city || employee?.permanent_city || '',
                 permanent_pincode: employee?.permanent_address?.pincode || '',
                 address_property_type: employee?.address_property_type || 'owned',
-                same_as_current: employee?.address_property_type === 'owned',
+                same_as_current: (employee?.address_property_type || 'owned') === 'owned',
                 
                 // Emergency Contacts - handle both schema formats
                 emergency_contact_1_name: employee?.emergency_contacts?.[0]?.name || employee?.emergency_contact_name || '',
@@ -178,6 +180,7 @@ const EmployeeForm = ({
                 joining_date: employee?.joining_date ? dayjs(employee.joining_date).format('YYYY-MM-DD') : '',
                 monthly_salary: employee?.salary || '',
                 monthly_target: employee?.monthly_target || '',
+                settled_target: employee?.settled_target || '',
                 incentive: employee?.incentive || '',
                 department_id: employee?.department_id || '',
                 role_id: employee?.role_id || '',
@@ -417,7 +420,11 @@ const EmployeeForm = ({
                 hasEmployeeId: !!employee?._id
             });
         }
-    }, [isEditing, employee?._id]);
+        // NOTE: livePermissions is included so that when fresh permissions arrive
+        // from the API AFTER mount, the password fetch re-runs. Without it, the
+        // password only loaded after a full page refresh (when localStorage was
+        // already warm), which is exactly the "loads on refresh only" bug.
+    }, [isEditing, employee?._id, livePermissions]);
 
     // Update form data when employee prop changes
     useEffect(() => {
@@ -503,7 +510,7 @@ const EmployeeForm = ({
                 permanent_city: employee?.permanent_address?.city || employee?.permanent_city || '',
                 permanent_pincode: employee?.permanent_address?.pincode || '',
                 address_property_type: employee?.address_property_type || 'owned',
-                same_as_current: employee?.address_property_type === 'owned',
+                same_as_current: (employee?.address_property_type || 'owned') === 'owned',
                 
                 // Emergency Contacts - handle both schema formats
                 emergency_contact_1_name: employee?.emergency_contacts?.[0]?.name || employee?.emergency_contact_name || '',
@@ -517,6 +524,7 @@ const EmployeeForm = ({
                 joining_date: employee?.joining_date ? dayjs(employee.joining_date).format('YYYY-MM-DD') : '',
                 monthly_salary: employee?.salary || '',
                 monthly_target: employee?.monthly_target || '',
+                settled_target: employee?.settled_target || '',
                 incentive: employee?.incentive || '',
                 department_id: employee?.department_id || '',
                 role_id: employee?.role_id || '',
@@ -732,21 +740,12 @@ const EmployeeForm = ({
         } else {
             let processedValue = value;
             
-            // Fields that should be converted to uppercase for alphabetic text (EXCLUDE dropdown fields)
-            const uppercaseFields = [
-                'first_name', 'last_name', 'nationality', 'blood_group',
-                'current_address', 'current_city', 'current_state',
-                'permanent_address', 'permanent_city',
-                'emergency_contact_1_name', 'emergency_contact_1_relation',
-                'emergency_contact_2_name', 'emergency_contact_2_relation',
-                'designation', 'salary_bank_name'
-            ];
+            // NOTE: We intentionally do NOT force-uppercase free-text fields here.
+            // Forcing uppercase caused employee data (names, city, designation, etc.)
+            // to be stored in ALL-CAPS and then show up that way across the app.
+            // Data is now stored as typed; PAN is still normalized below since PAN
+            // numbers are legitimately uppercase.
 
-            // Convert alphabetic text to uppercase for specified fields (EXCLUDE dropdowns)
-            if (uppercaseFields.includes(name)) {
-                processedValue = value.toUpperCase();
-            }
-            
             // Apply specific validations and formatting for unique fields
             switch (name) {
                 case 'phone':
@@ -1610,6 +1609,7 @@ const EmployeeForm = ({
             if (formData.role_id && formData.role_id.trim() && hasRolePermission()) submissionData.role_id = formData.role_id;
             if (formData.monthly_salary && String(formData.monthly_salary).trim()) submissionData.salary = parseFloat(formData.monthly_salary);
             if (formData.monthly_target && String(formData.monthly_target).trim()) submissionData.monthly_target = parseFloat(formData.monthly_target);
+            if (formData.settled_target && String(formData.settled_target).trim()) submissionData.settled_target = parseFloat(formData.settled_target);
             if (formData.incentive && formData.incentive.trim()) submissionData.incentive = formData.incentive;
 
             // Banking Details - only if provided and not empty
@@ -2520,12 +2520,25 @@ const EmployeeForm = ({
                                     <label className="ef-label">Monthly Salary</label>
                                     <div className="ef-input-prefix">
                                         <span className="ef-prefix">₹</span>
-                                        <input 
-                                            type="number" 
+                                        <CurrencyInput
                                             name="monthly_salary"
                                             value={formData.monthly_salary}
                                             onChange={handleInputChange}
-                                            placeholder="0.00"
+                                            placeholder="0"
+                                        />
+                                    </div>
+                                </div>
+
+                                {/* Monthly Target */}
+                                <div className="ef-field">
+                                    <label className="ef-label">Monthly Target</label>
+                                    <div className="ef-input-prefix">
+                                        <span className="ef-prefix">₹</span>
+                                        <CurrencyInput
+                                            name="monthly_target"
+                                            value={formData.monthly_target}
+                                            onChange={handleInputChange}
+                                            placeholder="0"
                                         />
                                     </div>
                                 </div>

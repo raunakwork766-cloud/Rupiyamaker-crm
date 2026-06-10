@@ -152,7 +152,7 @@ async def list_posts(
 
     users_by_id = await users_db.get_users_batch(
         list(creator_ids),
-        projection={"first_name": 1, "last_name": 1, "username": 1}
+        projection={"first_name": 1, "last_name": 1, "username": 1, "profile_photo": 1}
     )
 
     # Enhance posts with user info and convert ObjectIds
@@ -169,6 +169,8 @@ async def list_posts(
         if post_creator:
             post_dict["creator_name"] = f"{post_creator.get('first_name', '')} {post_creator.get('last_name', '')}"
             post_dict["creator_username"] = post_creator.get("username", "")
+            if post_creator.get("profile_photo"):
+                post_dict["creator_photo"] = post_creator.get("profile_photo")
         
         # Add like info if user_id provided
         if user_id:
@@ -208,6 +210,62 @@ async def list_posts(
         "page_size": page_size,
         "pages": total_pages
     }
+
+
+# ── Poll endpoints (must be before /{post_id} to avoid routing conflict) ────
+
+@router.post("/poll", response_model=Dict[str, str], status_code=http_status.HTTP_201_CREATED)
+async def create_poll_post(
+    body: Dict[str, Any],
+    feeds_db: FeedsDB = Depends(get_feeds_db),
+    users_db: UsersDB = Depends(get_users_db),
+    roles_db: RolesDB = Depends(get_roles_db)
+):
+    """Create a post that contains a poll."""
+    user_id = body.get("user_id")
+    if not user_id:
+        raise HTTPException(status_code=http_status.HTTP_422_UNPROCESSABLE_ENTITY, detail="user_id required")
+
+    user = await users_db.get_user(user_id)
+    if not user:
+        raise HTTPException(status_code=http_status.HTTP_404_NOT_FOUND, detail="User not found")
+
+    try:
+        await check_permission(user_id, "feeds", "post", users_db, roles_db)
+    except HTTPException:
+        await check_permission(user_id, "Feeds", "post", users_db, roles_db)
+
+    poll = body.get("poll")
+    if not poll or not poll.get("question") or not poll.get("options") or len(poll["options"]) < 2:
+        raise HTTPException(status_code=http_status.HTTP_422_UNPROCESSABLE_ENTITY,
+                            detail="Poll requires a question and at least 2 options")
+
+    # Ensure option structure
+    options = []
+    for opt in poll["options"]:
+        if isinstance(opt, str):
+            options.append({"text": opt, "votes": 0, "voters": []})
+        else:
+            options.append({
+                "text": opt.get("text", ""),
+                "votes": opt.get("votes", 0),
+                "voters": opt.get("voters", [])
+            })
+
+    post_data = {
+        "content": body.get("content", poll["question"]),
+        "created_by": user_id,
+        "files": [],
+        "poll": {
+            "question": poll["question"],
+            "options": options,
+            "expires_at": poll.get("expires_at")
+        }
+    }
+
+    post_id = await feeds_db.create_post(post_data)
+    return {"id": post_id}
+
 
 @router.get("/{post_id}", response_model=Dict[str, Any])
 async def get_post(
@@ -677,3 +735,105 @@ async def delete_comment(
         )
     
     return {"message": "Comment deleted successfully"}
+
+@router.post("/{post_id}/poll/vote", response_model=Dict[str, Any])
+async def vote_on_poll(
+    post_id: ObjectIdStr,
+    body: Dict[str, Any],
+    user_id: Optional[str] = None,
+    feeds_db: FeedsDB = Depends(get_feeds_db)
+):
+    """Cast a vote on a poll option. Each user can only vote once."""
+    uid = user_id or body.get("user_id")
+    if not uid:
+        raise HTTPException(status_code=http_status.HTTP_422_UNPROCESSABLE_ENTITY, detail="user_id required")
+
+    option_index = body.get("option_index")
+    if option_index is None:
+        raise HTTPException(status_code=http_status.HTTP_422_UNPROCESSABLE_ENTITY, detail="option_index required")
+
+    post = await feeds_db.get_post(post_id)
+    if not post:
+        raise HTTPException(status_code=http_status.HTTP_404_NOT_FOUND, detail="Post not found")
+
+    poll = post.get("poll")
+    if not poll:
+        raise HTTPException(status_code=http_status.HTTP_400_BAD_REQUEST, detail="Post has no poll")
+
+    from datetime import datetime
+    if poll.get("expires_at"):
+        expires = poll["expires_at"]
+        if isinstance(expires, str):
+            try:
+                expires = datetime.fromisoformat(expires.replace("Z", "+00:00"))
+            except Exception:
+                expires = None
+        if expires and datetime.now(expires.tzinfo) > expires:
+            raise HTTPException(status_code=http_status.HTTP_400_BAD_REQUEST, detail="Poll has expired")
+
+    options = poll.get("options", [])
+    if option_index < 0 or option_index >= len(options):
+        raise HTTPException(status_code=http_status.HTTP_400_BAD_REQUEST, detail="Invalid option index")
+
+    for opt in options:
+        if uid in (opt.get("voters") or []):
+            raise HTTPException(status_code=http_status.HTTP_400_BAD_REQUEST, detail="Already voted")
+
+    options[option_index]["votes"] = options[option_index].get("votes", 0) + 1
+    if "voters" not in options[option_index]:
+        options[option_index]["voters"] = []
+    options[option_index]["voters"].append(uid)
+
+    await feeds_db.update_post(post_id, {"poll.options": options})
+
+    safe_options = [{"text": o["text"], "votes": o.get("votes", 0)} for o in options]
+    return {"poll": {**{k: v for k, v in poll.items() if k != "options"}, "options": safe_options}}
+
+
+@router.post("/{post_id}/poll/unvote", response_model=Dict[str, Any])
+async def unvote_poll(
+    post_id: ObjectIdStr,
+    body: Dict[str, Any],
+    user_id: Optional[str] = None,
+    feeds_db: FeedsDB = Depends(get_feeds_db)
+):
+    """Undo a poll vote."""
+    uid = user_id or body.get("user_id")
+    if not uid:
+        raise HTTPException(status_code=http_status.HTTP_422_UNPROCESSABLE_ENTITY, detail="user_id required")
+
+    post = await feeds_db.get_post(post_id)
+    if not post:
+        raise HTTPException(status_code=http_status.HTTP_404_NOT_FOUND, detail="Post not found")
+
+    poll = post.get("poll")
+    if not poll:
+        raise HTTPException(status_code=http_status.HTTP_400_BAD_REQUEST, detail="Post has no poll")
+
+    from datetime import datetime
+    if poll.get("expires_at"):
+        expires = poll["expires_at"]
+        if isinstance(expires, str):
+            try:
+                expires = datetime.fromisoformat(expires.replace("Z", "+00:00"))
+            except Exception:
+                expires = None
+        if expires and datetime.now(expires.tzinfo) > expires:
+            raise HTTPException(status_code=http_status.HTTP_400_BAD_REQUEST, detail="Poll has expired")
+
+    options = poll.get("options", [])
+    found = False
+    for opt in options:
+        if uid in (opt.get("voters") or []):
+            opt["votes"] = max(0, opt.get("votes", 0) - 1)
+            opt["voters"] = [v for v in opt["voters"] if v != uid]
+            found = True
+            break
+
+    if not found:
+        raise HTTPException(status_code=http_status.HTTP_400_BAD_REQUEST, detail="No vote to undo")
+
+    await feeds_db.update_post(post_id, {"poll.options": options})
+
+    safe_options = [{"text": o["text"], "votes": o.get("votes", 0)} for o in options]
+    return {"poll": {**{k: v for k, v in poll.items() if k != "options"}, "options": safe_options}}

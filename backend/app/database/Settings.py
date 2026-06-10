@@ -1034,9 +1034,14 @@ class SettingsDB:
     async def resolve_leave_defaults(self) -> dict:
         """Company-wide monthly leave defaults from attendance_settings."""
         settings = await self.get_attendance_settings()
-        grace_limit = settings.get("auto_grace_monthly_limit", 3)
+        # grace_usage_limit is what the admin sets in Settings UI — use that first.
+        # auto_grace_monthly_limit is an auto-computed field, not the admin's manual limit.
+        # Default to 0 (not 3) so "set to 0 in UI" actually means 0.
+        grace_limit = settings.get("grace_usage_limit")
         if grace_limit is None:
-            grace_limit = settings.get("grace_usage_limit", 3)
+            grace_limit = settings.get("auto_grace_monthly_limit", 0)
+        if grace_limit is None:
+            grace_limit = 0
         return {
             "paid": float(settings.get("default_paid_leave_monthly", 1.0)),
             "earned": float(settings.get("default_earned_leave_monthly", 0)),
@@ -1140,10 +1145,9 @@ class SettingsDB:
         else:
             query["period"] = {"$exists": False}
         balance = await self.db.leave_balances.find_one(query)
-        if not balance and period:
-            balance = await self.db.leave_balances.find_one(
-                {"employee_id": employee_id, "period": {"$exists": False}}
-            )
+        # NOTE: No fallback to no-period doc when period is specified.
+        # A period-specific request should only return period-specific data.
+        # Falling back to no-period docs caused wrong grace/PL values to appear.
         if balance:
             balance["_id"] = str(balance["_id"])
         return balance
@@ -1441,4 +1445,81 @@ class SettingsDB:
         route = await self.db.otp_approval_routes.find_one({"role_id": role_id})
         if route:
             return route.get("approver_ids", []) or []
+        return []
+
+    # ── Finance Approval Routes ────────────────────────────────────────────
+    # finance_type: 'reimbursement' | 'advance_salary' | 'deduction' | 'all'
+
+    async def get_finance_approval_routes(self, finance_type: str = None) -> list:
+        """Get all finance approval routing rules, optionally filtered by type"""
+        query = {}
+        if finance_type:
+            query["finance_type"] = finance_type
+        cursor = self.db.finance_approval_routes.find(query).sort("created_at", -1)
+        routes = []
+        async for r in cursor:
+            r["_id"] = str(r["_id"])
+            routes.append(r)
+        return routes
+
+    async def get_finance_approval_route_by_role(self, role_id: str, finance_type: str = None) -> dict:
+        """Get finance approval route for a specific role and type"""
+        query = {"role_id": role_id}
+        if finance_type:
+            query["finance_type"] = finance_type
+        route = await self.db.finance_approval_routes.find_one(query)
+        if route:
+            route["_id"] = str(route["_id"])
+        return route
+
+    async def upsert_finance_approval_route(
+        self,
+        role_id: str,
+        role_name: str,
+        finance_type: str,
+        approver_ids: list,
+        approver_names: list,
+    ) -> dict:
+        """Create or update finance approval route for a role + type combination"""
+        now = get_ist_now()
+        doc = {
+            "role_id": role_id,
+            "role_name": role_name,
+            "finance_type": finance_type,  # 'reimbursement', 'advance_salary', 'deduction', 'all'
+            "approver_ids": approver_ids,
+            "approver_names": approver_names,
+            "updated_at": now,
+        }
+        await self.db.finance_approval_routes.update_one(
+            {"role_id": role_id, "finance_type": finance_type},
+            {"$set": doc, "$setOnInsert": {"created_at": now}},
+            upsert=True,
+        )
+        saved = await self.db.finance_approval_routes.find_one({"role_id": role_id, "finance_type": finance_type})
+        if saved:
+            saved["_id"] = str(saved["_id"])
+        return saved
+
+    async def delete_finance_approval_route(self, role_id: str, finance_type: str = None) -> bool:
+        """Delete finance approval route for a role (optionally specific type)"""
+        query = {"role_id": role_id}
+        if finance_type:
+            query["finance_type"] = finance_type
+        result = await self.db.finance_approval_routes.delete_many(query)
+        return result.deleted_count > 0
+
+    async def get_finance_approvers_for_employee(self, employee_role_id: str, finance_type: str) -> list:
+        """Get finance approver employee IDs for a given role and type.
+        Falls back to 'all' type if specific type has no config."""
+        route = await self.db.finance_approval_routes.find_one(
+            {"role_id": employee_role_id, "finance_type": finance_type}
+        )
+        if route and route.get("approver_ids"):
+            return route.get("approver_ids", [])
+        # fallback: check 'all' type
+        route_all = await self.db.finance_approval_routes.find_one(
+            {"role_id": employee_role_id, "finance_type": "all"}
+        )
+        if route_all and route_all.get("approver_ids"):
+            return route_all.get("approver_ids", [])
         return []

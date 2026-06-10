@@ -134,6 +134,7 @@ const AttendanceCheckInOut = ({ userId, userInfo }) => {
 
   const [loading, setLoading] = useState(false);
   const [currentStatus, setCurrentStatus] = useState(null);
+  const [attendanceSettings, setAttendanceSettings] = useState(null);
   const [currentTime, setCurrentTime] = useState(new Date());
   const [attendanceType, setAttendanceType] = useState(null);
 
@@ -165,8 +166,28 @@ const AttendanceCheckInOut = ({ userId, userInfo }) => {
   }, []);
 
   useEffect(() => {
-    if (userId) loadCurrentStatus();
+    if (userId) {
+      loadCurrentStatus();
+      loadAttendanceSettings();
+    }
   }, [userId]);
+
+  const loadAttendanceSettings = async () => {
+    try {
+      const r = await axios.get(
+        `${API_BASE}/attendance/settings`,
+        {
+          params: { user_id: userId },
+          headers: getAttendanceHeaders()
+        }
+      );
+      setAttendanceSettings(r.data?.timing_rules || {});
+    } catch (e) {
+      if (e?.response?.status === 401) handleSessionExpired();
+      else console.error('Attendance settings fetch error', e?.response?.data || e.message);
+      setAttendanceSettings({});
+    }
+  };
 
   const loadCurrentStatus = async () => {
     try {
@@ -314,14 +335,27 @@ const AttendanceCheckInOut = ({ userId, userInfo }) => {
     setErrorMsg('');
     try {
       let location = null;
-      try {
-        location = await new Promise((res, rej) =>
-          navigator.geolocation.getCurrentPosition(
-            p => res({ latitude: p.coords.latitude, longitude: p.coords.longitude, accuracy: p.coords.accuracy }),
-            e => rej(e), { timeout: 8000 }
-          )
-        );
-      } catch (_) { }
+      const locationRequired = Boolean(attendanceSettings?.require_geolocation || attendanceSettings?.geofence_enabled);
+
+      if (locationRequired) {
+        if (!navigator.geolocation) {
+          setErrorMsg('Location is required for attendance, but this device does not support it.');
+          setLoading(false);
+          return;
+        }
+        try {
+          location = await new Promise((res, rej) =>
+            navigator.geolocation.getCurrentPosition(
+              p => res({ latitude: p.coords.latitude, longitude: p.coords.longitude, accuracy: p.coords.accuracy }),
+              e => rej(e), { timeout: 8000 }
+            )
+          );
+        } catch (_) {
+          setErrorMsg('Location is required for attendance. Please allow location and try again.');
+          setLoading(false);
+          return;
+        }
+      }
 
       const endpoint = attendanceType === 'check-in' ? 'check-in' : 'check-out';
       const r = await axios.post(

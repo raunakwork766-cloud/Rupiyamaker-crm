@@ -20,7 +20,7 @@ from app.schemas.user_schemas import (
     EmployeeStatusUpdate, OnboardingStatusUpdate, CrmAccessUpdate, LoginStatusUpdate,
     OTPRequiredUpdate
 )
-from app.schemas.otp_schemas import UserLoginWithOTP
+from app.schemas.otp_schemas import UserLoginWithOTP, LoginOTPStatusResponse
 from app.database.OTP import OTPDB
 from app.utils.common_utils import ObjectIdStr, convert_object_id
 from app.utils.permissions import check_permission, get_user_capabilities
@@ -430,6 +430,53 @@ async def delete_user(
     
     return {"message": "User deleted successfully"}
     
+@router.get("/login/otp-status", response_model=LoginOTPStatusResponse)
+async def login_otp_status(
+    identifier: str = Query(..., description="Username or email entered on the login screen"),
+    users_db: UsersDB = Depends(get_users_db),
+    settings_db: SettingsDB = Depends(get_settings_db),
+):
+    """Lightweight pre-login check.
+
+    Given a username/email, tells the login UI whether this account authenticates
+    via OTP (so the password field can be hidden and the OTP flow shown directly).
+
+    SECURITY: This intentionally returns a generic { otp_required: false } for
+    unknown users so it cannot be used to enumerate valid accounts.
+    """
+    identifier = (identifier or "").strip()
+    if not identifier:
+        return LoginOTPStatusResponse(otp_required=False)
+
+    user = await users_db.get_user_by_username(identifier)
+    if not user:
+        user = await users_db.get_user_by_email(identifier)
+    if not user:
+        return LoginOTPStatusResponse(otp_required=False)
+
+    # Don't reveal OTP routing for accounts that can't log in anyway.
+    if not user.get("is_active", True) or not user.get("login_enabled", True):
+        return LoginOTPStatusResponse(otp_required=False)
+    if user.get("is_employee", False) and user.get("employee_status", "active") != "active":
+        return LoginOTPStatusResponse(otp_required=False)
+
+    otp_required = False
+    try:
+        role_id = str(user.get("role_id", ""))
+        if role_id and settings_db:
+            otp_route = await settings_db.get_otp_approval_route_by_role(role_id)
+            otp_required = otp_route is not None
+        else:
+            otp_required = user.get("otp_required", False)
+    except Exception:
+        otp_required = user.get("otp_required", False)
+
+    return LoginOTPStatusResponse(
+        otp_required=bool(otp_required),
+        user_id=str(user["_id"]) if otp_required else None,
+    )
+
+
 @router.post("/login", response_model=Dict)
 async def login(
     login_data: UserLoginWithOTP,
@@ -474,18 +521,48 @@ async def login(
             detail="LOGIN_DISABLED"
         )
 
-    # Step 3: Now verify the password
-    user = await users_db.authenticate_user(
-        login_data.username_or_email,
-        login_data.password
-    )
+    # Determine whether this account authenticates via OTP.
+    # OTP is required when the user's role has OTP approval routing configured
+    # (falls back to the per-user otp_required flag if settings are unavailable).
+    # When OTP is required, the password is NOT needed — the OTP replaces it.
+    login_type = (login_data.login_type or "crm")
+    otp_required = False
+    try:
+        role_id = str(user_lookup.get("role_id", ""))
+        if role_id and settings_db:
+            otp_route = await settings_db.get_otp_approval_route_by_role(role_id)
+            otp_required = otp_route is not None
+        else:
+            otp_required = user_lookup.get("otp_required", False)
+    except Exception:
+        otp_required = user_lookup.get("otp_required", False)
 
-    if not user:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="WRONG_PASSWORD"
+    # 📱 Attendance-only login NEVER uses OTP — it always requires the password.
+    if login_type == "attendance_only":
+        otp_required = False
+
+    # Step 3: Authenticate.
+    #   - OTP-login accounts (CRM): identity is trusted via the user lookup and the
+    #     OTP code below — no password is verified.
+    #   - Everyone else: the password is mandatory and verified here.
+    if otp_required:
+        user = user_lookup
+    else:
+        if not login_data.password:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="WRONG_PASSWORD"
+            )
+        user = await users_db.authenticate_user(
+            login_data.username_or_email,
+            login_data.password
         )
-    
+        if not user:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="WRONG_PASSWORD"
+            )
+
     # 🔒 CRITICAL: Check if user's session was invalidated (for offline logout)
     # If session_invalidated_at exists and is after user's last login, require re-authentication
     # This ensures users who were logged out while offline must re-login
@@ -505,7 +582,7 @@ async def login(
     #   - Issue a SEPARATE attendance_session_token stored on the user document
     # The middleware + attendance routes enforce that this token can ONLY hit
     # /attendance/check-in, /attendance/check-out and /attendance/status/current.
-    if (login_data.login_type or "crm") == "attendance_only":
+    if login_type == "attendance_only":
         attendance_session_token = str(uuid4())
         update_doc = {
             "attendance_session_token": attendance_session_token,
@@ -538,20 +615,6 @@ async def login(
             "login_type": "attendance_only",
         }
 
-    # Check if OTP is required for this user based on role routing config
-    # If the user's role has OTP approval routing configured, OTP is required
-    otp_required = False
-    try:
-        role_id = str(user.get("role_id", ""))
-        if role_id and settings_db:
-            otp_route = await settings_db.get_otp_approval_route_by_role(role_id)
-            otp_required = otp_route is not None
-        else:
-            # Fallback to per-user flag if settings_db not available
-            otp_required = user.get("otp_required", False)
-    except Exception:
-        otp_required = user.get("otp_required", False)
-    
     if otp_required:
         if not login_data.otp_code:
             # User needs to provide OTP - include user ID for frontend

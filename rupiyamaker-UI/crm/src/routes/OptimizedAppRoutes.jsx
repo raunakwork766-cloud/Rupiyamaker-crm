@@ -94,6 +94,7 @@ const LazyKnowledgeBase = createLazyComponent(() => import('../components/Knowle
 const LazyOfferLetterGenerator = createLazyComponent(() => import('../components/OfferLetterGenerator.jsx'), 'OfferLetterGenerator');
 const LazyFAQPage = createLazyComponent(() => import('../components/FAQPage.jsx'), 'FAQPage');
 const LazyDashboardPage = createLazyComponent(() => import('../components/DashboardPage.jsx'), 'DashboardPage');
+const LazyFinanceManagement = createLazyComponent(() => import('../components/FinanceManagement.jsx'), 'FinanceManagement');
 
 // Optimized loading component with better UX
 const RouteLoader = ({ route }) => (
@@ -605,23 +606,42 @@ const OptimizedAppRoutes = ({ selectedLabel, user }) => {
           </ProtectedRoute>
         } 
       />
-      <Route 
-        path="/offer-letter" 
+      <Route
+        path="/offer-letter"
         element={
-          <ProtectedRoute 
-            requiredPage="offer_letter" 
+          <ProtectedRoute
+            requiredPage="offer_letter"
             requiredAction="show"
             alternativeChecks={[
               { page: 'Offer_Letter', action: 'show' }
             ]}
           >
-            <RouteWithSuspense 
-              component={LazyOfferLetterGenerator} 
+            <RouteWithSuspense
+              component={LazyOfferLetterGenerator}
               routeName="Offer Letter"
               user={user}
             />
           </ProtectedRoute>
-        } 
+        }
+      />
+      <Route
+        path="/hr-finance"
+        element={
+          <ProtectedRoute
+            requiredPage="employees"
+            requiredAction="show"
+            alternativeChecks={[
+              { page: 'hr_finance', action: 'show' },
+              { page: 'Employees', action: 'show' }
+            ]}
+          >
+            <RouteWithSuspense
+              component={LazyFinanceManagement}
+              routeName="Employee Finance"
+              user={user}
+            />
+          </ProtectedRoute>
+        }
       />
       <Route 
         path="/transfer-requests" 

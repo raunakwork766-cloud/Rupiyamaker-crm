@@ -99,10 +99,10 @@ const leavePageStyles = `
   .leaves-page .leave-table-wrap { overflow: auto; max-height: calc(100vh - 340px); border: 1px solid #1f1f27; border-radius: 4px; background: #000; }
   .leaves-page .leave-table { width: 100%; border-collapse: collapse; min-width: 900px; text-align: left; }
   .leaves-page .leave-table thead { background: #ffffff; position: sticky; top: 0; z-index: 10; box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1); border-bottom: 2px solid #e5e7eb; }
-  .leaves-page .leave-table-th { color: #03b0f5; font-weight: 800; font-size: 13px; text-transform: uppercase; letter-spacing: 0.05em; padding: 12px 16px; text-align: left; border-bottom: 1px solid #e5e7eb; white-space: nowrap; background: #ffffff; }
-  .leaves-page .leave-table tbody tr.leave-row { background: #000; border-bottom: 1px solid #1a1a22; cursor: pointer; transition: background 0.1s; }
+  .leaves-page .leave-table-th { color: #03b0f5; font-weight: 800; font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; padding: 5px 12px; text-align: left; border-bottom: 1px solid #e5e7eb; white-space: nowrap; background: #ffffff; }
+  .leaves-page .leave-table tbody tr.leave-row { background: #000; border-bottom: 1px solid #2a2a38; cursor: pointer; transition: background 0.1s; }
   .leaves-page .leave-table tbody tr.leave-row:hover { background: #13131c; }
-  .leaves-page .leave-table tbody td { padding: 11px 16px; font-size: 13px; color: #ffffff; font-weight: 600; vertical-align: middle; }
+  .leaves-page .leave-table tbody td { padding: 5px 12px; font-size: 13px; color: #ffffff; font-weight: 600; vertical-align: middle; white-space: nowrap; }
   .leaves-page .leave-table tbody td.leave-name-cell { font-weight: 700; color: #ffffff; }
   .leaves-page .leave-cell-avatar { width: 28px; height: 28px; border-radius: 50%; background: #1a1a24; border: 1px solid #2a2a3a; color: #93c5fd; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 600; flex-shrink: 0; }
   .leaves-page .leave-cell-name-wrap { display: flex; align-items: center; gap: 10px; min-width: 0; }
@@ -171,9 +171,9 @@ const leavePageStyles = `
   .leave-detail-section-title { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: #6b7a99; margin: 0 0 8px; }
   .leave-detail-table-wrap { border: 1px solid #1f1f27; border-radius: 4px; overflow: hidden; margin-bottom: 12px; }
   .leave-detail-table { width: 100%; border-collapse: collapse; }
-  .leave-detail-table th { background: #ffffff; color: #03b0f5; font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em; padding: 10px 12px; text-align: left; border-bottom: 1px solid #e5e7eb; }
+  .leave-detail-table th { background: #ffffff; color: #03b0f5; font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em; padding: 5px 10px; text-align: left; border-bottom: 1px solid #e5e7eb; white-space: nowrap; }
   .leave-detail-table th.center { text-align: center; }
-  .leave-detail-table td { padding: 10px 12px; border-bottom: 1px solid #1a1a22; font-size: 13px; color: #ffffff; font-weight: 600; vertical-align: middle; background: #000; }
+  .leave-detail-table td { padding: 5px 10px; border-bottom: 1px solid #2a2a38; font-size: 13px; color: #ffffff; font-weight: 600; vertical-align: middle; background: #000; white-space: nowrap; }
   .leave-detail-table td.center { text-align: center; }
   .leave-detail-table tr:last-child td { border-bottom: none; }
   .leave-detail-table tr.highlight td { background: #13131c; }

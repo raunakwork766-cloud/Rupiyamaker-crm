@@ -50,6 +50,24 @@ const isOtpRequired = (employee) => {
     return false;
 };
 
+// Display helper: existing employee records were historically stored in ALL-CAPS.
+// CSS text-transform can only force-uppercase, it cannot undo stored caps — so we
+// normalize the display text to Title Case here. Tokens that are clearly codes
+// (contain digits, e.g. employee IDs / PAN) are left untouched.
+const toDisplayText = (value) => {
+    if (value === null || value === undefined) return value;
+    const str = String(value).trim();
+    if (!str) return str;
+    return str
+        .split(/\s+/)
+        .map((word) => {
+            // Leave codes/identifiers (anything with a digit) exactly as stored.
+            if (/\d/.test(word)) return word;
+            return word.charAt(0).toUpperCase() + word.slice(1).toLowerCase();
+        })
+        .join(' ');
+};
+
 // CSS Styles for the toggle switches
 const toggleStyles = `
   .switch {
@@ -291,13 +309,13 @@ const hrmsEmployeesPageStyles = `
   .hrms-employees-page .table-container.hrms-table-wrap { max-height: none; flex: 1; min-height: 0; }
   .hrms-employees-page .hrms-table { width: 100%; border-collapse: separate; border-spacing: 0; min-width: 1200px; text-align: left; }
   .hrms-employees-page .hrms-table thead { background: #ffffff; border-bottom: 2px solid #e5e7eb; position: relative; z-index: 20; }
-  .hrms-employees-page .hrms-table-th { position: sticky; top: 0; z-index: 25; background: #ffffff !important; color: #03b0f5 !important; font-size: 13px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em; padding: 12px 16px; text-align: left; border-bottom: 1px solid #e5e7eb; white-space: nowrap; box-shadow: 0 1px 0 #e5e7eb, 0 4px 8px rgba(0, 0, 0, 0.12); }
+  .hrms-employees-page .hrms-table-th { position: sticky; top: 0; z-index: 25; background: #ffffff !important; color: #03b0f5 !important; font-size: 12px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em; padding: 5px 12px; text-align: left; border-bottom: 1px solid #e5e7eb; white-space: nowrap; box-shadow: 0 1px 0 #e5e7eb, 0 4px 8px rgba(0, 0, 0, 0.12); }
   .hrms-employees-page .hrms-table tbody { position: relative; z-index: 1; }
-  .hrms-employees-page .hrms-table tbody td { padding: 11px 16px; font-size: 13px; color: #ffffff; font-weight: 600; vertical-align: middle; background: #000; text-transform: none !important; position: relative; z-index: 1; }
-  .hrms-employees-page .hrms-table tbody tr.hrms-table-row { background: #000; border-bottom: 1px solid #1a1a22; cursor: pointer; transition: background 0.1s; }
+  .hrms-employees-page .hrms-table tbody td { padding: 5px 12px; font-size: 13px; color: #ffffff; font-weight: 600; vertical-align: middle; background: #000; text-transform: none !important; position: relative; z-index: 1; white-space: nowrap; }
+  .hrms-employees-page .hrms-table tbody tr.hrms-table-row { background: #000; border-bottom: 1px solid #2a2a38; cursor: pointer; transition: background 0.1s; }
   .hrms-employees-page .hrms-table tbody tr.hrms-table-row:hover td { background: #13131c; }
   .hrms-employees-page .hrms-table tbody td * { text-transform: none !important; }
-  .hrms-employees-page .hrms-table tbody td.hrms-name-cell { padding: 11px 16px; font-weight: 700; color: #ffffff; vertical-align: middle; }
+  .hrms-employees-page .hrms-table tbody td.hrms-name-cell { padding: 5px 12px; font-weight: 700; color: #ffffff; vertical-align: middle; }
   .hrms-employees-page .cell-name-wrap { display: flex; align-items: center; gap: 12px; min-width: 0; }
   .hrms-employees-page .cell-avatar { width: 52px; height: 44px; border-radius: 4px; background: #1a1a24; border: 1px solid #2a2a3a; color: #93c5fd; display: flex; align-items: center; justify-content: center; font-size: 16px; font-weight: 700; flex-shrink: 0; overflow: hidden; box-shadow: inset 0 0 0 1px rgba(255,255,255,0.04); }
   .hrms-employees-page .cell-avatar img { width: 100%; height: 100%; object-fit: cover; border-radius: 3px; display: block; }
@@ -341,6 +359,7 @@ function CreatedEmpPopup({ data, onClose }) {
         `Department: ${data.department}`,
         `Role: ${data.role}`,
         `Designation: ${data.designation}`,
+        `Monthly Target: ${data.monthlyTarget}`,
         `Username: ${data.username}`,
         `Password: ${data.password}`,
         `Login URL: ${data.loginUrl}`,
@@ -394,6 +413,7 @@ function CreatedEmpPopup({ data, onClose }) {
                         ['Department', data.department],
                         ['Role', data.role],
                         ['Designation', data.designation],
+                        ['Monthly Target', data.monthlyTarget],
                         ['Username', data.username],
                         ['Password', data.password],
                         ['Login URL', data.loginUrl],
@@ -1052,6 +1072,7 @@ const AllEmployees = () => {
                     department: deptName,
                     role: roleName,
                     designation: employeeData.designation || '—',
+                    monthlyTarget: employeeData.monthly_target || '—',
                     username: employeeData.username || '—',
                     password: employeeData.password || '—',
                     loginUrl: window.location.origin,
@@ -1431,6 +1452,9 @@ const AllEmployees = () => {
     };
 
     // Compute master access state
+    // NOTE: The Login master toggle is intentionally BINARY (On/Off only) — no
+    // "Mixed" state. It reads as "On" only when every toggleable employee has
+    // login enabled; otherwise "Off". Clicking it bulk-enables/disables all.
     const computeMasterAccessState = (employeeList = employees) => {
         const toggleableEmployees = employeeList.filter(emp => emp.role_id !== SUPER_ADMIN_ROLE_ID);
 
@@ -1441,12 +1465,10 @@ const AllEmployees = () => {
 
         const accessCount = toggleableEmployees.filter(emp => isLoginEnabled(emp)).length;
 
-        if (accessCount === 0) {
-            setMasterAccessState({ checked: false, label: 'Off' });
-        } else if (accessCount === toggleableEmployees.length) {
+        if (accessCount === toggleableEmployees.length) {
             setMasterAccessState({ checked: true, label: 'On' });
         } else {
-            setMasterAccessState({ checked: false, label: 'Mixed' });
+            setMasterAccessState({ checked: false, label: 'Off' });
         }
     };
 
@@ -2033,29 +2055,29 @@ const AllEmployees = () => {
                                                                         {employee.first_name ? employee.first_name.charAt(0).toUpperCase() : '?'}
                                                                     </span>
                                                                 </div>
-                                                                <span className="cell-name-text">{`${employee.first_name || ''} ${employee.last_name || ''}`.trim() || 'Unnamed'}</span>
+                                                                <span className="cell-name-text">{toDisplayText(`${employee.first_name || ''} ${employee.last_name || ''}`.trim()) || 'Unnamed'}</span>
                                                             </div>
                                                         </td>
                                                         <td>
-                                                            {employee.gender || 'Not Specified'}
+                                                            {toDisplayText(employee.gender) || 'Not Specified'}
                                                         </td>
                                                         <td>
-                                                            {employee.designation || employee.position || 'Not Specified'}
+                                                            {toDisplayText(employee.designation || employee.position) || 'Not Specified'}
                                                         </td>
                                                         <td>
-                                                            {departments[employee.department_id] || employee.department_name || 'Not Specified'}
+                                                            {toDisplayText(departments[employee.department_id] || employee.department_name) || 'Not Specified'}
                                                         </td>
                                                         <td>
-                                                            {roles[employee.role_id] || employee.role_name || 'Not Specified'}
+                                                            {toDisplayText(roles[employee.role_id] || employee.role_name) || 'Not Specified'}
                                                         </td>
                                                         <td>
-                                                            {employee.highest_qualification || 'Not Specified'}
+                                                            {toDisplayText(employee.highest_qualification) || 'Not Specified'}
                                                         </td>
                                                         <td>
-                                                            {employee.current_city || employee.city || 'Not Specified'}
+                                                            {toDisplayText(employee.current_city || employee.city) || 'Not Specified'}
                                                         </td>
                                                         <td>
-                                                            {employee.experience_level || 'Not Specified'}
+                                                            {toDisplayText(employee.experience_level) || 'Not Specified'}
                                                         </td>
                                                         <td>
                                                             <label className="switch">

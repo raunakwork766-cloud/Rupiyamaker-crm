@@ -1,5 +1,30 @@
 @import 'tailwindcss';
 
+/* ─────────────────────────────────────────────────────────────────
+   GLOBAL: Remove number-input spinner arrows (↑↓) on ALL inputs.
+   The spinners provide no value for currency / count fields and
+   add visual clutter. Targets both WebKit and Firefox.
+   ───────────────────────────────────────────────────────────────── */
+input[type='number']::-webkit-outer-spin-button,
+input[type='number']::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+input[type='number'] {
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+/* Convenience class for explicit opt-in (also used by CurrencyInput component) */
+.no-spinner::-webkit-outer-spin-button,
+.no-spinner::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+.no-spinner {
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+
 /* Create Lead: 95% width, 2.5% margin each side (HubSpot-style shell) */
 #create-lead-page-root {
   width: 95%;
@@ -37,7 +62,7 @@
 #create-lead-page-root .create-lead-top-bar p {
   margin: 0;
   font-size: 13px;
-  color: #6b7a99;
+  color: #c8d0e0;
 }
 
 #create-lead-page-root .create-lead-view-toggle-bar {
@@ -56,7 +81,7 @@
   background: transparent;
   font-size: 13px;
   font-weight: 600;
-  color: #6b7a99;
+  color: #c8d0e0;
   cursor: pointer;
   border-bottom: 3px solid transparent;
   transition: color 0.15s, border-color 0.15s;
@@ -344,7 +369,7 @@
   background: transparent;
   font-size: 13px;
   font-weight: 600;
-  color: #6b7a99;
+  color: #c8d0e0;
   cursor: pointer;
   border-bottom: 3px solid transparent;
   transition: color 0.15s, border-color 0.15s;
@@ -372,7 +397,7 @@
   font-size: 10px;
   font-weight: 700;
   background: #1a1a24;
-  color: #6b7a99;
+  color: #c8d0e0;
   border: 1px solid #2a2a3a;
 }
 
@@ -446,7 +471,7 @@
 }
 
 .transfer-requests-page .trp-table thead th {
-  padding: 12px 16px;
+  padding: 7px 12px;
   text-align: left;
   font-size: 12px;
   font-weight: 800;
@@ -460,7 +485,7 @@
 
 .transfer-requests-page .trp-table tbody tr.trp-row {
   background: #000;
-  border-bottom: 1px solid #1a1a22;
+  border-bottom: 1px solid #2a2a38;
   cursor: pointer;
   transition: background 0.12s;
 }
@@ -470,16 +495,17 @@
 }
 
 .transfer-requests-page .trp-table tbody td {
-  padding: 11px 16px;
+  padding: 6px 12px;
   font-size: 13px;
   color: #fff;
   font-weight: 600;
-  vertical-align: top;
+  vertical-align: middle;
+  white-space: nowrap;
 }
 
 .transfer-requests-page .trp-col-num {
   width: 48px;
-  color: #6b7a99 !important;
+  color: #c8d0e0 !important;
   font-weight: 700 !important;
 }
 
@@ -491,7 +517,7 @@
 .transfer-requests-page .trp-cell-muted {
   margin-top: 2px;
   font-size: 11px;
-  color: #6b7a99;
+  color: #c8d0e0;
   font-weight: 500;
 }
 
@@ -568,7 +594,7 @@
 .transfer-requests-page .trp-empty-cell {
   text-align: center;
   padding: 64px 16px !important;
-  color: #6b7a99 !important;
+  color: #c8d0e0 !important;
   font-weight: 500 !important;
 }
 
@@ -583,7 +609,7 @@
 }
 
 .transfer-requests-page .trp-pagination-info {
-  color: #6b7a99;
+  color: #c8d0e0;
   font-size: 13px;
 }
 
@@ -614,7 +640,7 @@
 }
 
 .transfer-requests-page .trp-pagination-page {
-  color: #6b7a99;
+  color: #c8d0e0;
   font-size: 13px;
   padding: 0 8px;
 }
@@ -838,7 +864,7 @@
 .lead-crm-btn-muted {
   border: 1px solid #2a2a3a;
   background: #1a1a24;
-  color: #6b7a99;
+  color: #c8d0e0;
 }
 
 .lead-crm-table-wrap {
@@ -872,7 +898,7 @@
 }
 
 .lead-crm-table thead th {
-  padding: 12px 16px;
+  padding: 7px 12px;
   text-align: left;
   font-size: 12px;
   font-weight: 800;
@@ -895,7 +921,7 @@
 
 .lead-crm-table tbody tr.lead-crm-row {
   background: #000;
-  border-bottom: 1px solid #1a1a22;
+  border-bottom: 1px solid #2a2a38;
   transition: background 0.12s;
 }
 
@@ -912,17 +938,18 @@
 }
 
 .lead-crm-table tbody td {
-  padding: 10px 16px;
+  padding: 6px 12px;
   font-size: 13px;
   color: #fff;
   font-weight: 600;
   vertical-align: middle;
+  white-space: nowrap;
 }
 
 .lead-crm-table .empty-cell {
   text-align: center;
   padding: 64px 16px !important;
-  color: #6b7a99 !important;
+  color: #c8d0e0 !important;
   font-weight: 500 !important;
 }
 
@@ -982,7 +1009,7 @@
 }
 
 .lead-crm-overview-table thead th {
-  padding: 10px 16px;
+  padding: 6px 12px;
   font-size: 11px;
   font-weight: 800;
   text-transform: uppercase;
@@ -990,13 +1017,15 @@
   color: #03b0f5;
   background: #fff;
   border-bottom: 1px solid #e5e7eb;
+  white-space: nowrap;
 }
 
 .lead-crm-overview-table tbody td {
-  padding: 10px 16px;
+  padding: 6px 12px;
   font-size: 13px;
   color: #33475b;
   border-bottom: 1px solid #eaf0f6;
+  white-space: nowrap;
 }
 
 .lead-crm-overview-table tbody tr:hover {
@@ -1075,6 +1104,25 @@
   overflow-x: auto;
   overflow-y: auto;
   max-height: none;
+}
+
+/* LoginCRM table — compact headers & rows (matches LeadCRM style) */
+.login-crm-table-scroll table thead th,
+.login-crm-table-scroll table .sticky-th {
+  padding: 7px 12px !important;
+  font-size: 12px !important;
+  font-weight: 800 !important;
+  white-space: nowrap !important;
+}
+
+.login-crm-table-scroll table tbody tr {
+  border-bottom: 1px solid #2a2a38 !important;
+}
+
+.login-crm-table-scroll table tbody td {
+  padding: 6px 12px !important;
+  white-space: nowrap !important;
+  vertical-align: middle !important;
 }
 
 @media (max-width: 768px) {
@@ -1168,39 +1216,16 @@ table.crm-table-head > thead {
   background: #ffffff !important;
   color: #03b0f5 !important;
   font-weight: 800;
-  font-size: 13px;
+  font-size: 12px;
   text-transform: uppercase;
   letter-spacing: 0.05em;
-  padding: 12px 16px;
+  padding: 7px 12px;
   text-align: left;
   border-bottom: 1px solid #e5e7eb !important;
   white-space: nowrap;
 }
 
-.crm-table-head thead th.sortable:hover,
-.crm-table-th.sortable:hover {
-  background: #f9fafb !important;
-}
-
-.crm-data-table-header {
-  background: #ffffff;
-  border-top: 1px solid #e5e7eb;
-  border-bottom: 2px solid #e5e7eb;
-  display: flex;
-  padding: 12px 24px;
-  align-items: center;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-}
-
-.crm-data-table-header .task-th {
-  color: #03b0f5 !important;
-  font-weight: 800;
-  font-size: 11px;
-  text-transform: uppercase;
-  letter-spacing: 0.6px;
-}
-
-/* CRM standard table row text — bright white, slightly bold */
+/* CRM standard table row text — bright white, slightly bold, compact padding, single line */
 .leave-table tbody td,
 .hrms-table tbody td,
 .interview-table tbody td,
@@ -1213,7 +1238,36 @@ table.crm-table-head > thead {
 .task-data-table-body .task-created-meta-date {
   color: #ffffff !important;
   font-weight: 600 !important;
+  padding-top: 6px !important;
+  padding-bottom: 6px !important;
+  white-space: nowrap !important;
 }
+
+/* Row separators for HRMS/CRM tables */
+.leave-table tbody tr,
+.hrms-table tbody tr,
+.interview-table tbody tr,
+.warning-page-table tbody tr,
+.attendance-page .attendance-table-shell tbody tr {
+  border-bottom: 1px solid #2a2a38 !important;
+}
+
+.crm-table-head thead th.sortable:hover,
+.crm-table-th.sortable:hover {
+  background: #f9fafb !important;
+}
+
+
+
+
+.crm-data-table-header .task-th {
+  color: #03b0f5 !important;
+  font-weight: 800;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+}
+
 
 .leave-table tbody td.leave-name-cell,
 .hrms-table tbody td.hrms-name-cell,

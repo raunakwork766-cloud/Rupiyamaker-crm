@@ -1359,6 +1359,9 @@ class LeadsDB:
                 elif field_name == "process_data" and isinstance(change_data, dict):
                     # Create separate activity for each nested field in process_data
                     for process_field, process_change in change_data.items():
+                        # Skip if process_change is not a dict (could be None, str, int etc.)
+                        if not isinstance(process_change, dict):
+                            continue
                         # Map snake_case field names to readable labels
                         field_labels = {
                             "processing_bank": "Processing Bank",

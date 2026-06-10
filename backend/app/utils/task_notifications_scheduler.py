@@ -9,9 +9,6 @@ from datetime import datetime, timedelta
 from typing import Dict, Any, List
 import traceback
 
-from app.database.Tasks import TasksDB
-from app.database.Users import UsersDB
-from app.database.Notifications import NotificationsDB
 from app.utils.timezone import get_ist_now
 
 # Configure logging
@@ -24,9 +21,11 @@ class TaskNotificationsScheduler:
     """
     
     def __init__(self):
-        self.tasks_db = TasksDB()
-        self.users_db = UsersDB()
-        self.notifications_db = NotificationsDB()
+        # NOTE: Do NOT instantiate DB classes here — the database is not yet
+        # connected when the scheduler object is created at import time.
+        # Instead, fetch db instances lazily inside each async method via
+        # get_database_instances() so they share the already-open Motor pool
+        # and don't create extra connections / memory overhead.
         self.is_running = False
         self.check_interval = 900  # Check every 15 minutes
         self.daily_summary_time = "09:00"  # Send daily summary at 9 AM
@@ -64,14 +63,20 @@ class TaskNotificationsScheduler:
     async def process_overdue_tasks(self):
         """Check for overdue tasks and send notifications"""
         try:
+            from app.database import get_database_instances
+            db_instances = get_database_instances()
+            tasks_db = db_instances.get("tasks")
+            users_db = db_instances.get("users")
+            notifications_db = db_instances.get("notifications")
+
             logger.info("Checking for overdue tasks...")
             
             # Get all active users (fallback to list_users if get_active_users is not available)
             try:
-                users = await self.users_db.get_active_users()
+                users = await users_db.get_active_users()
             except AttributeError:
                 logger.warning("get_active_users method not found, using list_users with filter instead")
-                users = await self.users_db.list_users({"is_disabled": {"$ne": True}})
+                users = await users_db.list_users({"is_disabled": {"$ne": True}})
             
             for user in users:
                 if not user:
@@ -79,7 +84,7 @@ class TaskNotificationsScheduler:
                 user_id = str(user.get("_id") or "")
                 
                 # Get overdue tasks for this user
-                overdue_tasks = await self.tasks_db.get_overdue_tasks_for_user(user_id)
+                overdue_tasks = await tasks_db.get_overdue_tasks_for_user(user_id)
                 
                 if overdue_tasks:
                     logger.info(f"Found {len(overdue_tasks)} overdue tasks for user {user_id}")
@@ -97,13 +102,9 @@ class TaskNotificationsScheduler:
                                 # Only notify if overdue by less than 24 hours or high priority
                                 is_high_priority = task.get("priority", "").lower() in ["high", "urgent"]
                                 if hours_overdue < 24 or is_high_priority:
-                                    # For testing purposes, delete any existing overdue notifications for this task
-                                    # This will ensure a new unread notification is created which will trigger the popup
                                     task_id = str(task.get("_id") or task.get("id"))
-                                    self.notifications_db.delete_existing_overdue_notifications(user_id, task_id)
-                                    
-                                    # Create a new overdue notification
-                                    self.notifications_db.create_task_overdue_notification(user_id, task)
+                                    notifications_db.delete_existing_overdue_notifications(user_id, task_id)
+                                    notifications_db.create_task_overdue_notification(user_id, task)
                                     logger.info(f"Created overdue notification for task {task_id} for user {user_id}")
                             except Exception as date_err:
                                 logger.error(f"Error parsing due date for task {task.get('_id')}: {date_err}")
@@ -115,6 +116,12 @@ class TaskNotificationsScheduler:
     async def process_daily_task_summaries(self):
         """Send daily summaries of today's tasks"""
         try:
+            from app.database import get_database_instances
+            db_instances = get_database_instances()
+            tasks_db = db_instances.get("tasks")
+            users_db = db_instances.get("users")
+            notifications_db = db_instances.get("notifications")
+
             now = get_ist_now()
             today = now.strftime("%Y-%m-%d")
             
@@ -127,26 +134,23 @@ class TaskNotificationsScheduler:
             if now.hour == target_hour and now.minute < target_minute + 15:  # Within 15 minutes of target time
                 logger.info(f"Sending daily task summaries at {now}")
                 
-                # Get all active users (fallback to list_users if get_active_users is not available)
+                # Get all active users
                 try:
-                    users = await self.users_db.get_active_users()
+                    users = await users_db.get_active_users()
                 except AttributeError:
                     logger.warning("get_active_users method not found, using list_users with filter instead")
-                    users = await self.users_db.list_users({"is_disabled": {"$ne": True}})
+                    users = await users_db.list_users({"is_disabled": {"$ne": True}})
                 
                 for user in users:
                     if not user:
                         continue
                     user_id = str(user.get("_id") or "")
                     
-                    # Get today's tasks for this user (async DB call — must be awaited)
-                    today_tasks = await self.tasks_db.get_tasks_due_on_date(user_id, today)
+                    today_tasks = await tasks_db.get_tasks_due_on_date(user_id, today)
 
                     if today_tasks:
                         logger.info(f"Found {len(today_tasks)} tasks due today for user {user_id}")
-
-                        # Create daily summary notification (async — must be awaited)
-                        await self.notifications_db.create_daily_tasks_summary_notification(user_id, today_tasks)
+                        await notifications_db.create_daily_tasks_summary_notification(user_id, today_tasks)
                         logger.info(f"Created daily summary notification for user {user_id}")
                 
                 # Update the last summary date

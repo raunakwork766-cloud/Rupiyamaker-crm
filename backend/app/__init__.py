@@ -487,6 +487,24 @@ except Exception as e:
     import traceback
     traceback.print_exc()
 
+try:
+    from app.routes import hrms_finance
+    app.include_router(hrms_finance.router)
+    print("✓ HRMS Finance router registered successfully")
+except Exception as e:
+    print(f"✗ Error registering HRMS Finance router: {e}")
+    import traceback
+    traceback.print_exc()
+
+try:
+    from app.routes import employee_monthly_config
+    app.include_router(employee_monthly_config.router)
+    print("✓ Employee Monthly Config router registered successfully")
+except Exception as e:
+    print(f"✗ Error registering Employee Monthly Config router: {e}")
+    import traceback
+    traceback.print_exc()
+
 # Serve static files with optimized settings
 app.mount("/static", StaticFiles(directory=os.path.join(BASE_DIR, "static"), check_dir=False), name="static")
 app.mount("/media", StaticFiles(directory=os.path.join(BACKEND_DIR, "media"), check_dir=False), name="media")

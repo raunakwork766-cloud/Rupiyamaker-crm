@@ -901,7 +901,7 @@ async def get_loan_types_with_leads(
     """Get loan types and count of leads/logins for each type"""
     # Check if user has leads view permission for all leads, otherwise show assigned only
     try:
-        await check_permission(user_id, "leads", "show", users_db, roles_db)
+        await check_permission(user_id, ["leads", "leads.pl_odd_leads", "leads.create_lead", "leads.pl_&_odd_leads"], "show", users_db, roles_db)
         show_all_leads = True
     except:
         show_all_leads = False
@@ -1145,7 +1145,7 @@ async def get_leads_logins_by_type(
     from app.utils.permissions import check_permission, get_lead_visibility_filter
     
     # Check basic view permission for leads
-    await check_permission(user_id, "leads", "show", users_db, roles_db)
+    await check_permission(user_id, ["leads", "leads.pl_odd_leads", "leads.create_lead", "leads.pl_&_odd_leads"], "show", users_db, roles_db)
     
     # Get hierarchical visibility filter for leads (includes manager's juniors)
     visibility_filter = await get_lead_visibility_filter(user_id, users_db, roles_db)
@@ -1275,7 +1275,7 @@ async def get_all_leads_by_loan_type(
     
     # Check basic view permission for leads
     try:
-        await check_permission(user_id, "leads", "show", users_db, roles_db)
+        await check_permission(user_id, ["leads", "leads.pl_odd_leads", "leads.create_lead", "leads.pl_&_odd_leads"], "show", users_db, roles_db)
     except:
         # If no leads permission, fall back to assigned leads only
         return await get_leads_by_loan_type(loan_type, user_id, leads_db, users_db, roles_db)

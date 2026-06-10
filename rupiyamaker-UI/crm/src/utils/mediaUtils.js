@@ -40,17 +40,30 @@ export const getProfilePictureUrl = (profilePhoto) => {
 };
 
 /**
- * Get a profile picture URL with cache busting timestamp
+ * Get a profile picture URL with cache busting.
+ *
+ * IMPORTANT: The cache-busting token is derived deterministically from the photo
+ * PATH (not Date.now()). Using Date.now() previously produced a brand-new URL on
+ * every single render, so the browser re-downloaded the image constantly — that
+ * caused the avatar to flicker / not show until a manual refresh. A stable token
+ * lets the browser cache the image, while still changing the URL whenever the
+ * underlying photo path changes (e.g. after a new upload with a new filename).
+ *
  * @param {string} profilePhoto - The profile photo path from database
  * @returns {string|null} - The full URL with cache busting or null if no photo
  */
 export const getProfilePictureUrlWithCacheBusting = (profilePhoto) => {
     const baseUrl = getProfilePictureUrl(profilePhoto);
     if (!baseUrl) return null;
-    
-    // Add timestamp to prevent caching issues
-    const timestamp = Date.now();
-    return `${baseUrl}?t=${timestamp}`;
+
+    // Deterministic, lightweight hash of the path → stable per photo.
+    let hash = 0;
+    const src = String(profilePhoto);
+    for (let i = 0; i < src.length; i++) {
+        hash = ((hash << 5) - hash + src.charCodeAt(i)) | 0;
+    }
+    const token = Math.abs(hash).toString(36);
+    return `${baseUrl}?v=${token}`;
 };
 
 export default {

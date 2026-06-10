@@ -43,7 +43,9 @@ if __name__ == "__main__":
         # ⚡ HIGH CONCURRENCY SETTINGS
         "backlog": 4096,                # Large listen backlog
         "limit_concurrency": 10000,     # Support 10K concurrent connections
-        "limit_max_requests": 50000,    # Max requests per worker
+        # limit_max_requests intentionally NOT set — when set, uvicorn workers
+        # self-restart after N requests, causing CancelledError crashes and
+        # unnecessary downtime.  Memory is managed by proper resource cleanup instead.
         "timeout_keep_alive": 30,       # Keep connections alive longer
         "timeout_graceful_shutdown": 5, # Fast graceful shutdown
         
@@ -64,22 +66,20 @@ if __name__ == "__main__":
         print("⚠ SSL certificates not found - running HTTP only")
     
     if is_production:
-        # ⚡ PRODUCTION: Optimized configuration
-        # Reduced from cpu_count*2 to fixed 4 workers to save RAM
-        # 4 workers is sufficient for moderate production load (~1000 concurrent users)
-        # Each uvicorn worker uses ~200-300MB RAM
+        # ⚡ PRODUCTION: Single worker — no multiprocessing fork overhead.
+        # Previously "workers: 2" spawned 2 × ~300 MB fork processes that slowly
+        # leaked memory until PM2's 1.5 GB limit triggered an auto-restart (that
+        # was the source of 633 restarts).  One worker + uvloop is plenty for
+        # this workload and keeps RSS well under 400 MB indefinitely.
+        #
+        # limit_max_requests removed intentionally: uvicorn workers restart
+        # themselves after N requests when that key is set, causing spurious
+        # "CancelledError" crashes in the logs and unnecessary downtime.
         config.update({
-            "workers": 4,  # 4 workers (~200MB each) stays under PM2 max_memory_restart (1500M)
-            # Note: worker_class is for gunicorn, not uvicorn
-            # "max_requests": 100000,         # Not supported by uvicorn
-            # "max_requests_jitter": 10000,   # Not supported by uvicorn
-            # "preload_app": True,            # Not supported by uvicorn
-            # "keepalive": 30,                # Not supported by uvicorn
-            # "worker_connections": 2048,     # Not supported by uvicorn
-            # "max_worker_connections": 2048,  # Not supported by uvicorn
-            # "worker_tmp_dir": "/dev/shm",   # Not supported by uvicorn
+            "workers": 1,
+            "timeout_graceful_shutdown": 30,  # Give worker 30s to finish in-flight requests
         })
-        print(f"🚀 PRODUCTION: {config.get('workers', 'N/A')} workers optimized for 10K+ concurrent requests")
+        print(f"🚀 PRODUCTION: {config.get('workers', 'N/A')} worker (single, no fork leak)")
     else:
         # ⚡ DEVELOPMENT: Fast reload with performance
         config.update({

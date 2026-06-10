@@ -3641,7 +3641,7 @@ const RoleSettings = () => {
             {/* === ALL PERMISSIONS TAB === */}
             {activeRoleTab === 'permissions' && (
                 <Suspense fallback={<div className="flex justify-center items-center h-64"><div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#ff7a59]"></div></div>}>
-                    <div style={{ margin: '-1rem -2rem -2rem', borderRadius: '0 0 12px 12px', overflow: 'hidden' }}>
+                    <div style={{ margin: '-1rem -2rem -2rem', borderRadius: '0 0 12px 12px', minWidth: 0, maxWidth: '100%', overflow: 'hidden' }}>
                         <RoleCompare embedded />
                     </div>
                 </Suspense>

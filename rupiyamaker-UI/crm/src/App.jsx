@@ -22,6 +22,8 @@ import sessionMonitor, { setSessionLogoutCallback } from './utils/sessionMonitor
 import { clearProfilePhotoFromStorage } from './utils/profilePhotoUtils'
 import { API_BASE_URL } from './config/api'
 import SpeedDialPage from './components/SpeedDialPage'
+import SalaryManagement from './components/SalaryManagement'
+import { isSuperAdmin, getUserPermissions } from './utils/permissions'
 import {
   ATTENDANCE_LOGIN_PATH,
   CRM_LOGIN_PATH,
@@ -286,7 +288,8 @@ function App() {
       'Announcement': '/notifications',
       'All Notifications': '/notifications',
       'Knowledge Base': '/knowledge-base',
-      'FAQ': '/faq'
+      'FAQ': '/faq',
+      'Finance': '/hr-finance'
     }).find(([_, path]) => path === currentPath)
     
     if (matchingLabel) {
@@ -384,6 +387,9 @@ function App() {
   }, []);
 
   // CRM auth only — attendance routes mount AttendanceApp via RootRouter (AppWithProviders)
+  // NOTE: Run only ONCE on mount (empty deps). location.pathname was previously
+  // in the deps array, which caused this effect — and setLoading(false) — to
+  // re-execute on every route change, flickering the entire CRM layout.
   useEffect(() => {
     const crm = getCrmSession()
     if (crm?.user) {
@@ -406,7 +412,7 @@ function App() {
     })
 
     setLoading(false)
-  }, [location.pathname])
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Handle window resize to maintain mobile behavior
   useEffect(() => {
@@ -494,9 +500,23 @@ function App() {
       'Announcement': '/notifications',
       'All Notifications': '/notifications',
       'Knowledge Base': '/knowledge-base',
-      'FAQ': '/faq'
+      'FAQ': '/faq',
+      'Finance': '/hr-finance'
     }
-    
+
+    // ── Loan-type guard ──────────────────────────────────────────────────────
+    // If the URL has NO loan_type_name but the current selectedLabel is NOT in
+    // the static path map (i.e. it's a dynamic loan-type label like "PL & OD Login"
+    // or "BL LEADS"), preserve it — the static fallback below would wrongly
+    // override it with "LOGIN Dashboard" / "Lead CRM".
+    if (!loanTypeName) {
+      const staticLabels = Object.keys(pathMappings);
+      if (selectedLabel && !staticLabels.includes(selectedLabel)) {
+        // selectedLabel is a dynamic loan-type name — don't override it
+        return;
+      }
+    }
+
     // Check if current selectedLabel already maps to the current path
     // This prevents unwanted overrides when multiple labels map to same route
     const currentLabelPath = pathMappings[selectedLabel]
@@ -552,6 +572,8 @@ function App() {
     const handleSidebarSelectionChange = (event) => {
       const { selection } = event.detail;
       if (selection) {
+        // Set flag so the URL-based useEffect doesn't override this selection
+        skipNextRouteEffect.current = true;
         setSelectedLabel(selection);
       }
     };
@@ -1259,6 +1281,38 @@ function App() {
             }
           />
 
+          {/* Salary Management — Super Admin + HR roles only */}
+          <Route
+            path="/hr-salary"
+            element={
+              <AppAuthGuard loading={loading} isAuthenticated={!!getCrmSession()} onLogin={handleLogin}>
+                {(() => {
+                  const perms = getUserPermissions();
+                  let ud = {};
+                  try { ud = JSON.parse(localStorage.getItem('userData') || '{}'); } catch {}
+
+                  // Debug — log what we see so we can identify the correct field
+                  console.log('🔐 HR-SALARY ACCESS CHECK', {
+                    role: ud.role,
+                    role_name: ud.role_name,
+                    designation: ud.designation,
+                    is_super_admin: ud.is_super_admin,
+                    is_admin: ud.is_admin,
+                    permsType: typeof perms,
+                    permsIsArray: Array.isArray(perms),
+                    permsKeys: typeof perms === 'object' && !Array.isArray(perms) ? Object.keys(perms).slice(0, 5) : perms?.slice?.(0, 2),
+                    isSuperAdminResult: isSuperAdmin(perms),
+                  });
+
+                  const rn = (ud.role?.name || ud.role_name || ud.designation?.name || ud.designation || '').toLowerCase();
+                  const allowed = isSuperAdmin(perms) || ud.is_super_admin || rn.includes('hr');
+                  console.log('🔐 roleName:', rn, '| allowed:', allowed);
+                  return allowed ? <SalaryManagement /> : <Navigate to="/unauthorized" replace />;
+                })()}
+              </AppAuthGuard>
+            }
+          />
+
           {/* CRM login — localStorage session only */}
           <Route
             path={CRM_LOGIN_PATH}
@@ -1279,7 +1333,7 @@ function App() {
           <Route path="/*" element={
             <AppAuthGuard
               loading={loading}
-              isAuthenticated={!!getCrmSession()}
+              isAuthenticated={isAuthenticated}
               onLogin={handleLogin}
             >
               <div style={{ display: 'flex', height: '100vh', overflow: 'hidden', background: '#000', color: '#fff' }}>
@@ -1309,7 +1363,7 @@ function App() {
                       flexDirection: 'column',
                       alignItems: 'stretch',
                       overflowY: 'auto',
-                      overflowX: 'hidden',
+                      overflowX: 'auto',
                     }}
                   >
                     {/* Conditional rendering based on view mode */}

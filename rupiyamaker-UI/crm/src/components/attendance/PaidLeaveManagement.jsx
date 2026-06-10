@@ -23,12 +23,24 @@ const LEAVES = [
 ];
 
 /* ─────────────────────────────── MAIN ─────────────────────────────── */
-const PaidLeaveManagement = () => {
+const PaidLeaveManagement = ({ selectedYear, selectedMonth, onLeaveUpdate }) => {
   const [rows, setRows]       = useState([]);
   const [loading, setLoading] = useState(false);
   const [toast, setToast]     = useState(null);
   const [q, setQ]             = useState('');
-  const [period, setPeriod]   = useState(getISTMonth);
+
+  // Sync period with parent AttendancePage month/year — if not provided, default to current IST month
+  const parentPeriod = selectedYear && selectedMonth
+    ? `${selectedYear}-${String(selectedMonth).padStart(2, '0')}`
+    : null;
+  const [period, setPeriod]   = useState(parentPeriod || getISTMonth);
+
+  // When parent changes month, update period
+  useEffect(() => {
+    if (parentPeriod && parentPeriod !== period) {
+      setPeriod(parentPeriod);
+    }
+  }, [parentPeriod]);
 
   // Popup state: { emp, lt, bal } when a cell is clicked
   const [popup, setPopup]     = useState(null);
@@ -37,16 +49,17 @@ const PaidLeaveManagement = () => {
   const [hist, setHist]       = useState([]);
   const [histLoad, setHistLoad] = useState(false);
 
-  useEffect(() => { load(); }, [period]);
+  useEffect(() => { load(period); }, [period]);
 
-  const load = async () => {
+  const load = async (activePeriod) => {
+    const periodToUse = activePeriod || period;
     setLoading(true);
     try {
       const empResp = await hrmsService.getAllEmployees();
       const allEmps = Array.isArray(empResp?.data) ? empResp.data : [];
       const list = allEmps.filter(e => e.employee_status === 'active');
       const bals = await Promise.allSettled(
-        list.map(e => axios.get(`${BASE}/settings/leave-balance/${empLeaveId(e)}?user_id=${uid()}&period=${period}`).then(r => r.data?.data || null))
+        list.map(e => axios.get(`${BASE}/settings/leave-balance/${empLeaveId(e)}?user_id=${uid()}&period=${periodToUse}`).then(r => r.data?.data || null))
       );
       const newRows = list.map((e, i) => ({ e, b: bals[i].status === 'fulfilled' ? bals[i].value : null }));
       setRows(newRows);
@@ -74,9 +87,11 @@ const PaidLeaveManagement = () => {
         period,
       });
       showToast('ok', `${isAdd ? '+' : ''}${amt} ${lt.s} → ${empName(emp)}`);
-      await load();
+      await load(period);
       // reload history if on history tab
       if (popTab === 'history') loadHist(emp);
+      // ── Notify parent AttendancePage to refresh PL column in calendar ──
+      if (onLeaveUpdate) onLeaveUpdate(period);
     } catch (x) {
       showToast('err', x.response?.data?.detail || 'Failed');
     } finally { setBusy(false); }
@@ -146,7 +161,7 @@ const PaidLeaveManagement = () => {
               style={{ background: '#09090b', border: '1px solid #27272a', color: '#e4e4e7', padding: '7px 10px 7px 28px', borderRadius: 8, fontSize: 12, outline: 'none', width: 150 }}
               onFocus={e => e.target.style.borderColor = '#0ea5e9'} onBlur={e => e.target.style.borderColor = '#27272a'} />
           </div>
-          <button onClick={load} title="Refresh"
+          <button onClick={() => load(period)} title="Refresh"
             style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#09090b', border: '1px solid #27272a', color: '#a1a1aa', padding: 7, borderRadius: 8, cursor: 'pointer' }}>
             <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
           </button>

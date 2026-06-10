@@ -5400,39 +5400,27 @@ const LoginCRM = ({ user, selectedLoanType: initialLoanType, department = "login
                                 {/* Select Button */}
                                 {(canDeleteLogin() || isUserSuperAdmin) && !checkboxVisible ? (
                                     <button
-                                        className={`px-5 py-3 rounded-lg flex items-center gap-2 transition font-bold text-base ${
-                                            selectedLeads.length > 0 
-                                                ? 'bg-green-600 hover:bg-green-700 text-white' 
-                                                : 'bg-[#03B0F5] hover:bg-[#0280b5] text-white'
-                                        }`}
+                                        className="lead-crm-btn lead-crm-btn-primary"
                                         onClick={handleShowCheckboxes}
                                     >
-                                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
-                                        </svg>
-                                        {selectedLeads.length > 0 
-                                            ? `Selected (${selectedLeads.length})` 
-                                            : 'Select'
-                                        }
+                                        <CheckSquare style={{ width: 14, height: 14 }} />
+                                        {checkedRows.length > 0 ? `Select (${checkedRows.length})` : 'Select'}
                                     </button>
                                 ) : (canDeleteLogin() || isUserSuperAdmin) ? (
-                                    <div className="flex items-center gap-6 bg-gray-900 rounded-lg p-3">
-                                        <label className="flex items-center cursor-pointer text-[#03B0F5] font-bold">
+                                    <div className="lead-crm-select-bar">
+                                        <label>
                                             <input
                                                 type="checkbox"
-                                                className="accent-blue-500 mr-2"
+                                                className="accent-blue-500 cursor-pointer"
                                                 checked={allRowsChecked}
                                                 onChange={handleSelectAllCheckboxes}
-                                                style={{ width: 18, height: 18 }}
                                             />
                                             Select All
                                         </label>
-                                        <span className="text-white font-semibold">
-                                            {checkedRows.length} row{checkedRows.length !== 1 ? "s" : ""} selected
-                                        </span>
+                                        <span>{checkedRows.length} selected</span>
                                         {(isUserSuperAdmin || canDeleteLogin()) && (
                                             <button
-                                                className="px-3 py-1 bg-red-600 text-white rounded font-bold hover:bg-red-700 transition"
+                                                className="lead-crm-btn lead-crm-btn-danger"
                                                 onClick={handleDeleteSelected}
                                                 disabled={checkedRows.length === 0}
                                             >
@@ -5440,7 +5428,7 @@ const LoginCRM = ({ user, selectedLoanType: initialLoanType, department = "login
                                             </button>
                                         )}
                                         <button
-                                            className="px-3 py-1 bg-gray-600 text-white rounded font-bold hover:bg-gray-700 transition"
+                                            className="lead-crm-btn lead-crm-btn-muted"
                                             onClick={handleCancelSelection}
                                         >
                                             Cancel

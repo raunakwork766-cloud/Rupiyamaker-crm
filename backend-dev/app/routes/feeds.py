@@ -152,7 +152,7 @@ async def list_posts(
 
     users_by_id = await users_db.get_users_batch(
         list(creator_ids),
-        projection={"first_name": 1, "last_name": 1, "username": 1}
+        projection={"first_name": 1, "last_name": 1, "username": 1, "profile_photo": 1}
     )
 
     # Enhance posts with user info and convert ObjectIds
@@ -169,6 +169,8 @@ async def list_posts(
         if post_creator:
             post_dict["creator_name"] = f"{post_creator.get('first_name', '')} {post_creator.get('last_name', '')}"
             post_dict["creator_username"] = post_creator.get("username", "")
+            if post_creator.get("profile_photo"):
+                post_dict["creator_photo"] = post_creator.get("profile_photo")
         
         # Add like info if user_id provided
         if user_id:

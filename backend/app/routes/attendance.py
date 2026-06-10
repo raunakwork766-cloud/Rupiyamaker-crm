@@ -247,6 +247,23 @@ def validate_geofence(user_location: Dict[str, float], office_location: Dict[str
         # Error validating geofence
         return True  # Allow if validation fails
 
+def serialize_geolocation(geolocation: Optional[GeolocationData]) -> Dict[str, Any]:
+    """Return a consistent location payload even when location is optional."""
+    if not geolocation:
+        return {
+            "latitude": 0.0,
+            "longitude": 0.0,
+            "accuracy": None,
+            "address": None
+        }
+    return geolocation.dict()
+
+def geolocation_coordinates(location: Dict[str, Any]) -> Dict[str, float]:
+    return {
+        "latitude": float(location.get("latitude") or 0.0),
+        "longitude": float(location.get("longitude") or 0.0)
+    }
+
 async def get_user_permissions(user_id: str, users_db: UsersDB, roles_db: RolesDB) -> Dict[str, bool]:
     """Get attendance permissions for a user - SIMPLIFIED to 3-type system"""
     try:
@@ -584,6 +601,21 @@ async def get_attendance_calendar(
             emp_prev_attendance = prev_month_attendance_lookup.get(user_emp_id, {})
             all_emp_attendance = {**emp_prev_attendance, **employee_attendance}
             
+            # ── Joining date: days before joining must NOT be marked absent ──
+            # Parse joining_date to determine blackout boundary for this month
+            _joining_date_raw = employee.get("joining_date")
+            _joining_day_cutoff = 0  # 0 = employee was here the whole month (no blackout)
+            if _joining_date_raw:
+                try:
+                    _jd_str = str(_joining_date_raw)[:10]
+                    _jYear  = int(_jd_str[:4])
+                    _jMonth = int(_jd_str[5:7])
+                    _jDay   = int(_jd_str[8:10])
+                    if _jYear == year and _jMonth == month and _jDay > 1:
+                        _joining_day_cutoff = _jDay  # only days >= this day are active
+                except Exception:
+                    pass
+            
             # Generate days using lookup tables
             days = []
             total_days = 0
@@ -596,6 +628,33 @@ async def get_attendance_calendar(
             for day in range(1, days_in_month + 1):
                 date_obj = date(year, month, day)
                 date_str = date_obj.isoformat()
+                
+                # ── Pre-joining blackout: days before joining are not counted ──
+                # They must not be auto-marked absent or participate in absconding rules.
+                if _joining_day_cutoff > 0 and day < _joining_day_cutoff:
+                    day_data = {
+                        "day": day,
+                        "date": date_str,
+                        "is_weekend": date_obj.weekday() in weekend_days,
+                        "is_holiday": date_str in holiday_dates,
+                        "status": None,         # Blacked out — not marked
+                        "status_text": "Before Joining",
+                        "is_manually_edited": False,
+                        "is_before_joining": True,
+                        "check_in_time": None,
+                        "check_out_time": None,
+                        "total_working_hours": None,
+                        "is_late": False,
+                        "comments": None,
+                        "photo_path": None,
+                        "leave_id": None,
+                        "leave_type": None,
+                        "leave_reason": None,
+                        "leave_approved_by": None,
+                        "leave_approved_by_name": None,
+                    }
+                    days.append(day_data)
+                    continue
                 
                 # Fast weekend check
                 is_weekend = date_obj.weekday() in weekend_days
@@ -768,6 +827,9 @@ async def get_attendance_calendar(
                     """True if check_date is a working day that is absent/not-present."""
                     if check_date.weekday() in weekend_days:
                         return False  # Weekend itself — not a working absence
+                    # Pre-joining days are NOT absent — they simply don't exist for this employee
+                    if _joining_day_cutoff > 0 and check_date.year == year and check_date.month == month and check_date.day < _joining_day_cutoff:
+                        return False
                     d_s = check_date.isoformat()
                     # In-month days: use updated status from days list
                     if d_s in _days_by_date:
@@ -781,6 +843,12 @@ async def get_attendance_calendar(
                     # Out-of-month days: use raw attendance lookup
                     rec = all_emp_attendance.get(d_s)
                     if rec is None:
+                        # For days in the NEXT month (e.g. Monday after last Sunday of month),
+                        # we do NOT have that month's data — give benefit of doubt: not absent.
+                        # Only mark absent for out-of-month days that are in the PREVIOUS month.
+                        if check_date.month != month or check_date.year != year:
+                            if check_date > date(year, month, days_in_month):
+                                return False  # Next-month day — no data, assume not absent
                         return check_date < _today_ist  # No record in past → absent
                     try:
                         return float(rec.get("status", 0)) not in [1.0, 1.5, 0.0, 2.0, 0.5]
@@ -788,8 +856,11 @@ async def get_attendance_calendar(
                         return True
 
                 def _day_present(check_date):
-                    """True if check_date is a working day with present status."""
-                    if check_date.weekday() in weekend_days:
+                    """True if check_date is a working day with present status.
+                    NOTE: Sunday (weekday=6) is always skipped; Saturday (weekday=5)
+                    is counted as a working day even though it's in weekend_days —
+                    it is a chargeable attendance day, not a rest day like Sunday."""
+                    if check_date.weekday() == 6:  # Only skip Sunday itself
                         return False
                     d_s = check_date.isoformat()
                     if d_s in _days_by_date:
@@ -810,6 +881,21 @@ async def get_attendance_calendar(
 
                     # ── Holiday takes priority: skip Sunday rule for holiday Sundays ──
                     if day_data.get("is_holiday"):
+                        continue
+
+                    # ── Manual override: if admin explicitly edited this Sunday, respect it ──
+                    if day_data.get("is_manually_edited", False):
+                        # Admin has manually set this Sunday's status — don't override it
+                        # Still need to count it for stats
+                        s = day_data.get("status")
+                        if s in [1, 1.0, 2, 2.0, 0.5]:
+                            day_data["is_sunday_present"] = True
+                            full_days += 1
+                            total_days += 1
+                        elif s in [-1, -1.0, -2, -2.0, 0, 0.0]:
+                            day_data["is_sunday_present"] = False
+                            absent_days += 1
+                            total_days += 1
                         continue
 
                     saturday = d_sun - timedelta(days=1)
@@ -867,18 +953,20 @@ async def get_attendance_calendar(
                     monday   = d_sun + timedelta(days=1)
                     sat_data = _days_by_date_abs.get(saturday.isoformat())
                     mon_data = _days_by_date_abs.get(monday.isoformat())
-                    # Saturday absent (working day) → Absconding (only if not manually edited)
+                    # Saturday absent (working day) → Absconding (only if not manually edited and not pre-joining)
                     if (sat_data and sat_data.get("status") in [-1, -1.0]
                             and saturday.weekday() not in weekend_days
-                            and not sat_data.get("is_manually_edited", False)):
+                            and not sat_data.get("is_manually_edited", False)
+                            and not sat_data.get("is_before_joining", False)):
                         sat_data["status"] = -2.0
                         sat_data["status_text"] = "Absconding"
                         absent_days -= 1
                         absconding_days += 1
-                    # Monday absent (working day) → Absconding (only if not manually edited)
+                    # Monday absent (working day) → Absconding (only if not manually edited and not pre-joining)
                     if (mon_data and mon_data.get("status") in [-1, -1.0]
                             and monday.weekday() not in weekend_days
-                            and not mon_data.get("is_manually_edited", False)):
+                            and not mon_data.get("is_manually_edited", False)
+                            and not mon_data.get("is_before_joining", False)):
                         mon_data["status"] = -2.0
                         mon_data["status_text"] = "Absconding"
                         absent_days -= 1
@@ -2169,19 +2257,28 @@ async def check_in_attendance(
         # Get attendance settings
         settings_db = SettingsDB()
         settings = await settings_db.get_attendance_settings()
+        check_in_location = serialize_geolocation(check_in_data.geolocation)
+        check_in_coordinates = geolocation_coordinates(check_in_location)
+
+        if settings.get("require_geolocation", True) and not check_in_data.geolocation:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Location is required for check-in"
+            )
         
         # Validate geofence if enabled
         if settings.get("geofence_enabled", False):
+            if not check_in_data.geolocation:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Location is required because geofence is enabled"
+                )
             office_location = {
                 "latitude": settings.get("office_latitude"),
                 "longitude": settings.get("office_longitude")
             }
-            user_location = {
-                "latitude": check_in_data.geolocation.latitude,
-                "longitude": check_in_data.geolocation.longitude
-            }
             
-            if not validate_geofence(user_location, office_location, settings.get("geofence_radius", 100.0)):
+            if not validate_geofence(check_in_coordinates, office_location, settings.get("geofence_radius", 100.0)):
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail="You are outside the allowed check-in area"
@@ -2312,16 +2409,8 @@ async def check_in_attendance(
         check_in_record = {
             "check_in_time": check_in_time,
             "check_in_photo_path": check_in_photo_path,
-            "check_in_location": {
-                "latitude": check_in_data.geolocation.latitude,
-                "longitude": check_in_data.geolocation.longitude,
-                "accuracy": check_in_data.geolocation.accuracy,
-                "address": check_in_data.geolocation.address
-            },
-            "check_in_coordinates": {
-                "latitude": check_in_data.geolocation.latitude,
-                "longitude": check_in_data.geolocation.longitude
-            },
+            "check_in_location": check_in_location,
+            "check_in_coordinates": check_in_coordinates,
             "comments": check_in_data.comments or status_reason,
             "status": attendance_status  # Set status based on timing
         }
@@ -2353,9 +2442,9 @@ async def check_in_attendance(
             "status_text": get_status_text(attendance_status),
             "status_reason": status_reason,
             "location": {
-                "latitude": check_in_data.geolocation.latitude,
-                "longitude": check_in_data.geolocation.longitude,
-                "address": check_in_data.geolocation.address
+                "latitude": check_in_location["latitude"],
+                "longitude": check_in_location["longitude"],
+                "address": check_in_location.get("address")
             }
         }
         
@@ -2394,6 +2483,14 @@ async def check_out_attendance(
         # Get attendance settings
         settings_db = SettingsDB()
         settings = await settings_db.get_attendance_settings()
+        check_out_location = serialize_geolocation(check_out_data.geolocation)
+        check_out_coordinates = geolocation_coordinates(check_out_location)
+
+        if settings.get("require_geolocation", True) and not check_out_data.geolocation:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Location is required for check-out"
+            )
         
         # Check if checked in today
         today = date.today().isoformat()
@@ -2412,16 +2509,17 @@ async def check_out_attendance(
         
         # Validate geofence if enabled
         if settings.get("geofence_enabled", False):
+            if not check_out_data.geolocation:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Location is required because geofence is enabled"
+                )
             office_location = {
                 "latitude": settings.get("office_latitude"),
                 "longitude": settings.get("office_longitude")
             }
-            user_location = {
-                "latitude": check_out_data.geolocation.latitude,
-                "longitude": check_out_data.geolocation.longitude
-            }
             
-            if not validate_geofence(user_location, office_location, settings.get("geofence_radius", 100.0)):
+            if not validate_geofence(check_out_coordinates, office_location, settings.get("geofence_radius", 100.0)):
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail="You are outside the allowed check-out area"
@@ -2501,16 +2599,8 @@ async def check_out_attendance(
         check_out_record = {
             "check_out_time": check_out_time,
             "check_out_photo_path": check_out_photo_path,
-            "check_out_location": {
-                "latitude": check_out_data.geolocation.latitude,
-                "longitude": check_out_data.geolocation.longitude,
-                "accuracy": check_out_data.geolocation.accuracy,
-                "address": check_out_data.geolocation.address
-            },
-            "check_out_coordinates": {
-                "latitude": check_out_data.geolocation.latitude,
-                "longitude": check_out_data.geolocation.longitude
-            },
+            "check_out_location": check_out_location,
+            "check_out_coordinates": check_out_coordinates,
             "comments": check_out_data.comments or status_reason,
             "total_working_hours": round(working_hours, 2),
             "status": final_status
@@ -2553,9 +2643,9 @@ async def check_out_attendance(
             "status_reason": status_reason,
             "check_in_status": get_status_text(current_status),
             "location": {
-                "latitude": check_out_data.geolocation.latitude,
-                "longitude": check_out_data.geolocation.longitude,
-                "address": check_out_data.geolocation.address
+                "latitude": check_out_location["latitude"],
+                "longitude": check_out_location["longitude"],
+                "address": check_out_location.get("address")
             }
         }
         
@@ -2759,16 +2849,12 @@ async def check_out_attendance(
         # Prepare check-out data
         now = get_ist_now()
         check_out_time = now.strftime("%H:%M:%S")
+        check_out_location = serialize_geolocation(check_out_data.geolocation)
         
         check_out_record = {
             "check_out_time": check_out_time,
             "check_out_photo_path": check_out_photo_path,
-            "check_out_location": {
-                "latitude": check_out_data.geolocation.latitude,
-                "longitude": check_out_data.geolocation.longitude,
-                "accuracy": check_out_data.geolocation.accuracy,
-                "address": check_out_data.geolocation.address
-            },
+            "check_out_location": check_out_location,
             "comments": check_out_data.comments
         }
         
@@ -2791,9 +2877,9 @@ async def check_out_attendance(
             "status": updated_record.get("status"),
             "status_text": get_status_text(updated_record.get("status", 0)),
             "location": {
-                "latitude": check_out_data.geolocation.latitude,
-                "longitude": check_out_data.geolocation.longitude,
-                "address": check_out_data.geolocation.address
+                "latitude": check_out_location["latitude"],
+                "longitude": check_out_location["longitude"],
+                "address": check_out_location.get("address")
             }
         }
         
@@ -3375,6 +3461,7 @@ async def get_attendance_settings(
             "check_out_end_time": settings.get("check_out_end_time", "20:00"),
             "minimum_working_hours": settings.get("minimum_working_hours", 8.0),
             "weekend_days": settings.get("weekend_days", [5, 6]),  # Saturday, Sunday
+            "require_geolocation": settings.get("require_geolocation", True),
             "geofence_enabled": settings.get("geofence_enabled", False),
             "geofence_radius": settings.get("geofence_radius", 100.0),
             "office_latitude": settings.get("office_latitude"),

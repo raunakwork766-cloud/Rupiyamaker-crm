@@ -282,7 +282,7 @@ async def list_leads(
     try:
         # Permission check
         try:
-            await check_permission(user_id, "leads", "show", users_db, roles_db)
+            await check_permission(user_id, ["leads", "leads.pl_odd_leads", "leads.create_lead", "leads.pl_&_odd_leads"], "show", users_db, roles_db)
         except:
             # For now, allow access - implement proper permission checking later
             pass
@@ -648,7 +648,7 @@ async def check_phone_number(
     
     # Permission check
     try:
-        await check_permission(user_id, "leads", "show", users_db, roles_db)
+        await check_permission(user_id, ["leads", "leads.pl_odd_leads", "leads.create_lead", "leads.pl_&_odd_leads"], "show", users_db, roles_db)
     except:
         # Allow for now
         pass

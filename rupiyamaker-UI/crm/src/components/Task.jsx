@@ -274,7 +274,7 @@ export default function Task({ onTaskStatusChange, onTaskUpdate } = {}) {
     /* Header */
     .task-top-bar { display: flex; justify-content: space-between; align-items: flex-start; padding: 20px 24px 0; border-bottom: 1px solid #1f1f27; background: #000; }
     .task-top-bar-left h1 { font-size: 22px; font-weight: 700; color: #f0f0f5; margin: 0 0 2px; line-height: 1.2; }
-    .task-top-bar-left p { font-size: 13px; color: #6b7a99; margin: 0 0 12px; }
+    .task-top-bar-left p { font-size: 13px; color: #c8d0e0; margin: 0 0 12px; }
     .task-top-bar-right { display: flex; gap: 8px; align-items: center; padding-top: 4px; }
 
     /* Top buttons */
@@ -288,7 +288,7 @@ export default function Task({ onTaskStatusChange, onTaskUpdate } = {}) {
     /* Single toolbar row: tabs (left) | search + dropdowns (right) */
     .task-view-toggle-bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 24px; background: #000; border-bottom: 1px solid #1f1f27; flex-wrap: wrap; }
     .task-view-toggle-group { display: flex; gap: 0; flex-wrap: wrap; flex: 0 1 auto; min-width: 0; }
-    .task-view-toggle-btn { padding: 12px 16px; border: none; background: transparent; font-size: 13px; font-weight: 600; color: #6b7a99; cursor: pointer; border-bottom: 3px solid transparent; transition: color 0.15s, border-color 0.15s; white-space: nowrap; }
+    .task-view-toggle-btn { padding: 12px 16px; border: none; background: transparent; font-size: 13px; font-weight: 600; color: #c8d0e0; cursor: pointer; border-bottom: 3px solid transparent; transition: color 0.15s, border-color 0.15s; white-space: nowrap; }
     .task-view-toggle-btn:hover { color: #c8d0e0; }
     .task-view-toggle-btn.active { color: #f97316; font-weight: 800; border-bottom-color: #f97316; }
 
@@ -298,23 +298,23 @@ export default function Task({ onTaskStatusChange, onTaskUpdate } = {}) {
 
     .task-search-box--in-bar { position: relative; width: 260px; min-width: 200px; flex-shrink: 0; }
     .task-search-box--in-bar input { background: #1a1a24; border: 1px solid #2a2a3a; border-radius: 3px; padding: 6px 14px 6px 32px; color: #c8d0e0; font-size: 13px; width: 100%; outline: none; transition: border-color 0.15s; box-sizing: border-box; }
-    .task-search-box--in-bar input::placeholder { color: #4a5570; }
+    .task-search-box--in-bar input::placeholder { color: #8898b8; }
     .task-search-box--in-bar input:focus { border-color: #3b82f6; box-shadow: 0 0 0 2px rgba(59,130,246,0.15); }
-    .task-search-box--in-bar svg { position: absolute; left: 9px; top: 50%; transform: translateY(-50%); color: #4a5570; }
+    .task-search-box--in-bar svg { position: absolute; left: 9px; top: 50%; transform: translateY(-50%); color: #c8d0e0; }
 
     .task-toolbar-right { display: flex; align-items: center; justify-content: flex-end; gap: 8px; margin-left: auto; flex-shrink: 0; flex-wrap: wrap; }
 
     /* Select controls */
     .task-select-controls { display: flex; align-items: center; gap: 8px; }
     .task-select-controls label { display: flex; align-items: center; cursor: pointer; color: #c8d0e0; font-size: 13px; gap: 5px; }
-    .task-select-controls span { color: #6b7a99; font-size: 13px; }
+    .task-select-controls span { color: #c8d0e0; font-size: 13px; }
     .task-select-btn-del { padding: 5px 12px; background: #1a0a0a; color: #f87171; border: 1px solid #7f1d1d; border-radius: 3px; font-size: 13px; cursor: pointer; }
     .task-select-btn-del:hover { background: #2a0f0f; }
-    .task-select-btn-cancel { padding: 5px 12px; background: #1a1a24; color: #6b7a99; border: 1px solid #2a2a3a; border-radius: 3px; font-size: 13px; cursor: pointer; }
+    .task-select-btn-cancel { padding: 5px 12px; background: #1a1a24; color: #c8d0e0; border: 1px solid #2a2a3a; border-radius: 3px; font-size: 13px; cursor: pointer; }
     .task-select-btn-cancel:hover { background: #22222e; }
 
     /* Table */
-    .task-data-table-header { background: #ffffff; border-top: 1px solid #e5e7eb; border-bottom: 2px solid #e5e7eb; display: flex; padding: 12px 24px; align-items: center; box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1); }
+    .task-data-table-header { background: #ffffff; border-top: 1px solid #e5e7eb; border-bottom: 2px solid #e5e7eb; display: flex; padding: 5px 24px; align-items: center; box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1); }
     .task-th { color: #03b0f5; font-weight: 800; font-size: 11px; text-transform: uppercase; letter-spacing: 0.6px; text-align: left; flex: 1; }
     .task-th.number { flex: 0 0 36px; }
     .task-th.type { flex: 0 0 110px; }
@@ -326,7 +326,7 @@ export default function Task({ onTaskStatusChange, onTaskUpdate } = {}) {
     .task-th.date { flex: 1.2; }
 
     .task-data-table-body { display: flex; flex-direction: column; }
-    .task-row { background: #000; border-bottom: 1px solid #1a1a22; display: flex; padding: 11px 24px; align-items: center; cursor: pointer; transition: background 0.1s; animation: taskSlideIn 0.2s ease-out; }
+    .task-row { background: #000; border-bottom: 1px solid #2a2a38; display: flex; padding: 5px 24px; align-items: center; cursor: pointer; transition: background 0.1s; animation: taskSlideIn 0.2s ease-out; }
     .task-row:hover { background: #13131c; }
     .task-td { font-size: 13px; color: #ffffff; font-weight: 600; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding-right: 12px; }
     .task-td.number { flex: 0 0 36px; color: #ffffff; font-size: 12px; font-weight: 600; }
@@ -344,7 +344,7 @@ export default function Task({ onTaskStatusChange, onTaskUpdate } = {}) {
     .badge-todo { background: #0a1a2a; color: #60a5fa; border: 1px solid #1e3a5f; }
 
     .task-status-badge { display: inline-flex; align-items: center; padding: 3px 8px; border-radius: 2px; font-size: 11px; font-weight: 600; }
-    .task-sts-pending { background: #1a1a24; color: #6b7a99; border: 1px solid #2a2a3a; }
+    .task-sts-pending { background: #1a1a24; color: #c8d0e0; border: 1px solid #2a2a3a; }
     .task-sts-complete { background: #0a2a22; color: #34d399; border: 1px solid #064e3b; }
     .task-sts-failed { background: #1a0a0a; color: #f87171; border: 1px solid #7f1d1d; }
     .task-sts-inprogress { background: #1a1200; color: #fbbf24; border: 1px solid #78350f; }
@@ -360,13 +360,13 @@ export default function Task({ onTaskStatusChange, onTaskUpdate } = {}) {
     .task-tag-lead { background: #0a1a2a; color: #60a5fa; padding: 2px 6px; border-radius: 2px; font-size: 10px; font-weight: 700; text-transform: uppercase; margin-right: 4px; border: 1px solid #1e3a5f; }
     .task-record-name { color: #60a5fa; font-weight: 500; cursor: pointer; }
     .task-record-name:hover { text-decoration: underline; }
-    .task-record-number { color: #4a5570; font-size: 11px; margin-left: 4px; }
+    .task-record-number { color: #c8d0e0; font-size: 11px; margin-left: 4px; }
 
     /* Empty state */
     .task-empty-state { display: flex; flex-direction: column; justify-content: center; align-items: center; padding: 80px 20px; text-align: center; }
     .task-empty-state-title { font-size: 17px; font-weight: 700; color: #c8d0e0; margin: 0 0 6px; }
-    .task-empty-state-sub { font-size: 14px; color: #4a5570; margin: 0; }
-    .task-empty-state p { color: #4a5570; font-size: 14px; font-weight: 400; margin: 0; }
+    .task-empty-state-sub { font-size: 14px; color: #c8d0e0; margin: 0; }
+    .task-empty-state p { color: #c8d0e0; font-size: 14px; font-weight: 400; margin: 0; }
 
     /* Show more */
     .task-show-more-btn { background: #1a1a24; color: #60a5fa; border: 1px solid #2a2a3a; padding: 8px 20px; border-radius: 3px; font-size: 13px; font-weight: 600; cursor: pointer; transition: all 0.15s; }

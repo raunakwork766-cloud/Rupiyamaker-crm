@@ -7,6 +7,7 @@ import EmployeeRemarks from './employee-details/EmployeeRemarks';
 import EmployeeAttachments from './sections/EmployeeAttachmentsNew';
 import EmployeeActivity from './employee-details/EmployeeActivity';
 import ProfileAvatar from './common/ProfileAvatar';
+import CurrencyInput from './common/CurrencyInput';
 import usePostalLookup from '../hooks/usePostalLookup';
 import { formatDateTime, getISTTimestamp } from '../utils/dateUtils';
 import { useCustomNotification } from './common/CustomNotification';
@@ -55,7 +56,7 @@ const EmployeeDetails = ({ employee, onBack, onEmployeeUpdate }) => {
             getContent: () => [
                 {
                     content: <EmployeeFormNew 
-                        key={`employee-form-${employeeData._id}-${employeeData._refreshKey || Date.now()}`}
+                        key={`employee-form-${employeeData._id}-${employeeData._refreshKey || 'initial'}`}
                         employee={employeeData} 
                         onFinish={handleEmployeeUpdate} 
                         disableSuccessModal={true}
@@ -88,7 +89,7 @@ const EmployeeDetails = ({ employee, onBack, onEmployeeUpdate }) => {
                     content: (
                         <div className="p-4 bg-white rounded-xl shadow text-[1rem] text-[#03b0f5] border-l-4 border-cyan-400/40">
                             <EmployeeAttachments 
-                                key={`attachments-${employeeData._id}-${employeeData._refreshKey || Date.now()}`}
+                                key={`attachments-${employeeData._id}-${employeeData._refreshKey || 'initial'}`}
                                 employee={employeeData} 
                             />
                         </div>
@@ -99,7 +100,7 @@ const EmployeeDetails = ({ employee, onBack, onEmployeeUpdate }) => {
         {
             label: "EMPLOYEE ACTIVITY",
             getContent: () => {
-                const activityKey = `activity-${employeeData._id}-${activityRefreshKey}-${employeeData._refreshKey || Date.now()}`;
+                const activityKey = `activity-${employeeData._id}-${activityRefreshKey}-${employeeData._refreshKey || 'initial'}`;
                 return [
                     {
                         content: (
@@ -1108,6 +1109,8 @@ const EmploymentDetailsSection = ({ employee, onUpdate }) => {
         role_name: employee.role_name || '',
         employee_status: employee.employee_status || '',
         salary: employee.salary || '',
+        monthly_target: employee.monthly_target || '',
+        settled_target: employee.settled_target || '',
         work_location: employee.work_location || '',
         mac_addresses: employee.mac_addresses || employee.mac_address ? 
             (Array.isArray(employee.mac_addresses) ? employee.mac_addresses : [employee.mac_address]) : []
@@ -1260,6 +1263,8 @@ const EmploymentDetailsSection = ({ employee, onUpdate }) => {
             role_name: employee.role_name || '',
             employee_status: employee.employee_status || '',
             salary: employee.salary || '',
+            monthly_target: employee.monthly_target || '',
+            settled_target: employee.settled_target || '',
             work_location: employee.work_location || '',
             mac_addresses: employee.mac_addresses || employee.mac_address ? 
                 (Array.isArray(employee.mac_addresses) ? employee.mac_addresses : [employee.mac_address]) : []
@@ -1708,13 +1713,22 @@ const EmploymentDetailsSection = ({ employee, onUpdate }) => {
                 </div>
                 <div className="flex flex-col gap-2">
                     <div className="text-lg text-[#03b0f5] font-bold">SALARY</div>
-                    <input
-                        type="number"
+                    <CurrencyInput
                         className="text-[#0db45c] border border-black rounded px-3 py-2 font-bold w-full text-base"
                         value={fields.salary}
                         onChange={e => handleChange("salary", e.target.value)}
                         onBlur={e => handleBlur("salary", e.target.value)}
                         placeholder="Enter salary"
+                    />
+                </div>
+                <div className="flex flex-col gap-2">
+                    <div className="text-lg text-[#03b0f5] font-bold">MONTHLY TARGET</div>
+                    <CurrencyInput
+                        className="text-[#0db45c] border border-black rounded px-3 py-2 font-bold w-full text-base"
+                        value={fields.monthly_target}
+                        onChange={e => handleChange("monthly_target", e.target.value)}
+                        onBlur={e => handleBlur("monthly_target", e.target.value)}
+                        placeholder="Enter monthly target"
                     />
                 </div>
                 <div className="flex flex-col gap-2">
@@ -1986,6 +2000,7 @@ const ComprehensiveEmployeeForm = ({ employee, onUpdate }) => {
         joining_date: employee?.joining_date || '',
         salary: employee?.salary || '',
         monthly_target: employee?.monthly_target || '',
+        settled_target: employee?.settled_target || '',
         incentive: employee?.incentive || '',
         department_id: employee?.department_id || '',
         role_id: employee?.role_id || '',
@@ -2416,14 +2431,24 @@ const ComprehensiveEmployeeForm = ({ employee, onUpdate }) => {
                         </div>
                         <div className="flex flex-col gap-2">
                             <label className="text-lg text-[#03b0f5] font-bold">SALARY</label>
-                            <input
-                                type="number"
+                            <CurrencyInput
                                 name="salary"
                                 value={formData.salary}
                                 onChange={handleInputChange}
                                 onBlur={e => handleBlur('salary', e.target.value)}
                                 className="text-[#0db45c] border border-black rounded px-3 py-2 font-bold w-full text-base"
                                 placeholder="Monthly Salary"
+                            />
+                        </div>
+                        <div className="flex flex-col gap-2">
+                            <label className="text-lg text-[#03b0f5] font-bold">MONTHLY TARGET</label>
+                            <CurrencyInput
+                                name="monthly_target"
+                                value={formData.monthly_target}
+                                onChange={handleInputChange}
+                                onBlur={e => handleBlur('monthly_target', e.target.value)}
+                                className="text-[#0db45c] border border-black rounded px-3 py-2 font-bold w-full text-base"
+                                placeholder="Monthly Target"
                             />
                         </div>
                         <div className="flex flex-col gap-2">

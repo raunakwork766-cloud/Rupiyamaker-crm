@@ -1,9 +1,9 @@
-import React, { useState, useEffect, useMemo } from 'react';
+                                                                                                                                    import React, { useState, useEffect, useMemo } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import './Login.css';
 import { updateProfilePhotoInStorage } from '../utils/profilePhotoUtils';
 import {
-    ATTENDANCE_LOGIN_PATH,
+    ATTENDANCE_LOGIN_PATH,                                                                                                                                  
     CRM_LOGIN_PATH,
     resolveLoginMode,
     clearLegacyAttendanceLoginFlags,
@@ -28,6 +28,7 @@ const Login = ({ onLogin, forcedMode = null }) => {
     const [logoutBanner, setLogoutBanner] = useState('');
     const [otpRequired, setOtpRequired] = useState(false);
     const [otpGenerated, setOtpGenerated] = useState(false);
+    const [otpChecking, setOtpChecking] = useState(false);
     const [userId, setUserId] = useState(null);
     const [showPassword, setShowPassword] = useState(false);
     const [fyfLogoBroken, setFyfLogoBroken] = useState(false);
@@ -70,6 +71,53 @@ const Login = ({ onLogin, forcedMode = null }) => {
         }
     }, []);
 
+    // Debounced pre-login check: as soon as the user finishes typing their
+    // username/email, ask the backend whether this account logs in via OTP.
+    // If so, we hide the password field and surface the OTP flow directly —
+    // OTP users never need to enter a password.
+    useEffect(() => {
+        // Attendance login always uses a password — never auto-switch to OTP here.
+        if (isAttendanceMode) return;
+
+        const identifier = (formData.identifier || '').trim();
+        if (!identifier) {
+            setOtpRequired(false);
+            setOtpGenerated(false);
+            setUserId(null);
+            return;
+        }
+
+        let cancelled = false;
+        setOtpChecking(true);
+        const timer = setTimeout(async () => {
+            try {
+                const resp = await fetch(`/api/users/login/otp-status?identifier=${encodeURIComponent(identifier)}`);
+                if (!resp.ok) return;
+                const data = await resp.json();
+                if (cancelled) return;
+                if (data?.otp_required) {
+                    setOtpRequired(true);
+                    if (data.user_id) setUserId(data.user_id);
+                } else {
+                    setOtpRequired(false);
+                    setOtpGenerated(false);
+                    setUserId(null);
+                }
+            } catch (_) {
+                // Network hiccup — fall back to normal password login (server
+                // still enforces OTP at submit time via the 428 response).
+            } finally {
+                if (!cancelled) setOtpChecking(false);
+            }
+        }, 450);
+
+        return () => {
+            cancelled = true;
+            clearTimeout(timer);
+            setOtpChecking(false);
+        };
+    }, [formData.identifier, isAttendanceMode]);
+
     const handleChange = (e) => {
         setFormData({ ...formData, [e.target.name]: e.target.value });
         if (error) setError('');
@@ -92,25 +140,15 @@ const Login = ({ onLogin, forcedMode = null }) => {
             if (response.ok) {
                 setOtpGenerated(true);
                 setError('');
-                const recipients = data.approver_count
-                    ? `${data.approver_count} approver${data.approver_count !== 1 ? 's' : ''}`
-                    : 'your role\'s OTP approvers';
-                alert(`OTP has been sent to ${recipients}. Please contact them to receive your OTP, then enter it below.`);
             } else {
-                let errorMessage = 'Failed to generate OTP';
+                let errorMessage = 'Failed to generate OTP. Please try again.';
                 const detail = data?.detail;
                 const code = (detail && typeof detail === 'object' && detail.code) || null;
-                if (code === 'OTP_ROUTING_NOT_CONFIGURED') {
-                    errorMessage = 'Login is blocked: no OTP approvers are configured for your role. Please ask an administrator to configure OTP Verification routing in Settings.';
-                } else if (code === 'APPROVER_PERSONAL_EMAIL_MISSING') {
-                    const names = (detail.missing && detail.missing.join(', ')) || '';
-                    errorMessage = 'Login is blocked: the configured OTP approver(s) ' + (names ? `(${names}) ` : '') + 'do not have a Personal Email set in HRMS. Please contact an administrator.';
-                } else if (code === 'SMTP_NOT_CONFIGURED') {
-                    errorMessage = 'Login is blocked: the email server (SMTP) is not configured. Please contact an administrator.';
+                if (code === 'OTP_ROUTING_NOT_CONFIGURED' || code === 'APPROVER_PERSONAL_EMAIL_MISSING' || code === 'SMTP_NOT_CONFIGURED') {
+                    errorMessage = 'OTP could not be sent. Please contact your administrator.';
                 } else if (detail) {
                     if (typeof detail === 'string') errorMessage = detail;
-                    else if (Array.isArray(detail)) errorMessage = detail.map(err => err.msg || 'Validation error').join(', ');
-                    else if (typeof detail === 'object') errorMessage = detail.message || JSON.stringify(detail);
+                    else if (Array.isArray(detail)) errorMessage = detail.map(err => err.msg || '').join(', ');
                 }
                 setError(errorMessage);
             }
@@ -130,7 +168,21 @@ const Login = ({ onLogin, forcedMode = null }) => {
         const identifier = formData.identifier || identifierInput?.value || '';
         const password = formData.password || passwordInput?.value || '';
 
-        if (!identifier || !password) {
+        // OTP-login users authenticate with the OTP code only — no password needed.
+        if (otpRequired && !isAttendanceMode) {
+            if (!identifier) {
+                setError('Please enter your username or email.');
+                return;
+            }
+            if (!otpGenerated) {
+                setError('Please generate an OTP first.');
+                return;
+            }
+            if (!formData.otpCode) {
+                setError('Please enter the OTP sent to your approvers.');
+                return;
+            }
+        } else if (!identifier || !password) {
             setError('Please enter your username and password.');
             return;
         }
@@ -144,7 +196,7 @@ const Login = ({ onLogin, forcedMode = null }) => {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     username_or_email: identifier,
-                    password: password,
+                    password: otpRequired && !isAttendanceMode ? undefined : password,
                     otp_code: otpRequired ? formData.otpCode : undefined,
                     login_type: isAttendanceMode ? 'attendance_only' : 'crm'
                 })
@@ -289,15 +341,7 @@ const Login = ({ onLogin, forcedMode = null }) => {
                     userIdToSet = data.user_id || data.userId || data.user?._id || data.user?.id;
                 }
                 setUserId(userIdToSet);
-                let errorMessage = 'OTP verification required. Please generate an OTP to continue.';
-                if (typeof data.detail === 'object') {
-                    if (data.detail.message) errorMessage = data.detail.message;
-                    else if (Array.isArray(data.detail)) errorMessage = data.detail.map(err => err.msg || 'Validation error').join(', ');
-                    else errorMessage = JSON.stringify(data.detail);
-                } else if (typeof data.detail === 'string') {
-                    errorMessage = data.detail;
-                }
-                setError(errorMessage);
+                setError('');
             } else {
                 let errorMessage = 'Login failed. Please try again.';
                 if (data.detail) {
@@ -435,6 +479,7 @@ const Login = ({ onLogin, forcedMode = null }) => {
                             </div>
                         </div>
 
+                        {!(otpRequired && !isAttendanceMode) && (
                         <div className="login-field">
                             <label className="login-label" htmlFor="password">Password</label>
                             <div className="login-input-wrap">
@@ -463,30 +508,20 @@ const Login = ({ onLogin, forcedMode = null }) => {
                                     )}
                                 </button>
                             </div>
+                            {otpChecking && (
+                                <p className="login-otp-hint" style={{ marginTop: 6 }}>Checking sign-in method…</p>
+                            )}
                         </div>
+                        )}
 
-                        {otpRequired && (
+                        {otpRequired && !isAttendanceMode && (
                             <div className="login-otp-section">
-                                <div className="login-otp-header">
-                                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="5" y="2" width="14" height="20" rx="2" ry="2"/><line x1="12" y1="18" x2="12.01" y2="18"/></svg>
-                                    <div>
-                                        <p className="login-otp-title">OTP verification</p>
-                                        <p className="login-otp-sub">Generate an OTP to continue sign-in</p>
-                                    </div>
-                                </div>
-                                <button
-                                    type="button"
-                                    onClick={() => navigate(ATTENDANCE_LOGIN_PATH)}
-                                    className="login-attendance-link"
-                                >
-                                    Marking attendance? Login without OTP →
-                                </button>
                                 {!otpGenerated ? (
                                     <button type="button" onClick={generateOTP} className="login-otp-btn" disabled={loading}>
                                         {loading ? 'Generating…' : 'Generate OTP'}
                                     </button>
                                 ) : (
-                                    <div className="login-field" style={{ marginTop: 4 }}>
+                                    <div className="login-field">
                                         <label className="login-label" htmlFor="otpCode">Enter OTP</label>
                                         <div className="login-input-wrap">
                                             <input
@@ -499,9 +534,9 @@ const Login = ({ onLogin, forcedMode = null }) => {
                                                 className="login-input"
                                                 disabled={loading}
                                                 maxLength="6"
+                                                autoFocus
                                             />
                                         </div>
-                                        <p className="login-otp-hint">OTP was sent to your configured approvers.</p>
                                     </div>
                                 )}
                             </div>

@@ -364,7 +364,7 @@ async def create_bank_name(
 @router.get("/bank-names", response_model=List[BankNameInDB])
 async def get_bank_names(
     is_active: Optional[bool] = Query(None, description="Filter by active status"),
-    user_id: str = Query(..., description="ID of the user making the request"),
+    user_id: Optional[str] = Query(None, description="ID of the user making the request"),
     settings_db: SettingsDB = Depends(get_settings_db),
     users_db: UsersDB = Depends(get_users_db),
     roles_db: RolesDB = Depends(get_roles_db)
@@ -2086,9 +2086,28 @@ async def get_employee_leave_balance(
             )
             await settings_db.create_leave_balance(default_balance)
             balance = default_balance
-
-        # Merge settings defaults with employee usage/overrides
-        effective = settings_db.apply_effective_leave_balance(balance, defaults)
+            # For a freshly created doc use apply_effective so totals are set from settings
+            effective = settings_db.apply_effective_leave_balance(balance, defaults)
+        else:
+            # Doc already exists — use stored values directly so admin-set overrides
+            # (including deductions that set remaining=0) are preserved as-is.
+            # apply_effective_leave_balance would overwrite totals from global settings
+            # whenever override_flags is not set, which causes the "shows 1 after setting 0" bug.
+            effective = dict(balance)
+            # Still fill in any missing fields from defaults (e.g. sick/casual which have no override)
+            for key, prefix in (("paid", "paid_leaves"), ("earned", "earned_leaves"), ("grace", "grace_leaves")):
+                override_flags = balance.get("override_flags") or {}
+                if not override_flags.get(key):
+                    # No per-employee override — use global default for total,
+                    # but only if the stored value is None (not if it was explicitly set to 0)
+                    stored_total = balance.get(f"{prefix}_total")
+                    if stored_total is None:
+                        effective[f"{prefix}_total"] = float(defaults[key])
+                    used = float(balance.get(f"{prefix}_used") or 0)
+                    stored_remaining = balance.get(f"{prefix}_remaining")
+                    if stored_remaining is None:
+                        effective[f"{prefix}_remaining"] = max(0.0, float(effective[f"{prefix}_total"]) - used)
+            effective["defaults_from_settings"] = defaults
 
         # Ensure period is set on legacy records
         if "period" not in effective or not effective.get("period"):
@@ -2161,7 +2180,7 @@ async def reset_leave_balance_defaults(
         raise HTTPException(status_code=500, detail=f"Reset failed: {str(e)}")
 
 
-@router.post("/leave-balance/allocate", response_model=Dict[str, str])
+@router.post("/leave-balance/allocate")
 async def allocate_leave_to_employee(
     allocation: dict,
     user_id: str = Query(..., description="ID of the user making the request"),
@@ -2178,7 +2197,7 @@ async def allocate_leave_to_employee(
         
         employee_id = allocation.get("employee_id")
         leave_type = allocation.get("leave_type", "paid").lower()
-        quantity = allocation.get("quantity", 0)
+        quantity = float(allocation.get("quantity", 0))
         reason = allocation.get("reason", "")
         period = allocation.get("period")  # YYYY-MM
         if not period:
@@ -2208,18 +2227,21 @@ async def allocate_leave_to_employee(
                 balance_key, employee, period, defaults
             )
             await settings_db.create_leave_balance(default_balance)
-            balance = default_balance
+            # Re-fetch so we have the persisted doc with _id for update_one to match
+            balance = await settings_db.get_leave_balance(balance_key, period)
+            if not balance:
+                balance = default_balance
         
         # Calculate new balance
         field_total = f"{leave_type}_leaves_total"
         field_remaining = f"{leave_type}_leaves_remaining"
         
         effective = settings_db.apply_effective_leave_balance(balance, defaults)
-        old_total = effective.get(field_total, 0)
-        old_remaining = effective.get(field_remaining, 0)
+        old_total = float(effective.get(field_total, 0))
+        old_remaining = float(effective.get(field_remaining, 0))
         
-        new_total = old_total + quantity
-        new_remaining = old_remaining + quantity
+        new_total = round(old_total + quantity, 2)
+        new_remaining = round(old_remaining + quantity, 2)
         
         override_flags = dict(balance.get("override_flags") or {})
         override_flags[leave_type] = True
@@ -2279,7 +2301,7 @@ async def allocate_leave_to_employee(
         )
 
 
-@router.post("/leave-balance/deduct", response_model=Dict[str, str])
+@router.post("/leave-balance/deduct")
 async def deduct_leave_from_employee(
     deduction: dict,
     user_id: str = Query(..., description="ID of the user making the request"),
@@ -2296,7 +2318,7 @@ async def deduct_leave_from_employee(
         
         employee_id = deduction.get("employee_id")
         leave_type = deduction.get("leave_type", "paid").lower()
-        quantity = deduction.get("quantity", 0)
+        quantity = float(deduction.get("quantity", 0))
         reason = deduction.get("reason", "")
         period = deduction.get("period")
         if not period:
@@ -2318,14 +2340,17 @@ async def deduct_leave_from_employee(
                 balance_key, employee, period, defaults
             )
             await settings_db.create_leave_balance(default_balance)
-            balance = default_balance
+            # Re-fetch so we have the persisted doc with _id for update_one to match
+            balance = await settings_db.get_leave_balance(balance_key, period)
+            if not balance:
+                balance = default_balance
 
         defaults = await settings_db.resolve_leave_defaults()
         effective = settings_db.apply_effective_leave_balance(balance, defaults)
         
         # Calculate new balance
         field_remaining = f"{leave_type}_leaves_remaining"
-        old_remaining = effective.get(field_remaining, 0)
+        old_remaining = float(effective.get(field_remaining, 0))
         
         if old_remaining < quantity:
             raise HTTPException(
@@ -2333,12 +2358,19 @@ async def deduct_leave_from_employee(
                 detail=f"Insufficient {leave_type} leaves. Available: {old_remaining}, Requested: {quantity}"
             )
         
-        new_remaining = old_remaining - quantity
+        new_remaining = round(old_remaining - quantity, 2)
         
+        # Mark this leave type as overridden so apply_effective_leave_balance
+        # uses the stored total instead of the global settings default.
+        override_flags = dict(balance.get("override_flags") or {})
+        override_flags[leave_type] = True
+
         # Update balance
         update_data = {
             field_remaining: new_remaining,
-            f"{leave_type}_leaves_used": balance.get(f"{leave_type}_leaves_used", 0) + quantity,
+            f"{leave_type}_leaves_total": float(effective.get(f"{leave_type}_leaves_total", 0)),
+            f"{leave_type}_leaves_used": round(float(balance.get(f"{leave_type}_leaves_used", 0)) + quantity, 2),
+            "override_flags": override_flags,
             "last_updated": get_ist_now()
         }
         
@@ -3057,3 +3089,196 @@ async def test_smtp_config(
         return {"success": False, "message": "❌ Authentication failed. Check email and App Password."}
     except Exception as e:
         return {"success": False, "message": f"❌ Connection error: {str(e)}"}
+
+
+# ==================== FINANCE APPROVAL ROUTING ENDPOINTS ====================
+# finance_type options: 'reimbursement' | 'advance_salary' | 'deduction' | 'all'
+
+@router.get("/finance-approval-routes", response_model=Dict[str, Any])
+async def get_finance_approval_routes(
+    finance_type: Optional[str] = Query(None, description="Filter by type: reimbursement, advance_salary, deduction, all"),
+    user_id: str = Query(..., description="ID of the user making the request"),
+    settings_db: SettingsDB = Depends(get_settings_db),
+):
+    """Get all finance approval routing rules"""
+    try:
+        routes = await settings_db.get_finance_approval_routes(finance_type)
+        return {"success": True, "data": routes}
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error fetching finance approval routes: {str(e)}"
+        )
+
+
+@router.get("/finance-approval-routes/{role_id}", response_model=Dict[str, Any])
+async def get_finance_approval_route_by_role(
+    role_id: str,
+    finance_type: Optional[str] = Query(None),
+    user_id: str = Query(..., description="ID of the user making the request"),
+    settings_db: SettingsDB = Depends(get_settings_db),
+):
+    """Get finance approval route for a specific role"""
+    try:
+        route = await settings_db.get_finance_approval_route_by_role(role_id, finance_type)
+        return {"success": True, "data": route}
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error fetching finance approval route: {str(e)}"
+        )
+
+
+@router.post("/finance-approval-routes", response_model=Dict[str, Any])
+async def upsert_finance_approval_route(
+    body: Dict[str, Any] = Body(...),
+    user_id: str = Query(..., description="ID of the user making the request"),
+    settings_db: SettingsDB = Depends(get_settings_db),
+    users_db: UsersDB = Depends(get_users_db),
+    roles_db: RolesDB = Depends(get_roles_db),
+):
+    """Create or update finance approval routing for a role.
+    Body: { role_id, role_name, finance_type, approver_ids: [...], approver_names: [...] }
+    finance_type: 'reimbursement' | 'advance_salary' | 'deduction' | 'all'
+    """
+    try:
+        # Only super admin or settings permission can manage finance approvals
+        has_perm = await check_permission(user_id, "settings", "show", users_db, roles_db, raise_error=False)
+        if not has_perm:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="You don't have permission to manage finance approval settings"
+            )
+
+        role_id = body.get("role_id")
+        role_name = body.get("role_name", "")
+        finance_type = body.get("finance_type", "all")
+        approver_ids = body.get("approver_ids", [])
+        approver_names = body.get("approver_names", [])
+
+        if not role_id:
+            raise HTTPException(status_code=400, detail="role_id is required")
+        if finance_type not in ("reimbursement", "advance_salary", "deduction", "all"):
+            raise HTTPException(status_code=400, detail="finance_type must be one of: reimbursement, advance_salary, deduction, all")
+        if not approver_ids:
+            raise HTTPException(status_code=400, detail="At least one approver is required")
+
+        saved = await settings_db.upsert_finance_approval_route(
+            role_id=role_id,
+            role_name=role_name,
+            finance_type=finance_type,
+            approver_ids=approver_ids,
+            approver_names=approver_names,
+        )
+        return {"success": True, "message": "Finance approval route saved", "data": saved}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error saving finance approval route: {str(e)}"
+        )
+
+
+@router.delete("/finance-approval-routes/{role_id}", response_model=Dict[str, Any])
+async def delete_finance_approval_route(
+    role_id: str,
+    finance_type: Optional[str] = Query(None),
+    user_id: str = Query(..., description="ID of the user making the request"),
+    settings_db: SettingsDB = Depends(get_settings_db),
+    users_db: UsersDB = Depends(get_users_db),
+    roles_db: RolesDB = Depends(get_roles_db),
+):
+    """Delete finance approval route for a role (optionally specific type)"""
+    try:
+        has_perm = await check_permission(user_id, "settings", "show", users_db, roles_db, raise_error=False)
+        if not has_perm:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="You don't have permission to manage finance approval settings"
+            )
+        deleted = await settings_db.delete_finance_approval_route(role_id, finance_type)
+        if not deleted:
+            raise HTTPException(status_code=404, detail="Route not found for this role")
+        return {"success": True, "message": "Finance approval route deleted"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error deleting finance approval route: {str(e)}"
+        )
+
+
+@router.get("/finance-approvers-for-me", response_model=Dict[str, Any])
+async def get_finance_approvers_for_me(
+    user_id: str = Query(..., description="The current employee's user ID"),
+    finance_type: str = Query("all", description="Type: reimbursement, advance_salary, deduction, all"),
+    settings_db: SettingsDB = Depends(get_settings_db),
+    users_db: UsersDB = Depends(get_users_db),
+    roles_db: RolesDB = Depends(get_roles_db),
+):
+    """
+    Get the list of finance approver employees for the current user based on their role.
+    Falls back to super-admin users when no approver is configured.
+    """
+    try:
+        user = await users_db.get_user(user_id)
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+
+        role_id = user.get("role_id") or user.get("role")
+        approver_ids = []
+        if role_id:
+            approver_ids = await settings_db.get_finance_approvers_for_employee(str(role_id), finance_type) or []
+
+        # Fallback: no approver configured → use superadmins
+        is_default = False
+        if not approver_ids:
+            is_default = True
+            super_role_ids = []
+            async for role in roles_db.collection.find(
+                {"permissions": {"$elemMatch": {"page": "*", "actions": "*"}}}, {"_id": 1}
+            ):
+                super_role_ids.append(str(role["_id"]))
+            async for role in roles_db.collection.find({"is_super_admin": True}, {"_id": 1}):
+                rid = str(role["_id"])
+                if rid not in super_role_ids:
+                    super_role_ids.append(rid)
+            if super_role_ids:
+                async for u in users_db.collection.find(
+                    {"role_id": {"$in": super_role_ids}}, {"_id": 1}
+                ):
+                    sid = str(u["_id"])
+                    if sid not in approver_ids:
+                        approver_ids.append(sid)
+            async for u in users_db.collection.find({"is_super_admin": True}, {"_id": 1}):
+                sid = str(u["_id"])
+                if sid not in approver_ids:
+                    approver_ids.append(sid)
+
+        approvers = []
+        for aid in approver_ids:
+            emp = await users_db.get_user(aid)
+            if emp:
+                first = emp.get("first_name", "")
+                last = emp.get("last_name", "")
+                full_name = (
+                    f"{first} {last}".strip()
+                    if (first or last)
+                    else emp.get("name", emp.get("username", "Unknown"))
+                )
+                approvers.append({
+                    "id": str(emp.get("_id", aid)),
+                    "name": full_name,
+                    "role": emp.get("role_name", emp.get("designation", "")),
+                    "is_default": is_default,
+                })
+        return {"success": True, "data": approvers, "is_default": is_default}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error fetching finance approvers: {str(e)}"
+        )

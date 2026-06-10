@@ -1925,7 +1925,7 @@ async def get_lead(
         # Only block access if form_share is explicitly False AND there are submission timestamps
         # This allows admin-regenerated links to work while still blocking truly submitted forms
         if lead.get("form_share") is False:
-            dynamic_fields = lead.get("dynamic_fields", {})
+            dynamic_fields = lead.get("dynamic_fields") or {}
             applicant_submitted = dynamic_fields.get("applicant_form", {}).get("formSubmittedAt")
             co_applicant_submitted = dynamic_fields.get("co_applicant_form", {}).get("formSubmittedAt")
             

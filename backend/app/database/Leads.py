@@ -1466,6 +1466,9 @@ class LeadsDB:
                 elif field_name == "process_data" and isinstance(change_data, dict):
                     # Create separate activity for each nested field in process_data
                     for process_field, process_change in change_data.items():
+                        # Skip if process_change is not a dict (could be None, str, int etc.)
+                        if not isinstance(process_change, dict):
+                            continue
                         # Map snake_case field names to UI display labels
                         field_labels = {
                             "processing_bank": "Login Bank",
@@ -1578,6 +1581,12 @@ class LeadsDB:
                             logger.info(f"⏭ Skipping duplicate activity for question: {question_text}")
                             continue
                         
+                        # Guard: response_change can be None if the field was
+                        # written without a proper {from, to} diff structure.
+                        if not isinstance(response_change, dict):
+                            logger.warning(f"⚠ Skipping question {question_text}: response_change is not a dict ({type(response_change).__name__})")
+                            continue
+
                         # Get old and new responses
                         old_response = response_change.get("from", "Not Answered")
                         new_response = response_change.get("to", "Not Answered")

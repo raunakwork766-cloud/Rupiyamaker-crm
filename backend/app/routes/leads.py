@@ -857,7 +857,7 @@ async def reassign_lead(
 ):
     """Reassign a lead to the current user"""
     # Check permission
-    await check_permission(user_id, "leads", "show", users_db, roles_db)
+    await check_permission(user_id, ["leads", "leads.pl_odd_leads", "leads.create_lead", "leads.pl_&_odd_leads"], "show", users_db, roles_db)
     
     # Get the lead
     lead = await leads_db.get_lead(lead_id)
@@ -1078,7 +1078,7 @@ async def update_document(
         )
     
     # Check permission
-    await check_permission(user_id, "leads.create_lead", "show", users_db, roles_db)
+    await check_permission(user_id, "leads.pl_odd_leads", "show", users_db, roles_db)
     
     # Update document
     update_dict = {k: v for k, v in document_update.dict().items() if v is not None}
@@ -1219,8 +1219,12 @@ async def view_attachment(
     
     # Return file for viewing (inline so browser previews instead of downloading)
     import mimetypes
+    from urllib.parse import quote as _url_quote
     _fname = document.get("filename", "attachment")
     _mtype = document.get("file_type") or mimetypes.guess_type(_fname)[0] or "application/octet-stream"
+    # Use RFC 5987 encoding so unicode chars in filenames don't crash HTTP headers
+    _fname_encoded = _url_quote(_fname, safe='')
+    _content_disposition_inline = f"inline; filename*=UTF-8''{_fname_encoded}"
 
     # Auto-decrypt password-protected PDFs before serving
     import io
@@ -1245,7 +1249,7 @@ async def view_attachment(
                     return StreamingResponse(
                         output,
                         media_type="application/pdf",
-                        headers={"Content-Disposition": f"inline; filename=\"{_fname}\""}
+                        headers={"Content-Disposition": _content_disposition_inline}
                     )
                 else:
                     _logging.warning(f"PDF decrypt failed for attachment {attachment_id}: wrong password")
@@ -1254,9 +1258,8 @@ async def view_attachment(
 
     return FileResponse(
         path=abs_file_path,
-        filename=_fname,
         media_type=_mtype,
-        headers={"Content-Disposition": f"inline; filename=\"{_fname}\""}
+        headers={"Content-Disposition": _content_disposition_inline}
     )
 
 @router.get("/{lead_id}/attachments/{attachment_id}/download")
@@ -1354,7 +1357,11 @@ async def download_attachment(
     # Return file for download — auto-decrypt password-protected PDFs
     import io
     import logging as _logging
+    from urllib.parse import quote as _url_quote
     _dl_fname = document.get("filename", "attachment")
+    # Use RFC 5987 encoding so unicode chars in filenames don't crash HTTP headers
+    _dl_fname_encoded = _url_quote(_dl_fname, safe='')
+    _content_disposition_dl = f"attachment; filename*=UTF-8''{_dl_fname_encoded}"
     stored_password = document.get("password")
     _dl_is_pdf = _dl_fname.lower().endswith(".pdf") or abs_file_path.lower().endswith(".pdf")
     if stored_password and _dl_is_pdf:
@@ -1375,7 +1382,7 @@ async def download_attachment(
                     return StreamingResponse(
                         output,
                         media_type="application/octet-stream",
-                        headers={"Content-Disposition": f"attachment; filename=\"{_dl_fname}\""}
+                        headers={"Content-Disposition": _content_disposition_dl}
                     )
                 else:
                     _logging.warning(f"PDF decrypt failed for attachment {attachment_id}: wrong password")
@@ -1384,8 +1391,8 @@ async def download_attachment(
 
     return FileResponse(
         path=abs_file_path,
-        filename=_dl_fname,
-        media_type="application/octet-stream"
+        media_type="application/octet-stream",
+        headers={"Content-Disposition": _content_disposition_dl}
     )
 
 @router.delete("/{lead_id}/attachments/{attachment_id}")
@@ -1869,7 +1876,7 @@ async def get_assignment_options(
     """Get users who can be assigned leads and departments"""
     try:
         # Check view permission
-        await check_permission(user_id, "leads", "show", users_db, roles_db)
+        await check_permission(user_id, ["leads", "leads.pl_odd_leads", "leads.create_lead", "leads.pl_&_odd_leads"], "show", users_db, roles_db)
         
         # Get eligible users
         users = []
@@ -1956,9 +1963,11 @@ async def get_lead(
         # Only block access if form_share is explicitly False AND there are submission timestamps
         # This allows admin-regenerated links to work while still blocking truly submitted forms
         if lead.get("form_share") is False:
-            dynamic_fields = lead.get("dynamic_fields", {})
-            applicant_submitted = dynamic_fields.get("applicant_form", {}).get("formSubmittedAt")
-            co_applicant_submitted = dynamic_fields.get("co_applicant_form", {}).get("formSubmittedAt")
+            dynamic_fields = lead.get("dynamic_fields") or {}
+            applicant_form = dynamic_fields.get("applicant_form") or {}
+            co_applicant_form = dynamic_fields.get("co_applicant_form") or {}
+            applicant_submitted = applicant_form.get("formSubmittedAt")
+            co_applicant_submitted = co_applicant_form.get("formSubmittedAt")
             
             # Only block if there are actual submission timestamps
             if applicant_submitted or co_applicant_submitted:
@@ -2660,7 +2669,7 @@ async def get_lead_reassignment_eligibility(
 ):
     """Get reassignment eligibility information for a lead"""
     # Check permission - basic read permission is sufficient
-    await check_permission(user_id, "leads", "show", users_db, roles_db)
+    await check_permission(user_id, ["leads", "leads.pl_odd_leads", "leads.create_lead", "leads.pl_&_odd_leads"], "show", users_db, roles_db)
 
     # Check if lead exists
     lead = await leads_db.get_lead(lead_id)
@@ -3970,7 +3979,7 @@ async def get_statuses_for_department(
 ):
     """Get statuses available for a specific department (leads/login)"""
     # Check basic permission
-    await check_permission(user_id, "leads", "show", users_db, roles_db)
+    await check_permission(user_id, ["leads", "leads.pl_odd_leads", "leads.create_lead", "leads.pl_&_odd_leads"], "show", users_db, roles_db)
     
     # Validate department
     if department.lower() not in ['leads', 'login', 'sales', 'loan_processing']:
@@ -4976,11 +4985,6 @@ async def get_lead_obligations(
         # Build obligation data with priority to the most specific data source
         import sys
         sys.stdout.flush()
-        logger = logging.getLogger(__name__)
-        logger.error(f"🔍 DEBUG: Building obligation data...")
-        logger.error(f"  - dynamic_fields type: {type(dynamic_fields)}, is None: {dynamic_fields is None}")
-        logger.error(f"  - financial_details type: {type(financial_details)}, is None: {financial_details is None}")
-        logger.error(f"  - lead type: {type(lead)}, has loan_amount: {'loan_amount' in lead if lead else False}")
         
         obligation_data = {
             # First try flat structure, then nested structure
@@ -5010,7 +5014,7 @@ async def get_lead_obligations(
             "totalObligation": dynamic_fields.get("totalObligation", eligibility_details.get("totalObligations", "0")),
         }
         
-        logger.error(f"✅ Obligation data built successfully")
+        logger.debug(f"✅ Obligation data built successfully")
         
         # Extract eligibility data from flat structure or nested check_eligibility
         eligibility_data = {

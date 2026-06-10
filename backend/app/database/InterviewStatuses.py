@@ -166,20 +166,31 @@ async def create_async_interview_statuses_indexes():
         
         interview_statuses_collection = async_db.interview_statuses
         interview_sub_statuses_collection = async_db.interview_sub_statuses
-        
-        # Create indexes for main statuses
-        await interview_statuses_collection.create_index([("user_id", 1)])
-        await interview_statuses_collection.create_index([("name", 1), ("user_id", 1)])
-        
-        # Create indexes for sub-statuses
-        await interview_sub_statuses_collection.create_index([("user_id", 1)])
-        await interview_sub_statuses_collection.create_index([("parent_status_id", 1)])
-        await interview_sub_statuses_collection.create_index([("name", 1), ("parent_status_id", 1), ("user_id", 1)])
+
+        async def safe_index(col, keys, **kwargs):
+            """Create index only if an index with same key spec doesn't already exist."""
+            try:
+                existing = await col.index_information()
+                new_key = dict(keys)
+                for idx_info in existing.values():
+                    if dict(idx_info.get("key", {})) == new_key:
+                        return  # already exists, skip
+                await col.create_index(keys, background=True, **kwargs)
+            except Exception as e:
+                logger.warning(f"Index creation skipped (non-fatal): {e}")
+
+        # Main statuses
+        await safe_index(interview_statuses_collection, [("user_id", 1)])
+        await safe_index(interview_statuses_collection, [("name", 1), ("user_id", 1)], unique=True)
+
+        # Sub-statuses
+        await safe_index(interview_sub_statuses_collection, [("user_id", 1)])
+        await safe_index(interview_sub_statuses_collection, [("parent_status_id", 1)])
+        await safe_index(interview_sub_statuses_collection, [("name", 1), ("parent_status_id", 1), ("user_id", 1)], unique=True)
         
         logger.info("Interview statuses async indexes created successfully")
     except Exception as e:
-        logger.error(f"Error creating interview statuses async indexes: {str(e)}")
-        raise
+        logger.error(f"Error initializing interview settings async indexes: {str(e)}")
 
 
 class InterviewSubStatuses:

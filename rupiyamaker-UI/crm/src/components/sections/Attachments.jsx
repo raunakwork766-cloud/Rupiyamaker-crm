@@ -1,6 +1,7 @@
 import React, { useRef, useState, useEffect } from "react";
 import { saveAs } from "file-saver";
 import JSZip from "jszip";
+import * as XLSX from "xlsx";
 import { Search, Info } from "lucide-react";
 import jsPDF from 'jspdf';
 import 'jspdf-autotable';
@@ -354,6 +355,27 @@ export default function Attachments({ leadId, userId }) {
     try {
       const doc = new jsPDF();
       let yPosition = 20;
+
+      // Helper: render a label+value row with text wrapping for long values
+      const renderField = (label, value) => {
+        const maxValueWidth = 110; // from x=80 to x=190 (right margin)
+        const lineHeight = 6;
+        const str = String(value);
+        const lines = doc.splitTextToSize(str, maxValueWidth);
+        const blockHeight = lines.length * lineHeight;
+
+        // If the entire block won't fit on the current page, start a new page
+        if (yPosition + blockHeight > 275) {
+          doc.addPage();
+          yPosition = 20;
+        }
+
+        doc.setFont(undefined, 'bold');
+        doc.text(`${label}:`, 20, yPosition);
+        doc.setFont(undefined, 'normal');
+        doc.text(lines, 80, yPosition);
+        yPosition += Math.max(8, blockHeight + 2);
+      };
       
       // Header - matching LoginFormSection style
       doc.setFontSize(22);
@@ -410,17 +432,7 @@ export default function Attachments({ leadId, userId }) {
         ['IFSC Code', data.ifscCode || '-']
       ];
       
-      section1Fields.forEach(([label, value]) => {
-        if (yPosition > 270) {
-          doc.addPage();
-          yPosition = 20;
-        }
-        doc.setFont(undefined, 'bold');
-        doc.text(`${label}:`, 20, yPosition);
-        doc.setFont(undefined, 'normal');
-        doc.text(String(value), 80, yPosition);
-        yPosition += 8;
-      });
+      section1Fields.forEach(([label, value]) => renderField(label, value));
       
       yPosition += 5;
       
@@ -458,17 +470,7 @@ export default function Attachments({ leadId, userId }) {
         );
       }
       
-      section2Fields.forEach(([label, value]) => {
-        if (yPosition > 270) {
-          doc.addPage();
-          yPosition = 20;
-        }
-        doc.setFont(undefined, 'bold');
-        doc.text(`${label}:`, 20, yPosition);
-        doc.setFont(undefined, 'normal');
-        doc.text(String(value), 80, yPosition);
-        yPosition += 8;
-      });
+      section2Fields.forEach(([label, value]) => renderField(label, value));
       
       yPosition += 5;
       
@@ -498,17 +500,7 @@ export default function Attachments({ leadId, userId }) {
         ['Permanent Address Landmark', data.permanentAddressLandmark || '-']
       ];
       
-      section3Fields.forEach(([label, value]) => {
-        if (yPosition > 270) {
-          doc.addPage();
-          yPosition = 20;
-        }
-        doc.setFont(undefined, 'bold');
-        doc.text(`${label}:`, 20, yPosition);
-        doc.setFont(undefined, 'normal');
-        doc.text(String(value), 80, yPosition);
-        yPosition += 8;
-      });
+      section3Fields.forEach(([label, value]) => renderField(label, value));
       
       yPosition += 5;
       
@@ -538,17 +530,7 @@ export default function Attachments({ leadId, userId }) {
         ['Office Address Landmark', data.officeAddressLandmark || '-']
       ];
       
-      section4Fields.forEach(([label, value]) => {
-        if (yPosition > 270) {
-          doc.addPage();
-          yPosition = 20;
-        }
-        doc.setFont(undefined, 'bold');
-        doc.text(`${label}:`, 20, yPosition);
-        doc.setFont(undefined, 'normal');
-        doc.text(String(value), 80, yPosition);
-        yPosition += 8;
-      });
+      section4Fields.forEach(([label, value]) => renderField(label, value));
       
       yPosition += 5;
       
@@ -574,17 +556,7 @@ export default function Attachments({ leadId, userId }) {
         ['Reference Address', data.ref1Address || '-']
       ];
       
-      ref1Fields.forEach(([label, value]) => {
-        if (yPosition > 270) {
-          doc.addPage();
-          yPosition = 20;
-        }
-        doc.setFont(undefined, 'bold');
-        doc.text(`${label}:`, 20, yPosition);
-        doc.setFont(undefined, 'normal');
-        doc.text(String(value), 80, yPosition);
-        yPosition += 8;
-      });
+      ref1Fields.forEach(([label, value]) => renderField(label, value));
       
       yPosition += 10;
       
@@ -610,17 +582,7 @@ export default function Attachments({ leadId, userId }) {
         ['Reference Address', data.ref2Address || '-']
       ];
       
-      ref2Fields.forEach(([label, value]) => {
-        if (yPosition > 270) {
-          doc.addPage();
-          yPosition = 20;
-        }
-        doc.setFont(undefined, 'bold');
-        doc.text(`${label}:`, 20, yPosition);
-        doc.setFont(undefined, 'normal');
-        doc.text(String(value), 80, yPosition);
-        yPosition += 8;
-      });
+      ref2Fields.forEach(([label, value]) => renderField(label, value));
       
       // Footer
       doc.setFontSize(8);
@@ -644,6 +606,26 @@ export default function Attachments({ leadId, userId }) {
     try {
       const doc = new jsPDF();
       let yPosition = 20;
+
+      // Helper: render a label+value row with text wrapping for long values
+      const renderField = (label, value) => {
+        const maxValueWidth = 110; // from x=80 to x=190 (right margin)
+        const lineHeight = 6;
+        const str = String(value);
+        const lines = doc.splitTextToSize(str, maxValueWidth);
+        const blockHeight = lines.length * lineHeight;
+
+        if (yPosition + blockHeight > 275) {
+          doc.addPage();
+          yPosition = 20;
+        }
+
+        doc.setFont(undefined, 'bold');
+        doc.text(`${label}:`, 20, yPosition);
+        doc.setFont(undefined, 'normal');
+        doc.text(lines, 80, yPosition);
+        yPosition += Math.max(8, blockHeight + 2);
+      };
       
       // Header - matching LoginFormSection style
       doc.setFontSize(22);
@@ -699,17 +681,7 @@ export default function Attachments({ leadId, userId }) {
         ['IFSC Code', data.ifscCode || '-']
       ];
       
-      section1Fields.forEach(([label, value]) => {
-        if (yPosition > 270) {
-          doc.addPage();
-          yPosition = 20;
-        }
-        doc.setFont(undefined, 'bold');
-        doc.text(`${label}:`, 20, yPosition);
-        doc.setFont(undefined, 'normal');
-        doc.text(String(value), 80, yPosition);
-        yPosition += 8;
-      });
+      section1Fields.forEach(([label, value]) => renderField(label, value));
       
       yPosition += 5;
       
@@ -747,17 +719,7 @@ export default function Attachments({ leadId, userId }) {
         );
       }
       
-      section2Fields.forEach(([label, value]) => {
-        if (yPosition > 270) {
-          doc.addPage();
-          yPosition = 20;
-        }
-        doc.setFont(undefined, 'bold');
-        doc.text(`${label}:`, 20, yPosition);
-        doc.setFont(undefined, 'normal');
-        doc.text(String(value), 80, yPosition);
-        yPosition += 8;
-      });
+      section2Fields.forEach(([label, value]) => renderField(label, value));
       
       yPosition += 5;
       
@@ -787,17 +749,7 @@ export default function Attachments({ leadId, userId }) {
         ['Permanent Address Landmark', data.permanentAddressLandmark || '-']
       ];
       
-      section3Fields.forEach(([label, value]) => {
-        if (yPosition > 270) {
-          doc.addPage();
-          yPosition = 20;
-        }
-        doc.setFont(undefined, 'bold');
-        doc.text(`${label}:`, 20, yPosition);
-        doc.setFont(undefined, 'normal');
-        doc.text(String(value), 80, yPosition);
-        yPosition += 8;
-      });
+      section3Fields.forEach(([label, value]) => renderField(label, value));
       
       yPosition += 5;
       
@@ -827,17 +779,7 @@ export default function Attachments({ leadId, userId }) {
         ['Office Address Landmark', data.officeAddressLandmark || '-']
       ];
       
-      section4Fields.forEach(([label, value]) => {
-        if (yPosition > 270) {
-          doc.addPage();
-          yPosition = 20;
-        }
-        doc.setFont(undefined, 'bold');
-        doc.text(`${label}:`, 20, yPosition);
-        doc.setFont(undefined, 'normal');
-        doc.text(String(value), 80, yPosition);
-        yPosition += 8;
-      });
+      section4Fields.forEach(([label, value]) => renderField(label, value));
       
       yPosition += 5;
       
@@ -863,17 +805,7 @@ export default function Attachments({ leadId, userId }) {
         ['Reference Address', data.ref1Address || '-']
       ];
       
-      ref1Fields.forEach(([label, value]) => {
-        if (yPosition > 270) {
-          doc.addPage();
-          yPosition = 20;
-        }
-        doc.setFont(undefined, 'bold');
-        doc.text(`${label}:`, 20, yPosition);
-        doc.setFont(undefined, 'normal');
-        doc.text(String(value), 80, yPosition);
-        yPosition += 8;
-      });
+      ref1Fields.forEach(([label, value]) => renderField(label, value));
       
       yPosition += 10;
       
@@ -899,17 +831,7 @@ export default function Attachments({ leadId, userId }) {
         ['Reference Address', data.ref2Address || '-']
       ];
       
-      ref2Fields.forEach(([label, value]) => {
-        if (yPosition > 270) {
-          doc.addPage();
-          yPosition = 20;
-        }
-        doc.setFont(undefined, 'bold');
-        doc.text(`${label}:`, 20, yPosition);
-        doc.setFont(undefined, 'normal');
-        doc.text(String(value), 80, yPosition);
-        yPosition += 8;
-      });
+      ref2Fields.forEach(([label, value]) => renderField(label, value));
       
       // Footer
       doc.setFontSize(8);
@@ -1455,6 +1377,19 @@ export default function Attachments({ leadId, userId }) {
       // Build UI-ordered list of documents (mirrors the display order)
       const orderedDocs = getOrderedDocuments();
 
+      // Build a map of doc._id → display number (same numbering as shown in UI)
+      const docDisplayNumbers = {};
+      orderedDocs.forEach((doc, idx) => {
+        docDisplayNumbers[doc._id] = idx + 1;
+      });
+
+      // Helper: prefix a filename with its display number (e.g. "3_document.pdf")
+      const numberedFilename = (doc) => {
+        const num = docDisplayNumbers[doc._id];
+        const base = doc.filename || doc.file_name || `document_${doc._id}`;
+        return num ? `${num}_${base}` : base;
+      };
+
       // Build ordered type→docs map (preserving display order)
       const seenTypes = [];
       const docsByTypeOrdered = new Map();
@@ -1473,6 +1408,37 @@ export default function Attachments({ leadId, userId }) {
       if (currentLeadData && currentLeadData._id) {
         const formsFolder = allFolder.folder("Applicant and Co-Applicant Form");
 
+        // Helper: check if a form data object has at least one meaningful field filled
+        const isFormDataFilled = (obj) => {
+          if (!obj || typeof obj !== 'object') return false;
+          // formSubmittedAt is the most reliable indicator the form was submitted
+          if (obj.formSubmittedAt) return true;
+          const skipKeys = ['_id', '__v', 'created_at', 'updated_at', 'lead_id', 'user_id'];
+          return Object.entries(obj).some(([k, v]) =>
+            !skipKeys.includes(k) && v !== null && v !== undefined && String(v).trim() !== '' && String(v).trim() !== '-'
+          );
+        };
+
+        // Helper: build an XLSX blob from an array of [label, value] rows
+        const buildFormExcel = (title, rows, customerName) => {
+          const wb = XLSX.utils.book_new();
+          const wsData = [
+            [title],
+            [`Customer: ${customerName}`],
+            [`Generated: ${new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })}`],
+            [],
+            ['Field', 'Value'],
+            ...rows.map(([label, value]) => [label, String(value ?? '-')])
+          ];
+          const ws = XLSX.utils.aoa_to_sheet(wsData);
+          ws['!cols'] = [{ wch: 36 }, { wch: 60 }];
+          // Style the header row (row index 4, 0-based)
+          ws['!merges'] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: 1 } }];
+          XLSX.utils.book_append_sheet(wb, ws, title.substring(0, 31));
+          const buf = XLSX.write(wb, { type: 'array', bookType: 'xlsx' });
+          return new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+        };
+
         try {
           const applicantFormData = currentLeadData.dynamic_fields?.applicant_form || currentLeadData.loginForm || {};
           const allAvailableApplicantData = {
@@ -1487,26 +1453,147 @@ export default function Attachments({ leadId, userId }) {
               .filter(key => !['dynamic_fields', 'loginForm', '_id', '__v', 'created_at', 'updated_at'].includes(key))
               .reduce((acc, key) => { const v = currentLeadData[key]; if (v && typeof v !== 'object') acc[key] = v; return acc; }, {})
           };
-          const applicantBlob = generateApplicantPDF(allAvailableApplicantData, currentLeadData);
-          if (applicantBlob) {
-            const fn = `${(currentLeadData.first_name || 'Customer')}_Applicant_Form_${getISTDateYMD()}.pdf`;
-            formsFolder.file(fn, applicantBlob);
-            allFolder.file(fn, applicantBlob);
-            allFolderDownloadedCount++;
+
+          // Only generate if the applicant form has been meaningfully filled
+          if (isFormDataFilled(currentLeadData.dynamic_fields?.applicant_form) || isFormDataFilled(currentLeadData.loginForm)) {
+            const custName = currentLeadData.first_name || 'Customer';
+            const dateSuffix = getISTDateYMD();
+            const d = allAvailableApplicantData;
+
+            // Generate PDF
+            try {
+              const applicantBlob = generateApplicantPDF(allAvailableApplicantData, currentLeadData);
+              if (applicantBlob) {
+                const pdfFn = `${custName}_Applicant_Form_${dateSuffix}.pdf`;
+                formsFolder.file(pdfFn, applicantBlob);
+                allFolder.file(pdfFn, applicantBlob);
+                allFolderDownloadedCount++;
+              }
+            } catch (pdfErr) { console.error('Applicant PDF failed:', pdfErr); }
+
+            // Generate Excel (independent of PDF success)
+            try {
+              const excelRows = [
+                ['Login Call Reference', d.referenceNameForLogin || '-'],
+                ['Aadhar Number', d.aadharNumber || '-'],
+                ['PAN Card', d.panCard || '-'],
+                ["Father's Name", d.fathersName || '-'],
+                ['Salary A/C Bank Name', d.salaryAccountBank || '-'],
+                ['Salary A/C Bank Number', d.salaryAccountBankNumber || '-'],
+                ['IFSC Code', d.ifscCode || '-'],
+                ['Customer Name', d.customerName || custName || '-'],
+                ['Mobile Number', d.mobileNumber || '-'],
+                ['Alternate Number', d.alternateNumber || '-'],
+                ['Personal Email', d.personalEmail || '-'],
+                ['Work Email', d.workEmail || '-'],
+                ['Qualification', d.qualification || '-'],
+                ["Mother's Name", d.mothersName || '-'],
+                ['Marital Status', d.maritalStatus || '-'],
+                ['Current Address', d.currentAddress || '-'],
+                ['Current Address Landmark', d.currentAddressLandmark || '-'],
+                ['Current Address Type', d.currentAddressType || '-'],
+                ['Current Address Proof', d.currentAddressProof || '-'],
+                ['Years at Current Address', d.yearsAtCurrentAddress || '-'],
+                ['Years in Current City', d.yearsInCurrentCity || '-'],
+                ['Permanent Address', d.permanentAddress || '-'],
+                ['Permanent Address Landmark', d.permanentAddressLandmark || '-'],
+                ['Company Name', d.companyName || '-'],
+                ['Designation', d.yourDesignation || '-'],
+                ['Department', d.yourDepartment || '-'],
+                ['DOJ in Current Company', d.dojCurrentCompany || '-'],
+                ['Current Work Experience (years)', d.currentWorkExperience || '-'],
+                ['Total Work Experience (years)', d.totalWorkExperience || '-'],
+                ['Office Address', d.officeAddress || '-'],
+                ['Office Address Landmark', d.officeAddressLandmark || '-'],
+                ['Ref1 Name', d.ref1Name || '-'],
+                ['Ref1 Mobile', d.ref1Mobile || '-'],
+                ['Ref1 Relation', d.ref1Relation || '-'],
+                ['Ref1 Address', d.ref1Address || '-'],
+                ['Ref2 Name', d.ref2Name || '-'],
+                ['Ref2 Mobile', d.ref2Mobile || '-'],
+                ['Ref2 Relation', d.ref2Relation || '-'],
+                ['Ref2 Address', d.ref2Address || '-'],
+              ];
+              const excelBlob = buildFormExcel('APPLICANT FORM', excelRows, custName);
+              const xlFn = `${custName}_Applicant_Form_${dateSuffix}.xlsx`;
+              formsFolder.file(xlFn, excelBlob);
+              allFolder.file(xlFn, excelBlob);
+              allFolderDownloadedCount++;
+            } catch (xlErr) { console.error('Applicant Excel failed:', xlErr); }
           }
-        } catch (e) { console.error('Applicant PDF failed:', e); }
+        } catch (e) { console.error('Applicant PDF/Excel failed:', e); }
 
         try {
           const coApplicantFormData = currentLeadData.dynamic_fields?.co_applicant_form || currentLeadData.coApplicantForm || {};
           const allCoApplicantData = { ...currentLeadData.dynamic_fields?.co_applicant_form, ...currentLeadData.coApplicantForm, ...coApplicantFormData };
-          const coApplicantBlob = generateCoApplicantPDF(allCoApplicantData, currentLeadData);
-          if (coApplicantBlob) {
-            const fn = `${(currentLeadData.first_name || 'Customer')}_Co-Applicant_Form_${getISTDateYMD()}.pdf`;
-            formsFolder.file(fn, coApplicantBlob);
-            allFolder.file(fn, coApplicantBlob);
-            allFolderDownloadedCount++;
+
+          // Only generate if the co-applicant form has been meaningfully filled
+          if (isFormDataFilled(currentLeadData.dynamic_fields?.co_applicant_form) || isFormDataFilled(currentLeadData.coApplicantForm)) {
+            const custName = currentLeadData.first_name || 'Customer';
+            const dateSuffix = getISTDateYMD();
+            const d = allCoApplicantData;
+
+            // Generate PDF
+            try {
+              const coApplicantBlob = generateCoApplicantPDF(allCoApplicantData, currentLeadData);
+              if (coApplicantBlob) {
+                const pdfFn = `${custName}_Co-Applicant_Form_${dateSuffix}.pdf`;
+                formsFolder.file(pdfFn, coApplicantBlob);
+                allFolder.file(pdfFn, coApplicantBlob);
+                allFolderDownloadedCount++;
+              }
+            } catch (pdfErr) { console.error('Co-Applicant PDF failed:', pdfErr); }
+
+            // Generate Excel (independent of PDF success)
+            try {
+              const excelRows = [
+                ['Aadhar Number', d.aadharNumber || '-'],
+                ['PAN Card', d.panCard || '-'],
+                ["Father's Name", d.fathersName || '-'],
+                ['Salary A/C Bank Name', d.salaryAccountBank || '-'],
+                ['Salary A/C Bank Number', d.salaryAccountBankNumber || '-'],
+                ['IFSC Code', d.ifscCode || '-'],
+                ['Customer Name', d.customerName || '-'],
+                ['Mobile Number', d.mobileNumber || '-'],
+                ['Alternate Number', d.alternateNumber || '-'],
+                ['Personal Email', d.personalEmail || '-'],
+                ['Work Email', d.workEmail || '-'],
+                ['Qualification', d.qualification || '-'],
+                ["Mother's Name", d.mothersName || '-'],
+                ['Marital Status', d.maritalStatus || '-'],
+                ['Current Address', d.currentAddress || '-'],
+                ['Current Address Landmark', d.currentAddressLandmark || '-'],
+                ['Current Address Type', d.currentAddressType || '-'],
+                ['Current Address Proof', d.currentAddressProof || '-'],
+                ['Years at Current Address', d.yearsAtCurrentAddress || '-'],
+                ['Years in Current City', d.yearsInCurrentCity || '-'],
+                ['Permanent Address', d.permanentAddress || '-'],
+                ['Permanent Address Landmark', d.permanentAddressLandmark || '-'],
+                ['Company Name', d.companyName || '-'],
+                ['Designation', d.yourDesignation || '-'],
+                ['Department', d.yourDepartment || '-'],
+                ['DOJ in Current Company', d.dojCurrentCompany || '-'],
+                ['Current Work Experience (years)', d.currentWorkExperience || '-'],
+                ['Total Work Experience (years)', d.totalWorkExperience || '-'],
+                ['Office Address', d.officeAddress || '-'],
+                ['Office Address Landmark', d.officeAddressLandmark || '-'],
+                ['Ref1 Name', d.ref1Name || '-'],
+                ['Ref1 Mobile', d.ref1Mobile || '-'],
+                ['Ref1 Relation', d.ref1Relation || '-'],
+                ['Ref1 Address', d.ref1Address || '-'],
+                ['Ref2 Name', d.ref2Name || '-'],
+                ['Ref2 Mobile', d.ref2Mobile || '-'],
+                ['Ref2 Relation', d.ref2Relation || '-'],
+                ['Ref2 Address', d.ref2Address || '-'],
+              ];
+              const excelBlob = buildFormExcel('CO-APPLICANT FORM', excelRows, custName);
+              const xlFn = `${custName}_Co-Applicant_Form_${dateSuffix}.xlsx`;
+              formsFolder.file(xlFn, excelBlob);
+              allFolder.file(xlFn, excelBlob);
+              allFolderDownloadedCount++;
+            } catch (xlErr) { console.error('Co-Applicant Excel failed:', xlErr); }
           }
-        } catch (e) { console.error('Co-Applicant PDF failed:', e); }
+        } catch (e) { console.error('Co-Applicant form generation failed:', e); }
       }
 
       const _isLoginForZip = currentLeadData && (currentLeadData.original_lead_id || currentLeadData.login_created_at);
@@ -1525,7 +1612,7 @@ export default function Attachments({ leadId, userId }) {
             );
             if (response.ok) {
               const blob = await response.blob();
-              const filename = doc.filename || doc.file_name || `document_${doc._id}`;
+              const filename = numberedFilename(doc);
               folder.file(filename, blob);
               allFolder.file(filename, blob);
               downloadedCount++;
@@ -1820,7 +1907,7 @@ export default function Attachments({ leadId, userId }) {
   const handleRenameFile = async (docId, newBase, ext) => {
     const trimmed = newBase.trim();
     if (!trimmed) { setEditingFileId(null); setEditingFileName(''); return; }
-    const newFilename = trimmed + ext;
+    const newFilename = trimmed.toUpperCase() + ext;
     try {
       const isLoginLead = leadData && (leadData.original_lead_id || leadData.login_created_at);
       const renameUrl = isLoginLead
@@ -1828,10 +1915,16 @@ export default function Attachments({ leadId, userId }) {
         : `${BASE_URL}/leads/${leadId}/documents/${docId}?user_id=${currentUserId}`;
       const res = await fetch(renameUrl, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('token')}`,
+        },
         body: JSON.stringify({ filename: newFilename }),
       });
-      if (!res.ok) throw new Error('Server returned ' + res.status);
+      if (!res.ok) {
+        const errBody = await res.text().catch(() => '');
+        throw new Error(`Server returned ${res.status}${errBody ? ': ' + errBody : ''}`);
+      }
       setUploadedDocuments(prev =>
         prev.map(d => d._id === docId ? { ...d, filename: newFilename } : d)
       );
@@ -2014,16 +2107,6 @@ export default function Attachments({ leadId, userId }) {
                 {isDownloadingAll
                   ? <><i className="fa-solid fa-spinner fa-spin mr-1 text-xs"></i> Zipping…</>
                   : <><i className="fa-solid fa-download mr-1 text-xs"></i> DOWNLOAD ALL ({getProfileDocs(uploadedDocuments).length})</>
-                }
-              </button>
-              <button
-                onClick={handleDownloadPdfsOnly}
-                disabled={isDownloadingPdfsOnly || isDownloadingAll || getProfileDocs(uploadedDocuments).filter(d => (d.filename || d.file_name || '').toLowerCase().endsWith('.pdf')).length === 0}
-                className="bg-blue-700 border border-blue-700 text-white px-3 py-1 rounded text-[11px] font-bold hover:bg-blue-800 transition flex items-center shadow-sm disabled:opacity-40 disabled:cursor-not-allowed"
-              >
-                {isDownloadingPdfsOnly
-                  ? <><i className="fa-solid fa-spinner fa-spin mr-1 text-xs"></i> Zipping PDFs…</>
-                  : <><i className="fa-solid fa-file-pdf mr-1 text-xs"></i> DOWNLOAD PDFs ONLY ({getProfileDocs(uploadedDocuments).filter(d => (d.filename || d.file_name || '').toLowerCase().endsWith('.pdf')).length})</>
                 }
               </button>
             </>
@@ -2231,13 +2314,13 @@ export default function Attachments({ leadId, userId }) {
                                       <input
                                         autoFocus
                                         value={editingFileName}
-                                        onChange={e => setEditingFileName(e.target.value)}
+                                        onChange={e => setEditingFileName(e.target.value.toUpperCase())}
                                         onKeyDown={e => {
                                           if (e.key === 'Enter') { e.preventDefault(); handleRenameFile(doc._id, editingFileName, ext); }
                                           else if (e.key === 'Escape') { setEditingFileId(null); setEditingFileName(''); }
                                         }}
                                         onBlur={() => handleRenameFile(doc._id, editingFileName, ext)}
-                                        className="text-[11px] font-bold text-gray-800 bg-blue-50 border border-blue-400 rounded px-1 py-0.5 outline-none flex-1 min-w-0"
+                                        className="text-[11px] font-bold text-gray-800 bg-blue-50 border border-blue-400 rounded px-1 py-0.5 outline-none flex-1 min-w-0 uppercase"
                                       />
                                       {ext && <span className="text-[11px] text-gray-500 shrink-0">{ext.toUpperCase()}</span>}
                                     </div>
@@ -2597,7 +2680,7 @@ export default function Attachments({ leadId, userId }) {
           </div>
 
           {/* Viewer area */}
-          <div className="flex-1 overflow-hidden flex items-center justify-center" onClick={e => e.stopPropagation()}>
+          <div className="flex-1 overflow-auto flex items-center justify-center p-4" onClick={e => e.stopPropagation()}>
             {viewerDoc.loading ? (
               <div className="flex flex-col items-center gap-3 text-white">
                 <div className="animate-spin rounded-full h-10 w-10 border-4 border-blue-500 border-t-transparent"></div>
@@ -2612,12 +2695,19 @@ export default function Attachments({ leadId, userId }) {
                   <i className="fa-solid fa-download"></i> Download Instead
                 </a>
               </div>
-            ) : (viewerDoc.isPdf || viewerDoc.isImage) ? (
+            ) : viewerDoc.isPdf ? (
               <iframe
                 src={viewerDoc.blobUrl}
                 title={viewerDoc.name}
-                className="w-full h-full border-0 bg-white"
-                style={{ display: 'block' }}
+                className="w-full border-0 bg-white"
+                style={{ display: 'block', height: 'calc(100vh - 56px)' }}
+              />
+            ) : viewerDoc.isImage ? (
+              <img
+                src={viewerDoc.blobUrl}
+                alt={viewerDoc.name}
+                className="max-w-full max-h-full object-contain rounded shadow-lg"
+                style={{ maxHeight: 'calc(100vh - 120px)' }}
               />
             ) : (
               <div className="flex flex-col items-center justify-center h-full text-white gap-5">

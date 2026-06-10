@@ -446,7 +446,7 @@ export default function DashboardPage() {
     .dashboard-table-container::-webkit-scrollbar-track { background: #f8fafc; border-radius: 8px; }
     .dashboard-table-container::-webkit-scrollbar-thumb { background-color: #cbd5e1; border-radius: 8px; }
     .dashboard-table { width: 100%; border-collapse: separate; border-spacing: 0; text-align: left; white-space: nowrap; }
-    .dashboard-th { cursor: pointer; user-select: none; font-weight: 700; font-size: 12px; padding: 12px 16px; border-bottom: 2px solid #e2e8f0; text-align: center; background: #f8fafc; color: #64748b; position: sticky; top: 45px; z-index: 20; transition: background-color 0.2s; }
+    .dashboard-th { cursor: pointer; user-select: none; font-weight: 700; font-size: 12px; padding: 5px 12px; border-bottom: 2px solid #e2e8f0; text-align: center; background: #f8fafc; color: #64748b; position: sticky; top: 45px; z-index: 20; transition: background-color 0.2s; }
     .dashboard-th:hover { background: #e2e8f0; color: #0f172a; }
     .dashboard-th-static { cursor: default; }
     .dashboard-sort-icon { margin-left: 4px; font-size: 10px; }
@@ -482,11 +482,11 @@ export default function DashboardPage() {
     .dashboard-data-row:hover td[data-zone="logins"], .dashboard-data-row:hover td[data-zone="total-logins"] { background: #e6f4ea; }
     .dashboard-data-row td.dashboard-assigned-name { background: #fffbeb !important; }
     .dashboard-data-row:hover td.dashboard-assigned-name { background: #fef3c7 !important; }
-    .dashboard-tfoot-label { padding: 12px 16px; font-weight: 900; font-size: 12px; letter-spacing: 0.5px; color: #0f172a; background: #f8fafc; border-top: 2px solid #e2e8f0; position: sticky; left: 0; z-index: 6; text-transform: uppercase; border-right: 2px solid #94a3b8; box-shadow: 2px 0 5px rgba(0,0,0,0.05); }
-    .dashboard-tfoot-total-leads { padding: 12px 16px; text-align: center; font-family: monospace; font-size: 14px; font-weight: 900; background: #dbeafe; color: #1e40af; border-top: 2px solid #e2e8f0; }
-    .dashboard-tfoot-leads { padding: 12px 16px; text-align: center; font-family: monospace; font-size: 14px; font-weight: 800; background: #f8fafc; color: #1e3a8a; border-top: 2px solid #e2e8f0; }
-    .dashboard-tfoot-total-logins { padding: 12px 16px; text-align: center; font-family: monospace; font-size: 14px; font-weight: 900; background: #d1fae5; color: #166534; border-top: 2px solid #e2e8f0; border-left: 4px solid #475569; }
-    .dashboard-tfoot-logins { padding: 12px 16px; text-align: center; font-family: monospace; font-size: 14px; font-weight: 800; background: #f0fdf4; color: #064e3b; border-top: 2px solid #e2e8f0; }
+    .dashboard-tfoot-label { padding: 5px 12px; font-weight: 900; font-size: 12px; letter-spacing: 0.5px; color: #0f172a; background: #f8fafc; border-top: 2px solid #e2e8f0; position: sticky; left: 0; z-index: 6; text-transform: uppercase; border-right: 2px solid #94a3b8; box-shadow: 2px 0 5px rgba(0,0,0,0.05); }
+    .dashboard-tfoot-total-leads { padding: 5px 12px; text-align: center; font-family: monospace; font-size: 14px; font-weight: 900; background: #dbeafe; color: #1e40af; border-top: 2px solid #e2e8f0; }
+    .dashboard-tfoot-leads { padding: 5px 12px; text-align: center; font-family: monospace; font-size: 14px; font-weight: 800; background: #f8fafc; color: #1e3a8a; border-top: 2px solid #e2e8f0; }
+    .dashboard-tfoot-total-logins { padding: 5px 12px; text-align: center; font-family: monospace; font-size: 14px; font-weight: 900; background: #d1fae5; color: #166534; border-top: 2px solid #e2e8f0; border-left: 4px solid #475569; }
+    .dashboard-tfoot-logins { padding: 5px 12px; text-align: center; font-family: monospace; font-size: 14px; font-weight: 800; background: #f0fdf4; color: #064e3b; border-top: 2px solid #e2e8f0; }
     .rdp-dashboard .react-datepicker { font-family: inherit !important; border: 1px solid #e2e8f0 !important; border-radius: 12px !important; box-shadow: 0 10px 25px rgba(0,0,0,0.1) !important; overflow: hidden; background: #ffffff !important; }
     .rdp-dashboard .react-datepicker__header { background: #f8fafc !important; border-bottom: 1px solid #e2e8f0 !important; padding: 12px 0 0 !important; }
     .rdp-dashboard .react-datepicker__current-month { font-size: 14px !important; font-weight: 700 !important; color: #0f172a !important; margin-bottom: 8px; }
@@ -801,7 +801,7 @@ export default function DashboardPage() {
                   <td
                     data-zone="identity"
                     className={row.isAssignedView ? "dashboard-assigned-name" : ""}
-                    style={{ padding: "11px 16px", minWidth: 160, width: 160 }}
+                    style={{ padding: "5px 12px", minWidth: 160, width: 160 }}
                   >
                     <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
                       <span>{row.name}</span>
@@ -811,7 +811,7 @@ export default function DashboardPage() {
 
                   <td
                     data-zone="identity"
-                    style={{ padding: "11px 16px", minWidth: 100, width: 100 }}
+                    style={{ padding: "5px 12px", minWidth: 100, width: 100 }}
                   >
                     {row.team}
                   </td>
@@ -871,7 +871,7 @@ export default function DashboardPage() {
 // ─── Number Cell helper ───────────────────────────────────────────────────────
 function Nc({ zone, className = "", style, children }) {
   const base = {
-    padding: "11px 16px",
+    padding: "5px 12px",
     textAlign: "center",
     fontFamily: "monospace",
     fontSize: 14,

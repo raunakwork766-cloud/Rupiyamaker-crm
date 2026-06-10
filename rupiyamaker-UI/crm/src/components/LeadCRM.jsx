@@ -403,7 +403,6 @@ const LeadCRM = memo(function LeadCRM({ user, selectedLoanType: initialLoanType,
     const [selectedStatus, setSelectedStatus] = useState('all');
     const [selectedSubStatus, setSelectedSubStatus] = useState('all');
     const [searchTerm, setSearchTerm] = useState('');
-    useNavbarPageSearch(setSearchTerm);
     // ⚡ PERFORMANCE: Debounced search term to prevent excessive filtering
     const debouncedSearchTerm = useDebounce(searchTerm, 300);
     const [currentUserRole, setCurrentUserRole] = useState(null);
@@ -7516,6 +7515,39 @@ const LeadCRM = memo(function LeadCRM({ user, selectedLoanType: initialLoanType,
                                     <span>Loading filters...</span>
                                 </div>
                             )}
+
+                            {/* Search bar — inline in toolbar */}
+                            <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                                <Search style={{ position: 'absolute', left: 9, width: 14, height: 14, color: '#6b7280', pointerEvents: 'none' }} />
+                                <input
+                                    type="text"
+                                    value={searchTerm}
+                                    onChange={e => setSearchTerm(e.target.value)}
+                                    placeholder="Search leads..."
+                                    style={{
+                                        background: '#111827',
+                                        border: '1px solid #374151',
+                                        borderRadius: 6,
+                                        padding: '6px 30px 6px 28px',
+                                        color: '#e5e7eb',
+                                        fontSize: 13,
+                                        width: 300,
+                                        outline: 'none',
+                                        boxSizing: 'border-box',
+                                    }}
+                                    onFocus={e => e.target.style.borderColor = '#3b82f6'}
+                                    onBlur={e => e.target.style.borderColor = '#374151'}
+                                />
+                                {searchTerm && (
+                                    <button
+                                        type="button"
+                                        onClick={() => setSearchTerm('')}
+                                        style={{ position: 'absolute', right: 7, background: 'none', border: 'none', cursor: 'pointer', color: '#6b7280', display: 'flex', alignItems: 'center', padding: 2 }}
+                                    >
+                                        <X style={{ width: 13, height: 13 }} />
+                                    </button>
+                                )}
+                            </div>
 
                             <button
                                 type="button"

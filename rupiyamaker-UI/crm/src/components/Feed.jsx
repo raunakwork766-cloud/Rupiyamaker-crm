@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect, useCallback, useMemo } from "react"
 import { ThumbsUp, MessageCircle, User, AlertCircle, Loader, Image, FileText, X, ChevronLeft, ChevronRight, MoreHorizontal, CornerDownRight, Trash2, CheckCircle2, Clock } from "lucide-react";
 import { hasPermission, canEditPost, canDeletePost, canDeleteComment, getUserPermissions, getUserId } from '../utils/permissions';
 import { buildApiUrl, buildMediaUrl } from '../config/api';
+import { getProfilePictureUrlWithCacheBusting } from '../utils/mediaUtils';
 import { feedsAPI } from '../services/api';
 import { formatDateTime } from '../utils/dateUtils';
 import useNavbarPageSearch from '../hooks/useNavbarPageSearch';
@@ -29,6 +30,133 @@ const extractFeedImageUrls = (files = []) =>
   }).map((f) => buildMediaUrl(f.file_path));
 
 const feedImageClassName = 'block w-auto h-auto max-w-full max-h-[354px] sm:max-h-[430px] object-contain';
+
+// ── Poll Display Component ──
+// State is fully self-contained. No effects, no stale closures, no prop-sync loops.
+function PollDisplay({ poll, postId, currentUserId, onPollUpdate }) {
+  // Compute initial voted index once from prop
+  const initIdx = () =>
+    (poll?.options || []).findIndex(o => (o.voters || []).includes(currentUserId ?? ''));
+
+  // 'idle' | 'voted' | 'open'
+  const [phase, setPhase] = React.useState(() => initIdx() >= 0 ? 'voted' : 'idle');
+  const [myIdx,  setMyIdx]  = React.useState(() => { const i = initIdx(); return i >= 0 ? i : null; });
+  const [counts, setCounts] = React.useState(() => (poll?.options || []).map(o => o.votes || 0));
+  const [busy,   setBusy]   = React.useState(false);
+
+  // Expose a stable ref to current phase so async callbacks always see latest value
+  const stateRef = React.useRef({ phase: phase === 'idle' ? 'idle' : 'voted', myIdx: myIdx });
+  stateRef.current = { phase, myIdx };
+
+  if (!poll) return null;
+  const expired = poll.expires_at ? new Date(poll.expires_at) < new Date() : false;
+  const total   = counts.reduce((s, c) => s + c, 0);
+
+  async function click(i) {
+    if (busy || expired || !currentUserId) return;
+
+    const { phase: curPhase, myIdx: curIdx } = stateRef.current;
+
+    if (curPhase === 'idle' || curPhase === 'open') {
+      // ── VOTE ──
+      setBusy(true);
+      setCounts(p => p.map((c, x) => x === i ? c + 1 : c));
+      setPhase('voted'); setMyIdx(i);
+      stateRef.current = { phase: 'voted', myIdx: i };
+
+      try {
+        const res = await fetch(
+          buildApiUrl(`feeds/${postId}/poll/vote?user_id=${encodeURIComponent(currentUserId)}`),
+          { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem('token') || ''}` }, body: JSON.stringify({ option_index: i }) }
+        );
+        const data = await res.json().catch(() => ({}));
+        if (res.ok && data?.poll?.options) {
+          setCounts(data.poll.options.map(o => o.votes || 0));
+          onPollUpdate?.({ ...poll, options: data.poll.options.map((o, x) => ({ ...poll.options[x], ...o, voters: x === i ? [...(poll.options[x]?.voters || []), currentUserId] : (poll.options[x]?.voters || []) })) });
+        } else if (!res.ok) {
+          // revert
+          setCounts(p => p.map((c, x) => x === i ? Math.max(0, c - 1) : c));
+          const rollback = curPhase; setPhase(rollback); setMyIdx(curIdx);
+          stateRef.current = { phase: rollback, myIdx: curIdx };
+        }
+      } catch (_) {}
+      setBusy(false);
+
+    } else if (curPhase === 'voted' && curIdx === i) {
+      // ── UNVOTE ──
+      setBusy(true);
+      setCounts(p => p.map((c, x) => x === i ? Math.max(0, c - 1) : c));
+      setPhase('open'); setMyIdx(null);
+      stateRef.current = { phase: 'open', myIdx: null };
+
+      try {
+        const res = await fetch(
+          buildApiUrl(`feeds/${postId}/poll/unvote?user_id=${encodeURIComponent(currentUserId)}`),
+          { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem('token') || ''}` }, body: '{}' }
+        );
+        if (res.ok || res.status === 400) {
+          // 400 = "already unvoted" — still treat as success
+          const data = await res.json().catch(() => ({}));
+          if (data?.poll?.options) setCounts(data.poll.options.map(o => o.votes || 0));
+          onPollUpdate?.({ ...poll, options: poll.options.map(o => ({ ...o, voters: (o.voters || []).filter(v => v !== currentUserId) })) });
+        } else {
+          // true server error — revert
+          setCounts(p => p.map((c, x) => x === i ? c + 1 : c));
+          setPhase('voted'); setMyIdx(i);
+          stateRef.current = { phase: 'voted', myIdx: i };
+        }
+      } catch (_) {}
+      setBusy(false);
+    }
+    // voted + different option → locked, ignore
+  }
+
+  const showBars = phase === 'voted' || expired;
+
+  return (
+    <div className="mx-4 my-3 border border-gray-200 rounded-xl p-4 bg-gray-50">
+      <p className="font-semibold text-gray-900 text-[15px] mb-3">{poll.question}</p>
+      <div className="space-y-2">
+        {(poll.options || []).map((opt, i) => {
+          const pct    = total > 0 ? Math.round(counts[i] / total * 100) : 0;
+          const isMe   = phase === 'voted' && myIdx === i;
+          const locked = phase === 'voted' && myIdx !== i;
+          return (
+            <button key={i} type="button" onClick={() => click(i)}
+              disabled={expired || locked || busy}
+              className={[
+                'relative w-full overflow-hidden rounded-lg border h-9 flex items-center px-3 text-left transition-all',
+                expired  ? 'border-gray-200 bg-white cursor-default' :
+                locked   ? 'border-gray-200 bg-white opacity-60 cursor-not-allowed' :
+                isMe     ? 'border-blue-400 bg-white hover:bg-blue-50 cursor-pointer' :
+                           'border-blue-200 bg-white hover:bg-blue-50 hover:border-blue-400 cursor-pointer'
+              ].join(' ')}
+            >
+              {showBars && (
+                <div className={`absolute left-0 top-0 h-full rounded-lg transition-all duration-700 ${isMe ? 'bg-blue-100' : 'bg-gray-100'}`}
+                  style={{ width: `${pct}%` }} />
+              )}
+              <span className={`relative z-10 text-sm font-medium flex-1 ${isMe ? 'text-blue-700' : 'text-gray-700'}`}>
+                {isMe && '\u2713 '}{opt.text}
+              </span>
+              {showBars && <span className="relative z-10 text-xs text-gray-500 font-semibold ml-2">{pct}%</span>}
+            </button>
+          );
+        })}
+      </div>
+      <div className="flex items-center justify-between mt-3 text-xs text-gray-400">
+        <span>{total} vote{total !== 1 ? 's' : ''}</span>
+        <div className="flex items-center gap-2">
+          {expired && <span className="text-red-400 font-medium">Poll ended</span>}
+          {!expired && poll.expires_at && <span>Ends {new Date(poll.expires_at).toLocaleDateString()}</span>}
+          {phase === 'voted' && !expired && <span className="italic text-gray-400">Click \u2713 to undo</span>}
+          {phase === 'open'  && !expired && <span className="text-blue-500 italic">Pick a new option</span>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // Recursive flatten for comments and replies (all levels)
 function flattenComments(comments, parentAuthor = null, level = 0) {
   const result = [];
@@ -457,6 +585,11 @@ export default function FeedPage({ user }) {
   const [likeDebounce, setLikeDebounce] = useState(new Set()); // Prevent rapid clicking
   const [expandedPosts, setExpandedPosts] = useState(new Set()); // Track which post texts are expanded
   const [feedSearchQuery, setFeedSearchQuery] = useState('');
+  // Poll state
+  const [showPollCreator, setShowPollCreator] = useState(false);
+  const [pollQuestion, setPollQuestion] = useState('');
+  const [pollOptions, setPollOptions] = useState(['', '']);
+  const [pollDays, setPollDays] = useState(1);
   useNavbarPageSearch(setFeedSearchQuery);
 
   const visibleFeeds = useMemo(() => {
@@ -586,12 +719,14 @@ export default function FeedPage({ user }) {
           files: feed.files ? feed.files.filter(f => !f.file_type?.startsWith('image')) : [],
           author: feed.creator_name || 'Unknown User',
           authorId: feed.created_by,
+          author_photo: feed.creator_photo ? getProfilePictureUrlWithCacheBusting(feed.creator_photo) : null,
           timestamp: timestamp,
           liked: feed.liked_by_user || false,
           showCommentBox: false,
           comments: comments,
           likes: feed.likes_count || 0,
-          department: feed.department || 'General'
+          department: feed.department || 'General',
+          poll: feed.poll || null
         };
       });
 
@@ -776,17 +911,40 @@ export default function FeedPage({ user }) {
     setCurrentImageIndex(0); // Reset image index when closing
   };
 
+  const resetCreatePost = () => {
+    setShowCreatePost(false);
+    setSelectedFiles([]);
+    setMessage("");
+    setShowPollCreator(false);
+    setPollQuestion('');
+    setPollOptions(['', '']);
+    setPollDays(1);
+    setMessageValidationError('');
+  };
+
   const handlePost = async () => {
     // Reset validation error
     setMessageValidationError('');
-    
-    // Check if no content at all
-    if (message.trim() === "" && selectedFiles.length === 0) return;
-    
-    // Check if photos are selected but message is empty
-    if (selectedFiles.length > 0 && message.trim() === "") {
-      setMessageValidationError('A message is required when posting photos or files.');
-      return;
+
+    // Poll post: require a question + at least 2 non-empty options
+    if (showPollCreator) {
+      if (!pollQuestion.trim()) {
+        setMessageValidationError('Please enter a poll question.');
+        return;
+      }
+      const validOptions = pollOptions.map(o => o.trim()).filter(Boolean);
+      if (validOptions.length < 2) {
+        setMessageValidationError('Please provide at least 2 poll options.');
+        return;
+      }
+    } else {
+      // Check if no content at all
+      if (message.trim() === "" && selectedFiles.length === 0) return;
+      // Check if photos are selected but message is empty
+      if (selectedFiles.length > 0 && message.trim() === "") {
+        setMessageValidationError('A message is required when posting photos or files.');
+        return;
+      }
     }
     
     try {
@@ -797,37 +955,57 @@ export default function FeedPage({ user }) {
         setError('User not authenticated');
         return;
       }
-      const formData = new FormData();
-      formData.append('content', message.trim());
-      formData.append('user_id', currentUserId);
-      selectedFiles.forEach((fileObj) => {
-        formData.append('files', fileObj.file, fileObj.file.name || fileObj.name || 'upload');
-      });
-      const response = await fetch(buildApiUrl(`feeds/?user_id=${encodeURIComponent(currentUserId)}`), {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${localStorage.getItem('token') || ''}`,
-        },
-        body: formData
-      });
-      if (!response.ok) {
-        const errorData = await response.text();
-        if (response.status === 504) {
-          throw new Error('Upload timed out. Try a smaller file or retry in a moment.');
+
+      if (showPollCreator) {
+        // Post a poll via JSON endpoint
+        const validOptions = pollOptions.map(o => o.trim()).filter(Boolean);
+        const expiresAt = new Date(Date.now() + pollDays * 24 * 60 * 60 * 1000).toISOString();
+        const response = await fetch(buildApiUrl(`feeds/poll?user_id=${encodeURIComponent(currentUserId)}`), {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${localStorage.getItem('token') || ''}`,
+          },
+          body: JSON.stringify({
+            content: message.trim() || pollQuestion.trim(),
+            user_id: currentUserId,
+            poll: {
+              question: pollQuestion.trim(),
+              options: validOptions.map(text => ({ text, votes: 0, voters: [] })),
+              expires_at: expiresAt
+            }
+          })
+        });
+        if (!response.ok) {
+          const errorData = await response.text();
+          throw new Error(errorData || 'Failed to create poll');
         }
-        throw new Error(errorData || 'Failed to create post');
+      } else {
+        const formData = new FormData();
+        formData.append('content', message.trim());
+        formData.append('user_id', currentUserId);
+        selectedFiles.forEach((fileObj) => {
+          formData.append('files', fileObj.file, fileObj.file.name || fileObj.name || 'upload');
+        });
+        const response = await fetch(buildApiUrl(`feeds/?user_id=${encodeURIComponent(currentUserId)}`), {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${localStorage.getItem('token') || ''}`,
+          },
+          body: formData
+        });
+        if (!response.ok) {
+          const errorData = await response.text();
+          if (response.status === 504) {
+            throw new Error('Upload timed out. Try a smaller file or retry in a moment.');
+          }
+          throw new Error(errorData || 'Failed to create post');
+        }
+        selectedFiles.forEach(fileObj => { if (fileObj.preview) URL.revokeObjectURL(fileObj.preview); });
       }
-      await response.json();
+
       await loadFeeds();
-      setMessage("");
-      setSelectedFiles([]);
-      setMessageValidationError('');
-      setShowCreatePost(false);
-      selectedFiles.forEach(fileObj => {
-        if (fileObj.preview) {
-          URL.revokeObjectURL(fileObj.preview);
-        }
-      });
+      resetCreatePost();
     } catch (error) {
       setError('Failed to post. Please try again.');
     } finally {
@@ -1448,19 +1626,7 @@ export default function FeedPage({ user }) {
                 </button>
               </div>
             </div>
-            <div className="flex items-center justify-around py-2 px-3 sm:px-4">
-              <button
-                onClick={() => {
-                  setShowCreatePost(true);
-                  setTimeout(() => fileInputRef.current?.click(), 100);
-                }}
-                className="flex-1 flex bg-green-100 items-center justify-center py-2 px-2 sm:px-4 text-black hover:bg-green-300 rounded-lg transition-colors border border-black text-sm sm:text-base"
-              >
-                <Image className="w-4 sm:w-6 h-4 sm:h-6 text-green-400 mr-1 sm:mr-2" />
-                <span className="hidden sm:inline">Photos/PDF</span>
-                <span className="sm:hidden">Media</span>
-              </button>
-            </div>
+  
           </div>
         )}
 
@@ -1470,11 +1636,7 @@ export default function FeedPage({ user }) {
               <div className="flex bg-white items-center justify-between p-3 sm:p-4 border-b border-gray-800">
                 <h3 className="text-lg sm:text-xl font-bold text-black">Create post</h3>
                 <button
-                  onClick={() => {
-                    setShowCreatePost(false);
-                    setSelectedFiles([]);
-                    setMessage("");
-                  }}
+                  onClick={resetCreatePost}
                   className="w-8 sm:w-10 h-8 sm:h-10 flex items-center justify-center bg-gray-800 rounded-full hover:bg-red-600 text-white transition-all duration-200"
                 >
                   <X className="w-4 sm:w-6 h-4 sm:h-6" />
@@ -1563,16 +1725,79 @@ export default function FeedPage({ user }) {
                     </div>
                   </div>
                 )}
-                <div className="mt-3 sm:mt-4">
-                  <button
-                    onClick={() => fileInputRef.current?.click()}
-                    className="flex items-center justify-center w-full py-2 px-3 sm:px-4 text-black hover:bg-green-300 rounded-lg transition-colors border border-gray-700 text-sm sm:text-base"
-                  >
-                    <Image className="w-4 sm:w-6 h-4 sm:h-6 text-green-400 mr-1 sm:mr-2" />
-                    <span className="hidden sm:inline">Add Photos/PDF</span>
-                    <span className="sm:hidden">Add Media</span>
-                  </button>
+                <div className="mt-3 sm:mt-4 border border-gray-200 rounded-lg overflow-hidden">
+                  {/* Action toolbar */}
+                  <div className="flex items-center gap-1 px-2 py-2 bg-gray-50 border-b border-gray-200">
+                    <span className="text-xs text-gray-500 font-medium mr-1">Add to post:</span>
+                    <button
+                      type="button"
+                      onClick={() => { setShowPollCreator(false); fileInputRef.current?.click(); }}
+                      title="Add Photos/PDF"
+                      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors border ${showPollCreator ? 'text-gray-400 border-gray-200' : 'text-green-700 bg-green-50 border-green-200 hover:bg-green-100'}`}
+                    >
+                      <Image className="w-4 h-4 text-green-500" />
+                      <span className="hidden sm:inline">Photo/PDF</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => { setShowPollCreator(p => !p); setSelectedFiles([]); }}
+                      title="Create Poll"
+                      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors border ${showPollCreator ? 'text-purple-700 bg-purple-100 border-purple-300' : 'text-purple-600 bg-purple-50 border-purple-200 hover:bg-purple-100'}`}
+                    >
+                      <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="12" width="4" height="9" rx="1"/><rect x="10" y="7" width="4" height="14" rx="1"/><rect x="17" y="3" width="4" height="18" rx="1"/></svg>
+                      <span>Poll</span>
+                    </button>
+                  </div>
+
+                  {/* Poll creator UI */}
+                  {showPollCreator && (
+                    <div className="p-3 bg-white space-y-3">
+                      <div>
+                        <input
+                          type="text"
+                          placeholder="Ask a question..."
+                          value={pollQuestion}
+                          onChange={e => setPollQuestion(e.target.value)}
+                          className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 outline-none focus:border-purple-400 focus:ring-1 focus:ring-purple-200"
+                        />
+                      </div>
+                      {pollOptions.map((opt, i) => (
+                        <div key={i} className="flex items-center gap-2">
+                          <input
+                            type="text"
+                            placeholder={`Option ${i + 1}`}
+                            value={opt}
+                            onChange={e => setPollOptions(prev => prev.map((o, idx) => idx === i ? e.target.value : o))}
+                            className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 outline-none focus:border-purple-400 focus:ring-1 focus:ring-purple-200"
+                          />
+                          {pollOptions.length > 2 && (
+                            <button type="button" onClick={() => setPollOptions(prev => prev.filter((_, idx) => idx !== i))}
+                              className="w-7 h-7 flex items-center justify-center rounded-full hover:bg-red-50 text-gray-400 hover:text-red-500 transition-colors">
+                              <X className="w-4 h-4" />
+                            </button>
+                          )}
+                        </div>
+                      ))}
+                      {pollOptions.length < 6 && (
+                        <button type="button" onClick={() => setPollOptions(prev => [...prev, ''])}
+                          className="text-purple-600 text-sm font-medium hover:underline flex items-center gap-1">
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M12 5v14M5 12h14" strokeLinecap="round"/></svg>
+                          Add option
+                        </button>
+                      )}
+                      <div className="flex items-center gap-2 pt-1">
+                        <span className="text-xs text-gray-500">Poll duration:</span>
+                        {[1, 3, 7].map(d => (
+                          <button key={d} type="button" onClick={() => setPollDays(d)}
+                            className={`px-2.5 py-1 rounded-full text-xs font-medium border transition-colors ${pollDays === d ? 'bg-purple-600 text-white border-purple-600' : 'text-gray-600 border-gray-300 hover:border-purple-400'}`}>
+                            {d}d
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
+
                 <input
                   ref={fileInputRef}
                   type="file"
@@ -1583,9 +1808,9 @@ export default function FeedPage({ user }) {
                 />
                 <button
                   onClick={handlePost}
-                  disabled={posting || (message.trim() === "" && selectedFiles.length === 0) || messageValidationError}
+                  disabled={posting || (!showPollCreator && message.trim() === "" && selectedFiles.length === 0) || !!messageValidationError}
                   className={`w-full mt-3 sm:mt-4 py-2 sm:py-3 px-3 sm:px-4 rounded-lg font-medium transition-colors text-sm sm:text-base ${
-                    posting || (message.trim() === "" && selectedFiles.length === 0) || messageValidationError
+                    posting || (!showPollCreator && message.trim() === "" && selectedFiles.length === 0) || !!messageValidationError
                       ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
                       : 'bg-blue-500 text-white hover:bg-blue-600'
                   }`}
@@ -1595,7 +1820,7 @@ export default function FeedPage({ user }) {
                       <Loader className="w-4 h-4 mr-2 animate-spin" />
                       Posting...
                     </div>
-                  ) : 'Post'}
+                  ) : showPollCreator ? 'Post Poll' : 'Post'}
                 </button>
               </div>
             </div>
@@ -1638,10 +1863,17 @@ export default function FeedPage({ user }) {
                     {/* Avatar */}
                     <div className="w-10 h-10 rounded-full flex-shrink-0 overflow-hidden bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center">
                       {feed.author_photo ? (
-                        <img src={feed.author_photo} alt={authorName} className="w-full h-full object-cover" onError={e => e.target.style.display='none'} />
-                      ) : (
-                        <span className="text-white text-sm font-bold">{initials}</span>
-                      )}
+                        <img
+                          src={feed.author_photo}
+                          alt={authorName}
+                          className="w-full h-full object-cover"
+                          onError={e => {
+                            e.target.style.display = 'none';
+                            if (e.target.nextSibling) e.target.nextSibling.style.display = 'flex';
+                          }}
+                        />
+                      ) : null}
+                      <span className="text-white text-sm font-bold" style={{ display: feed.author_photo ? 'none' : 'flex' }}>{initials}</span>
                     </div>
                     <div>
                       <p className="font-semibold text-gray-900 text-[15px] leading-tight">{authorName}</p>
@@ -1690,6 +1922,20 @@ export default function FeedPage({ user }) {
                     </div>
                   );
                 })()}
+
+                {/* ── Poll ── */}
+                {feed.poll && (
+                  <PollDisplay
+                    poll={feed.poll}
+                    postId={feed.id}
+                    currentUserId={getUserId() || localStorage.getItem('userId')}
+                    onPollUpdate={(updatedPoll) => {
+                      setFeeds(prev => prev.map(f =>
+                        f.id === feed.id ? { ...f, poll: updatedPoll } : f
+                      ));
+                    }}
+                  />
+                )}
 
                 {/* ── Post Images — compact preview (full image on click) ── */}
                 {imgCount > 0 && (

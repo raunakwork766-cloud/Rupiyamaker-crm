@@ -10,16 +10,16 @@ module.exports = {
       exec_mode: 'fork',
       autorestart: true,
       watch: false,
-      max_memory_restart: '2000M',  // 4 uvicorn workers (~200MB each) + master process headroom
+      max_memory_restart: '1200M',  // 2 uvicorn workers (~200MB each) + master + headroom = ~600MB typical
 
       // === Crash recovery (always restart, never give up) ===
       min_uptime: '30s',                  // Process must stay up 30s to be considered "stable"
       max_restarts: 1000,                 // Allow up to 1000 restart attempts (effectively unlimited)
       restart_delay: 4000,                // Wait 4s between restarts (avoid tight crash loop)
-      exp_backoff_restart_delay: 200,     // Exponential backoff if it crashes repeatedly (200ms, 400ms, 800ms ... capped)
-      kill_timeout: 15000,                // Give Python 15s to shut down gracefully before SIGKILL
-      listen_timeout: 30000,              // Wait up to 30s for the app to be ready before declaring it failed
-      wait_ready: false,                  // We do NOT use process.send('ready'); rely on listen_timeout
+      exp_backoff_restart_delay: 200,     // Exponential backoff if it crashes repeatedly
+      kill_timeout: 35000,                // Give Python 35s to shut down gracefully (matches graceful_shutdown 30s + buffer)
+      listen_timeout: 30000,              // Wait up to 30s for the app to be ready
+      wait_ready: false,
 
       env: {
         ENVIRONMENT: 'production',

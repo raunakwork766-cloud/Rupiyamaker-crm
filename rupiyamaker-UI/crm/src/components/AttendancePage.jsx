@@ -6,12 +6,12 @@ import { ChevronLeft, ChevronRight, Download, Calendar, X, Frown, User, Send, Pl
 import axios from "axios"
 import { formatDateTime, getISTToday } from '../utils/dateUtils';
 import hrmsService from '../services/hrmsService';
+import CurrencyInput from './common/CurrencyInput';
 import PaidLeaveManagement from './attendance/PaidLeaveManagement';
 import useTabWithHistory from '../hooks/useTabWithHistory';
 import useNavbarPageSearch from '../hooks/useNavbarPageSearch';
 // import jsPDF from "jspdf"
 // import "jspdf-autotable"
-
 // Import simplified permission system
 import { 
   getPermissionLevel, 
@@ -39,7 +39,7 @@ const attendancePageStyles = `
   .attendance-page { padding: 0; max-width: 100%; background: #000; min-height: 100vh; font-family: -apple-system, BlinkMacSystemFont, 'Lexend Deca', sans-serif; color: #e2e8f0; }
   .attendance-page .task-top-bar { display: flex; justify-content: space-between; align-items: flex-start; padding: 20px 24px 0; border-bottom: 1px solid #1f1f27; background: #000; gap: 16px; flex-wrap: wrap; }
   .attendance-page .task-top-bar-left h1 { font-size: 22px; font-weight: 700; color: #f0f0f5; margin: 0 0 2px; line-height: 1.2; }
-  .attendance-page .task-top-bar-left p { font-size: 13px; color: #6b7a99; margin: 0 0 12px; }
+  .attendance-page .task-top-bar-left p { font-size: 13px; color: #c8d0e0; margin: 0 0 12px; }
   .attendance-page .task-top-bar-right { display: flex; gap: 8px; align-items: center; padding-top: 4px; flex-wrap: wrap; }
   .attendance-page .task-btn-secondary { background: #1a1a24; color: #c8d0e0; border: 1px solid #2a2a3a; padding: 7px 14px; border-radius: 3px; font-size: 13px; font-weight: 500; cursor: pointer; transition: background 0.15s, border-color 0.15s; white-space: nowrap; display: inline-flex; align-items: center; gap: 6px; }
   .attendance-page .task-btn-secondary:hover:not(:disabled) { background: #22222e; border-color: #3a3a50; }
@@ -47,7 +47,7 @@ const attendancePageStyles = `
   .attendance-page .task-view-toggle-bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 24px; background: #000; border-bottom: 1px solid #1f1f27; flex-wrap: wrap; }
   .attendance-page .task-view-toggle-group { display: flex; gap: 0; flex-wrap: wrap; min-width: 0; overflow-x: auto; scrollbar-width: none; }
   .attendance-page .task-view-toggle-group::-webkit-scrollbar { display: none; }
-  .attendance-page .task-view-toggle-btn { padding: 12px 16px; border: none; background: transparent; font-size: 13px; font-weight: 600; color: #6b7a99; cursor: pointer; border-bottom: 3px solid transparent; transition: color 0.15s, border-color 0.15s; white-space: nowrap; }
+  .attendance-page .task-view-toggle-btn { padding: 12px 16px; border: none; background: transparent; font-size: 13px; font-weight: 600; color: #c8d0e0; cursor: pointer; border-bottom: 3px solid transparent; transition: color 0.15s, border-color 0.15s; white-space: nowrap; }
   .attendance-page .task-view-toggle-btn:hover { color: #c8d0e0; }
   .attendance-page .task-view-toggle-btn.active { color: #f97316; font-weight: 800; border-bottom-color: #f97316; }
   .attendance-page .task-toolbar-right { display: flex; align-items: center; justify-content: flex-end; gap: 8px; margin-left: auto; flex-shrink: 0; flex-wrap: wrap; }
@@ -56,25 +56,25 @@ const attendancePageStyles = `
   .attendance-page .attendance-page-content { padding: 16px 24px 24px; }
   .attendance-page .attendance-legend { display: flex; justify-content: center; gap: 20px; margin-bottom: 16px; flex-wrap: wrap; padding: 8px 0; }
   .attendance-page .attendance-legend-item { display: flex; align-items: center; gap: 8px; }
-  .attendance-page .attendance-legend-label { color: #6b7a99; font-size: 11px; font-weight: 700; letter-spacing: 0.5px; text-transform: uppercase; }
+  .attendance-page .attendance-legend-label { color: #c8d0e0; font-size: 11px; font-weight: 700; letter-spacing: 0.5px; text-transform: uppercase; }
   .attendance-page .attendance-kpi-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 0; border: 1px solid #1f1f27; border-radius: 4px; overflow: hidden; margin-bottom: 16px; background: #000; }
   .attendance-page .attendance-kpi { padding: 12px 14px; border-right: 1px solid #1f1f27; min-width: 0; }
   .attendance-page .attendance-kpi:last-child { border-right: none; }
-  .attendance-page .attendance-kpi-label { font-size: 10px; font-weight: 700; letter-spacing: 0.6px; text-transform: uppercase; color: #6b7a99; margin-bottom: 4px; white-space: nowrap; }
+  .attendance-page .attendance-kpi-label { font-size: 10px; font-weight: 700; letter-spacing: 0.6px; text-transform: uppercase; color: #c8d0e0; margin-bottom: 4px; white-space: nowrap; }
   .attendance-page .attendance-kpi-val { font-size: 20px; font-weight: 800; line-height: 1; margin-bottom: 3px; }
-  .attendance-page .attendance-kpi-sub { font-size: 10px; font-weight: 500; color: #4a5570; white-space: nowrap; }
+  .attendance-page .attendance-kpi-sub { font-size: 10px; font-weight: 500; color: #c8d0e0; white-space: nowrap; }
   .attendance-page .attendance-kpi-bar { height: 2px; background: #1a1a24; border-radius: 2px; margin-top: 6px; overflow: hidden; }
   .attendance-page .attendance-kpi-bar-fill { height: 100%; border-radius: 2px; }
   .attendance-page .task-search-box--in-bar { position: relative; width: 220px; min-width: 180px; flex-shrink: 0; }
   .attendance-page .task-search-box--in-bar input { background: #1a1a24; border: 1px solid #2a2a3a; border-radius: 3px; padding: 7px 12px 7px 34px; color: #c8d0e0; font-size: 13px; width: 100%; outline: none; box-sizing: border-box; }
-  .attendance-page .task-search-box--in-bar input::placeholder { color: #4a5570; }
+  .attendance-page .task-search-box--in-bar input::placeholder { color: #8898b8; }
   .attendance-page .task-search-box--in-bar input:focus { border-color: #3b82f6; box-shadow: 0 0 0 2px rgba(59,130,246,0.15); }
-  .attendance-page .task-search-box--in-bar .search-icon { position: absolute; left: 10px; top: 50%; transform: translateY(-50%); color: #4a5570; pointer-events: none; display: flex; }
+  .attendance-page .task-search-box--in-bar .search-icon { position: absolute; left: 10px; top: 50%; transform: translateY(-50%); color: #c8d0e0; pointer-events: none; display: flex; }
   .attendance-page .attendance-filter-dropdown { position: relative; min-width: 140px; flex-shrink: 0; }
   .attendance-page .attendance-filter-trigger { background: #1a1a24; border: 1px solid #2a2a3a; border-radius: 3px; padding: 7px 28px 7px 10px; color: #c8d0e0; font-size: 13px; cursor: pointer; outline: none; user-select: none; position: relative; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-height: 34px; box-sizing: border-box; display: flex; align-items: center; }
-  .attendance-page .attendance-filter-trigger.placeholder { color: #4a5570; }
+  .attendance-page .attendance-filter-trigger.placeholder { color: #8898b8; }
   .attendance-page .attendance-filter-trigger.open { border-color: #3b82f6; box-shadow: 0 0 0 2px rgba(59,130,246,0.15); }
-  .attendance-page .attendance-filter-chevron { position: absolute; right: 8px; top: 50%; transform: translateY(-50%); color: #6b7a99; transition: transform 0.2s; pointer-events: none; }
+  .attendance-page .attendance-filter-chevron { position: absolute; right: 8px; top: 50%; transform: translateY(-50%); color: #c8d0e0; transition: transform 0.2s; pointer-events: none; }
   .attendance-page .attendance-filter-chevron.open { transform: translateY(-50%) rotate(180deg); }
   .attendance-page .attendance-filter-menu { position: absolute; top: calc(100% + 4px); left: 0; right: 0; background: #0a0a0f; border: 1px solid #2a2a3a; border-radius: 3px; z-index: 1000; box-shadow: 0 8px 24px rgba(0,0,0,0.7); min-width: 160px; }
   .attendance-page .attendance-filter-menu-search { padding: 6px 8px; border-bottom: 1px solid #1f1f27; }
@@ -82,13 +82,14 @@ const attendancePageStyles = `
   .attendance-page .attendance-filter-option { padding: 8px 12px; cursor: pointer; font-size: 13px; color: #c8d0e0; border-bottom: 1px solid #1a1a22; transition: background 0.1s; }
   .attendance-page .attendance-filter-option:hover { background: #13131c; }
   .attendance-page .attendance-filter-option.selected { color: #93c5fd; background: rgba(59,130,246,0.08); }
-  .attendance-page .attendance-filter-meta { font-size: 12px; color: #6b7a99; white-space: nowrap; padding: 6px 10px; border: 1px solid #2a2a3a; border-radius: 3px; background: #1a1a24; }
+  .attendance-page .attendance-filter-meta { font-size: 12px; color: #c8d0e0; white-space: nowrap; padding: 6px 10px; border: 1px solid #2a2a3a; border-radius: 3px; background: #1a1a24; }
   .attendance-page .attendance-table-shell { border: 1px solid #1f1f27; border-radius: 4px; overflow: hidden; background: #000; }
   .attendance-page .attendance-table-shell thead { background: #ffffff; box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1); border-bottom: 2px solid #e5e7eb; }
-  .attendance-page .attendance-table-shell tbody td { color: #ffffff; font-weight: 600; }
-  .attendance-page .attendance-table-head-group { background: #ffffff !important; color: #03b0f5 !important; border: 1px solid #e5e7eb !important; font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em; }
-  .attendance-page .attendance-table-head-col { background: #ffffff !important; color: #03b0f5 !important; border: 1px solid #e5e7eb !important; font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em; font-size: 11px; }
-  .attendance-page .attendance-table-head-day { background: #ffffff !important; color: #03b0f5 !important; border: 1px solid #e5e7eb !important; font-weight: 800; text-align: center; }
+  .attendance-page .attendance-table-shell tbody td { color: #ffffff; font-weight: 600; padding-top: 5px !important; padding-bottom: 5px !important; white-space: nowrap; }
+  .attendance-page .attendance-table-shell tbody tr { border-bottom: 1px solid #2a2a38; }
+  .attendance-page .attendance-table-head-group { background: #ffffff !important; color: #03b0f5 !important; border: 1px solid #e5e7eb !important; font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em; padding: 5px 8px !important; }
+  .attendance-page .attendance-table-head-col { background: #ffffff !important; color: #03b0f5 !important; border: 1px solid #e5e7eb !important; font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em; font-size: 11px; padding: 5px 8px !important; }
+  .attendance-page .attendance-table-head-day { background: #ffffff !important; color: #03b0f5 !important; border: 1px solid #e5e7eb !important; font-weight: 800; text-align: center; padding: 5px 4px !important; }
   .attendance-page .attendance-table-head-col.sortable:hover { background: #f9fafb !important; }
   .attendance-page .attendance-table-scroll-bar { display: flex; align-items: center; justify-content: flex-end; gap: 4px; padding: 4px 10px; border-bottom: 1px solid #1f1f27; background: #000; }
   .attendance-page .attendance-table-scroll-btn { background: #1a1a24; border: 1px solid #2a2a3a; border-radius: 3px; color: #c8d0e0; cursor: pointer; padding: 3px 8px; font-size: 12px; display: flex; align-items: center; transition: background 0.15s; }
@@ -96,7 +97,7 @@ const attendancePageStyles = `
   .attendance-page .attendance-table-scroll-btn:disabled { opacity: 0.35; cursor: default; }
   .attendance-page .task-loading-spinner { display: flex; flex-direction: column; justify-content: center; align-items: center; padding: 80px 20px; min-height: 50vh; }
   .attendance-page .task-loading-spinner .spinner { width: 32px; height: 32px; border: 3px solid #1a1a24; border-top-color: #3b82f6; border-radius: 50%; animation: attendanceSpin 0.7s linear infinite; margin-bottom: 12px; }
-  .attendance-page .task-loading-spinner p { color: #6b7a99; font-size: 14px; margin: 0; }
+  .attendance-page .task-loading-spinner p { color: #c8d0e0; font-size: 14px; margin: 0; }
   .attendance-page .task-error-state { display: flex; flex-direction: column; justify-content: center; align-items: center; padding: 80px 20px; min-height: 50vh; text-align: center; }
   .attendance-page .task-error-state p { color: #f87171; font-size: 15px; margin: 0 0 12px; }
   .attendance-page .task-btn-retry { background: #3b82f6; color: #fff; border: none; padding: 8px 16px; border-radius: 3px; font-size: 13px; font-weight: 600; cursor: pointer; }
@@ -1526,11 +1527,21 @@ const DeductionDetailModal = ({ isOpen, onClose, data, onRevoke }) => {
   const [revoking, setRevoking] = useState(null)
   if (!isOpen || !data) return null
 
-  const { employee, stats, calculatedSalary, monthlySalary, perDaySalary, warningPenalties, selectedYear, selectedMonth, daysInMonth } = data
-  const attendanceDeduction = Math.max(0, Math.round(monthlySalary - calculatedSalary))
-  const totalWarningFine = (warningPenalties || []).reduce((sum, p) => sum + (p.penalty_amount || 0), 0)
-  const totalDeduction = attendanceDeduction + Math.round(totalWarningFine)
-  const monthName = months[selectedMonth - 1]
+  const {
+    employee, stats, monthlySalary, perDaySalary, daysInMonth,
+    warningPenalties, selectedYear, selectedMonth,
+    attendanceDeduction, warningFine,
+    financeDeductions, shortfall, shortfallDeduction,
+    effectiveSalary,
+  } = data
+
+  const totalWarningFine = (warningPenalties || []).reduce((s, p) => s + (p.penalty_amount || 0), 0)
+  const financeDedTotal  = (financeDeductions || []).reduce((s, d) => s + (Number(d.amount) || 0), 0)
+  const totalDeduction   = Math.round((attendanceDeduction || 0) + totalWarningFine + financeDedTotal + (shortfallDeduction || 0))
+  // Use effectiveSalary (pro-rated for mid-month joiners) as base for netSalary
+  const baseSalary = effectiveSalary != null ? effectiveSalary : monthlySalary
+  const netSalary  = Math.max(0, baseSalary - totalDeduction)
+  const monthName  = months[selectedMonth - 1]
 
   const handleRevoke = async (warningId) => {
     setRevoking(warningId)
@@ -1538,94 +1549,172 @@ const DeductionDetailModal = ({ isOpen, onClose, data, onRevoke }) => {
     setRevoking(null)
   }
 
+  const SectionCard = ({ icon, title, color, borderColor, children }) => (
+    <div style={{ borderRadius: '8px', padding: '16px', background: '#1a1a24', border: `1px solid ${borderColor}` }}>
+      <div style={{ fontSize: '13px', fontWeight: 600, marginBottom: '12px', color }}>{icon} {title}</div>
+      {children}
+    </div>
+  )
+
+  const Row = ({ label, value, valueColor, bold, borderTop }) => (
+    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '13px', ...(borderTop ? { paddingTop: '8px', borderTop: '1px solid #2a2a3a', marginTop: '4px' } : {}) }}>
+      <span style={{ color: '#9ca3af' }}>{label}</span>
+      <span style={{ color: valueColor || '#e5e7eb', fontWeight: bold ? 700 : 400 }}>{value}</span>
+    </div>
+  )
+
   return createPortal(
-    <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4" style={{ zIndex: ATTENDANCE_MODAL_Z_INDEX }}>
-      <div className="bg-gray-900 border border-gray-700 rounded-lg max-w-2xl w-full max-h-[85vh] overflow-y-auto shadow-2xl">
-        <div className="bg-gradient-to-r from-red-700 to-rose-700 text-white p-4 rounded-t-lg relative">
-          <button onClick={onClose} className="absolute top-4 right-4 text-white hover:text-gray-200">
-            <X className="h-6 w-6" />
+    <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4" style={{ zIndex: ATTENDANCE_MODAL_Z_INDEX }}>
+      <div style={{ background: '#0f0f17', border: '1px solid #2a2a3a', borderRadius: '12px', width: '100%', maxWidth: '620px', maxHeight: '90vh', overflowY: 'auto', boxShadow: '0 25px 60px rgba(0,0,0,0.8)' }}>
+
+        {/* Header */}
+        <div style={{ background: 'linear-gradient(135deg, #7f1d1d, #991b1b)', padding: '18px 20px', borderRadius: '12px 12px 0 0', position: 'relative' }}>
+          <button onClick={onClose} style={{ position: 'absolute', top: '14px', right: '14px', background: 'rgba(255,255,255,0.1)', border: 'none', borderRadius: '6px', cursor: 'pointer', padding: '4px', color: '#fff', display: 'flex', alignItems: 'center' }}>
+            <X className="h-5 w-5" />
           </button>
-          <h2 className="text-xl font-bold">Deduction Details</h2>
-          <p className="text-red-100 text-sm mt-1">{employee.name} — {monthName} {selectedYear}</p>
+          <div style={{ fontSize: '18px', fontWeight: 700, color: '#fff' }}>&#x1F4B0; Deduction Breakdown</div>
+          <div style={{ fontSize: '13px', color: '#fca5a5', marginTop: '4px' }}>{employee.name} &nbsp;&middot;&nbsp; {monthName} {selectedYear}</div>
         </div>
-        <div className="p-5 space-y-4 bg-gray-900">
+
+        <div style={{ padding: '16px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+
+          {/* Salary summary bar */}
+          <div style={{ background: '#1a1a24', border: '1px solid #2a2a3a', borderRadius: '8px', padding: '12px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
+            <div style={{ textAlign: 'center' }}>
+              <div style={{ fontSize: '11px', color: '#6b7280', marginBottom: '2px' }}>Fixed Salary</div>
+              <div style={{ fontSize: '16px', fontWeight: 700, color: '#e5e7eb' }}>&#x20B9;{monthlySalary.toLocaleString('en-IN')}</div>
+            </div>
+            <div style={{ fontSize: '20px', color: '#4b5563' }}>&#x2212;</div>
+            <div style={{ textAlign: 'center' }}>
+              <div style={{ fontSize: '11px', color: '#6b7280', marginBottom: '2px' }}>Total Deductions</div>
+              <div style={{ fontSize: '16px', fontWeight: 700, color: '#ef4444' }}>&#x20B9;{totalDeduction.toLocaleString('en-IN')}</div>
+            </div>
+            <div style={{ fontSize: '20px', color: '#4b5563' }}>=</div>
+            <div style={{ textAlign: 'center' }}>
+              <div style={{ fontSize: '11px', color: '#6b7280', marginBottom: '2px' }}>Net Payable</div>
+              <div style={{ fontSize: '16px', fontWeight: 700, color: '#10b981' }}>&#x20B9;{netSalary.toLocaleString('en-IN')}</div>
+            </div>
+          </div>
+
           {totalDeduction === 0 ? (
-            <div className="text-center py-8 text-gray-400">
-              <div className="text-4xl mb-2">✅</div>
-              <div className="text-lg font-semibold text-gray-300">No Deductions</div>
-              <div className="text-sm mt-1">No attendance or warning deductions for {monthName} {selectedYear}</div>
+            <div style={{ textAlign: 'center', padding: '32px 0', color: '#6b7280' }}>
+              <div style={{ fontSize: '36px', marginBottom: '8px' }}>&#x2705;</div>
+              <div style={{ fontSize: '16px', fontWeight: 600, color: '#9ca3af' }}>No Deductions</div>
+              <div style={{ fontSize: '12px', marginTop: '4px' }}>Full salary payable for {monthName} {selectedYear}</div>
             </div>
           ) : (
             <>
-              {attendanceDeduction > 0 && (
-                <div className="bg-gray-800 rounded-lg border border-gray-700 p-4">
-                  <div className="text-sm font-semibold text-orange-300 mb-3">📅 Attendance Deduction</div>
-                  <div className="space-y-2 text-sm">
-                    <div className="flex justify-between">
-                      <span className="text-gray-400">Monthly Salary (Fixed)</span>
-                      <span className="text-gray-200">₹{monthlySalary.toLocaleString('en-IN')}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-gray-400">Days in Month</span>
-                      <span className="text-gray-200">{daysInMonth}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-gray-400">Per Day Rate</span>
-                      <span className="text-gray-200">₹{perDaySalary.toFixed(2)}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-gray-400">Attendance Score (days paid)</span>
-                      <span className="text-green-400 font-semibold">{stats.finalScore}</span>
-                    </div>
-                    <div className="flex justify-between pt-2 border-t border-gray-700">
-                      <span className="text-orange-300 font-semibold">Attendance Deduction</span>
-                      <span className="text-orange-400 font-bold">− ₹{attendanceDeduction.toLocaleString('en-IN')}</span>
+              {/* 1. Attendance Deduction */}
+              {(attendanceDeduction || 0) > 0 && (
+                <SectionCard icon="&#x1F4C5;" title="Attendance Deduction" color="#fb923c" borderColor="#431407">
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                    <Row label="Fixed Monthly Salary" value={`₹${monthlySalary.toLocaleString('en-IN')}`} />
+                    <Row label="Days in Month" value={daysInMonth} />
+                    <Row label="Per Day Rate" value={`₹${(perDaySalary || monthlySalary / daysInMonth).toFixed(2)}`} />
+                    <Row label="Days Present (earned)" value={stats.presentScore ?? stats.finalScore} valueColor="#34d399" />
+                    {(stats.plDays || 0) > 0 && (
+                      <Row label={`PL Benefit (+${stats.plDays} day${stats.plDays !== 1 ? 's' : ''})`} value={`+${stats.plDays} day${stats.plDays !== 1 ? 's' : ''}`} valueColor="#a78bfa" />
+                    )}
+                    <Row label="Salary Earned" value={`₹${Math.round((perDaySalary || monthlySalary / daysInMonth) * Math.min(stats.finalScore, stats.effectiveDays || daysInMonth)).toLocaleString('en-IN')}`} valueColor="#34d399" />
+                    <Row label="Absent / Absconding days" value={`${(stats.absentDays || 0) + (stats.absconding || 0)} day(s)`} valueColor="#f87171" />
+                    <Row label="Attendance Deduction" value={`− ₹${Math.round(attendanceDeduction).toLocaleString('en-IN')}`} valueColor="#fb923c" bold borderTop />
+                  </div>
+                </SectionCard>
+              )}
+
+              {/* 2. Shortfall → Carry Forward (info only, not a deduction) */}
+              {(shortfall || 0) > 0 && (
+                <SectionCard icon="&#x1F3AF;" title="Target Shortfall \u2192 Carry Forward" color="#c084fc" borderColor="#4c1d95">
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                    <Row label="Monthly Target" value={`₹${(employee.monthlyTarget || 0).toLocaleString('en-IN')}`} />
+                    <Row label="Final Business Done" value={`₹${(employee.settledTarget || 0).toLocaleString('en-IN')}`} valueColor={(employee.settledTarget || 0) >= (employee.monthlyTarget || 1) ? '#34d399' : '#f87171'} />
+                    <Row label="Shortfall" value={`₹${(shortfall || 0).toLocaleString('en-IN')}`} valueColor="#f87171" />
+                    <div style={{ padding: '8px 10px', background: 'rgba(192,132,252,0.08)', borderRadius: '6px', marginTop: '4px', border: '1px solid #4c1d95' }}>
+                      <div style={{ fontSize: '12px', color: '#c084fc', fontWeight: 600 }}>&#x2139;&#xFE0F; Shortfall carries forward to next month</div>
+                      <div style={{ fontSize: '11px', color: '#9ca3af', marginTop: '3px' }}>Next month's total target = Monthly Target + ₹{(shortfall || 0).toLocaleString('en-IN')} carry forward</div>
+                      <div style={{ fontSize: '11px', color: '#6b7280', marginTop: '2px' }}>No salary deduction this month — applied when salary is processed in Salary Management</div>
                     </div>
                   </div>
-                </div>
+                </SectionCard>
               )}
+
+              {/* 3. Warning Fines */}
               {warningPenalties && warningPenalties.length > 0 && (
-                <div className="bg-gray-800 rounded-lg border border-red-800 p-4">
-                  <div className="text-sm font-semibold text-red-300 mb-3">⚠️ Warning Fines</div>
-                  <div className="space-y-3">
+                <SectionCard icon="&#x26A0;&#xFE0F;" title={`Warning Fines (${warningPenalties.length})`} color="#f87171" borderColor="#7f1d1d">
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                     {warningPenalties.map((p, idx) => (
-                      <div key={p.id || idx} className="flex items-start justify-between gap-3 pb-3 border-b border-gray-700 last:border-0 last:pb-0">
-                        <div className="flex-1 min-w-0">
-                          <div className="text-sm font-medium text-red-300">{p.warning_type}</div>
-                          {p.warning_message && <div className="text-xs text-gray-500 mt-0.5 truncate">{p.warning_message}</div>}
-                          {p.issued_date && (
-                            <div className="text-xs text-gray-500 mt-0.5">
-                              Issued: {new Date(p.issued_date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'Asia/Kolkata' })}
-                            </div>
-                          )}
+                      <div key={p.id || idx} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '8px', paddingBottom: idx < warningPenalties.length - 1 ? '10px' : 0, borderBottom: idx < warningPenalties.length - 1 ? '1px solid #2a2a3a' : 'none' }}>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontSize: '13px', fontWeight: 600, color: '#fca5a5' }}>{p.warning_type}</div>
+                          {p.warning_message && <div style={{ fontSize: '11px', color: '#6b7280', marginTop: '2px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.warning_message}</div>}
+                          {p.issued_date && <div style={{ fontSize: '11px', color: '#4b5563', marginTop: '2px' }}>Issued: {new Date(p.issued_date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'Asia/Kolkata' })}</div>}
                         </div>
-                        <div className="flex items-center gap-3 shrink-0">
-                          <span className="text-red-400 font-bold">− ₹{Number(p.penalty_amount).toLocaleString('en-IN')}</span>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
+                          <span style={{ fontSize: '14px', fontWeight: 700, color: '#f87171' }}>− ₹{Number(p.penalty_amount).toLocaleString('en-IN')}</span>
                           <button
                             disabled={revoking === p.id}
                             onClick={() => handleRevoke(p.id)}
-                            className="text-xs bg-yellow-600 hover:bg-yellow-500 disabled:opacity-50 disabled:cursor-not-allowed text-white px-3 py-1 rounded transition-colors font-semibold"
+                            style={{ fontSize: '11px', background: '#78350f', border: '1px solid #92400e', borderRadius: '4px', cursor: 'pointer', padding: '3px 8px', color: '#fde68a', fontWeight: 600, opacity: revoking === p.id ? 0.5 : 1 }}
                           >
                             {revoking === p.id ? '...' : 'Revoke'}
                           </button>
                         </div>
                       </div>
                     ))}
-                    <div className="flex justify-between items-center pt-1 font-semibold text-sm">
-                      <span className="text-red-300">Total Warning Fines</span>
-                      <span className="text-red-400">− ₹{Math.round(totalWarningFine).toLocaleString('en-IN')}</span>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', paddingTop: '8px', borderTop: '1px solid #2a2a3a', fontSize: '13px', fontWeight: 600 }}>
+                      <span style={{ color: '#9ca3af' }}>Total Warning Fines</span>
+                      <span style={{ color: '#f87171' }}>− ₹{Math.round(totalWarningFine).toLocaleString('en-IN')}</span>
                     </div>
                   </div>
-                </div>
+                </SectionCard>
               )}
-              <div className="bg-red-900/30 border border-red-700 rounded-lg p-4 flex justify-between items-center">
-                <span className="text-red-200 font-bold text-lg">Total Deduction</span>
-                <span className="text-red-400 font-bold text-2xl">− ₹{totalDeduction.toLocaleString('en-IN')}</span>
+
+              {/* 4. Finance Deductions */}
+              {financeDeductions && financeDeductions.length > 0 && (
+                <SectionCard icon="&#x1F3E6;" title={`Finance Deductions (${financeDeductions.length})`} color="#60a5fa" borderColor="#1e3a5f">
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                    {financeDeductions.map((d, idx) => (
+                      <div key={d._id || idx} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '8px', paddingBottom: idx < financeDeductions.length - 1 ? '10px' : 0, borderBottom: idx < financeDeductions.length - 1 ? '1px solid #2a2a3a' : 'none' }}>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontSize: '13px', fontWeight: 600, color: '#93c5fd' }}>{d.deduction_type || 'Deduction'}</div>
+                          {d.description && <div style={{ fontSize: '11px', color: '#6b7280', marginTop: '2px' }}>{d.description}</div>}
+                          {d.date && <div style={{ fontSize: '11px', color: '#4b5563', marginTop: '2px' }}>Date: {new Date(d.date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}</div>}
+                          <div style={{ fontSize: '10px', color: '#059669', marginTop: '2px', textTransform: 'uppercase', fontWeight: 600 }}>{d.status}</div>
+                        </div>
+                        <span style={{ fontSize: '14px', fontWeight: 700, color: '#60a5fa', flexShrink: 0 }}>− ₹{Number(d.amount).toLocaleString('en-IN')}</span>
+                      </div>
+                    ))}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', paddingTop: '8px', borderTop: '1px solid #2a2a3a', fontSize: '13px', fontWeight: 600 }}>
+                      <span style={{ color: '#9ca3af' }}>Total Finance Deductions</span>
+                      <span style={{ color: '#60a5fa' }}>− ₹{Math.round(financeDedTotal).toLocaleString('en-IN')}</span>
+                    </div>
+                  </div>
+                </SectionCard>
+              )}
+
+              {/* Grand Total */}
+              <div style={{ background: 'linear-gradient(135deg, #450a0a, #7f1d1d)', border: '1px solid #b91c1c', borderRadius: '8px', padding: '14px 16px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+                  <span style={{ color: '#fca5a5', fontWeight: 700, fontSize: '15px' }}>Total Deductions</span>
+                  <span style={{ color: '#ef4444', fontWeight: 700, fontSize: '22px' }}>− ₹{totalDeduction.toLocaleString('en-IN')}</span>
+                </div>
+                <div style={{ height: '1px', background: '#7f1d1d', marginBottom: '10px' }} />
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                  {(attendanceDeduction || 0) > 0 && <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px' }}><span style={{ color: '#6b7280' }}>Attendance</span><span style={{ color: '#fb923c' }}>₹{Math.round(attendanceDeduction).toLocaleString('en-IN')}</span></div>}
+                  {(shortfallDeduction || 0) > 0 && <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px' }}><span style={{ color: '#6b7280' }}>Target Shortfall</span><span style={{ color: '#c084fc' }}>₹{Math.round(shortfallDeduction).toLocaleString('en-IN')}</span></div>}
+                  {totalWarningFine > 0 && <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px' }}><span style={{ color: '#6b7280' }}>Warning Fines</span><span style={{ color: '#f87171' }}>₹{Math.round(totalWarningFine).toLocaleString('en-IN')}</span></div>}
+                  {financeDedTotal > 0 && <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px' }}><span style={{ color: '#6b7280' }}>Finance Deductions</span><span style={{ color: '#60a5fa' }}>₹{Math.round(financeDedTotal).toLocaleString('en-IN')}</span></div>}
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', marginTop: '4px', paddingTop: '6px', borderTop: '1px solid #7f1d1d' }}>
+                    <span style={{ color: '#9ca3af', fontWeight: 600 }}>Net Payable Salary</span>
+                    <span style={{ color: '#10b981', fontWeight: 700 }}>₹{netSalary.toLocaleString('en-IN')}</span>
+                  </div>
+                </div>
               </div>
             </>
           )}
-          <div className="flex justify-end pt-2">
-            <button onClick={onClose} className="bg-gray-700 hover:bg-gray-600 text-white px-5 py-2 rounded-md transition-colors">
+
+          <div style={{ display: 'flex', justifyContent: 'flex-end', paddingTop: '4px' }}>
+            <button onClick={onClose} style={{ background: '#1f2937', border: '1px solid #374151', borderRadius: '6px', color: '#d1d5db', padding: '8px 20px', cursor: 'pointer', fontWeight: 600, fontSize: '13px' }}>
               Close
             </button>
           </div>
@@ -2769,9 +2858,10 @@ const getDayNumericValue = (status) => {
     case "P": return 1
     case "L": return 1     // Late counts as full present
     case "HD": return 0.5
-    case "LV": return 0    // Leave counts as 0 in present score
+    case "WK": return 1    // Working/checked-in today — counts as present
+    case "LV": return 0    // Leave counts as 0 in present score (paid separately via plDays)
     case "AB": return -1   // Absconding reduces score
-    case "A": return -1    // Absent reduces score
+    case "A": return 0     // Absent = 0, not a penalty (day simply not earned)
     case "SP": return 1    // Sunday Paid — full day paid
     case "S0": return 0    // Sunday Zero — not paid, not penalized
     case "H": return null  // Holiday – excluded from present calc
@@ -2782,11 +2872,26 @@ const getDayNumericValue = (status) => {
 
 const calculateMonthlyStats = (record, selectedYear, selectedMonth, daysInMonth, holidays) => {
   let presentScore = 0
-  let actualPresent = 0  // Only positive-value days (P, L, SP, HD) — for display
+  let actualPresent = 0  // Only positive-value days (P, L, SP, HD, WK) — for display
   let lvDaysTaken = 0  // Leave days taken (LV status) — counted for reference only
   let absconding = 0
   let absentDays = 0   // Pure absent days (A status)
   let holidaysCount = 0
+
+  // ── Joining date: days before joining are blacked out (null) and don't count ──
+  const joiningRaw = record.joining_date || record.date_of_joining || null
+  let joiningDay = 0 // 0 = full month (no mid-month join)
+  if (joiningRaw) {
+    const jStr = typeof joiningRaw === 'string' ? joiningRaw.substring(0, 10) : ''
+    const jYear  = parseInt(jStr.substring(0, 4), 10)
+    const jMonth = parseInt(jStr.substring(5, 7), 10) // 1-based
+    const jDay   = parseInt(jStr.substring(8, 10), 10)
+    if (jYear === selectedYear && jMonth === selectedMonth && jDay > 1) {
+      joiningDay = jDay // employee joined mid-month this month
+    }
+  }
+  // effectiveDays = days employee was eligible in this month
+  const effectiveDays = joiningDay > 0 ? (daysInMonth - joiningDay + 1) : daysInMonth
 
   for (let day = 1; day <= daysInMonth; day++) {
     const status = record[`day${day}`]
@@ -2796,40 +2901,62 @@ const calculateMonthlyStats = (record, selectedYear, selectedMonth, daysInMonth,
     } else if (status === 'LV') {
       lvDaysTaken++
     } else if (status === 'AB') {
-      presentScore -= 1
-      actualPresent -= 1  // Absconding also reduces visible present count
+      // Absconding: day not earned (-1 vs present) + extra penalty (-1) = total -2
+      presentScore -= 2
       absconding++
+    } else if (status === 'A') {
+      // Absent: day simply not earned — does NOT reduce score, just not added
+      absentDays++
     } else if (val !== null) {
       presentScore += val
       if (val > 0) actualPresent += val  // count only actual present days
-      if (val === -1) absentDays++       // 'A' status = absent day
     }
   }
 
-  // PL/EL days: use only the LV days actually marked in attendance records.
-  // This is the only correct source of truth — if employee was present all days,
-  // lvDaysTaken = 0, so nothing gets added to salary regardless of leave balance.
-  const plDays = lvDaysTaken  // LV days actually taken in attendance (all leave types = paid for salary)
-  const elDays = 0            // EL is already counted in lvDaysTaken above
-  const graceMonthly = record.graceMonthlyLimit ?? 3          // Grace limit per month (from attendance settings — grace_usage_limit)
-  const graceRemainingMonthly = Math.min(record.graceRemaining ?? graceMonthly, graceMonthly)
+  // PL days: use the actual PL remaining from Leave Management (per-employee, per-period)
+  // This is exactly what shows in the Leave Management tab — same data, same source.
+  // paidLeavesRemaining = total PL allotted minus any PL already used = what's left.
+  //
+  // Display rule (PL column in calendar):
+  //   - If Leave Management has a DB record → show paidLeavesRemaining (exact match with LM tab)
+  //   - If no DB record (record.paidLeavesTotal is null/undefined) → show plMonthly default
+  const plAllotted  = record.paidLeavesTotal    ?? record.plMonthly ?? 1  // total PL for this period
+  const plUsed      = record.paidLeavesUsed     ?? 0                       // PL actually consumed
+  const plRemaining = record.paidLeavesRemaining ?? null                   // remaining balance from LM
 
-  // Final attendance = Present + LV days actually taken, only if Present > 0
-  const finalScore = presentScore > 0 ? (presentScore + plDays) : 0
+  // plDays shown in PL column = remaining balance (same as Leave Management tab)
+  // Falls back to plAllotted if remaining is not available (no DB record yet)
+  const plDays = plRemaining != null ? plRemaining : plAllotted
+
+  console.log(`[ATT-PL] ${record.id} yr=${selectedYear} mo=${selectedMonth}`,
+    { paidLeavesTotal: record.paidLeavesTotal, paidLeavesRemaining: record.paidLeavesRemaining,
+      plAllotted, plRemaining, plDays });
+
+  const elDays = 0
+  const graceMonthly = record.graceMonthlyLimit != null ? record.graceMonthlyLimit : 0
+  const graceRemainingMonthly = record.graceRemaining != null
+    ? Math.min(record.graceRemaining, graceMonthly)
+    : graceMonthly
+
+  // Final = presentScore + PL days (shown in Final column)
+  // Capped at daysInMonth (or effectiveDays for mid-month joiners) — can never exceed total days
+  const rawFinal = Math.max(0, presentScore) + plDays
+  const finalScore = Math.min(rawFinal, joiningDay > 0 ? effectiveDays : daysInMonth)
 
   const workingDays = daysInMonth - holidaysCount
   const attendancePercentage = workingDays > 0 ? ((Math.max(0, presentScore) / workingDays) * 100).toFixed(1) : "0"
 
   return {
     presentScore,
-    actualPresent,   // Days actually present (no negative deduction from absences)
-    plDays,          // LV days actually marked in attendance (used as paid days in salary)
-    elDays,          // Always 0 — folded into plDays/lvDaysTaken
-    graceRemaining: graceRemainingMonthly, // Monthly grace remaining
-    graceTotal: graceMonthly, // Monthly grace total (from settings)
+    actualPresent,
+    plDays,
+    elDays,
+    graceRemaining: graceRemainingMonthly,
+    graceTotal: graceMonthly,
     finalScore,
+    effectiveDays,   // days employee was eligible this month
     absconding,
-    absentDays,      // Count of 'A' absent days
+    absentDays,
     holidays: holidaysCount,
     workingDays,
     attendancePercentage,
@@ -2892,8 +3019,56 @@ export default function MonthlyAttendanceTable() {
   const [sortConfig, setSortConfig] = useState({ key: 'employeeId', dir: 'asc' })
   // warningPenaltiesMap: { [mongoId]: { total_penalty: number, penalties: [] } }
   const [warningPenaltiesMap, setWarningPenaltiesMap] = useState({})
+  // financeDeductionsMap: { [mongoId]: [{ _id, deduction_type, amount, date, description, status }] }
+  const [financeDeductionsMap, setFinanceDeductionsMap] = useState({})
   const [deductionModalOpen, setDeductionModalOpen] = useState(false)
   const [selectedDeductionData, setSelectedDeductionData] = useState(null)
+
+  // Inline edit state for Individual Target (settled_target)
+  const [editingIndividualTarget, setEditingIndividualTarget] = useState(null)  // record.id being edited
+  const [individualTargetValue, setIndividualTargetValue] = useState('')        // input value while editing
+  const [individualTargetSaving, setIndividualTargetSaving] = useState(null)   // record.id being saved
+
+  const handleIndividualTargetEdit = (record) => {
+    setEditingIndividualTarget(record.id)
+    setIndividualTargetValue(record.settledTarget > 0 ? String(record.settledTarget) : '')
+  }
+
+  const handleIndividualTargetSave = async (record) => {
+    const newValue = parseFloat(individualTargetValue) || 0
+    setIndividualTargetSaving(record.id)
+    try {
+      // Save per-month settled_target (not overwriting the live employee field)
+      // This ensures each month has its own individual target
+      await axios.post(
+        `${BASE_URL}/employee-monthly-config/upsert`,
+        {
+          employee_id: record.mongoId || record.id,
+          year: selectedYear,
+          month: selectedMonth - 1,  // 0-indexed for consistency with SalaryManagement
+          settled_target: newValue
+        },
+        { params: { user_id: user.user_id }, headers: getAuthHeaders() }
+      )
+      // Update local state so table refreshes immediately without a full reload
+      setAttendanceData(prev => prev.map(r =>
+        (r.id === record.id || r.mongoId === record.mongoId)
+          ? { ...r, settledTarget: newValue }
+          : r
+      ))
+      setEditingIndividualTarget(null)
+    } catch (err) {
+      console.error('Failed to save individual target:', err)
+      alert('Failed to save. Please try again.')
+    } finally {
+      setIndividualTargetSaving(null)
+    }
+  }
+
+  const handleIndividualTargetKeyDown = (e, record) => {
+    if (e.key === 'Enter') handleIndividualTargetSave(record)
+    if (e.key === 'Escape') setEditingIndividualTarget(null)
+  }
 
   // Apply attendance rules to formatted records
   // NOTE: The backend already applies Sunday sandwich & absconding rules.
@@ -2913,6 +3088,9 @@ export default function MonthlyAttendanceTable() {
         const currentSunValue = updated[`day${d}`]
         // Backend already decided this Sunday (A, AB, SP, S0, LV, H) — don't override
         if (currentSunValue && currentSunValue !== 'W') continue
+
+        // Also skip if admin manually overrode this Sunday in this session
+        if (updated[`day${d}_manualOverride`]) continue
 
         // Only process Sundays still marked as 'W' (weekend dash / not yet decided)
         const satDay = d - 1
@@ -3125,7 +3303,7 @@ export default function MonthlyAttendanceTable() {
   const canViewAllRecords = () => canUserViewAll();
 
   // Convert API response to calendar format and merge with HRMS employees
-  const convertToCalendarFormat = (apiData, activeEmployeeIds = null, salaryMap = {}, employeeStatusMap = {}, allHrmsEmployees = []) => {
+  const convertToCalendarFormat = (apiData, activeEmployeeIds = null, salaryMap = {}, employeeStatusMap = {}, allHrmsEmployees = [], monthlyTargetMap = {}, settledTargetMap = {}) => {
     console.log('🔍 Total employees from attendance API:', apiData?.employees?.length || 0);
     console.log('🔍 Total HRMS employees:', allHrmsEmployees.length);
 
@@ -3185,6 +3363,9 @@ export default function MonthlyAttendanceTable() {
       // Inactive-from date: set by backend when employee is deactivated
       const resolvedInactiveFrom = hrmsEmp?.inactive_from_date || employee.inactive_from_date || null
 
+      const monthlyTarget = monthlyTargetMap[empId] || monthlyTargetMap[String(empId)] || 0;
+      const settledTarget = settledTargetMap[empId] || settledTargetMap[String(empId)] || 0;
+      
       const employeeRecord = {
         id: employee.employee_id,
         mongoId: employee.user_mongo_id || employee.employee_id, // MongoDB _id for history API calls
@@ -3197,6 +3378,8 @@ export default function MonthlyAttendanceTable() {
         inactive_from_date: resolvedInactiveFrom,
         photo: employee.employee_photo,
         salary: empSalary,
+        monthlyTarget: monthlyTarget,
+        settledTarget: settledTarget,
         isActive: isActiveEmp
       };
 
@@ -3251,6 +3434,8 @@ export default function MonthlyAttendanceTable() {
         const empStatus = employeeStatusMap[empId] || employeeStatusMap[String(empId)];
         const isActiveEmp = empStatus ? (empStatus === 'active') : (emp.employee_status ? emp.employee_status === 'active' : emp.is_active !== false);
         const empSalary = salaryMap[empId] || salaryMap[String(empId)] || 0;
+        const empMonthlyTarget = monthlyTargetMap[empId] || monthlyTargetMap[String(empId)] || 0;
+        const empSettledTarget = settledTargetMap[empId] || settledTargetMap[String(empId)] || 0;
         const empName = [emp.first_name, emp.last_name].filter(Boolean).join(' ') || emp.username || 'Unknown';
         return {
           id: empId,
@@ -3264,6 +3449,8 @@ export default function MonthlyAttendanceTable() {
           inactive_from_date: emp.inactive_from_date || null,
           photo: emp.profile_photo,
           salary: empSalary,
+          monthlyTarget: empMonthlyTarget,
+          settledTarget: empSettledTarget,
           isActive: isActiveEmp
         };
       });
@@ -3287,6 +3474,8 @@ export default function MonthlyAttendanceTable() {
         let activeEmployeeIds = null;
         const salaryMap = {};
         const employeeStatusMap = {};
+        const monthlyTargetMap = {};
+        const settledTargetMap = {};
         let allHrmsEmployees = [];
         try {
           const employeesResponse = await hrmsService.getEmployees('all');
@@ -3316,18 +3505,117 @@ export default function MonthlyAttendanceTable() {
             console.log('✅ Active employees:', Array.from(activeEmployeeIds).length / 3);
             console.log('📋 Status map entries:', Object.keys(employeeStatusMap).length / 2);
             
-            // Build salary map from same employee data (no extra API call)
+            // Build salary map and target maps from same employee data (no extra API call)
+            // settled_target from employee document is used as the initial fallback.
+            // Per-month config (if saved) will override this below.
             employeesResponse.data.forEach(emp => {
               const eid = emp.employee_id || emp._id;
+              const mongoId = emp._id || emp.employee_id;
               const sal = parseFloat(emp.salary) || 0;
+              const monthlyTarget = parseFloat(emp.monthly_target) || 0;
+              const settledTarget = parseFloat(emp.settled_target) || 0;
               if (eid && sal > 0) {
                 salaryMap[eid] = sal;
                 salaryMap[String(eid)] = sal;
               }
+              if (eid) {
+                monthlyTargetMap[eid] = monthlyTarget;
+                monthlyTargetMap[String(eid)] = monthlyTarget;
+                // Use employee document value as fallback — per-month config will override below
+                settledTargetMap[eid] = settledTarget;
+                settledTargetMap[String(eid)] = settledTarget;
+              }
+              if (mongoId && mongoId !== eid) {
+                if (sal > 0) { salaryMap[String(mongoId)] = sal; }
+                monthlyTargetMap[String(mongoId)] = monthlyTarget;
+                settledTargetMap[String(mongoId)] = settledTarget;
+              }
             });
-            
-            console.log('✅ Active employee IDs (with all formats):', Array.from(activeEmployeeIds).slice(0, 50));
-            console.log('💰 Salary map built for', Object.keys(salaryMap).length / 2, 'employees');
+
+            // ── Fetch per-month settled_target overrides ──────────────────────
+            // settled_target is per-month (entered in Attendance page each month)
+            // Override the live employee value with the month-specific one if available
+            try {
+              const mongoIds = employeesResponse.data.map(e => String(e._id)).filter(Boolean);
+              if (mongoIds.length > 0) {
+                const cfResp = await axios.get(
+                  `${BASE_URL}/employee-monthly-config/bulk`,
+                  {
+                    params: {
+                      user_id: user.user_id,
+                      year: selectedYear,
+                      month: selectedMonth - 1,  // 0-indexed
+                      employee_ids: mongoIds.join(',')
+                    },
+                    headers: getAuthHeaders()
+                  }
+                )
+                const cfData = cfResp.data?.data || {}
+                const configuredIds = new Set(Object.keys(cfData))
+
+                // ── Auto-migrate: if per-month config doesn't exist for this month,
+                // seed it from the employee document's current settled_target.
+                // This handles the transition from old (single-value) to new (per-month) system.
+                const toMigrate = employeesResponse.data
+                  .filter(emp => {
+                    const mid = String(emp._id);
+                    const hasConfig = configuredIds.has(mid);
+                    const hasSettledTarget = parseFloat(emp.settled_target) > 0;
+                    return !hasConfig && hasSettledTarget;
+                  })
+                  .map(emp => ({
+                    employee_id: String(emp._id),
+                    settled_target: parseFloat(emp.settled_target),
+                    salary: parseFloat(emp.salary) || undefined,
+                    monthly_target: parseFloat(emp.monthly_target) || undefined,
+                  }));
+
+                if (toMigrate.length > 0) {
+                  // Fire-and-forget migration — don't await to avoid blocking
+                  axios.post(
+                    `${BASE_URL}/employee-monthly-config/migrate-from-employee-docs`,
+                    { year: selectedYear, month: selectedMonth - 1, employees: toMigrate },
+                    { params: { user_id: user.user_id }, headers: getAuthHeaders() }
+                  ).catch(() => {});
+                  // Use employee document values immediately (they'll be in DB next load)
+                  toMigrate.forEach(emp => {
+                    const mongoId = emp.employee_id;
+                    settledTargetMap[mongoId] = emp.settled_target;
+                    const hrmsEmp = employeesResponse.data.find(e => String(e._id) === mongoId);
+                    if (hrmsEmp) {
+                      const eid = hrmsEmp.employee_id || hrmsEmp._id;
+                      settledTargetMap[eid] = emp.settled_target;
+                      settledTargetMap[String(eid)] = emp.settled_target;
+                    }
+                  });
+                }
+
+                // Override settledTarget (and salary/monthlyTarget if set) with per-month values
+                Object.entries(cfData).forEach(([mongoId, cfg]) => {
+                  if (cfg.settled_target != null) {
+                    settledTargetMap[mongoId] = cfg.settled_target;
+                    const emp = employeesResponse.data.find(e => String(e._id) === mongoId);
+                    if (emp) {
+                      const eid = emp.employee_id || emp._id;
+                      settledTargetMap[eid] = cfg.settled_target;
+                      settledTargetMap[String(eid)] = cfg.settled_target;
+                    }
+                  }
+                  if (cfg.salary != null) {
+                    salaryMap[mongoId] = cfg.salary;
+                    const emp = employeesResponse.data.find(e => String(e._id) === mongoId);
+                    if (emp) { const eid = emp.employee_id || emp._id; salaryMap[eid] = cfg.salary; salaryMap[String(eid)] = cfg.salary; }
+                  }
+                  if (cfg.monthly_target != null) {
+                    monthlyTargetMap[mongoId] = cfg.monthly_target;
+                    const emp = employeesResponse.data.find(e => String(e._id) === mongoId);
+                    if (emp) { const eid = emp.employee_id || emp._id; monthlyTargetMap[eid] = cfg.monthly_target; monthlyTargetMap[String(eid)] = cfg.monthly_target; }
+                  }
+                });
+              }
+            } catch (cfErr) {
+              console.warn('Could not fetch per-month config, using live employee values:', cfErr);
+            }
           }
         } catch (empError) {
           console.warn('⚠️ Could not fetch employee list, showing all attendance:', empError);
@@ -3350,44 +3638,58 @@ export default function MonthlyAttendanceTable() {
         } catch (e) { /* use defaults */ }
         
         if (response && response.employees) {
-          const formattedData = convertToCalendarFormat(response, activeEmployeeIds, salaryMap, employeeStatusMap, allHrmsEmployees)
+          const formattedData = convertToCalendarFormat(response, activeEmployeeIds, salaryMap, employeeStatusMap, allHrmsEmployees, monthlyTargetMap, settledTargetMap)
 
           // Fetch leave balances for all employees in parallel (use selected month period)
           const leavePeriod = `${selectedYear}-${String(selectedMonth).padStart(2, '0')}`
           const leaveBalanceResults = await Promise.allSettled(
             formattedData.map(record =>
-              axios.get(`${BASE_URL}/settings/leave-balance/${record.id}`, {
+              axios.get(`${BASE_URL}/settings/leave-balance/${record.mongoId || record.id}`, {
                 params: { user_id: user.user_id, period: leavePeriod },
                 headers: getAuthHeaders()
-              }).then(res => ({ id: record.id, data: res.data?.data || {} }))
+              }).then(res => ({ id: record.id, mongoId: record.mongoId, data: res.data?.data || {} }))
             )
           )
 
           // Merge leave balance data into each record
           const balanceMap = {}
-          leaveBalanceResults.forEach(result => {
-            if (result.status === 'fulfilled' && result.value?.id) {
-              balanceMap[result.value.id] = result.value.data
+          leaveBalanceResults.forEach((result, idx) => {
+            if (result.status === 'fulfilled') {
+              const payload = result.value
+              const balData = payload?.data || payload
+              const empRecord = formattedData[idx]
+              // Only store if balData is a non-empty object (empty {} means no DB record — use null)
+              if (empRecord && balData && typeof balData === 'object' && Object.keys(balData).length > 0) {
+                balanceMap[empRecord.id] = balData
+              }
             }
           })
 
           const enrichedData = formattedData.map(record => {
-            const bal = balanceMap[record.id] || {}
+            const bal = balanceMap[record.id] ?? null
+            // Debug: log Avesh specifically
+            if (record.id === 'RM086' || (record.name && record.name.toLowerCase().includes('avesh'))) {
+              console.log('🔍 AVESH bal:', JSON.stringify(bal), 'record.id:', record.id, 'balanceMap keys:', Object.keys(balanceMap).filter(k => k.includes('RM08')))
+            }
             return {
               ...record,
-              earnedLeavesTotal: bal.earned_leaves_total ?? settingsData.default_earned_leave_monthly ?? 0,
-              earnedLeavesUsed: bal.earned_leaves_used ?? 0,
-              earnedLeavesRemaining: bal.earned_leaves_remaining ?? settingsData.default_earned_leave_monthly ?? 0,
-              paidLeavesTotal: bal.paid_leaves_total ?? settingsData.default_paid_leave_monthly ?? 1,
-              paidLeavesUsed: bal.paid_leaves_used ?? 0,
-              paidLeavesRemaining: bal.paid_leaves_remaining ?? settingsData.default_paid_leave_monthly ?? 1,
-              graceTotal: bal.grace_leaves_total ?? settingsData.auto_grace_monthly_limit ?? settingsData.grace_usage_limit ?? 3,
-              graceUsed: bal.grace_leaves_used ?? 0,
-              graceRemaining: bal.grace_leaves_remaining ?? bal.grace_leaves_total ?? settingsData.auto_grace_monthly_limit ?? settingsData.grace_usage_limit ?? 3,
+              // Use exact leave management values — no settings fallback so 0 stays 0
+              earnedLeavesTotal:     bal != null ? (bal.earned_leaves_total     ?? 0) : 0,
+              earnedLeavesUsed:      bal != null ? (bal.earned_leaves_used      ?? 0) : 0,
+              earnedLeavesRemaining: bal != null ? (bal.earned_leaves_remaining ?? 0) : 0,
+              // PL: use DB balance if available (0 is valid — employee has 0 PL), else fall back to settings default
+              // IMPORTANT: bal=null means no DB record at all (use default), bal.paid_leaves_total=0 means 0 PL (keep 0)
+              paidLeavesTotal:       bal != null ? (bal.paid_leaves_total       ?? settingsData.default_paid_leave_monthly ?? 1) : (settingsData.default_paid_leave_monthly ?? 1),
+              paidLeavesUsed:        bal != null ? (bal.paid_leaves_used        ?? 0) : 0,
+              paidLeavesRemaining:   bal != null ? (bal.paid_leaves_remaining   ?? 0) : 0,
+              // Grace: always use stored DB value — DB is authoritative (synced from settings on save)
+              graceTotal:     bal != null ? (bal.grace_leaves_total     ?? 0) : 0,
+              graceUsed:      bal != null ? (bal.grace_leaves_used      ?? 0) : 0,
+              graceRemaining: bal != null ? (bal.grace_leaves_remaining ?? 0) : 0,
               // Settings-based monthly allotments kept for reference (used by auto-credit logic)
               elMonthly: settingsData.default_earned_leave_monthly ?? 0,
               plMonthly: settingsData.default_paid_leave_monthly ?? 1.0,
-              graceMonthlyLimit: bal.grace_leaves_total ?? settingsData.auto_grace_monthly_limit ?? settingsData.grace_usage_limit ?? 3,
+              graceMonthlyLimit: bal != null ? (bal.grace_leaves_total ?? 0) : 0,
             }
           })
 
@@ -3429,6 +3731,29 @@ export default function MonthlyAttendanceTable() {
             }
           } catch (penErr) {
             console.warn('Could not load warning penalties batch:', penErr)
+          }
+
+          // Fetch finance deductions (approved) for this month — background, non-blocking
+          try {
+            const finResp = await axios.get(
+              `${BASE_URL}/hrms/finance-summary`,
+              {
+                params: { user_id: user.user_id, year: selectedYear, month: selectedMonth - 1 },
+                headers: getAuthHeaders()
+              }
+            )
+            const finDeductions = finResp.data?.deductions || []
+            // Build map: mongoId (employee_id) → [deduction records]
+            const finMap = {}
+            finDeductions.forEach(d => {
+              const empId = d.employee_id
+              if (!empId) return
+              if (!finMap[empId]) finMap[empId] = []
+              finMap[empId].push(d)
+            })
+            setFinanceDeductionsMap(finMap)
+          } catch (finErr) {
+            console.warn('Could not load finance deductions:', finErr)
           }
 
           // Load real edit counts from DB so they survive hard refresh
@@ -3505,9 +3830,77 @@ export default function MonthlyAttendanceTable() {
       }
   }, [selectedYear, selectedMonth, user])
 
+  // ── Refresh only leave balances (called when Leave Management tab updates PL/EL/Grace) ──
+  // period param: 'YYYY-MM' string from PaidLeaveManagement — may differ from current selectedMonth/Year
+  // if changed period matches current view: update in-place; otherwise switch to that month first.
+  const refreshLeaveBalances = useCallback(async (changedPeriod) => {
+    if (!user?.user_id) return
+
+    // If the changed period is different from current view — switch attendance page to that month
+    const targetPeriod = changedPeriod || `${selectedYear}-${String(selectedMonth).padStart(2, '0')}`
+    const [tYear, tMonth] = targetPeriod.split('-').map(Number)
+
+    if (tYear !== selectedYear || tMonth !== selectedMonth) {
+      // Switch attendance view to the changed month — fetchAttendanceData will re-run automatically
+      setSelectedYear(tYear)
+      setSelectedMonth(tMonth)
+      return  // fetchAttendanceData will fetch fresh data including new leave balances
+    }
+
+    if (attendanceData.length === 0) return
+
+    // Same period as current view — fast refresh of only leave columns
+    const leavePeriod = targetPeriod
+    try {
+      const results = await Promise.allSettled(
+        attendanceData.map(record =>
+          axios.get(`${BASE_URL}/settings/leave-balance/${record.mongoId || record.id}`, {
+            params: { user_id: user.user_id, period: leavePeriod },
+            headers: getAuthHeaders()
+          }).then(res => ({ id: record.id, bal: res.data?.data || null }))
+        )
+      )
+      const balMap = {}
+      results.forEach(r => {
+        if (r.status === 'fulfilled' && r.value?.bal && typeof r.value.bal === 'object' && Object.keys(r.value.bal).length > 0) {
+          balMap[r.value.id] = r.value.bal
+        }
+      })
+      setAttendanceData(prev => prev.map(record => {
+        const bal = balMap[record.id] ?? null
+        if (!bal) return record
+        return {
+          ...record,
+          earnedLeavesTotal:     bal.earned_leaves_total     != null ? bal.earned_leaves_total     : record.earnedLeavesTotal,
+          earnedLeavesUsed:      bal.earned_leaves_used      != null ? bal.earned_leaves_used      : record.earnedLeavesUsed,
+          earnedLeavesRemaining: bal.earned_leaves_remaining != null ? bal.earned_leaves_remaining : record.earnedLeavesRemaining,
+          paidLeavesTotal:       bal.paid_leaves_total       != null ? bal.paid_leaves_total       : record.paidLeavesTotal,
+          paidLeavesUsed:        bal.paid_leaves_used        != null ? bal.paid_leaves_used        : record.paidLeavesUsed,
+          paidLeavesRemaining:   bal.paid_leaves_remaining   != null ? bal.paid_leaves_remaining   : record.paidLeavesRemaining,
+          graceTotal:     bal.grace_leaves_total     != null ? bal.grace_leaves_total     : record.graceTotal,
+          graceUsed:      bal.grace_leaves_used      != null ? bal.grace_leaves_used      : record.graceUsed,
+          graceRemaining: bal.grace_leaves_remaining != null ? bal.grace_leaves_remaining : record.graceRemaining,
+          graceMonthlyLimit: bal.grace_leaves_total  != null ? bal.grace_leaves_total     : record.graceMonthlyLimit,
+        }
+      }))
+    } catch (e) {
+      console.warn('[AttendancePage] refreshLeaveBalances error:', e)
+    }
+  }, [selectedYear, selectedMonth, user, attendanceData])
+
   useEffect(() => {
     fetchAttendanceData()
   }, [fetchAttendanceData])
+
+  // ── When switching BACK to attendance tab from leave tab: refresh PL/EL/Grace columns ──
+  // This ensures any changes made in Leave Management tab are immediately reflected.
+  const prevPageTabRef = useRef(pageTab)
+  useEffect(() => {
+    if (prevPageTabRef.current === 'leave' && pageTab === 'attendance') {
+      refreshLeaveBalances()
+    }
+    prevPageTabRef.current = pageTab
+  }, [pageTab]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const daysInMonth = new Date(selectedYear, selectedMonth, 0).getDate()
   
@@ -3654,18 +4047,25 @@ export default function MonthlyAttendanceTable() {
     }
   }
 
-  const handleDeductionClick = (record, stats, calculatedSalary) => {
+  const handleDeductionClick = (record, stats, calculatedSalary, attendanceDeduction, warningFine, empFinanceDeds, shortfall, shortfallDeduction, effectiveSalary) => {
     const empPenalties = warningPenaltiesMap[record.mongoId] || {}
+    const monthlySalary = record.salary || 0
     setSelectedDeductionData({
       employee: record,
       stats,
       calculatedSalary,
-      monthlySalary: record.salary || 0,
-      perDaySalary: (record.salary || 0) / daysInMonth,
+      monthlySalary,
+      effectiveSalary: effectiveSalary != null ? effectiveSalary : monthlySalary,
+      perDaySalary: monthlySalary / daysInMonth,
       selectedYear,
       selectedMonth,
       daysInMonth,
-      warningPenalties: empPenalties.penalties || []
+      warningPenalties: empPenalties.penalties || [],
+      attendanceDeduction,
+      warningFine,
+      financeDeductions: empFinanceDeds || [],
+      shortfall,
+      shortfallDeduction,
     })
     setDeductionModalOpen(true)
   }
@@ -3756,10 +4156,18 @@ export default function MonthlyAttendanceTable() {
 
   const handleUpdateAttendance = (employeeId, day, newStatus) => {
     setAttendanceData((prevData) => {
-      // Update the specific day
-      const updated = prevData.map((employee) =>
-        employee.id === employeeId ? { ...employee, [`day${day}`]: newStatus } : employee
-      )
+      // Update the specific day — mark it as manually overridden so rules don't re-override it
+      const updated = prevData.map((employee) => {
+        if (employee.id !== employeeId) return employee
+        const dateObj = new Date(selectedYear, selectedMonth - 1, day)
+        const isSunday = dateObj.getDay() === 0
+        return {
+          ...employee,
+          [`day${day}`]: newStatus,
+          // Track manually overridden Sundays so applyAttendanceRules skips them
+          ...(isSunday ? { [`day${day}_manualOverride`]: true } : {}),
+        }
+      })
       // Re-apply adjacency/sandwich rules so e.g. Saturday AB → Sunday AB immediately
       return applyAttendanceRules(updated, attendanceSettings, selectedYear, selectedMonth)
     })
@@ -3981,7 +4389,7 @@ export default function MonthlyAttendanceTable() {
               <ChevronLeft className="h-4 w-4" />
             </button>
             <span className="attendance-month-label">
-              <Calendar className="h-4 w-4" style={{ color: '#6b7a99' }} />
+              <Calendar className="h-4 w-4" style={{ color: '#c8d0e0' }} />
               {months[selectedMonth - 1]} {selectedYear}
             </span>
             <button type="button" className="task-btn-secondary" style={{ padding: '4px 6px' }} onClick={() => navigateMonth('next')} aria-label="Next month">
@@ -4050,9 +4458,9 @@ export default function MonthlyAttendanceTable() {
                         onMouseDown={() => { setSearchQuery(r.name); setEmpDropdownOpen(false) }}
                         style={{ display: 'flex', alignItems: 'center', gap: '8px' }}
                       >
-                        <span style={{color:'#4a5570',minWidth:'36px',fontSize:'11px'}}>#{r.employeeId || '—'}</span>
+                        <span style={{color:'#c8d0e0',minWidth:'36px',fontSize:'11px'}}>#{r.employeeId || '—'}</span>
                         <span>{r.name}</span>
-                        {r.department && <span style={{marginLeft:'auto',color:'#6b7a99',fontSize:'11px'}}>{r.department}</span>}
+                        {r.department && <span style={{marginLeft:'auto',color:'#c8d0e0',fontSize:'11px'}}>{r.department}</span>}
                       </div>
                     ))}
                   </div>
@@ -4134,7 +4542,7 @@ export default function MonthlyAttendanceTable() {
 
       {pageTab === 'leave' && (
         <div className="attendance-page-content">
-          <PaidLeaveManagement />
+          <PaidLeaveManagement selectedYear={selectedYear} selectedMonth={selectedMonth} onLeaveUpdate={refreshLeaveBalances} />
         </div>
       )}
 
@@ -4252,7 +4660,7 @@ export default function MonthlyAttendanceTable() {
             <thead>
               {/* Row 1: main headers */}
               <tr>
-                <th colSpan={3} className="sticky left-0 z-[4] attendance-table-head-group" style={{padding:'10px',textAlign:'center',fontSize:'13px',borderRight:'2px solid #e5e7eb'}}>
+                <th colSpan={3} className="sticky left-0 z-[4] attendance-table-head-group" style={{padding:'5px 8px',textAlign:'center',fontSize:'12px',borderRight:'2px solid #e5e7eb'}}>
                   Employee Details
                 </th>
                 {Array.from({ length: visibleDays }, (_, i) => i + 1).map((day) => {
@@ -4288,19 +4696,19 @@ export default function MonthlyAttendanceTable() {
                     </th>
                   )
                 })}
-                <th colSpan={canViewSalary ? 8 : 6} className="attendance-table-head-group" style={{padding:'10px',textAlign:'center',fontSize:'13px'}}>
+                <th colSpan={canViewSalary ? 12 : 10} className="attendance-table-head-group" style={{padding:'5px 8px',textAlign:'center',fontSize:'12px'}}>
                   Summary
                 </th>
               </tr>
               {/* Row 2: sub-columns for Employee Details + Summary */}
               <tr style={{backgroundColor:'#ffffff'}}>
-                <th className="cursor-pointer select-none attendance-table-head-col sortable" style={{position:'sticky',left:0,zIndex:3,padding:'8px 10px',textAlign:'left',minWidth:'90px',width:'90px',boxSizing:'border-box'}} onClick={() => handleSort('employeeId')}>
+                <th className="cursor-pointer select-none attendance-table-head-col sortable" style={{position:'sticky',left:0,zIndex:3,padding:'5px 8px',textAlign:'left',minWidth:'90px',width:'90px',boxSizing:'border-box'}} onClick={() => handleSort('employeeId')}>
                   <span style={{display:'flex',alignItems:'center',gap:'4px'}}>Emp ID <span style={{opacity:sortConfig.key==='employeeId'?1:0.4}}>{sortConfig.key==='employeeId'?(sortConfig.dir==='asc'?'↑':'↓'):'⇅'}</span></span>
                 </th>
-                <th className="cursor-pointer select-none attendance-table-head-col sortable" style={{position:'sticky',left:'90px',zIndex:3,padding:'8px 10px',textAlign:'left',minWidth:'150px',width:'150px',boxSizing:'border-box'}} onClick={() => handleSort('name')}>
+                <th className="cursor-pointer select-none attendance-table-head-col sortable" style={{position:'sticky',left:'90px',zIndex:3,padding:'5px 8px',textAlign:'left',minWidth:'150px',width:'150px',boxSizing:'border-box'}} onClick={() => handleSort('name')}>
                   <span style={{display:'flex',alignItems:'center',gap:'4px'}}>Name <span style={{opacity:sortConfig.key==='name'?1:0.4}}>{sortConfig.key==='name'?(sortConfig.dir==='asc'?'↑':'↓'):'⇅'}</span></span>
                 </th>
-                <th className="cursor-pointer select-none attendance-table-head-col sortable" style={{position:'sticky',left:'240px',zIndex:3,padding:'8px 10px',textAlign:'left',borderRight:'2px solid #e5e7eb',minWidth:'130px',width:'130px',boxSizing:'border-box',boxShadow:'3px 0 8px rgba(0,0,0,0.08)'}} onClick={() => handleSort('department')}>
+                <th className="cursor-pointer select-none attendance-table-head-col sortable" style={{position:'sticky',left:'240px',zIndex:3,padding:'5px 8px',textAlign:'left',borderRight:'2px solid #e5e7eb',minWidth:'130px',width:'130px',boxSizing:'border-box',boxShadow:'3px 0 8px rgba(0,0,0,0.08)'}} onClick={() => handleSort('department')}>
                   <span style={{display:'flex',alignItems:'center',gap:'4px'}}>Team <span style={{opacity:sortConfig.key==='department'?1:0.4}}>{sortConfig.key==='department'?(sortConfig.dir==='asc'?'↑':'↓'):'⇅'}</span></span>
                 </th>
                 <th className="attendance-table-head-col" style={{minWidth:'50px',padding:'6px'}}>Edit</th>
@@ -4309,8 +4717,12 @@ export default function MonthlyAttendanceTable() {
                 <th className="attendance-table-head-col" style={{minWidth:'50px',padding:'6px'}}>PL</th>
                 <th className="attendance-table-head-col" style={{minWidth:'50px',padding:'6px'}}>EL</th>
                 <th className="attendance-table-head-col" style={{minWidth:'60px',padding:'6px'}}>Final</th>
-                {canViewSalary && <th className="attendance-table-head-col" style={{minWidth:'75px',padding:'6px'}}>Deduction</th>}
-                {canViewSalary && <th className="attendance-table-head-col" style={{minWidth:'75px',padding:'6px'}}>Salary</th>}
+                    {canViewSalary && <th className="attendance-table-head-col" style={{minWidth:'75px',padding:'6px'}}>Salary</th>}
+                    <th className="attendance-table-head-col" style={{minWidth:'90px',padding:'6px'}}>Monthly Target</th>
+                    <th className="attendance-table-head-col" style={{minWidth:'90px',padding:'6px'}}>Individual Target</th>
+                    <th className="attendance-table-head-col" style={{minWidth:'90px',padding:'6px'}}>Final Business</th>
+                    <th className="attendance-table-head-col" style={{minWidth:'80px',padding:'6px'}}>Shortfall</th>
+                    {canViewSalary && <th className="attendance-table-head-col" style={{minWidth:'75px',padding:'6px'}}>Deduction</th>}
               </tr>
             </thead>
             <tbody className="bg-black">
@@ -4323,13 +4735,45 @@ export default function MonthlyAttendanceTable() {
                 // Calculate salary
                 const monthlySalary = record.salary || 0
                 const perDaySalary = monthlySalary / daysInMonth
-                const calculatedSalary = Math.round(perDaySalary * stats.finalScore)
-                // Warning penalty from batch-fetched map
+
+                // Effective days: if employee joined mid-month, count only from joining day
+                let effectiveDays = daysInMonth
+                if (joiningDateKey) {
+                  const jYear  = parseInt(joiningDateKey.substring(0, 4), 10)
+                  const jMonth = parseInt(joiningDateKey.substring(5, 7), 10) // 1-based
+                  const jDay   = parseInt(joiningDateKey.substring(8, 10), 10)
+                  if (jYear === selectedYear && jMonth === selectedMonth) {
+                    effectiveDays = daysInMonth - jDay + 1
+                  }
+                }
+                const effectiveSalary = Math.round(perDaySalary * effectiveDays)
+                // calculatedSalary = salary earned = finalScore × perDay
+                // finalScore already includes PL days (presentScore + plDays)
+                const earnedDays = Math.min(Math.max(0, stats.finalScore), effectiveDays)
+                const calculatedSalary = Math.round(perDaySalary * earnedDays)
+
+                // 1. Attendance deduction = effective salary - earned salary
+                // (not full monthlySalary — pre-joining days don't count as absent)
+                const attendanceDeduction = Math.max(0, effectiveSalary - calculatedSalary)
+
+                // 2. Warning fines
                 const empPenalties = warningPenaltiesMap[record.mongoId] || {}
                 const warningFine = empPenalties.total_penalty || 0
-                // Deduction column = warning fines only (attendance-based salary loss is in Net Salary)
-                const totalDeduction = Math.round(warningFine)
-                const netSalary = Math.max(0, calculatedSalary - Math.round(warningFine))
+
+                // 3. Finance deductions (approved, this month — from Finance page)
+                const empFinanceDeds = financeDeductionsMap[record.mongoId] || []
+                const financeDedTotal = empFinanceDeds.reduce((s, d) => s + (Number(d.amount) || 0), 0)
+
+                // 4. Shortfall — carries forward to next month (NOT deducted from current salary)
+                // Carry forward is handled in SalaryManagement when month is "marked done"
+                const shortfall = record.monthlyTarget > 0
+                  ? Math.max(0, record.monthlyTarget - (record.settledTarget || 0))
+                  : 0
+                const shortfallDeduction = 0  // No salary cut — shortfall carries forward via SalaryManagement
+
+                // Total deduction = attendance + warning fines + finance deductions only
+                const totalDeduction = Math.round(attendanceDeduction + warningFine + financeDedTotal)
+                const netSalary = Math.max(0, effectiveSalary - totalDeduction)
                 
                 return (
                   <tr
@@ -4393,17 +4837,7 @@ export default function MonthlyAttendanceTable() {
                     <td className="px-2 py-1 text-center text-sm" style={{border:'1px solid #1f1f27',color:'#ffffff',fontWeight:700}}>{stats.plDays}</td>
                     <td className="px-2 py-1 text-center text-sm" style={{border:'1px solid #1f1f27',color:'#ffffff',fontWeight:700}}>{stats.elDays}</td>
                     <td className="px-2 py-1 text-center text-sm" style={{border:'1px solid #1f1f27',color:'#ffffff',fontWeight:700}}>{stats.finalScore}</td>
-                    {canViewSalary && (
-                      <td
-                        className="px-2 py-1 text-center text-sm cursor-pointer hover:bg-red-900/20 transition-colors"
-                        style={{border:'1px solid #1f1f27',color:'#ffffff',fontWeight:700}}
-                        title={totalDeduction > 0 ? `Warning fine: ₹${totalDeduction.toLocaleString('en-IN')} — click for details` : 'No warning fines'}
-                        onClick={() => handleDeductionClick(record, stats, calculatedSalary)}
-                      >
-                        ₹{totalDeduction.toLocaleString('en-IN')}
-                        {warningFine > 0 && <span style={{display:'block',fontSize:'9px',color:'#ffffff',fontWeight:600}}>⚠ fine</span>}
-                      </td>
-                    )}
+                    {/* Salary column (moved before target columns) */}
                     {canViewSalary && (
                       <td
                         className="px-2 py-1 text-center text-sm cursor-pointer hover:bg-gray-700 transition-colors"
@@ -4411,7 +4845,101 @@ export default function MonthlyAttendanceTable() {
                         onClick={() => handleSalaryClick(record, stats, calculatedSalary)}
                       >
                         ₹{netSalary.toLocaleString('en-IN')}
-                        {warningFine > 0 && <span style={{display:'block',fontSize:'9px',color:'#ffffff',fontWeight:600}}>net pay</span>}
+                        {totalDeduction > 0 && <span style={{display:'block',fontSize:'9px',color:'#fca5a5',fontWeight:600}}>net pay</span>}
+                      </td>
+                    )}
+                    {/* Monthly Target */}
+                    <td className="px-2 py-1 text-center text-sm" style={{border:'1px solid #1f1f27',color:'#ffffff',fontWeight:700}}>
+                      {record.monthlyTarget > 0 ? `₹${record.monthlyTarget.toLocaleString('en-IN')}` : '—'}
+                    </td>
+                    {/* Individual Target (settled_target — per-employee assigned target, manually editable) */}
+                    <td className="px-2 py-1 text-center text-sm" style={{border:'1px solid #1f1f27',color:'#ffffff',fontWeight:700,minWidth:'110px'}}>
+                      {editingIndividualTarget === record.id ? (
+                        <div style={{display:'flex',alignItems:'center',gap:'4px',justifyContent:'center'}}>
+                          <span style={{color:'#c8d0e0',fontSize:'11px'}}>₹</span>
+                          <CurrencyInput
+                            value={individualTargetValue}
+                            onChange={e => setIndividualTargetValue(e.target.value)}
+                            onKeyDown={e => handleIndividualTargetKeyDown(e, record)}
+                            autoFocus
+                            style={{
+                              width:'90px',
+                              background:'#1a1a24',
+                              border:'1px solid #3b82f6',
+                              borderRadius:'3px',
+                              color:'#fff',
+                              fontSize:'11px',
+                              fontWeight:700,
+                              padding:'2px 4px',
+                              outline:'none',
+                              textAlign:'right'
+                            }}
+                          />
+                          {/* Save */}
+                          <button
+                            onClick={() => handleIndividualTargetSave(record)}
+                            disabled={individualTargetSaving === record.id}
+                            title="Save (Enter)"
+                            style={{background:'none',border:'none',cursor:'pointer',padding:'2px',color:'#10b981',display:'flex',alignItems:'center'}}
+                          >
+                            {individualTargetSaving === record.id
+                              ? <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" style={{animation:'attendanceSpin 0.7s linear infinite'}}><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg>
+                              : <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+                            }
+                          </button>
+                          {/* Cancel */}
+                          <button
+                            onClick={() => setEditingIndividualTarget(null)}
+                            title="Cancel (Esc)"
+                            style={{background:'none',border:'none',cursor:'pointer',padding:'2px',color:'#ef4444',display:'flex',alignItems:'center'}}
+                          >
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                          </button>
+                        </div>
+                      ) : (
+                        <div style={{display:'flex',alignItems:'center',justifyContent:'center',gap:'5px'}}>
+                          <span>{record.settledTarget > 0 ? `₹${record.settledTarget.toLocaleString('en-IN')}` : '—'}</span>
+                          <button
+                            onClick={e => { e.stopPropagation(); handleIndividualTargetEdit(record); }}
+                            title="Edit individual target"
+                            style={{background:'none',border:'none',cursor:'pointer',padding:'2px',color:'#c8d0e0',display:'flex',alignItems:'center',opacity:0.7,transition:'opacity 0.15s'}}
+                            onMouseEnter={e => e.currentTarget.style.opacity='1'}
+                            onMouseLeave={e => e.currentTarget.style.opacity='0.7'}
+                          >
+                            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                          </button>
+                        </div>
+                      )}
+                    </td>
+                    {/* Final Business (actual business done = settledTarget in HRMS) */}
+                    <td className="px-2 py-1 text-center text-sm" style={{border:'1px solid #1f1f27',color: record.settledTarget >= record.monthlyTarget && record.monthlyTarget > 0 ? '#10b981' : record.settledTarget > 0 ? '#fbbf24' : '#ffffff',fontWeight:700}}>
+                      {record.settledTarget > 0 ? `₹${record.settledTarget.toLocaleString('en-IN')}` : '—'}
+                    </td>
+                    {/* Shortfall = max(0, Monthly Target - Final Business) */}
+                    {(() => {
+                      const shortfall = record.monthlyTarget > 0
+                        ? Math.max(0, record.monthlyTarget - record.settledTarget)
+                        : 0;
+                      return (
+                        <td className="px-2 py-1 text-center text-sm" style={{border:'1px solid #1f1f27',color: shortfall > 0 ? '#ef4444' : '#10b981',fontWeight:700}} title={shortfall > 0 ? `₹${shortfall.toLocaleString('en-IN')} will carry forward to next month` : ''}>
+                          {record.monthlyTarget > 0
+                            ? (shortfall > 0
+                                ? <><span>₹{shortfall.toLocaleString('en-IN')}</span><span style={{display:'block',fontSize:'9px',color:'#fb923c',fontWeight:600}}>→ CF</span></>
+                                : '✓ Met')
+                            : '—'}
+                        </td>
+                      );
+                    })()}
+                    {/* Deduction */}
+                    {canViewSalary && (
+                      <td
+                        className="px-2 py-1 text-center text-sm cursor-pointer hover:bg-red-900/20 transition-colors"
+                        style={{border:'1px solid #1f1f27',color: totalDeduction > 0 ? '#ef4444' : '#10b981',fontWeight:700}}
+                        title={totalDeduction > 0 ? `Total deductions: ₹${totalDeduction.toLocaleString('en-IN')} — click for details` : 'No deductions'}
+                        onClick={() => handleDeductionClick(record, stats, calculatedSalary, attendanceDeduction, warningFine, empFinanceDeds, shortfall, shortfallDeduction, effectiveSalary)}
+                      >
+                        {totalDeduction > 0 ? `−₹${totalDeduction.toLocaleString('en-IN')}` : '✓'}
+                        {totalDeduction > 0 && <span style={{display:'block',fontSize:'9px',color:'#fca5a5',fontWeight:600}}>details ↗</span>}
                       </td>
                     )}
                   </tr>
@@ -4474,3 +5002,4 @@ export default function MonthlyAttendanceTable() {
     </div>
   )
 }
+ 

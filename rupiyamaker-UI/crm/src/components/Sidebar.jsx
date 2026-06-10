@@ -86,6 +86,18 @@ const icons = {
       <path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07 19.5 19.5 0 01-6-6 19.79 19.79 0 01-3.07-8.67A2 2 0 014.11 2h3a2 2 0 012 1.72 12.84 12.84 0 00.7 2.81 2 2 0 01-.45 2.11L8.09 9.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45 12.84 12.84 0 002.81.7A2 2 0 0122 16.92z" />
     </svg>
   ),
+  "Salary": (
+    <svg className="h-4 w-4 sm:h-5 sm:w-5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+      <circle cx="12" cy="12" r="10" />
+      <path d="M12 6v2m0 8v2M9.5 9.5A2.5 2.5 0 0112 8h.5a2 2 0 010 4h-1a2 2 0 000 4H12a2.5 2.5 0 002.5-2.5" />
+    </svg>
+  ),
+  "Finance": (
+    <svg className="h-4 w-4 sm:h-5 sm:w-5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+      <rect x="2" y="5" width="20" height="14" rx="2" />
+      <path d="M2 10h20M6 15h2M10 15h4" />
+    </svg>
+  ),
   Apps: (
     <svg className="h-5 w-5 sm:h-6 sm:w-6" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
       <rect x="4" y="4" width="6" height="6" rx="1" />
@@ -215,7 +227,8 @@ const DropdownHeader = React.memo(({
       if ((item.label === 'Employees' && currentPath.includes('/employees')) ||
           (item.label === 'Attendance' && currentPath.includes('/attendance')) ||
           (item.label === 'Leave' && currentPath.includes('/leave')) ||
-          (item.label === 'Daily Performance' && currentPath.includes('/performance'))) return true;
+          (item.label === 'Daily Performance' && currentPath.includes('/performance')) ||
+          (item.label === 'Finance' && currentPath.includes('/hr-finance'))) return true;
       if ((item.label === 'Warning Dashboard' && currentPath.includes('/warning/dashboard')) ||
           (item.label === 'All Warnings' && currentPath.includes('/warning/all')) ||
           (item.label === 'My Warnings' && currentPath.includes('/warning/my'))) return true;
@@ -381,6 +394,7 @@ function Sidebar({ selectedLabel: initialSelectedLabel, setSelectedLabel: parent
       "Daily Performance": "HRMS",
       "Dialer Report": "HRMS",
       "Offer Letter": "HRMS",
+      "Finance": "HRMS",
       "Warning Dashboard": "Warning",
       "All Warnings": "Warning",
       "My Warnings": "Warning",
@@ -507,7 +521,11 @@ function Sidebar({ selectedLabel: initialSelectedLabel, setSelectedLabel: parent
     };
 
     // Check for component load periodically to maintain state
-    const intervalId = setInterval(handleComponentLoad, 1000);
+    // NOTE: Removed setInterval(handleComponentLoad, 1000) — polling every second
+    // caused a race condition where the interval would fire mid-navigation and
+    // override the freshly-set selectedLabel with a stale localStorage value,
+    // producing the Sidebar ↔ Navbar flicker. Event-based updates below are
+    // sufficient to keep state in sync.
 
     window.addEventListener('storage', handleStorageChange);
     window.addEventListener('selectedLabelChanged', handleLabelChange);
@@ -530,7 +548,6 @@ function Sidebar({ selectedLabel: initialSelectedLabel, setSelectedLabel: parent
       window.removeEventListener('popstate', handleComponentLoad);
       window.removeEventListener('pushstate', handleComponentLoad);
       window.removeEventListener('replacestate', handleComponentLoad);
-      clearInterval(intervalId);
     };
   }, [selectedLabel, parentSetSelectedLabel, itemToParentMap, loanTypes]);
 
@@ -619,6 +636,12 @@ function Sidebar({ selectedLabel: initialSelectedLabel, setSelectedLabel: parent
     requestAnimationFrame(() => {
       // Ensure highlight is still set before navigation
       localStorage.setItem('selectedLabel', label);
+
+      // ── Salary Management: open in a new tab ──────────────────────────────
+      if (label === 'Salary') {
+        window.open('/hr-salary', '_blank', 'noopener,noreferrer');
+        return;
+      }
       
       const route = getRouteByLabel(label);
       
@@ -948,7 +971,11 @@ function Sidebar({ selectedLabel: initialSelectedLabel, setSelectedLabel: parent
       targetLabel = 'Dialer Report';
       parentDropdown = 'HRMS';
     }
-    
+    else if (currentPath.includes('/hr-finance')) {
+      targetLabel = 'Finance';
+      parentDropdown = 'HRMS';
+    }
+
     // Check for Warning pages
     else if (currentPath.includes('/warning/dashboard')) {
       targetLabel = 'Warning Dashboard';
@@ -1147,9 +1174,9 @@ function Sidebar({ selectedLabel: initialSelectedLabel, setSelectedLabel: parent
     else if (loanTypeName && (currentPath.includes('/login-crm') || currentPath.includes('/login'))) {
       shouldOpenDropdown = 'Login CRM';
     }
-    else if (currentPath.includes('/employees') || currentPath.includes('/attendance') || 
+    else if (currentPath.includes('/employees') || currentPath.includes('/attendance') ||
              currentPath.includes('/leave') || currentPath.includes('/performance') ||
-             currentPath.includes('/hrms')) {
+             currentPath.includes('/hrms') || currentPath.includes('/hr-finance')) {
       shouldOpenDropdown = 'HRMS';
     }
     else if (currentPath.includes('/warning')) {
@@ -1231,6 +1258,9 @@ function Sidebar({ selectedLabel: initialSelectedLabel, setSelectedLabel: parent
         }
         else if (currentPath.includes('/performance')) {
           persistedLabel = 'Daily Performance';
+        }
+        else if (currentPath.includes('/hr-finance')) {
+          persistedLabel = 'Finance';
         }
         else if (currentPath.includes('/transfer-requests')) {
           persistedLabel = 'Transfer Requests';
@@ -1486,7 +1516,8 @@ function Sidebar({ selectedLabel: initialSelectedLabel, setSelectedLabel: parent
                    checkPermission('offer_letter', 'show') ||
                    checkPermission('Offer Letter', 'show') ||
                    checkPermission('offerLetter', 'show') ||
-                   checkPermission('dialer_report', 'show'),
+                   checkPermission('dialer_report', 'show') ||
+                   checkPermission('hr_finance', 'show'),
 
       // Employees
       canShowEmployees: isSuperAdmin(userPermissions) ||
@@ -1559,7 +1590,24 @@ function Sidebar({ selectedLabel: initialSelectedLabel, setSelectedLabel: parent
       // Dashboard
       canShowDashboard: isSuperAdmin(userPermissions) ||
                         checkPermission('dashboard', 'show') ||
-                        checkPermission('Dashboard', 'show')
+                        checkPermission('Dashboard', 'show'),
+
+      // Salary Management — Super Admin + HR roles only
+      canShowSalary: (() => {
+        if (isSuperAdmin(userPermissions)) return true;
+        try {
+          const ud = JSON.parse(localStorage.getItem('userData') || '{}');
+          if (ud.is_super_admin) return true;
+          const rn = (ud.role?.name || ud.role_name || ud.designation?.name || ud.designation || '').toLowerCase();
+          return rn.includes('hr');
+        } catch { return false; }
+      })(),
+
+      // Employee Finance (Reimbursements, Advance Salary, Deductions)
+      canShowFinance: isSuperAdmin(userPermissions) ||
+                      checkPermission('employees', 'show') ||
+                      checkPermission('Employees', 'show') ||
+                      checkPermission('hr_finance', 'show'),
     };
     
     console.log('🔐 ========================================');
@@ -1814,6 +1862,8 @@ function Sidebar({ selectedLabel: initialSelectedLabel, setSelectedLabel: parent
                   ...(permissions.canShowAttendance ? [{ label: "Attendance", icon: icons["Attendance"] }] : []),
                   ...(permissions.canShowDialerReport ? [{ label: "Dialer Report", icon: icons["Dialer Report"] }] : []),
                   ...(permissions.canShowOfferLetter ? [{ label: "Offer Letter", icon: icons["Offer Letter"] }] : []),
+                  ...(permissions.canShowSalary ? [{ label: "Salary", icon: icons["Salary"] }] : []),
+                  ...(permissions.canShowFinance ? [{ label: "Finance", icon: icons["Finance"] }] : []),
                 ]}
                 onItemSelect={selectFromRail}
               />

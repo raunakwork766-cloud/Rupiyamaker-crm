@@ -202,44 +202,63 @@ const RC = {
     overlay: 'rgba(45, 62, 80, 0.55)',
 };
 
-// Column left offsets for sticky positioning
-const COL = { name: 0, dept: 200, report: 320, perms: 440, sa: 520 };
-const COL_OFFSETS = [COL.name, COL.dept, COL.report, COL.perms];
+// Column widths for the two frozen columns
+const NAME_COL_WIDTH = 200;
+const PERMS_COL_WIDTH = 80;
 
-// Style helpers
+// CSS sticky frozen columns — position:sticky with explicit left offsets
 const thFixed = () => ({
-    position: 'sticky', left: COL.name, zIndex: 60, background: RC.header, color: RC.text,
+    background: RC.header, color: RC.text,
     padding: '12px 16px', fontWeight: '700', fontSize: '11px', textTransform: 'uppercase',
     letterSpacing: '0.5px', borderBottom: `2px solid ${RC.border}`, borderRight: `2px solid ${RC.border}`,
-    whiteSpace: 'nowrap', textAlign: 'left', cursor: 'pointer', minWidth: '200px', userSelect: 'none',
+    whiteSpace: 'nowrap', textAlign: 'left', cursor: 'pointer',
+    minWidth: `${NAME_COL_WIDTH}px`, width: `${NAME_COL_WIDTH}px`, userSelect: 'none',
+    boxSizing: 'border-box', backgroundColor: RC.header,
+    position: 'sticky', left: 0, zIndex: 30,
 });
-const thSticky = (colIndex) => ({
-    position: 'sticky', left: COL_OFFSETS[colIndex], zIndex: 60, background: RC.header, color: RC.text,
+const thPerms = () => ({
+    background: RC.header, color: RC.text,
     padding: '12px 16px', fontWeight: '700', fontSize: '11px', textTransform: 'uppercase',
-    letterSpacing: '0.5px', borderBottom: `2px solid ${RC.border}`,
-    borderRight: colIndex === 3 ? `3px solid ${RC.border}` : `1px solid ${RC.borderLight}`,
-    whiteSpace: 'nowrap', textAlign: colIndex === 3 ? 'center' : 'left',
-    cursor: 'pointer', minWidth: colIndex === 1 || colIndex === 2 ? '120px' : colIndex === 3 ? '80px' : '70px',
-    userSelect: 'none',
+    letterSpacing: '0.5px', borderBottom: `2px solid ${RC.border}`, borderRight: `3px solid ${RC.border}`,
+    whiteSpace: 'nowrap', textAlign: 'center', cursor: 'pointer',
+    minWidth: `${PERMS_COL_WIDTH}px`, width: `${PERMS_COL_WIDTH}px`, userSelect: 'none',
+    boxSizing: 'border-box', backgroundColor: RC.header,
+    position: 'sticky', left: `${NAME_COL_WIDTH}px`, zIndex: 30,
+    boxShadow: '4px 0 6px -2px rgba(0,0,0,0.10)',
+});
+const thNormal = () => ({
+    background: RC.header, color: RC.text,
+    padding: '12px 16px', fontWeight: '700', fontSize: '11px', textTransform: 'uppercase',
+    letterSpacing: '0.5px', borderBottom: `2px solid ${RC.border}`, borderRight: `1px solid ${RC.borderLight}`,
+    whiteSpace: 'nowrap', textAlign: 'left', cursor: 'pointer', minWidth: '120px', userSelect: 'none',
 });
 const thSA = () => ({
-    position: 'sticky', left: COL.sa, zIndex: 60, background: RC.header, color: RC.accent,
+    background: RC.header, color: RC.accent,
     padding: '12px 10px', fontWeight: '700', fontSize: '11px', textTransform: 'uppercase',
     letterSpacing: '0.5px', borderBottom: `2px solid ${RC.border}`, borderRight: `3px solid ${RC.accentSoft}`,
     whiteSpace: 'nowrap', textAlign: 'center', minWidth: '70px', userSelect: 'none',
 });
-const tdFixed = () => ({
-    position: 'sticky', left: COL.name, zIndex: 10, padding: '10px 16px',
-    borderRight: `2px solid ${RC.border}`, background: RC.stickyEven, minWidth: '200px', maxWidth: '260px',
+const tdFixed = (rowBg) => ({
+    padding: '10px 16px', borderRight: `2px solid ${RC.border}`,
+    background: rowBg || RC.stickyEven, backgroundColor: rowBg || RC.stickyEven,
+    minWidth: `${NAME_COL_WIDTH}px`, width: `${NAME_COL_WIDTH}px`,
+    boxSizing: 'border-box',
+    position: 'relative',
+    zIndex: 20,
 });
-const tdSticky = (colIndex, rowBg) => ({
-    position: 'sticky', left: COL_OFFSETS[colIndex], zIndex: 10, padding: '10px 16px',
-    borderRight: colIndex === 3 ? `3px solid ${RC.border}` : `1px solid ${RC.borderLight}`,
-    background: rowBg || RC.rowEven, whiteSpace: 'nowrap',
+const tdPerms = (rowBg) => ({
+    padding: '10px 16px', textAlign: 'center',
+    borderRight: `3px solid ${RC.border}`,
+    background: rowBg || RC.stickyEven, backgroundColor: rowBg || RC.stickyEven,
+    whiteSpace: 'nowrap',
+    minWidth: `${PERMS_COL_WIDTH}px`, width: `${PERMS_COL_WIDTH}px`,
+    boxSizing: 'border-box',
+    position: 'relative',
+    zIndex: 18,
 });
 const tdSA = (rowBg) => ({
-    position: 'sticky', left: COL.sa, zIndex: 10, padding: '6px 10px', textAlign: 'center',
-    borderRight: `3px solid ${RC.borderLight}`, background: rowBg || RC.rowEven,
+    padding: '6px 10px', textAlign: 'center',
+    borderRight: `1px solid ${RC.borderLight}`, background: rowBg || RC.rowEven,
 });
 
 export default function RoleCompare({ embedded = false }) {
@@ -257,8 +276,73 @@ export default function RoleCompare({ embedded = false }) {
     const [compareOpen, setCompareOpen] = useState(false);
     const [compareSearch, setCompareSearch] = useState('');
     const compareRef = useRef(null);
+    const scrollRef = useRef(null);   // the overflowX:auto scroll div
+    const tableRef  = useRef(null);   // the <table> element
 
-    // Close compare dropdown on outside click
+    // ── JS-driven frozen columns ──────────────────────────────────────────────
+    // CSS position:sticky alone doesn't work reliably here because #main-scroll-container
+    // (in App.jsx) also has overflowX:auto, creating two competing horizontal scroll
+    // containers. Instead we listen to whichever container actually scrolls and
+    // translateX the frozen cells to keep them pinned.
+    useEffect(() => {
+        if (!tableRef.current) return;
+        const table = tableRef.current;
+
+        // Find the real scroll container: prefer the inner wrapper (scrollRef),
+        // but also watch #main-scroll-container as a fallback.
+        const innerSC  = scrollRef.current;
+        const outerSC  = document.getElementById('main-scroll-container');
+
+        let frozenNameCells = [];
+        let frozenPermsCells = [];
+
+        const getFreezeCells = () => {
+            frozenNameCells  = Array.from(table.querySelectorAll('[data-freeze="name"]'));
+            frozenPermsCells = Array.from(table.querySelectorAll('[data-freeze="perms"]'));
+        };
+
+        // Apply translateX to compensate for how far the scroll container has scrolled
+        const applyFreeze = (scrollLeft) => {
+            const shift = scrollLeft;
+            frozenNameCells.forEach(c => {
+                c.style.transform  = shift > 0 ? `translateX(${shift}px)` : '';
+                c.style.zIndex     = '20';
+                c.style.boxShadow  = shift > 0 ? '3px 0 5px rgba(0,0,0,0.10)' : '';
+            });
+            const permsShift = shift;
+            frozenPermsCells.forEach(c => {
+                c.style.transform  = permsShift > 0 ? `translateX(${permsShift}px)` : '';
+                c.style.zIndex     = '18';
+                c.style.boxShadow  = permsShift > 0 ? '4px 0 6px rgba(0,0,0,0.08)' : '';
+            });
+        };
+
+        const onInnerScroll  = () => applyFreeze(innerSC ? innerSC.scrollLeft : 0);
+        const onOuterScroll  = () => {
+            // When outer scrolls, inner.scrollLeft may be 0 — apply outer offset
+            const outerLeft = outerSC ? outerSC.scrollLeft : 0;
+            applyFreeze(outerLeft + (innerSC ? innerSC.scrollLeft : 0));
+        };
+
+        // Small delay to let React paint the table cells before querying them
+        const tid = setTimeout(() => {
+            getFreezeCells();
+            // Initial state (no scroll)
+            applyFreeze(0);
+        }, 100);
+
+        if (innerSC)  innerSC.addEventListener('scroll', onInnerScroll, { passive: true });
+        if (outerSC)  outerSC.addEventListener('scroll', onOuterScroll, { passive: true });
+
+        return () => {
+            clearTimeout(tid);
+            if (innerSC)  innerSC.removeEventListener('scroll', onInnerScroll);
+            if (outerSC)  outerSC.removeEventListener('scroll', onOuterScroll);
+            // Reset on unmount
+            frozenNameCells.forEach(c => { c.style.transform = ''; c.style.boxShadow = ''; });
+            frozenPermsCells.forEach(c => { c.style.transform = ''; c.style.boxShadow = ''; });
+        };
+    }, [roles]);
     useEffect(() => {
         const handler = (e) => { if (compareRef.current && !compareRef.current.contains(e.target)) setCompareOpen(false); };
         document.addEventListener('mousedown', handler);
@@ -613,7 +697,7 @@ ${actionHeaders}
     }
 
     return (
-        <div style={{ background: RC.page, height: embedded ? 'auto' : '100vh', minHeight: embedded ? '400px' : undefined, color: RC.text, fontFamily: 'Segoe UI, sans-serif', display: 'flex', flexDirection: 'column' }}>
+        <div style={{ background: RC.page, height: embedded ? 'auto' : '100vh', minHeight: embedded ? '400px' : undefined, color: RC.text, fontFamily: 'Segoe UI, sans-serif', display: 'flex', flexDirection: 'column', minWidth: 0, maxWidth: '100%', overflow: 'hidden' }}>
             {/* Lock Roles Modal */}
             {lockRolesModal && (
                 <div style={{ position: 'fixed', inset: 0, background: RC.overlay, zIndex: 9998, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
@@ -826,25 +910,27 @@ ${actionHeaders}
             </div>
 
 
-            {/* Table — flex:1 fills remaining height, overflow scrolls inside */}
-            <div style={{ flex: embedded ? undefined : 1, overflow: 'auto', maxHeight: embedded ? '70vh' : undefined }}>
-                <table style={{ borderCollapse: 'collapse', fontSize: '12px', minWidth: 'max-content', width: '100%' }}>
-                    <thead style={{ position: 'sticky', top: 0, zIndex: 50 }}>
-                        {/* Row 1: fixed cols (rowSpan=2) + module names (colSpan=n) */}
+            {/* Table wrapper — minWidth:0 is CRITICAL: as a flex item it would otherwise
+                grow to the table's full intrinsic width (min-width:auto default), which
+                stops overflowX:auto from ever scrolling and breaks position:sticky columns. */}
+            <div ref={scrollRef} style={{ overflowX: 'auto', overflowY: 'visible', scrollbarWidth: 'thin', flex: 1, minWidth: 0, width: '100%', maxWidth: '100%' }}>
+                <table ref={tableRef} style={{ borderCollapse: 'collapse', fontSize: '12px', minWidth: 'max-content', width: '100%' }}>
+                    <thead>
+                        {/* Row 1: frozen cols first (Name, Perms, SA), then scrolling cols */}
                         <tr>
-                            <th rowSpan={2} onClick={() => handleSort('name')} style={thFixed()}>
+                            <th data-freeze="name" rowSpan={2} onClick={() => handleSort('name')} style={thFixed()}>
                                 Role Name <SortIcon k="name" />
                             </th>
-                            <th rowSpan={2} onClick={() => handleSort('dept')} style={thSticky(1)}>
-                                Department <SortIcon k="dept" />
-                            </th>
-                            <th rowSpan={2} onClick={() => handleSort('report')} style={thSticky(2)}>
-                                Reports To <SortIcon k="report" />
-                            </th>
-                            <th rowSpan={2} onClick={() => handleSort('perms')} style={thSticky(3)}>
+                            <th data-freeze="perms" rowSpan={2} onClick={() => handleSort('perms')} style={thPerms()}>
                                 Perms <SortIcon k="perms" />
                             </th>
                             <th rowSpan={2} style={thSA()}>SA</th>
+                            <th rowSpan={2} onClick={() => handleSort('dept')} style={thNormal()}>
+                                Department <SortIcon k="dept" />
+                            </th>
+                            <th rowSpan={2} onClick={() => handleSort('report')} style={thNormal()}>
+                                Reports To <SortIcon k="report" />
+                            </th>
                             {permissionModules.map((mod, i) => (
                                 <th key={i} colSpan={mod.actions.length} style={{
                                     background: RC.moduleHeader,
@@ -903,16 +989,17 @@ ${actionHeaders}
                                     style={{ borderBottom: `1px solid ${RC.borderLight}`, background: ri % 2 === 0 ? RC.rowEven : RC.rowOdd }}
                                     onMouseEnter={e => {
                                         e.currentTarget.style.background = RC.hover;
-                                        e.currentTarget.querySelectorAll('td[data-sticky]').forEach(td => td.style.background = RC.hover);
+                                        e.currentTarget.querySelectorAll('td[data-sticky]').forEach(td => { td.style.background = RC.hover; td.style.backgroundColor = RC.hover; });
                                     }}
                                     onMouseLeave={e => {
                                         const bg = ri % 2 === 0 ? RC.rowEven : RC.rowOdd;
+                                        const stickyBg = ri % 2 === 0 ? RC.stickyEven : RC.stickyOdd;
                                         e.currentTarget.style.background = bg;
-                                        e.currentTarget.querySelectorAll('td[data-sticky]').forEach(td => td.style.background = ri % 2 === 0 ? RC.stickyEven : RC.stickyOdd);
+                                        e.currentTarget.querySelectorAll('td[data-sticky]').forEach(td => { td.style.background = stickyBg; td.style.backgroundColor = stickyBg; });
                                     }}
                                 >
-                                    {/* Role Name */}
-                                    <td data-sticky="true" style={{ ...tdFixed(), background: ri % 2 === 0 ? RC.stickyEven : RC.stickyOdd }}>
+                                    {/* Role Name — sticky at left:0 */}
+                                    <td data-freeze="name" data-sticky="true" style={tdFixed(ri % 2 === 0 ? RC.stickyEven : RC.stickyOdd)}>
                                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                                             {saving.has(role.id || role._id) ? (
                                                 <div style={{ width: '8px', height: '8px', borderRadius: '50%', border: `2px solid ${RC.accent}`, borderTop: '2px solid transparent', animation: 'spin 0.7s linear infinite', flexShrink: 0 }} />
@@ -925,33 +1012,33 @@ ${actionHeaders}
                                             )}
                                         </div>
                                     </td>
-                                    {/* Department */}
-                                    <td data-sticky="true" style={tdSticky(1, ri % 2 === 0 ? RC.stickyEven : RC.stickyOdd)}>
+                                    {/* Perm Count — sticky at left:200 (right after Name) */}
+                                    <td data-freeze="perms" data-sticky="true" style={tdPerms(ri % 2 === 0 ? RC.stickyEven : RC.stickyOdd)}>
+                                        <span style={{ background: permCount > 0 ? RC.successBg : RC.pageAlt, color: permCount > 0 ? RC.success : RC.textLight, fontWeight: '700', padding: '2px 8px', borderRadius: '4px', fontSize: '11px' }}>
+                                            {permCount}
+                                        </span>
+                                    </td>
+                                    {/* SA Toggle — right after Perms, scrolls away */}
+                                    <td style={tdSA(ri % 2 === 0 ? RC.rowEven : RC.rowOdd)}>
+                                        <div
+                                            onClick={() => toggleSuperAdmin(role.id || role._id, isSuperAdmin)}
+                                            title={isSuperAdmin ? 'Remove Super Admin' : 'Grant Super Admin'}
+                                            style={{ display: 'inline-flex', alignItems: 'center', cursor: 'pointer', position: 'relative', width: '40px', height: '22px', borderRadius: '11px', background: isSuperAdmin ? RC.accent : RC.border, transition: 'background 0.25s', border: isSuperAdmin ? `1.5px solid ${RC.accent}` : `1.5px solid ${RC.border}`, flexShrink: 0 }}
+                                        >
+                                            <div style={{ position: 'absolute', left: isSuperAdmin ? '20px' : '2px', width: '16px', height: '16px', borderRadius: '50%', background: '#fff', transition: 'left 0.25s', boxShadow: '0 1px 4px #0008' }} />
+                                        </div>
+                                    </td>
+                                    {/* Department — scrolls */}
+                                    <td style={{ padding: '10px 16px', borderRight: `1px solid ${RC.borderLight}`, whiteSpace: 'nowrap' }}>
                                         {role.department_id ? (
                                             <span style={{ background: RC.actionHeader, border: '1px solid #333', color: RC.textMuted, padding: '2px 8px', borderRadius: '4px', fontSize: '11px' }}>
                                                 {getDeptName(role.department_id)}
                                             </span>
                                         ) : <span style={{ color: RC.textLight }}>-</span>}
                                     </td>
-                                    {/* Reports To */}
-                                    <td data-sticky="true" style={tdSticky(2, ri % 2 === 0 ? RC.stickyEven : RC.stickyOdd)}>
+                                    {/* Reports To — scrolls */}
+                                    <td style={{ padding: '10px 16px', borderRight: `1px solid ${RC.borderLight}`, whiteSpace: 'nowrap' }}>
                                         <span style={{ color: RC.textMuted, fontSize: '11px' }}>{getReportNames(role)}</span>
-                                    </td>
-                                    {/* Perm Count */}
-                                    <td data-sticky="true" style={{ ...tdSticky(3, ri % 2 === 0 ? RC.stickyEven : RC.stickyOdd), textAlign: 'center' }}>
-                                        <span style={{ background: permCount > 0 ? RC.successBg : RC.pageAlt, color: permCount > 0 ? RC.success : RC.textLight, fontWeight: '700', padding: '2px 8px', borderRadius: '4px', fontSize: '11px' }}>
-                                            {permCount}
-                                        </span>
-                                    </td>
-                                    {/* SA Toggle */}
-                                    <td data-sticky="true" style={{ ...tdSA(ri % 2 === 0 ? RC.stickyEven : RC.stickyOdd) }}>
-                                        <div
-                                            onClick={() => toggleSuperAdmin(role.id || role._id, isSuperAdmin)}
-                                            title={isSuperAdmin ? 'Remove Super Admin' : 'Grant Super Admin'}
-                                            style={{ display: 'inline-flex', alignItems: 'center', cursor: 'pointer', position: 'relative', width: '40px', height: '22px', borderRadius: '11px', background: isSuperAdmin ? RC.accent : RC.border, transition: 'background 0.25s', border: isSuperAdmin ? `1.5px solid ${RC.accent}` : `1.5px solid ${RC.border}`, flexShrink: 0 }}
-                                        >
-                                            <div style={{ position: 'absolute', left: isSuperAdmin ? '20px' : '2px', width: '16px', height: '16px', borderRadius: '50%', background: isSuperAdmin ? '#fff' : '#fff', transition: 'left 0.25s', boxShadow: '0 1px 4px #0008' }} />
-                                        </div>
                                     </td>
                                     {/* Permission cells */}
                                     {permissionModules.map((mod, mi) =>
@@ -972,7 +1059,7 @@ ${actionHeaders}
                                                     style={{
                                                         textAlign: 'center',
                                                         padding: '7px 4px',
-                                                        borderLeft: ai === 0 && mi > 0 ? `3px solid ${RC.accentSoft}` : `1px solid ${RC.borderLight}`,
+                                                        borderLeft: ai === 0 && mi > 0 ? `3px solid #222` : `1px solid ${RC.borderLight}`,
                                                         background: action === 'lock_role'
                                                             ? ((role.locked_roles || []).length > 0 ? RC.accentSoft : 'transparent')
                                                             : has ? RC.permOn : 'transparent',

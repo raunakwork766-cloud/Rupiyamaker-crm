@@ -669,7 +669,7 @@ async def check_login_phone_number(
     Check if a phone number exists in the login_leads collection.
     Used by the CreateLead duplicate check to populate the 'Login in Leads' tab.
     """
-    await check_permission(user_id, "leads", "show", users_db, roles_db)
+    await check_permission(user_id, ["leads", "leads.pl_odd_leads", "leads.create_lead", "leads.pl_&_odd_leads"], "show", users_db, roles_db)
 
     clean_phone = phone_number.strip().replace(" ", "").replace("-", "").replace("(", "").replace(")", "")
 

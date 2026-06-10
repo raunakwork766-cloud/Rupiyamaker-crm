@@ -57,6 +57,7 @@ import RoleSettings from './settings/RoleSettings';
 import DesignationSettings from './settings/DesignationSettings';
 import PopupModalSettings from './settings/PopupModalSettings';
 import OtpVerificationSettings from './settings/OtpVerificationSettings';
+import FinanceApprovalSettings from './settings/FinanceApprovalSettings';
 import { hrmsService } from '../services/hrmsService';
 
 const settingsPageStyles = `
@@ -432,6 +433,10 @@ const SETTINGS_NAV_GROUPS = [
     items: ['departments', 'designations', 'roles', 'otpVerification'],
   },
   {
+    title: 'Finance',
+    items: ['financeApproval'],
+  },
+  {
     title: 'System & Tools',
     items: ['statuses', 'attachmentTypes', 'excelUpload', 'attendance', 'popupModals'],
   },
@@ -448,6 +453,7 @@ const TAB_DESCRIPTIONS = {
   designations: 'Manage job titles and designations for employees.',
   roles: 'Define roles and granular permissions for your team.',
   otpVerification: 'Configure OTP verification rules and settings.',
+  financeApproval: 'Configure who approves Reimbursement, Advance Salary, and Deduction requests per role.',
   statuses: 'Manage lead status workflows by department.',
   attachmentTypes: 'Define document categories and attachment types.',
   excelUpload: 'Bulk import company data using Excel templates.',
@@ -833,6 +839,7 @@ const SettingsPage = () => {
         { id: 'designations', label: 'Designations', icon: Award, color: 'rose' },
         { id: 'roles', label: 'Roles & Permissions', icon: Users, color: 'indigo' },
         { id: 'otpVerification', label: 'OTP Verification', icon: Shield, color: 'emerald' },
+        { id: 'financeApproval', label: 'Finance Approvals', icon: CreditCard, color: 'blue' },
         { id: 'statuses', label: 'Status Management', icon: CheckCircle, color: 'teal' },
         { id: 'attendance', label: 'Attendance Settings', icon: Clock, color: 'emerald' },
         { id: 'popupModals', label: 'Popup Modal Alerts', icon: Bell, color: 'violet' },
@@ -2866,6 +2873,8 @@ const updateStatus = async (statusId, statusData) => {
                 }
             case 'otpVerification':
                 return <OtpVerificationSettings />;
+            case 'financeApproval':
+                return <FinanceApprovalSettings />;
             case 'statuses':
                 // Add a check to prevent loading in a loop
                 {

@@ -51,11 +51,20 @@ class EmailSettingInDB(BaseModel):
 # Enhanced User Login Schema with OTP
 class UserLoginWithOTP(BaseModel):
     username_or_email: str
-    password: str
+    # Password is OPTIONAL: when a user's role/account has OTP login enabled,
+    # they authenticate with the OTP code alone (no password required).
+    password: Optional[str] = None
     otp_code: Optional[str] = None  # OTP code if required
     # NEW: "crm" (default, full access + OTP) or "attendance_only"
     # (skips OTP, gets a separate scoped session for attendance routes only)
     login_type: Optional[str] = "crm"
+
+# Lightweight pre-login check: tells the login screen whether a given
+# identifier (username/email) must authenticate via OTP (so the UI can hide
+# the password field and show the OTP flow immediately).
+class LoginOTPStatusResponse(BaseModel):
+    otp_required: bool = False
+    user_id: Optional[str] = None
 
 # OTP Required Update Schema
 class OTPRequiredUpdate(BaseModel):

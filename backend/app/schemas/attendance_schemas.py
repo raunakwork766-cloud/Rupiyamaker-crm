@@ -17,23 +17,23 @@ class GeolocationData(BaseModel):
 
 class CheckInRequest(BaseModel):
     photo_data: str = Field(..., description="Base64 encoded photo data")
-    geolocation: GeolocationData = Field(..., description="GPS coordinates")
+    geolocation: Optional[GeolocationData] = Field(None, description="GPS coordinates")
     comments: Optional[str] = Field("", description="Optional comments")
 
 class CheckOutRequest(BaseModel):
     photo_data: str = Field(..., description="Base64 encoded photo data")
-    geolocation: GeolocationData = Field(..., description="GPS coordinates")
+    geolocation: Optional[GeolocationData] = Field(None, description="GPS coordinates")
     comments: Optional[str] = Field("", description="Optional comments")
 
 class AttendanceCheckInRequest(BaseModel):
     photo_data: str = Field(..., description="Base64 encoded photo data")
-    geolocation: GeolocationData = Field(..., description="GPS coordinates")
+    geolocation: Optional[GeolocationData] = Field(None, description="GPS coordinates")
     comments: Optional[str] = Field("", description="Optional comments")
     face_descriptor: Optional[Dict[str, Any]] = Field(None, description="Optional face descriptor for facial verification")
 
 class AttendanceCheckOutRequest(BaseModel):
     photo_data: str = Field(..., description="Base64 encoded photo data")
-    geolocation: GeolocationData = Field(..., description="GPS coordinates")
+    geolocation: Optional[GeolocationData] = Field(None, description="GPS coordinates")
     comments: Optional[str] = Field("", description="Optional comments")
 
 class AttendanceEditRequest(BaseModel):

@@ -41,7 +41,7 @@ export default function TicketPage() {
     .task-page-container { padding: 0; max-width: 100%; background: #000; min-height: 100vh; font-family: -apple-system, BlinkMacSystemFont, 'Lexend Deca', sans-serif; color: #e2e8f0; }
     .task-top-bar { display: flex; justify-content: space-between; align-items: flex-start; padding: 20px 24px 0; border-bottom: 1px solid #1f1f27; background: #000; }
     .task-top-bar-left h1 { font-size: 22px; font-weight: 700; color: #f0f0f5; margin: 0 0 2px; line-height: 1.2; }
-    .task-top-bar-left p { font-size: 13px; color: #6b7a99; margin: 0 0 12px; }
+    .task-top-bar-left p { font-size: 13px; color: #c8d0e0; margin: 0 0 12px; }
     .task-top-bar-right { display: flex; gap: 8px; align-items: center; padding-top: 4px; }
     .task-btn-secondary { background: #1a1a24; color: #c8d0e0; border: 1px solid #2a2a3a; padding: 7px 14px; border-radius: 3px; font-size: 13px; font-weight: 500; cursor: pointer; transition: background 0.15s, border-color 0.15s; white-space: nowrap; }
     .task-btn-secondary:hover { background: #22222e; border-color: #3a3a50; }
@@ -49,7 +49,7 @@ export default function TicketPage() {
     .task-btn-create:hover { background: #2563eb; }
     .task-view-toggle-bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 24px; background: #000; border-bottom: 1px solid #1f1f27; flex-wrap: wrap; }
     .task-view-toggle-group { display: flex; gap: 0; flex-wrap: wrap; flex: 0 1 auto; min-width: 0; }
-    .task-view-toggle-btn { padding: 12px 16px; border: none; background: transparent; font-size: 13px; font-weight: 600; color: #6b7a99; cursor: pointer; border-bottom: 3px solid transparent; transition: color 0.15s, border-color 0.15s; white-space: nowrap; }
+    .task-view-toggle-btn { padding: 12px 16px; border: none; background: transparent; font-size: 13px; font-weight: 600; color: #c8d0e0; cursor: pointer; border-bottom: 3px solid transparent; transition: color 0.15s, border-color 0.15s; white-space: nowrap; }
     .task-view-toggle-btn:hover { color: #c8d0e0; }
     .task-view-toggle-btn.active { color: #f97316; font-weight: 800; border-bottom-color: #f97316; }
     .task-filter-dropdown { padding: 6px 28px 6px 10px; border-radius: 3px; border: 1px solid #2a2a3a; background-color: #1a1a24; color: #c8d0e0; font-size: 13px; font-weight: 500; appearance: none; min-height: 32px; background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="%236b7a99" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>'); background-repeat: no-repeat; background-position: right 8px center; cursor: pointer; outline: none; }
@@ -57,16 +57,16 @@ export default function TicketPage() {
     .task-filter-dropdown-assign { min-width: 140px; }
     .task-search-box--in-bar { position: relative; width: 260px; min-width: 200px; flex-shrink: 0; }
     .task-search-box--in-bar input { background: #1a1a24; border: 1px solid #2a2a3a; border-radius: 3px; padding: 6px 14px 6px 32px; color: #c8d0e0; font-size: 13px; width: 100%; outline: none; transition: border-color 0.15s; box-sizing: border-box; }
-    .task-search-box--in-bar input::placeholder { color: #4a5570; }
+    .task-search-box--in-bar input::placeholder { color: #8898b8; }
     .task-search-box--in-bar input:focus { border-color: #3b82f6; box-shadow: 0 0 0 2px rgba(59,130,246,0.15); }
-    .task-search-box--in-bar svg { position: absolute; left: 9px; top: 50%; transform: translateY(-50%); color: #4a5570; }
+    .task-search-box--in-bar svg { position: absolute; left: 9px; top: 50%; transform: translateY(-50%); color: #c8d0e0; }
     .task-toolbar-right { display: flex; align-items: center; justify-content: flex-end; gap: 8px; margin-left: auto; flex-shrink: 0; flex-wrap: wrap; }
     .task-select-controls { display: flex; align-items: center; gap: 8px; }
     .task-select-controls label { display: flex; align-items: center; cursor: pointer; color: #c8d0e0; font-size: 13px; gap: 5px; }
-    .task-select-controls span { color: #6b7a99; font-size: 13px; }
+    .task-select-controls span { color: #c8d0e0; font-size: 13px; }
     .task-select-btn-del { padding: 5px 12px; background: #1a0a0a; color: #f87171; border: 1px solid #7f1d1d; border-radius: 3px; font-size: 13px; cursor: pointer; }
     .task-select-btn-del:hover { background: #2a0f0f; }
-    .task-select-btn-cancel { padding: 5px 12px; background: #1a1a24; color: #6b7a99; border: 1px solid #2a2a3a; border-radius: 3px; font-size: 13px; cursor: pointer; }
+    .task-select-btn-cancel { padding: 5px 12px; background: #1a1a24; color: #c8d0e0; border: 1px solid #2a2a3a; border-radius: 3px; font-size: 13px; cursor: pointer; }
     .task-select-btn-cancel:hover { background: #22222e; }
     .task-data-table-header { background: #ffffff; border-top: 1px solid #e5e7eb; border-bottom: 2px solid #e5e7eb; display: flex; padding: 12px 24px; align-items: center; box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1); }
     .task-th { color: #03b0f5; font-weight: 800; font-size: 11px; text-transform: uppercase; letter-spacing: 0.6px; text-align: left; flex: 1; }
@@ -87,7 +87,7 @@ export default function TicketPage() {
     .task-td.assigned { flex: 1.5; }
     .task-td.status { flex: 0 0 100px; }
     .task-status-badge { display: inline-flex; align-items: center; padding: 3px 8px; border-radius: 2px; font-size: 11px; font-weight: 600; }
-    .task-sts-pending { background: #1a1a24; color: #6b7a99; border: 1px solid #2a2a3a; }
+    .task-sts-pending { background: #1a1a24; color: #c8d0e0; border: 1px solid #2a2a3a; }
     .task-sts-complete { background: #0a2a22; color: #34d399; border: 1px solid #064e3b; }
     .task-sts-failed { background: #1a0a0a; color: #f87171; border: 1px solid #7f1d1d; }
     .task-created-meta-col { display: flex; flex-direction: column; gap: 1px; }
@@ -95,7 +95,7 @@ export default function TicketPage() {
     .task-created-meta-date { font-size: 11px; color: #ffffff; font-weight: 500; }
     .task-empty-state { display: flex; flex-direction: column; justify-content: center; align-items: center; padding: 80px 20px; text-align: center; }
     .task-empty-state-title { font-size: 17px; font-weight: 700; color: #c8d0e0; margin: 0 0 6px; }
-    .task-empty-state-sub { font-size: 14px; color: #4a5570; margin: 0; }
+    .task-empty-state-sub { font-size: 14px; color: #c8d0e0; margin: 0; }
     .task-loading-spinner { display: flex; flex-direction: column; justify-content: center; align-items: center; padding: 80px 20px; }
     .task-loading-spinner .spinner { width: 32px; height: 32px; border: 3px solid #1a1a24; border-top-color: #3b82f6; border-radius: 50%; animation: taskSpin 0.7s linear infinite; margin-bottom: 12px; }
     @keyframes taskSpin { to { transform: rotate(360deg); } }
@@ -1304,7 +1304,7 @@ export default function TicketPage() {
                 onClick={() => handleFilterChange(f.key)}
               >
                 {f.label}
-                {f.count > 0 && <span style={{ marginLeft: 5, fontSize: 11, color: activeFilter === f.key ? '#f97316' : '#6b7a99' }}>{f.count}</span>}
+                {f.count > 0 && <span style={{ marginLeft: 5, fontSize: 11, color: activeFilter === f.key ? '#f97316' : '#c8d0e0' }}>{f.count}</span>}
               </button>
             ))}
           </div>

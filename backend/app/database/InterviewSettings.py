@@ -49,32 +49,45 @@ async def create_async_indexes():
     """Create indexes for the interview settings collections (async)"""
     try:
         collections = get_collections()
-        
-        # Create indexes for job openings
-        await collections["job_openings"].create_index([("user_id", 1)])
-        await collections["job_openings"].create_index([("name", 1)])
-        await collections["job_openings"].create_index([("created_at", -1)])
-        
-        # Create indexes for interview types
-        await collections["interview_types"].create_index([("user_id", 1)])
-        await collections["interview_types"].create_index([("name", 1)])
-        await collections["interview_types"].create_index([("created_at", -1)])
-        
-        # Create indexes for source/portals
-        await collections["source_portals"].create_index([("user_id", 1)])
-        await collections["source_portals"].create_index([("name", 1)])
-        await collections["source_portals"].create_index([("created_at", -1)])
-        
-        # Create indexes for sub-statuses
-        await collections["sub_statuses"].create_index([("user_id", 1)])
-        await collections["sub_statuses"].create_index([("parent_status_id", 1)])
-        await collections["sub_statuses"].create_index([("name", 1)])
-        await collections["sub_statuses"].create_index([("order", 1)])
-        await collections["sub_statuses"].create_index([("created_at", -1)])
-        
+
+        async def safe_index(col, keys, **kwargs):
+            """Create index only if an index with same key spec doesn't already exist."""
+            try:
+                existing = await col.index_information()
+                # Check if any existing index covers the same key spec
+                new_key = dict(keys)
+                for idx_info in existing.values():
+                    if dict(idx_info.get("key", {})) == new_key:
+                        return  # already exists, skip
+                await col.create_index(keys, background=True, **kwargs)
+            except Exception as e:
+                logger.warning(f"Index creation skipped (non-fatal): {e}")
+
+        # job_openings
+        await safe_index(collections["job_openings"], [("user_id", 1)])
+        await safe_index(collections["job_openings"], [("name", 1)])
+        await safe_index(collections["job_openings"], [("created_at", -1)])
+
+        # interview_types
+        await safe_index(collections["interview_types"], [("user_id", 1)])
+        await safe_index(collections["interview_types"], [("name", 1)])
+        await safe_index(collections["interview_types"], [("created_at", -1)])
+
+        # source_portals
+        await safe_index(collections["source_portals"], [("user_id", 1)])
+        await safe_index(collections["source_portals"], [("name", 1)])
+        await safe_index(collections["source_portals"], [("created_at", -1)])
+
+        # sub_statuses
+        await safe_index(collections["sub_statuses"], [("user_id", 1)])
+        await safe_index(collections["sub_statuses"], [("parent_status_id", 1)])
+        await safe_index(collections["sub_statuses"], [("name", 1)])
+        await safe_index(collections["sub_statuses"], [("order", 1)])
+        await safe_index(collections["sub_statuses"], [("created_at", -1)])
+
         logger.info("Interview settings indexes created successfully")
     except Exception as e:
-        logger.error(f"Error creating interview settings indexes: {e}")
+        logger.warning(f"Interview settings index creation warning (non-fatal): {e}")
 
 # Job Openings CRUD operations
 async def create_job_opening(job_opening_data):
