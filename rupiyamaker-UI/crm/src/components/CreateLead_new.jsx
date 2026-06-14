@@ -3,6 +3,7 @@ import ReactDOM from "react-dom";
 import SearchableSelect from "./SearchableSelect";
 // Lazy-loaded for duplicate lead view
 const LeadDetails = lazy(() => import('./LeadDetails'));
+const ObligationSection = lazy(() => import('./sections/ObligationSection'));
 import {
   saveCurrentLeadInfoSection,
   getFinalLeadData,
@@ -888,6 +889,7 @@ function useCreateLeadLogic() {
   // Obligations Table State
   const [obligations, setObligations] = useState([
     {
+      id: "initial-obligation-row",
       product: "",
       bankName: "",
       tenure: "",
@@ -2885,6 +2887,7 @@ const handleMobileNumberChange = (e) => {
           ceMonthlyEmiCanPay: '',
           ceMultiplier: '',
           obligations: [{
+            id: "initial-obligation-row",
             product: "",
             bankName: "",
             tenure: "",
@@ -3024,8 +3027,8 @@ const handleMobileNumberChange = (e) => {
     alternateNumber, setAlternateNumber, handleAlternateNumberChange,
     pincode, setPincode, city, setCity, pincodeCity, setPincodeCity,
     companyName, setCompanyName, companyType, setCompanyType,
-    salary, handleSalaryChange, partnerSalary, handlePartnerSalaryChange, yearlyBonus, handleYearlyBonusChange,
-    bonusDivision, handleBonusDivisionChange, loanRequired, setLoanRequired,
+    salary, setSalary, handleSalaryChange, partnerSalary, setPartnerSalary, handlePartnerSalaryChange, yearlyBonus, setYearlyBonus, handleYearlyBonusChange,
+    bonusDivision, setBonusDivision, handleBonusDivisionChange, loanRequired, setLoanRequired,
     foirPercent, handleFoirPercentChange, customFoirPercent, setCustomFoirPercent, eligibility, leadFormRef, handleCheckMobile,
     // API data
     loanTypes, campaignNames, dataCodes, companyCategories, assignableUsers,
@@ -3036,7 +3039,7 @@ const handleMobileNumberChange = (e) => {
     setShowReassignmentOption, setShowLeadDetails, setExistingLeadData,
     handleReassignmentRequest, handleReassignmentCancel, handleCompanyCategoryChange,
     // Obligations
-    obligations, handleObligationChange, handleAddObligation, handleDeleteObligation,
+    obligations, setObligations, handleObligationChange, handleAddObligation, handleDeleteObligation,
     // Bank dropdown/filter
     bankList, bankDropdowns, setBankDropdowns, bankFilters, handleBankDropdown,
     handleBankFilterChange, handleBankSelect,
@@ -3050,14 +3053,15 @@ const handleMobileNumberChange = (e) => {
     setShowCompanySuggestions, setCompanySuggestions,
     companyTypes, statusOptions, bonusDivisions, foirPercents,
     // Check Eligibility Section
-    ceCompanyCategory, handleCeCompanyCategoryChange,
-    ceFoirPercent, handleCeFoirPercentChange, ceCustomFoirPercent, setCeCustomFoirPercent,
-    ceTenureMonths, handleCeTenureMonthsChange,
-    ceTenureYears, handleCeTenureYearsChange,
-    ceRoi, handleCeRoiChange,
-    ceMonthlyEmiCanPay, handleCeMonthlyEmiCanPayChange,
-    ceMultiplier, handleCeMultiplierChange,
-    loanEligibilityStatus,
+    ceCompanyCategory, handleCeCompanyCategoryChange, setCeCompanyCategory,
+    ceFoirPercent, handleCeFoirPercentChange, setCeFoirPercent,
+    ceCustomFoirPercent, setCeCustomFoirPercent,
+    ceTenureMonths, handleCeTenureMonthsChange, setCeTenureMonths,
+    ceTenureYears, handleCeTenureYearsChange, setCeTenureYears,
+    ceRoi, handleCeRoiChange, setCeRoi,
+    ceMonthlyEmiCanPay, handleCeMonthlyEmiCanPayChange, setCeMonthlyEmiCanPay,
+    ceMultiplier, handleCeMultiplierChange, setCeMultiplier,
+    loanEligibilityStatus, setLoanEligibilityStatus,
     checkEligibilityCompanyCategories, formatINR, parseINR,
     // Obligation tracking
     obligationHasUnsavedChanges, obligationIsSaving, obligationDataSaved, handleObligationDataUpdate,
@@ -4672,7 +4676,7 @@ function CreateLead() {
     setShowReassignmentOption, setShowLeadDetails, setExistingLeadData,
     handleReassignmentRequest, handleReassignmentCancel, handleCompanyCategoryChange,
     // Obligations
-    obligations, handleObligationChange, handleAddObligation, handleDeleteObligation,
+    obligations, setObligations, handleObligationChange, handleAddObligation, handleDeleteObligation,
     // Bank dropdown/filter
     bankList, bankDropdowns, setBankDropdowns, bankFilters, handleBankDropdown,
     handleBankFilterChange, handleBankSelect,
@@ -4686,14 +4690,14 @@ function CreateLead() {
     setShowCompanySuggestions, setCompanySuggestions,
     companyTypes, statusOptions, bonusDivisions, foirPercents,
     // Check Eligibility Section
-    ceCompanyCategory, handleCeCompanyCategoryChange,
-    ceFoirPercent, handleCeFoirPercentChange, ceCustomFoirPercent, setCeCustomFoirPercent,
-    ceTenureMonths, handleCeTenureMonthsChange,
-    ceTenureYears, handleCeTenureYearsChange,
-    ceRoi, handleCeRoiChange,
-    ceMonthlyEmiCanPay, handleCeMonthlyEmiCanPayChange,
-    ceMultiplier, handleCeMultiplierChange,
-    loanEligibilityStatus,
+    ceCompanyCategory, handleCeCompanyCategoryChange, setCeCompanyCategory,
+    ceFoirPercent, handleCeFoirPercentChange, setCeFoirPercent, ceCustomFoirPercent, setCeCustomFoirPercent,
+    ceTenureMonths, handleCeTenureMonthsChange, setCeTenureMonths,
+    ceTenureYears, handleCeTenureYearsChange, setCeTenureYears,
+    ceRoi, handleCeRoiChange, setCeRoi,
+    ceMonthlyEmiCanPay, handleCeMonthlyEmiCanPayChange, setCeMonthlyEmiCanPay,
+    ceMultiplier, handleCeMultiplierChange, setCeMultiplier,
+    loanEligibilityStatus, setLoanEligibilityStatus,
     checkEligibilityCompanyCategories, formatINR, parseINR,
     // Obligation tracking
     obligationHasUnsavedChanges, obligationIsSaving, obligationDataSaved, handleObligationDataUpdate,
@@ -4729,6 +4733,74 @@ function CreateLead() {
     superAdminCreatedByDropdownRef
   } = useCreateLeadLogic();
 
+  // Handle updates from ObligationSection in the Create Lead context
+  const handleObligationSectionChange = useCallback((field, value) => {
+    if (field === 'all_obligation_fields' && value) {
+      console.log('🔄 Synced all obligation fields from ObligationSection:', value);
+      if (value.salary !== undefined) setSalary(value.salary);
+      if (value.partnerSalary !== undefined) setPartnerSalary(value.partnerSalary);
+      if (value.yearlyBonus !== undefined) setYearlyBonus(value.yearlyBonus);
+      if (value.bonusDivision !== undefined) setBonusDivision(value.bonusDivision);
+      if (value.loanRequired !== undefined) setLoanRequired(value.loanRequired);
+      if (value.companyName !== undefined) setCompanyName(value.companyName);
+      if (value.cibilScore !== undefined) setCibilScore(value.cibilScore);
+      if (value.obligations !== undefined) setObligations(value.obligations);
+      
+      // Sync check eligibility fields
+      if (value.ceCompanyCategory !== undefined) setCeCompanyCategory(value.ceCompanyCategory);
+      if (value.ceFoirPercent !== undefined) setCeFoirPercent(value.ceFoirPercent);
+      if (value.ceCustomFoirPercent !== undefined) setCeCustomFoirPercent(value.ceCustomFoirPercent);
+      if (value.ceMonthlyEmiCanPay !== undefined) setCeMonthlyEmiCanPay(value.ceMonthlyEmiCanPay);
+      if (value.ceTenureMonths !== undefined) setCeTenureMonths(value.ceTenureMonths);
+      if (value.ceTenureYears !== undefined) setCeTenureYears(value.ceTenureYears);
+      if (value.ceRoi !== undefined) setCeRoi(value.ceRoi);
+      if (value.ceMultiplier !== undefined) setCeMultiplier(value.ceMultiplier);
+      if (value.loanEligibilityStatus !== undefined) setLoanEligibilityStatus(value.loanEligibilityStatus);
+    }
+  }, [
+    setSalary, setPartnerSalary, setYearlyBonus, setBonusDivision, setLoanRequired, setCompanyName, setCibilScore, setObligations,
+    setCeCompanyCategory, setCeFoirPercent, setCeCustomFoirPercent, setCeTenureMonths, setCeTenureYears, setCeRoi, setCeMonthlyEmiCanPay,
+    setCeMultiplier, setLoanEligibilityStatus
+  ]);
+
+  const leadDataForObligation = useMemo(() => {
+    return {
+      _id: undefined, // no lead ID in create lead context
+      salary: salary,
+      partnerSalary: partnerSalary,
+      yearlyBonus: yearlyBonus,
+      bonusDivision: bonusDivision,
+      loanRequired: loanRequired,
+      companyName: companyName,
+      cibilScore: cibilScore,
+      obligations: obligations,
+      dynamic_fields: {
+        financial_details: {
+          salary: salary,
+          partnerSalary: partnerSalary,
+          yearlyBonus: yearlyBonus,
+          bonusDivision: bonusDivision,
+          cibilScore: cibilScore,
+        },
+        obligations: obligations,
+        check_eligibility: {
+          company_category: ceCompanyCategory,
+          foir_percent: ceFoirPercent,
+          custom_foir_percent: ceCustomFoirPercent,
+          monthly_emi_can_pay: ceMonthlyEmiCanPay,
+          tenure_months: ceTenureMonths,
+          tenure_years: ceTenureYears,
+          roi: ceRoi,
+          multiplier: ceMultiplier,
+          loan_eligibility_status: loanEligibilityStatus
+        }
+      }
+    };
+  }, [
+    salary, partnerSalary, yearlyBonus, bonusDivision, loanRequired, companyName, cibilScore, obligations,
+    ceCompanyCategory, ceFoirPercent, ceCustomFoirPercent, ceMonthlyEmiCanPay, ceTenureMonths, ceTenureYears, ceRoi, ceMultiplier, loanEligibilityStatus
+  ]);
+
   const dataCodeDropdownRef = useRef(null);
   const assignDropdownRef = useRef(null);
   const sourceDropdownRef = useRef(null);
@@ -4737,6 +4809,39 @@ function CreateLead() {
   const [sourceSearch, setSourceSearch] = useState("");
   const [showDataCodeDropdown, setShowDataCodeDropdown] = useState(false);
   const [dataCodeSearch, setDataCodeSearch] = useState("");
+
+  const [openUpwardSource, setOpenUpwardSource] = useState(false);
+  const [openUpwardDataCode, setOpenUpwardDataCode] = useState(false);
+  const [openUpwardAssign, setOpenUpwardAssign] = useState(false);
+
+  const toggleSourceDropdown = () => {
+    if (loadingSettings) return;
+    if (!showSourceDropdown && sourceDropdownRef.current) {
+      const rect = sourceDropdownRef.current.getBoundingClientRect();
+      const spaceBelow = window.innerHeight - rect.bottom;
+      setOpenUpwardSource(spaceBelow < 250);
+    }
+    setShowSourceDropdown(!showSourceDropdown);
+  };
+
+  const toggleDataCodeDropdown = () => {
+    if (!showDataCodeDropdown && dataCodeDropdownRef.current) {
+      const rect = dataCodeDropdownRef.current.getBoundingClientRect();
+      const spaceBelow = window.innerHeight - rect.bottom;
+      setOpenUpwardDataCode(spaceBelow < 250);
+    }
+    setShowDataCodeDropdown(!showDataCodeDropdown);
+  };
+
+  const toggleAssignDropdown = () => {
+    if (isAssignedLeadReadOnly) return;
+    if (!showAssignPopup && assignDropdownRef.current) {
+      const rect = assignDropdownRef.current.getBoundingClientRect();
+      const spaceBelow = window.innerHeight - rect.bottom;
+      setOpenUpwardAssign(spaceBelow < 250);
+    }
+    setShowAssignPopup(!showAssignPopup);
+  };
 
   const isAssignedLeadReadOnly = Boolean(
     showLeadForm && (
@@ -4775,16 +4880,16 @@ function CreateLead() {
 
   // Close Data Code dropdown on outside click
   useEffect(() => {
-    if (!showDataCodePopup) return;
+    if (!showDataCodeDropdown) return;
     const handler = (e) => {
       if (dataCodeDropdownRef.current && !dataCodeDropdownRef.current.contains(e.target)) {
-        setShowDataCodePopup(false);
-        setDataCodePopupSearch("");
+        setShowDataCodeDropdown(false);
+        setDataCodeSearch("");
       }
     };
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
-  }, [showDataCodePopup]);
+  }, [showDataCodeDropdown]);
 
   // Close Assign Lead dropdown on outside click
   useEffect(() => {
@@ -5005,14 +5110,16 @@ function CreateLead() {
       (!p.showReassignmentOption && showReassignmentOption) ||
       (!p.showLeadDetails        && showLeadDetails)        ||
       (!p.showLeadForm           && showLeadForm)           ||
-      (p.activeTab !== 'reassignment' && activeTab === 'reassignment');
+      (p.activeTab !== 'reassignment' && activeTab === 'reassignment') ||
+      (p.activeTab !== 'obligation' && activeTab === 'obligation');
 
     const justClosed =
       (!!p.viewLeadId             && !viewLeadId)           ||
       (p.showReassignmentOption   && !showReassignmentOption) ||
       (p.showLeadDetails          && !showLeadDetails)      ||
       (p.showLeadForm             && !showLeadForm)         ||
-      (p.activeTab === 'reassignment' && activeTab !== 'reassignment');
+      (p.activeTab === 'reassignment' && activeTab !== 'reassignment') ||
+      (p.activeTab === 'obligation' && activeTab !== 'obligation');
 
     clNavPrev.current = { viewLeadId, showReassignmentOption, showLeadDetails, showLeadForm, activeTab };
 
@@ -5064,6 +5171,8 @@ function CreateLead() {
         setExistingLeadData(null);
         setMobileCheckResult(null);
         setAllDuplicateLeads([]);
+      } else if (s.activeTab === 'obligation') {
+        setActiveTab('all');
       } else if (s.showLeadForm) {
         setShowLeadForm(false);
       } else if (s.activeTab === 'reassignment') {
@@ -5118,6 +5227,19 @@ function CreateLead() {
           >
             Transfer Request
           </button>
+          {showLeadForm && (
+            <button
+              type="button"
+              id="obligationTabBtn"
+              className={`create-lead-view-toggle-btn ${activeTab === "obligation" ? "active" : ""}`}
+              onClick={() => {
+                animateButton('obligationTabBtn');
+                setActiveTab("obligation");
+              }}
+            >
+              Obligation Sheet
+            </button>
+          )}
         </div>
 
         {activeTab === "all" && (
@@ -5892,10 +6014,10 @@ function CreateLead() {
                   <div className="mb-2 grid grid-cols-1 gap-x-2 gap-y-2 md:grid-cols-3 md:gap-x-2">
                     <div className="flex flex-col gap-0.5">
                       <label className="block font-bold mb-0.5 uppercase text-black text-[11px] leading-tight">SOURCE NAME <span className="text-red-500">*</span></label>
-                      <div ref={sourceDropdownRef} className="relative w-full">
+                      <div ref={sourceDropdownRef} className={`relative w-full ${showSourceDropdown ? 'z-[1000]' : ''}`}>
                         <div
                           className={`w-full p-2 border-2 rounded-md bg-white text-green-600 text-xs font-bold min-h-[38px] flex items-center cursor-pointer transition-all duration-300 hover:border-[#0097a7] ${loadingSettings ? 'opacity-60 cursor-not-allowed' : ''} ${showValidationErrors && formValidationErrors.campaignName ? 'border-red-500 bg-red-50' : 'border-[#00bcd4]'}`}
-                          onClick={() => !loadingSettings && setShowSourceDropdown(prev => !prev)}
+                          onClick={toggleSourceDropdown}
                         >
                           <span className={campaignName ? 'text-green-600 font-bold text-xs' : 'text-gray-400 font-normal text-xs'}>
                             {campaignName || 'Select Source'}
@@ -5905,7 +6027,7 @@ function CreateLead() {
                           </div>
                         </div>
                         {showSourceDropdown && !loadingSettings && (
-                          <div className="absolute z-[500] top-full left-0 right-0 mt-1 bg-white border-2 border-[#00bcd4] rounded-lg shadow-xl overflow-hidden">
+                          <div className={`absolute z-[500] left-0 right-0 bg-white border-2 border-[#00bcd4] rounded-lg shadow-xl overflow-hidden ${openUpwardSource ? 'bottom-full mb-1' : 'top-full mt-1'}`}>
                             <div className="p-2 border-b border-gray-100">
                               <div className="relative">
                                 <svg className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
@@ -6024,10 +6146,10 @@ function CreateLead() {
                     {canViewDataCode && (
                       <div className="flex flex-col gap-0.5">
                         <label className="block font-bold mb-0.5 uppercase text-black text-[11px] leading-tight">DATA CODE</label>
-                        <div ref={dataCodeDropdownRef} className="relative w-full">
+                        <div ref={dataCodeDropdownRef} className={`relative w-full ${showDataCodeDropdown ? 'z-[1000]' : ''}`}>
                           <div
                             className="w-full p-2 border-2 border-[#00bcd4] rounded-md bg-white text-green-600 text-xs font-bold min-h-[38px] flex flex-wrap gap-1 items-center cursor-pointer transition-all duration-300 hover:border-[#0097a7]"
-                            onClick={() => setShowDataCodeDropdown(prev => !prev)}
+                            onClick={toggleDataCodeDropdown}
                           >
                             {selectedDataCodes.length === 0 && !dataCode && (
                               <span className="text-gray-400 font-normal text-sm">Select Data Code</span>
@@ -6047,7 +6169,7 @@ function CreateLead() {
                             </div>
                           </div>
                           {showDataCodeDropdown && (
-                            <div className="absolute z-[500] top-full left-0 right-0 mt-1 bg-white border-2 border-[#00bcd4] rounded-lg shadow-xl overflow-hidden">
+                            <div className={`absolute z-[500] left-0 right-0 bg-white border-2 border-[#00bcd4] rounded-lg shadow-xl overflow-hidden ${openUpwardDataCode ? 'bottom-full mb-1' : 'top-full mt-1'}`}>
                               <div className="p-2 border-b border-gray-100">
                                 <input
                                   autoFocus
@@ -6096,10 +6218,10 @@ function CreateLead() {
                   <div className="mb-1.5 grid grid-cols-1 gap-x-2 gap-y-2 md:grid-cols-3 md:gap-x-2">
                     <div className="flex flex-col gap-0.5">
                       <label className="block font-bold mb-0.5 uppercase text-black text-[11px] leading-tight">ASSIGNED LEAD <span className="text-red-500">*</span></label>
-                      <div ref={assignDropdownRef} className="relative w-full">
+                      <div ref={assignDropdownRef} className={`relative w-full ${showAssignPopup ? 'z-[1000]' : ''}`}>
                         <div
                           className={`w-full p-2 border-2 border-[#00bcd4] rounded-md text-green-600 text-xs font-bold min-h-[38px] flex flex-wrap gap-1 items-center transition-all duration-300 ${isAssignedLeadReadOnly ? 'bg-gray-100 cursor-not-allowed' : 'bg-white cursor-pointer hover:border-[#0097a7]'} ${showValidationErrors && formValidationErrors.assignedTo ? 'border-red-500 bg-red-50' : ''}`}
-                          onClick={() => { if (!isAssignedLeadReadOnly) setShowAssignPopup(prev => !prev); }}
+                          onClick={toggleAssignDropdown}
                         >
                           {assignedTo.length === 0 && (
                             <span className="text-gray-400 font-normal text-sm">Click to select assignee(s)</span>
@@ -6139,7 +6261,7 @@ function CreateLead() {
                             (u.designation || '').toLowerCase().includes(assignDropdownSearch.toLowerCase())
                           );
                           return (
-                            <div className="absolute z-[500] top-full left-0 right-0 mt-1 bg-white border-2 border-[#00bcd4] rounded-lg shadow-xl overflow-hidden">
+                            <div className={`absolute z-[500] left-0 right-0 bg-white border-2 border-[#00bcd4] rounded-lg shadow-xl overflow-hidden ${openUpwardAssign ? 'bottom-full mb-1' : 'top-full mt-1'}`}>
                               <div className="p-2 border-b border-gray-100">
                                 <div className="relative">
                                   <svg className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
@@ -6195,6 +6317,7 @@ function CreateLead() {
                       className="create-lead-btn-secondary"
                       onClick={() => {
                         setShowLeadForm(false);
+                        setActiveTab('all');
                         setCustomerName('');
                         setAlternateNumber('');
                         setCampaignName('');
@@ -6281,6 +6404,42 @@ function CreateLead() {
             />
           </div>
         )}
+
+        <div style={{ display: activeTab === "obligation" ? "block" : "none" }} className="create-lead-content-stack">
+          <Suspense fallback={
+            <div className="flex items-center justify-center p-12 bg-white rounded-xl border border-gray-200">
+              <div className="flex flex-col items-center gap-3">
+                <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-[#00bcd4]"></div>
+                <p className="text-[#00bcd4] text-sm font-bold">Loading Obligation Sheet...</p>
+              </div>
+            </div>
+          }>
+            <div className="bg-white rounded-xl overflow-hidden shadow-2xl border border-gray-200">
+              <div className="p-4 bg-[#e0f7fa] border-b border-[#00bcd4] flex justify-between items-center">
+                <div>
+                  <h2 className="text-lg font-bold text-[#00bcd4]">Customer Obligation Sheet</h2>
+                  <p className="text-xs text-gray-600 mt-0.5">Define financial criteria, CIBIL details and existing obligations.</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setActiveTab("all")}
+                  className="px-4 py-2 bg-[#00bcd4] hover:bg-[#0097a7] text-white rounded-md text-xs font-bold transition-all shadow-md"
+                >
+                  Back to Lead Form
+                </button>
+              </div>
+              <div className="p-1">
+                <ObligationSection
+                  leadData={leadDataForObligation}
+                  handleChangeFunc={handleObligationSectionChange}
+                  canEdit={true}
+                  saveContext="create_lead"
+                  activeTab={activeTab}
+                />
+              </div>
+            </div>
+          </Suspense>
+        </div>
       </div>
 
       {/* ─── LEAD VIEW PORTAL (mounted at document.body, outside tab conditions so it works on all tabs) ─── */}

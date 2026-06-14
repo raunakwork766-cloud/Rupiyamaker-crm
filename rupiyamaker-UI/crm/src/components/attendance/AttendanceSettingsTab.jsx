@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import axios from 'axios';
 import FaceRegistration from './FaceRegistration';
 
@@ -6,7 +6,15 @@ import FaceRegistration from './FaceRegistration';
 const API_BASE_URL = '/api'; // Always use API proxy
 
 const AttendanceSettingsTab = ({ userId }) => {
-  const [subTab, setSubTab] = React.useState('settings'); // 'settings', 'face-registration'
+  const [subTab, setSubTab] = React.useState('settings'); // 'settings', 'qr-panel', 'face-registration'
+
+  // ── QR Panel State ──
+  const [qrToken, setQrToken] = useState(null);
+  const [qrUrl, setQrUrl] = useState('');
+  const [qrLoading, setQrLoading] = useState(false);
+  const [qrError, setQrError] = useState(null);
+  const [qrRefreshMsg, setQrRefreshMsg] = useState(null);
+  const qrCanvasRef = useRef(null);
   const [settings, setSettings] = useState({
     // Shift Timing Settings (New)
     shift_start_time: '10:00',
@@ -61,6 +69,7 @@ const AttendanceSettingsTab = ({ userId }) => {
     office_latitude: null,
     office_longitude: null,
     geofence_radius: 100.0,
+    enforce_facial_verification: false,
   });
 
   const [loading, setLoading] = useState(false);
@@ -76,6 +85,116 @@ const AttendanceSettingsTab = ({ userId }) => {
   useEffect(() => {
     loadSettings();
   }, []);
+
+  // Load QR token when QR panel is opened
+  useEffect(() => {
+    if (subTab === 'qr-panel') {
+      loadQrToken();
+    }
+  }, [subTab]);
+
+  // Draw QR code on canvas whenever qrUrl changes
+  useEffect(() => {
+    if (qrUrl && qrCanvasRef.current) {
+      drawQRCode(qrUrl);
+    }
+  }, [qrUrl]);
+
+  const loadQrToken = async () => {
+    setQrLoading(true);
+    setQrError(null);
+    try {
+      const res = await axios.get(`${API_BASE_URL}/attendance/qr-token`, {
+        params: { user_id: userId }
+      });
+      if (res.data.success) {
+        setQrToken(res.data.token);
+        // Build URL with current window origin as fallback
+        const origin = window.location.origin;
+        const url = res.data.attendance_url || `${origin}/checkin?token=${res.data.token}`;
+        setQrUrl(url);
+      }
+    } catch (err) {
+      setQrError(err.response?.data?.detail || 'Failed to load QR token');
+    } finally {
+      setQrLoading(false);
+    }
+  };
+
+  const refreshQrToken = async () => {
+    setQrLoading(true);
+    setQrError(null);
+    setQrRefreshMsg(null);
+    try {
+      const res = await axios.post(`${API_BASE_URL}/attendance/qr-token/refresh`, {}, {
+        params: { user_id: userId }
+      });
+      if (res.data.success) {
+        setQrToken(res.data.token);
+        const origin = window.location.origin;
+        const url = res.data.attendance_url || `${origin}/checkin?token=${res.data.token}`;
+        setQrUrl(url);
+        setQrRefreshMsg('New QR code generated! Old one is now invalid.');
+        setTimeout(() => setQrRefreshMsg(null), 4000);
+      }
+    } catch (err) {
+      setQrError(err.response?.data?.detail || 'Failed to refresh QR token');
+    } finally {
+      setQrLoading(false);
+    }
+  };
+
+  // Pure canvas QR code generator (no external library needed)
+  const drawQRCode = useCallback(async (text) => {
+    const canvas = qrCanvasRef.current;
+    if (!canvas) return;
+    try {
+      // Dynamic import of qrcode library
+      const QRCode = (await import('qrcode')).default;
+      await QRCode.toCanvas(canvas, text, {
+        width: 280,
+        margin: 2,
+        color: { dark: '#000000', light: '#ffffff' },
+        errorCorrectionLevel: 'M',
+      });
+    } catch (err) {
+      console.error('QR draw error:', err);
+    }
+  }, []);
+
+  const downloadQR = () => {
+    const canvas = qrCanvasRef.current;
+    if (!canvas) return;
+    const link = document.createElement('a');
+    link.download = `attendance-qr-${new Date().toISOString().split('T')[0]}.png`;
+    link.href = canvas.toDataURL('image/png');
+    link.click();
+  };
+
+  const printQR = () => {
+    const canvas = qrCanvasRef.current;
+    if (!canvas) return;
+    const dataUrl = canvas.toDataURL('image/png');
+    const win = window.open('', '_blank');
+    win.document.write(`
+      <html><head><title>Attendance QR Code</title>
+      <style>
+        body { display:flex; flex-direction:column; align-items:center; justify-content:center; min-height:100vh; font-family:sans-serif; background:#fff; }
+        img { width:280px; height:280px; border:2px solid #e5e7eb; border-radius:8px; }
+        h2 { margin-bottom:8px; font-size:18px; color:#111; }
+        p { color:#555; font-size:13px; margin-top:8px; }
+        @media print { button { display:none; } }
+      </style></head>
+      <body>
+        <h2>📍 Attendance Check-In QR Code</h2>
+        <img src="${dataUrl}" />
+        <p>Scan to mark your attendance</p>
+        <p style="font-size:11px;color:#aaa;">Valid for today only</p>
+        <button onclick="window.print()" style="margin-top:16px;padding:8px 20px;background:#2563eb;color:white;border:none;border-radius:6px;cursor:pointer;font-size:14px;">🖨 Print</button>
+      </body></html>
+    `);
+    win.document.close();
+  };
 
   const loadSettings = async () => {
     setLoading(true);
@@ -307,6 +426,7 @@ const AttendanceSettingsTab = ({ userId }) => {
       <div className="flex rounded-xl overflow-hidden border border-gray-200 shadow-sm mb-5">
         {[
           { id: 'settings',          label: 'Attendance Settings', icon: '⚙️' },
+          { id: 'qr-panel',          label: 'QR Code Panel',       icon: '📱' },
           { id: 'face-registration', label: 'Face Registration',   icon: '📷' },
         ].map(t => (
           <button
@@ -324,6 +444,207 @@ const AttendanceSettingsTab = ({ userId }) => {
       </div>
 
       {subTab === 'face-registration' && <FaceRegistration />}
+
+      {/* ── QR Panel ── */}
+      {subTab === 'qr-panel' && (
+        <div className="space-y-5">
+          {/* Header */}
+          <div className="bg-white border border-gray-200 rounded-xl px-4 py-3 flex flex-wrap items-center justify-between gap-3 shadow-sm">
+            <div>
+              <h2 className="text-sm font-black text-gray-800 uppercase tracking-tight flex items-center gap-2">
+                <span className="text-base">📱</span> Attendance QR Code Panel
+              </h2>
+              <p className="text-[11px] text-gray-500 mt-0.5">
+                Employees scan this QR code to open the attendance check-in page
+              </p>
+            </div>
+            <button
+              onClick={refreshQrToken}
+              disabled={qrLoading}
+              className="border border-orange-300 text-orange-600 hover:bg-orange-50 px-3 py-1.5 rounded-lg text-[11px] font-bold transition flex items-center gap-1.5 disabled:opacity-40"
+            >
+              {qrLoading ? <><i className="fa-solid fa-spinner fa-spin"></i> Loading…</> : '🔄 Refresh QR'}
+            </button>
+          </div>
+
+          {/* Messages */}
+          {qrRefreshMsg && (
+            <div className="bg-green-50 border border-green-200 text-green-700 rounded-xl px-4 py-2.5 text-[11px] font-semibold">
+              ✅ {qrRefreshMsg}
+            </div>
+          )}
+          {qrError && (
+            <div className="bg-red-50 border border-red-200 text-red-700 rounded-xl px-4 py-2.5 text-[11px] font-semibold">
+              🚫 {qrError}
+              <button onClick={loadQrToken} className="ml-3 underline">Retry</button>
+            </div>
+          )}
+
+          {/* QR Code Display */}
+          <div className="bg-white border-2 border-blue-100 rounded-2xl shadow-sm overflow-hidden">
+            <div className="bg-gradient-to-r from-blue-600 to-indigo-600 px-5 py-3 flex items-center justify-between">
+              <div>
+                <h3 className="text-white font-black text-sm">Today's Attendance QR Code</h3>
+                <p className="text-blue-200 text-[10px] mt-0.5">Valid for: {new Date().toLocaleDateString('en-IN', { weekday:'long', day:'numeric', month:'long', year:'numeric' })}</p>
+              </div>
+              <span className="text-3xl">📱</span>
+            </div>
+
+            <div className="p-6 flex flex-col lg:flex-row gap-8 items-center">
+              {/* QR Code */}
+              <div className="flex flex-col items-center gap-3 shrink-0">
+                {qrLoading ? (
+                  <div className="w-[280px] h-[280px] border-2 border-dashed border-gray-200 rounded-xl flex items-center justify-center text-gray-400">
+                    <div className="text-center">
+                      <i className="fa-solid fa-spinner fa-spin text-2xl text-blue-500 mb-2"></i>
+                      <p className="text-[11px]">Generating QR…</p>
+                    </div>
+                  </div>
+                ) : qrUrl ? (
+                  <div className="border-4 border-gray-100 rounded-2xl p-3 bg-white shadow-md">
+                    <canvas ref={qrCanvasRef} style={{ display: 'block', borderRadius: '8px' }} />
+                  </div>
+                ) : (
+                  <div className="w-[280px] h-[280px] border-2 border-dashed border-gray-200 rounded-xl flex items-center justify-center text-gray-400">
+                    <div className="text-center">
+                      <span className="text-4xl">📷</span>
+                      <p className="text-[11px] mt-2">No QR generated yet</p>
+                    </div>
+                  </div>
+                )}
+
+                {/* Action Buttons */}
+                {qrUrl && !qrLoading && (
+                  <div className="flex gap-2 flex-wrap justify-center">
+                    <button
+                      onClick={downloadQR}
+                      className="flex items-center gap-1.5 px-3 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg text-[11px] font-bold transition shadow-sm"
+                    >
+                      ⬇️ Download PNG
+                    </button>
+                    <button
+                      onClick={printQR}
+                      className="flex items-center gap-1.5 px-3 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-[11px] font-bold transition shadow-sm"
+                    >
+                      🖨️ Print
+                    </button>
+                    <button
+                      onClick={refreshQrToken}
+                      className="flex items-center gap-1.5 px-3 py-2 bg-orange-500 hover:bg-orange-600 text-white rounded-lg text-[11px] font-bold transition shadow-sm"
+                    >
+                      🔄 New QR
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              {/* Info Panel */}
+              <div className="flex-1 space-y-3 w-full">
+                {/* URL Display */}
+                {qrUrl && (
+                  <div className="bg-gray-50 border border-gray-200 rounded-xl p-3">
+                    <p className="text-[10px] font-bold text-gray-500 uppercase tracking-wide mb-1.5">Check-in URL (encoded in QR)</p>
+                    <div className="flex items-center gap-2">
+                      <code className="text-[10px] text-blue-700 bg-blue-50 px-2 py-1 rounded flex-1 break-all leading-relaxed">
+                        {qrUrl}
+                      </code>
+                      <button
+                        onClick={() => { navigator.clipboard.writeText(qrUrl); }}
+                        className="shrink-0 px-2 py-1.5 bg-blue-100 hover:bg-blue-200 text-blue-700 rounded text-[10px] font-bold transition"
+                        title="Copy URL"
+                      >
+                        📋 Copy
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Token Info */}
+                {qrToken && (
+                  <div className="bg-gray-50 border border-gray-200 rounded-xl p-3">
+                    <p className="text-[10px] font-bold text-gray-500 uppercase tracking-wide mb-1.5">Token</p>
+                    <code className="text-[10px] text-gray-600 break-all font-mono">
+                      {qrToken.slice(0, 16)}••••••••{qrToken.slice(-8)}
+                    </code>
+                  </div>
+                )}
+
+                {/* How it works */}
+                <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
+                  <p className="text-[11px] font-black text-blue-800 mb-2.5 flex items-center gap-1.5">
+                    <span>ℹ️</span> How It Works
+                  </p>
+                  <ol className="space-y-1.5 text-[11px] text-blue-700 list-none">
+                    {[
+                      'Print or display this QR code at your office entrance',
+                      'Employee scans QR with phone camera',
+                      'Browser opens the attendance check-in page',
+                      'Employee logs in and marks attendance',
+                      'Location is verified — only office GPS allowed',
+                      'QR link does NOT work without scanning (token required)',
+                    ].map((step, i) => (
+                      <li key={i} className="flex items-start gap-2">
+                        <span className="bg-blue-600 text-white rounded-full w-4 h-4 flex items-center justify-center text-[9px] font-black shrink-0 mt-0.5">{i+1}</span>
+                        {step}
+                      </li>
+                    ))}
+                  </ol>
+                </div>
+
+                {/* Security note */}
+                <div className="bg-amber-50 border border-amber-200 rounded-xl p-3">
+                  <p className="text-[11px] font-bold text-amber-800 flex items-start gap-1.5">
+                    <span className="shrink-0">⚠️</span>
+                    <span>
+                      This QR code is <strong>permanent</strong> and never expires — print it once and place it at the office entrance.
+                      Click <strong>"New QR"</strong> only if the QR code was compromised or needs to be replaced.
+                      The check-in URL only works when accessed via QR scan — direct browser access requires scanning.
+                    </span>
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Geofence Status Card */}
+          <div className={`rounded-xl border-2 p-4 ${settings.geofence_enabled ? 'bg-green-50 border-green-300' : 'bg-gray-50 border-gray-200'}`}>
+            <div className="flex items-center justify-between flex-wrap gap-3">
+              <div className="flex items-center gap-3">
+                <span className="text-2xl">{settings.geofence_enabled ? '📍' : '🔓'}</span>
+                <div>
+                  <p className="text-sm font-black text-gray-800">
+                    Geofence: {settings.geofence_enabled ? <span className="text-green-700">ENABLED ✓</span> : <span className="text-gray-500">Disabled</span>}
+                  </p>
+                  <p className="text-[11px] text-gray-500 mt-0.5">
+                    {settings.geofence_enabled
+                      ? `Check-in only within ${settings.geofence_radius}m of office location`
+                      : 'Enable geofence in Settings tab to restrict check-in to office only'}
+                  </p>
+                </div>
+              </div>
+              {settings.geofence_enabled && settings.office_latitude && (
+                <div className="text-[10px] font-mono text-gray-500 bg-white border border-gray-200 rounded-lg px-3 py-2">
+                  📌 {settings.office_latitude?.toFixed(6)}, {settings.office_longitude?.toFixed(6)}<br/>
+                  <span className="text-blue-600">Radius: {settings.geofence_radius}m</span>
+                </div>
+              )}
+              {settings.geofence_enabled && !settings.office_latitude && (
+                <div className="text-[11px] text-orange-600 bg-orange-50 border border-orange-200 rounded-lg px-3 py-1.5 font-semibold">
+                  ⚠️ Set office coordinates in Settings tab
+                </div>
+              )}
+              {!settings.geofence_enabled && (
+                <button
+                  onClick={() => setSubTab('settings')}
+                  className="text-[11px] bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded-lg font-bold transition"
+                >
+                  ⚙️ Configure in Settings
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {subTab === 'settings' && (
         <div className="space-y-5">
@@ -626,6 +947,13 @@ const AttendanceSettingsTab = ({ userId }) => {
                   <Toggle label="Photo Required"         desc="Selfie required at check-in/check-out"           field="require_photo"        value={settings.require_photo}        color="blue" />
                   <Toggle label="Geolocation Required"   desc="GPS location required at check-in/check-out"      field="require_geolocation"  value={settings.require_geolocation}  color="blue" />
                   <Toggle label="Enable Geofence"        desc="Restrict check-in to office radius only"          field="geofence_enabled"     value={settings.geofence_enabled}     color="blue" />
+                  <Toggle
+                    label="Enforce Face Verification"
+                    desc="Employee's face must match registered photo — attendance blocked if face doesn't match"
+                    field="enforce_facial_verification"
+                    value={settings.enforce_facial_verification ?? false}
+                    color="red"
+                  />
                 </div>
               </SectionCard>
             </div>
@@ -649,7 +977,7 @@ const AttendanceSettingsTab = ({ userId }) => {
                     placeholder="e.g. 77.2090"
                     className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-800 focus:outline-none focus:border-teal-400 bg-white" />
                 </div>
-                <NumberInput label="Allowed Radius" hint="meters" field="geofence_radius" value={settings.geofence_radius} min={10} max={10000} step={10} />
+                <NumberInput label="Allowed Radius" hint="meters — applies to QR check-in" field="geofence_radius" value={settings.geofence_radius} min={10} max={10000} step={10} />
               </div>
             </SectionCard>
           )}

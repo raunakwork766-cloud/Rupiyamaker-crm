@@ -1,6 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
+// Note: faceapi is loaded dynamically inside loadModels() to avoid TF.js
+// backend initialization errors (".fp undefined") at module parse time.
 import { getAttendanceAuthHeaders, clearAttendanceTabSession } from '../../utils/authSession';
+import { getLocationCrossDevice, isInAppBrowser, getAndroidChromeIntentUrl } from '../../utils/locationUtils';
 
 const API_BASE = '/api';
 
@@ -61,6 +64,105 @@ const getRandomMessage = (type) => {
   if (!cfg) return null;
   const msg = cfg.messages[Math.floor(Math.random() * cfg.messages.length)];
   return { ...cfg, message: msg };
+};
+
+// ─── Location Blocked Modal ────────────────────────────────────────
+// Full-screen overlay shown when browser has blocked location.
+// Gives device-specific steps so any user (iOS/Android/Desktop) knows exactly what to do.
+const LocationBlockedModal = ({ onRetry, onClose }) => {
+  // Detect OS for tailored instructions
+  const ua = navigator.userAgent || '';
+  const isIOS = /iPad|iPhone|iPod/.test(ua);
+  const isAndroid = /Android/.test(ua);
+  const isSafari = /Safari/.test(ua) && !/Chrome/.test(ua);
+
+  return (
+    <div style={{
+      position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.72)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      zIndex: 99999, padding: 20,
+    }}>
+      <div style={{
+        background: 'white', borderRadius: 24, padding: '32px 24px',
+        maxWidth: 380, width: '100%', textAlign: 'center',
+        boxShadow: '0 24px 64px rgba(0,0,0,0.4)',
+        animation: 'popIn 0.35s cubic-bezier(0.34,1.56,0.64,1)',
+      }}>
+        <div style={{ fontSize: 64, marginBottom: 12 }}>📍</div>
+        <h2 style={{ fontSize: 20, fontWeight: 800, color: '#dc2626', margin: '0 0 10px' }}>
+          Location Access Blocked
+        </h2>
+        <p style={{ fontSize: 13, color: '#dc2626', fontWeight: 600, margin: '0 0 12px', lineHeight: 1.5 }}>
+          Location Permission Denied (लोकेशन की अनुमति नहीं मिली)
+        </p>
+        <p style={{ fontSize: 13, color: '#4b5563', lineHeight: 1.6, margin: '0 0 16px' }}>
+          Please follow these steps to allow location access, then tap <strong>"Retry"</strong>.<br />
+          (कृपया नीचे दिए गए स्टेप्स से लोकेशन चालू करें और <strong>"Retry"</strong> पर टैप करें)
+        </p>
+
+        <div style={{
+          background: '#fffbeb', border: '1px solid #fde68a',
+          borderRadius: 14, padding: '14px 16px', marginBottom: 20,
+          fontSize: 13, color: '#78350f', textAlign: 'left', lineHeight: 1.8,
+        }}>
+          {isIOS && (
+            <>
+              <strong>📱 iPhone / iPad (Safari):</strong><br />
+              1. Go to <strong>Settings</strong> → <strong>Privacy &amp; Security</strong> → <strong>Location Services</strong> → make sure it is <strong>ON</strong>.<br />
+              <span style={{color: '#92400e', fontSize: 11}}>(Settings → Privacy &amp; Security → Location Services → चालू करें)</span><br />
+              2. Scroll down, find <strong>Safari Websites</strong> → tap it → set to <strong>"While Using"</strong> or <strong>"Ask"</strong>.<br />
+              <span style={{color: '#92400e', fontSize: 11}}>(Safari Websites → "While Using" या "Ask" चुनें)</span><br />
+              3. Also go to <strong>Settings</strong> → <strong>Safari</strong> → <strong>Location</strong> → set to <strong>"Allow"</strong>.<br />
+              <span style={{color: '#92400e', fontSize: 11}}>(Settings → Safari → Location → Allow चुनें)</span><br />
+              4. Come back here and tap <strong>Retry</strong>.
+            </>
+          )}
+          {isAndroid && (
+            <>
+              <strong>🤖 Android (Chrome):</strong><br />
+              1. Tap the 🔒 lock icon on the left of your browser's address bar.<br />
+              <span style={{color: '#92400e', fontSize: 11}}>(Chrome में ऊपर 🔒 लॉक आइकॉन पर टैप करें)</span><br />
+              2. Tap <strong>Permissions</strong> → <strong>Location</strong> → select <strong>"Allow"</strong>.<br />
+              <span style={{color: '#92400e', fontSize: 11}}>(Permissions → Location → Allow चुनें)</span><br />
+              3. Ensure your phone's main <strong>GPS / Location</strong> is turned ON in status bar.<br />
+              <span style={{color: '#92400e', fontSize: 11}}>(अपने फोन का मुख्य GPS / Location भी चालू करें)</span><br />
+              4. Come back and tap <strong>Retry</strong>
+            </>
+          )}
+          {!isIOS && !isAndroid && (
+            <>
+              <strong>💻 Desktop / PC:</strong><br />
+              1. Click the 🔒 lock icon in browser address bar.<br />
+              2. Set <strong>Location</strong> to <strong>Allow</strong>.<br />
+              3. Refresh the page and try again.
+            </>
+          )}
+        </div>
+
+        <button
+          onClick={onRetry}
+          style={{
+            background: 'linear-gradient(135deg, #16a34a, #15803d)',
+            color: 'white', border: 'none', borderRadius: 12,
+            padding: '14px 24px', fontSize: 15, fontWeight: 700,
+            cursor: 'pointer', width: '100%', marginBottom: 10,
+          }}
+        >
+          📍 Retry Location
+        </button>
+        <button
+          onClick={onClose}
+          style={{
+            background: '#f3f4f6', color: '#6b7280', border: 'none',
+            borderRadius: 12, padding: '10px 24px', fontSize: 14,
+            fontWeight: 600, cursor: 'pointer', width: '100%',
+          }}
+        >
+          Cancel
+        </button>
+      </div>
+    </div>
+  );
 };
 
 // ─── Success Modal ─────────────────────────────────────────────────
@@ -143,6 +245,14 @@ const AttendanceCheckInOut = ({ userId, userInfo }) => {
   const [comments, setComments] = useState('');
   const [successModal, setSuccessModal] = useState(null);
   const [errorMsg, setErrorMsg] = useState('');
+  const [locationBlocked, setLocationBlocked] = useState(false); // shown as full-screen modal
+
+  // ─── Face recognition state ────────────────────────────────────
+  const [faceModelsLoaded, setFaceModelsLoaded] = useState(false);
+  const [faceModelsLoading, setFaceModelsLoading] = useState(false);
+  const [faceDescriptor, setFaceDescriptor] = useState(null);
+  const faceDescriptorRef = useRef(null); // ref copy — always in sync, no stale closure
+  const [faceVerifyStatus, setFaceVerifyStatus] = useState(null);
 
   // ─── Calendar state ────────────────────────────────────────────
   const now0 = new Date();
@@ -159,6 +269,8 @@ const AttendanceCheckInOut = ({ userId, userInfo }) => {
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
   const streamRef = useRef(null);
+  // Holds the dynamically-loaded faceapi module so capturePhoto can use it
+  const faceapiRef = useRef(null);
 
   useEffect(() => {
     const t = setInterval(() => setCurrentTime(new Date()), 1000);
@@ -171,6 +283,35 @@ const AttendanceCheckInOut = ({ userId, userInfo }) => {
       loadAttendanceSettings();
     }
   }, [userId]);
+
+  // ─── Load face-api.js models on mount ─────────────────────────
+  useEffect(() => {
+    const loadModels = async () => {
+      setFaceModelsLoading(true);
+      try {
+        // Dynamic import prevents TF.js from initializing at module parse time,
+        // which caused "Cannot read properties of undefined (reading 'fp')" on
+        // browsers where the WebGL/CPU backend wasn't ready yet.
+        const faceapi = await import('@vladmandic/face-api');
+        faceapiRef.current = faceapi;
+
+        const MODEL_URL = '/models';
+        await Promise.all([
+          faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL),
+          faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL),
+          faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL),
+        ]);
+        setFaceModelsLoaded(true);
+        console.log('[Face] Models loaded');
+      } catch (e) {
+        console.warn('[Face] Could not load models:', e.message);
+        setFaceModelsLoaded(false);
+      } finally {
+        setFaceModelsLoading(false);
+      }
+    };
+    loadModels();
+  }, []);
 
   const loadAttendanceSettings = async () => {
     try {
@@ -303,6 +444,9 @@ const AttendanceCheckInOut = ({ userId, userInfo }) => {
     setPhotoData(null);
     setComments('');
     setErrorMsg('');
+    setFaceDescriptor(null);
+    faceDescriptorRef.current = null;
+    setFaceVerifyStatus(null);
     setShowDialog(true);
     setTimeout(() => startCamera(), 300);
   };
@@ -314,9 +458,12 @@ const AttendanceCheckInOut = ({ userId, userInfo }) => {
     setPhotoData(null);
     setLoading(false);
     setErrorMsg('');
+    setFaceDescriptor(null);
+    faceDescriptorRef.current = null;
+    setFaceVerifyStatus(null);
   };
 
-  const capturePhoto = () => {
+  const capturePhoto = async () => {
     if (!videoRef.current || !canvasRef.current) return;
     const video = videoRef.current;
     const canvas = canvasRef.current;
@@ -326,6 +473,44 @@ const AttendanceCheckInOut = ({ userId, userInfo }) => {
     const fullBase64 = canvas.toDataURL('image/jpeg', 0.8);
     const base64Only = fullBase64.split(',')[1];
     setPhotoData(base64Only);
+    setFaceDescriptor(null);
+    faceDescriptorRef.current = null;
+    setFaceVerifyStatus(null);
+
+    // ── Extract face descriptor from the captured canvas frame ──
+    // We use canvas (not live video) so detection runs on the exact
+    // frame the employee submitted.
+    if (faceModelsLoaded && faceapiRef.current) {
+      try {
+        const faceapi = faceapiRef.current;
+        // Create a temporary image element from the canvas snapshot
+        const imgEl = document.createElement('img');
+        imgEl.src = fullBase64;
+        await new Promise(resolve => { imgEl.onload = resolve; });
+
+        const detection = await faceapi
+          .detectSingleFace(imgEl, new faceapi.TinyFaceDetectorOptions({ scoreThreshold: 0.3 }))
+          .withFaceLandmarks()
+          .withFaceDescriptor();
+
+        if (detection) {
+          const desc = {
+            descriptor: Array.from(detection.descriptor),
+            detection_score: detection.detection.score
+          };
+          setFaceDescriptor(desc);
+          faceDescriptorRef.current = desc; // keep ref in sync immediately
+          console.log('[Face] ✅ Descriptor captured, score:', detection.detection.score.toFixed(3));
+        } else {
+          console.warn('[Face] No face detected in captured frame');
+        }
+      } catch (e) {
+        console.warn('[Face] Descriptor extraction failed:', e.message);
+      }
+    } else {
+      console.warn('[Face] Models not ready yet — faceModelsLoaded:', faceModelsLoaded);
+    }
+
     stopCamera();
   };
 
@@ -333,6 +518,7 @@ const AttendanceCheckInOut = ({ userId, userInfo }) => {
     if (!photoData) return;
     setLoading(true);
     setErrorMsg('');
+
     try {
       let location = null;
       const locationRequired = Boolean(attendanceSettings?.require_geolocation || attendanceSettings?.geofence_enabled);
@@ -344,15 +530,18 @@ const AttendanceCheckInOut = ({ userId, userInfo }) => {
           return;
         }
         try {
-          location = await new Promise((res, rej) =>
-            navigator.geolocation.getCurrentPosition(
-              p => res({ latitude: p.coords.latitude, longitude: p.coords.longitude, accuracy: p.coords.accuracy }),
-              e => rej(e), { timeout: 8000 }
-            )
-          );
-        } catch (_) {
-          setErrorMsg('Location is required for attendance. Please allow location and try again.');
+          location = await getLocationCrossDevice();
+        } catch (locErr) {
           setLoading(false);
+          const errMsg = locErr?.message || '';
+          const errCode = locErr?.code || '';
+          if (errMsg === 'LOCATION_BLOCKED' || errCode === 'PERMISSION_DENIED') {
+            // User has explicitly denied location permission — show Settings guide
+            setLocationBlocked(true);
+          } else {
+            // GPS timeout or signal issue — show friendly retry message (NOT settings guide)
+            setErrorMsg(errMsg || '📍 Could not get location. Please ensure GPS is ON and try again.');
+          }
           return;
         }
       }
@@ -360,18 +549,18 @@ const AttendanceCheckInOut = ({ userId, userInfo }) => {
       const endpoint = attendanceType === 'check-in' ? 'check-in' : 'check-out';
       const r = await axios.post(
         `${API_BASE}/attendance/${endpoint}`,
-        { photo_data: photoData, geolocation: location, comments, face_descriptor: null },
+        { photo_data: photoData, geolocation: location, comments, face_descriptor: faceDescriptorRef.current || faceDescriptor || null },
         {
           params: { user_id: userId },
           headers: getAttendanceHeaders(),
-          timeout: 30000 // 30 second timeout to prevent hanging
+          timeout: 30000
         }
       );
 
       if (r.data && r.data.success) {
         closeDialog();
         await loadCurrentStatus();
-        fetchCalendar(calYear, calMonth); // refresh calendar
+        fetchCalendar(calYear, calMonth);
 
         let modalType = 'checked_out';
         if (attendanceType === 'check-in') {
@@ -387,17 +576,14 @@ const AttendanceCheckInOut = ({ userId, userInfo }) => {
           time: new Date().toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit', hour12: true })
         });
       } else if (r.data) {
-        // API returned but success was false
         setErrorMsg(r.data.message || r.data.detail || 'Failed to mark attendance. Please try again.');
       }
     } catch (err) {
       if (err.code === 'ECONNABORTED' || err.message?.includes('timeout')) {
         setErrorMsg('Request timed out. Please check your connection and try again.');
       } else if (err.response) {
-        // Server responded with error status
         setErrorMsg(err.response.data?.detail || err.response.data?.message || 'Failed to mark attendance. Please try again.');
       } else if (err.request) {
-        // No response received
         setErrorMsg('No response from server. Please check your connection and try again.');
       } else {
         setErrorMsg('Failed to mark attendance. Please try again.');
@@ -433,6 +619,57 @@ const AttendanceCheckInOut = ({ userId, userInfo }) => {
           {currentTime.toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata', weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' })}
         </div>
       </div>
+
+      {/* In-App Browser Warning */}
+      {isInAppBrowser() && (
+        <div style={{
+          background: 'linear-gradient(135deg, #f59e0b, #d97706)',
+          color: 'white', borderRadius: 16, padding: '16px 20px',
+          marginBottom: 20, boxShadow: '0 4px 20px rgba(217,119,6,0.25)',
+          animation: 'popIn 0.3s ease-out'
+        }}>
+          <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
+            <span style={{ fontSize: 24 }}>⚠️</span>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontWeight: 800, fontSize: 14, marginBottom: 4 }}>
+                In-App Browser Detected (WhatsApp / Telegram / Instagram)
+              </div>
+              <div style={{ fontSize: 12, opacity: 0.95, lineHeight: 1.5 }}>
+                Location services often fail inside WhatsApp or Instagram browser. Please open this page in Chrome or Safari.
+                <br />
+                (WhatsApp/Instagram के अंदर लोकेशन काम नहीं करती है। कृपया इसे Chrome या Safari में खोलें।)
+              </div>
+              <div style={{ display: 'flex', gap: 10, marginTop: 12 }}>
+                <button
+                  onClick={() => {
+                    navigator.clipboard.writeText(window.location.href);
+                    alert("Link copied! Now open Chrome or Safari browser and paste the link.");
+                  }}
+                  style={{
+                    background: 'white', color: '#d97706', border: 'none',
+                    borderRadius: 8, padding: '6px 12px', fontSize: 11,
+                    fontWeight: 700, cursor: 'pointer'
+                  }}
+                >
+                  📋 Copy Link
+                </button>
+                {/Android/i.test(navigator.userAgent) && (
+                  <a
+                    href={getAndroidChromeIntentUrl()}
+                    style={{
+                      background: '#1e1b4b', color: 'white', textDecoration: 'none',
+                      borderRadius: 8, padding: '6px 12px', fontSize: 11,
+                      fontWeight: 700, display: 'inline-block'
+                    }}
+                  >
+                    🌐 Open Chrome
+                  </a>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Status */}
       {currentStatus && (
@@ -487,9 +724,17 @@ const AttendanceCheckInOut = ({ userId, userInfo }) => {
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: 16 }}>
           <div style={{ background: 'white', borderRadius: 20, width: '100%', maxWidth: 460, overflow: 'hidden', boxShadow: '0 24px 64px rgba(0,0,0,0.3)' }}>
             <div style={{ padding: '16px 20px', borderBottom: '1px solid #f3f4f6', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span style={{ fontWeight: 700, fontSize: 16 }}>
-                {attendanceType === 'check-in' ? '✅ Check In' : '👋 Check Out'} — Take Photo
-              </span>
+              <div>
+                <span style={{ fontWeight: 700, fontSize: 16 }}>
+                  {attendanceType === 'check-in' ? '✅ Check In' : '👋 Check Out'} — Take Photo
+                </span>
+                {faceModelsLoading && (
+                  <div style={{ fontSize: 11, color: '#6b7280', marginTop: 2 }}>⏳ Loading face models…</div>
+                )}
+                {faceModelsLoaded && (
+                  <div style={{ fontSize: 11, color: '#16a34a', marginTop: 2 }}>👤 Face recognition ready</div>
+                )}
+              </div>
               <button onClick={closeDialog} style={{ background: '#f3f4f6', border: 'none', borderRadius: 8, width: 32, height: 32, cursor: 'pointer', fontSize: 16, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>✕</button>
             </div>
 
@@ -497,13 +742,30 @@ const AttendanceCheckInOut = ({ userId, userInfo }) => {
               {/* Camera — shown when no photo yet */}
               {!photoData && (
                 <div style={{ textAlign: 'center' }}>
+                  {/* Face models status bar */}
+                  {faceModelsLoading && (
+                    <div style={{ background: '#fefce8', border: '1px solid #fde68a', borderRadius: 8, padding: '8px 12px', marginBottom: 10, fontSize: 12, color: '#92400e', display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <div style={{ width: 12, height: 12, border: '2px solid #d97706', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 0.8s linear infinite', flexShrink: 0 }} />
+                      Loading face recognition models… Please wait before capturing.
+                    </div>
+                  )}
+                  {!faceModelsLoaded && !faceModelsLoading && attendanceSettings?.enforce_facial_verification && (
+                    <div style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 8, padding: '8px 12px', marginBottom: 10, fontSize: 12, color: '#dc2626' }}>
+                      ⚠️ Face recognition unavailable. Please refresh the page and try again.
+                    </div>
+                  )}
                   <div style={{ borderRadius: 12, overflow: 'hidden', border: '3px solid #e5e7eb', marginBottom: 16 }}>
                     <video ref={videoRef} autoPlay playsInline muted style={{ width: '100%', display: 'block', background: '#111', minHeight: 200 }} />
                   </div>
                   <canvas ref={canvasRef} style={{ display: 'none' }} />
                   {errorMsg && <div style={{ color: '#dc2626', fontSize: 14, marginBottom: 12 }}>❌ {errorMsg}</div>}
-                  <button className="att-btn" style={{ background: 'linear-gradient(135deg, #3b82f6, #2563eb)', color: 'white', margin: '0 auto', maxWidth: 220 }} onClick={capturePhoto}>
-                    📷 Capture Photo
+                  <button
+                    className="att-btn"
+                    style={{ background: faceModelsLoading ? '#9ca3af' : 'linear-gradient(135deg, #3b82f6, #2563eb)', color: 'white', margin: '0 auto', maxWidth: 220 }}
+                    onClick={capturePhoto}
+                    disabled={faceModelsLoading}
+                  >
+                    {faceModelsLoading ? '⏳ Loading models…' : '📷 Capture Photo'}
                   </button>
                 </div>
               )}
@@ -512,12 +774,47 @@ const AttendanceCheckInOut = ({ userId, userInfo }) => {
               {photoData && (
                 <div style={{ textAlign: 'center' }}>
                   <img src={`data:image/jpeg;base64,${photoData}`} alt="captured" style={{ width: '100%', maxWidth: 300, borderRadius: 12, marginBottom: 12, border: '3px solid #bbf7d0' }} />
+
+                  {/* ── Face detection status badge ── */}
+                  {faceModelsLoaded && (
+                    <div style={{
+                      display: 'inline-flex', alignItems: 'center', gap: 6,
+                      background: faceDescriptor ? '#f0fdf4' : '#fef9c3',
+                      border: `1px solid ${faceDescriptor ? '#bbf7d0' : '#fde68a'}`,
+                      borderRadius: 10, padding: '6px 12px', fontSize: 13,
+                      color: faceDescriptor ? '#166534' : '#92400e',
+                      marginBottom: 10, fontWeight: 600
+                    }}>
+                      {faceDescriptor
+                        ? `✅ Face detected (${(faceDescriptor.detection_score * 100).toFixed(0)}% confidence)`
+                        : '⚠️ No face detected — retake for face match'}
+                    </div>
+                  )}
+                  {!faceModelsLoaded && !faceModelsLoading && (
+                    <div style={{ fontSize: 12, color: '#9ca3af', marginBottom: 8 }}>
+                      ℹ️ Face models unavailable — photo only mode
+                    </div>
+                  )}
+
                   <textarea placeholder="Comments (optional)..." value={comments} onChange={e => setComments(e.target.value)} rows={2}
                     style={{ width: '100%', borderRadius: 10, border: '1px solid #e5e7eb', padding: '10px 12px', fontSize: 14, resize: 'none', boxSizing: 'border-box', marginBottom: 12 }} />
-                  {errorMsg && <div style={{ background: '#fef2f2', color: '#dc2626', borderRadius: 10, padding: '10px 14px', fontSize: 14, marginBottom: 12 }}>❌ {errorMsg}</div>}
+                  {errorMsg && (
+                    <div style={{ background: '#fef2f2', borderRadius: 10, padding: '12px 14px', fontSize: 14, marginBottom: 12 }}>
+                      <div style={{ color: '#dc2626', marginBottom: errorMsg.includes('Location access is blocked') ? 10 : 0 }}>❌ {errorMsg}</div>
+                      {errorMsg.includes('Location access is blocked') && (
+                        <button
+                          className="att-btn"
+                          style={{ background: 'linear-gradient(135deg, #f59e0b, #d97706)', color: 'white', marginTop: 8, fontSize: 13 }}
+                          onClick={() => { setErrorMsg(''); markAttendance(); }}
+                        >
+                          📍 Retry Location
+                        </button>
+                      )}
+                    </div>
+                  )}
                   <div style={{ display: 'flex', gap: 10 }}>
                     <button className="att-btn" style={{ background: '#f3f4f6', color: '#374151', flex: 1 }}
-                      onClick={() => { setPhotoData(null); setErrorMsg(''); startCamera(); }}>
+                      onClick={() => { setPhotoData(null); setFaceDescriptor(null); faceDescriptorRef.current = null; setFaceVerifyStatus(null); setErrorMsg(''); startCamera(); }}>
                       🔄 Retake
                     </button>
                     <button className="att-btn" style={{ background: loading ? '#9ca3af' : 'linear-gradient(135deg, #22c55e, #16a34a)', color: 'white', flex: 2 }}

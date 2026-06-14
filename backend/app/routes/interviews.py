@@ -1,5 +1,5 @@
-from fastapi import APIRouter, HTTPException, Query, Form, Depends, UploadFile, File
-from fastapi.responses import StreamingResponse
+from fastapi import APIRouter, HTTPException, Query, Form, Depends, UploadFile, File, Header, Request
+from fastapi.responses import StreamingResponse, JSONResponse
 from typing import Optional, List, Dict, Any
 from pydantic import BaseModel, Field, ValidationError
 from datetime import datetime, timedelta
@@ -16,6 +16,10 @@ import logging
 import os
 import uuid
 import io
+import re
+import secrets
+from collections import defaultdict
+from time import time as _time
 
 # Setup logging
 logger = logging.getLogger(__name__)
@@ -61,12 +65,13 @@ async def get_interview_visibility_filter(
         MongoDB filter dictionary
     """
     try:
-        # Check basic permission first
-        await check_permission(user_id, "interview", "show", users_db, roles_db)
-        
-        # Get user permissions and role
+        # Get user permissions once — this also covers the "has permission to view" check.
         user_permissions = await PermissionManager.get_user_permissions(user_id, users_db, roles_db)
-        
+
+        # If the user has no permissions at all, raise 403 (mirrors check_permission behaviour).
+        if user_permissions is None:
+            raise HTTPException(status_code=403, detail="Permission denied")
+
         # Check if user is a super admin - can see all interviews
         is_super_admin = any(
             (perm.get("page") in ["*", "any"] and 
@@ -403,6 +408,188 @@ async def create_new_interview(
     except Exception as e:
         logger.error(f"Error in create_new_interview: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# ── Google Form Webhook ────────────────────────────────────────────────────────
+# Simple in-memory rate limiter: { ip: [timestamp, ...] }
+_webhook_rate_cache: Dict[str, list] = defaultdict(list)
+_RATE_LIMIT = 60  # requests per minute
+
+def _check_rate_limit(ip: str) -> bool:
+    """Return True if allowed, False if rate-limited."""
+    now = _time()
+    timestamps = _webhook_rate_cache[ip]
+    # Keep only timestamps within the last 60 seconds
+    timestamps[:] = [t for t in timestamps if now - t < 60]
+    if len(timestamps) >= _RATE_LIMIT:
+        return False
+    timestamps.append(now)
+    return True
+
+
+class GoogleFormWebhookPayload(BaseModel):
+    """Payload sent by Google Apps Script to create an interview."""
+    candidate_name: str = Field(..., min_length=1, max_length=100)
+    mobile_number: str = Field(..., min_length=10, max_length=15)
+    alternate_number: Optional[str] = Field(None, max_length=15)
+    gender: str = Field(..., pattern="^(Male|Female|Other)$")
+    qualification: Optional[str] = Field(None, max_length=200)
+    qualification_status: Optional[str] = Field(None, max_length=50)
+    job_opening: str = Field(..., min_length=1, max_length=200)
+    interview_type: str = Field(..., min_length=1, max_length=100)
+    source_portal: Optional[str] = Field(None, max_length=100)
+    city: str = Field(..., min_length=1, max_length=50)
+    state: str = Field(..., min_length=1, max_length=50)
+    experience_type: str = Field(..., pattern="^(fresher|experienced)$")
+    total_experience: Optional[str] = Field(None, max_length=20)
+    old_salary: Optional[float] = Field(None, ge=0)
+    offer_salary: Optional[float] = Field(None, ge=0)
+    monthly_salary_offered: Optional[float] = Field(None, ge=0)
+    marital_status: Optional[str] = Field(None, max_length=50)
+    age: Optional[str] = Field(None, max_length=3)
+    living_arrangement: Optional[str] = Field(None, max_length=100)
+    primary_earning_member: Optional[str] = Field(None, max_length=100)
+    type_of_business: Optional[str] = Field(None, max_length=100)
+    banking_experience: Optional[str] = Field(None, max_length=100)
+    interview_date: str = Field(..., description="Date in YYYY-MM-DD or ISO format")
+    interview_time: Optional[str] = Field(None, max_length=10)
+    status: Optional[str] = Field("new_interview", max_length=50)
+
+
+@router.post("/interviews/webhook/google-form", tags=["Webhook"])
+async def google_form_webhook(
+    request: Request,
+    payload: GoogleFormWebhookPayload,
+    x_api_key: Optional[str] = Header(None, alias="X-API-Key"),
+    interviews_db: InterviewsDB = Depends(get_interviews_db),
+):
+    """
+    Public webhook endpoint for Google Form → CRM interview integration.
+    Does NOT require session auth. Protected by X-API-Key header.
+    """
+    # ── Rate limiting ──────────────────────────────────────────────────────────
+    client_ip = request.client.host if request.client else "unknown"
+    if not _check_rate_limit(client_ip):
+        return JSONResponse(
+            status_code=429,
+            content={"detail": "Rate limit exceeded. Try again later."}
+        )
+
+    # ── API Key validation ─────────────────────────────────────────────────────
+    if not x_api_key:
+        logger.warning(f"Webhook: missing API key from {client_ip}")
+        return JSONResponse(
+            status_code=401,
+            content={"detail": "Invalid or missing API key"}
+        )
+
+    try:
+        from app.database.InterviewSettings import get_global_settings
+        settings_doc = await get_global_settings()
+        stored_key = (settings_doc or {}).get("webhook_api_key", "")
+    except Exception as e:
+        logger.error(f"Webhook: failed to fetch API key from DB: {e}")
+        return JSONResponse(
+            status_code=500,
+            content={"detail": "Failed to create interview record"}
+        )
+
+    if not stored_key or not secrets.compare_digest(x_api_key, stored_key):
+        logger.warning(f"Webhook: invalid API key attempt from {client_ip}")
+        return JSONResponse(
+            status_code=401,
+            content={"detail": "Invalid or missing API key"}
+        )
+
+    # ── Mobile number validation ───────────────────────────────────────────────
+    mobile = payload.mobile_number.strip()
+    if not re.fullmatch(r"[0-9]{10,15}", mobile):
+        return JSONResponse(
+            status_code=422,
+            content={"detail": [{"loc": ["body", "mobile_number"], "msg": "Mobile must be 10-15 digits"}]}
+        )
+
+    # ── Parse interview_date ───────────────────────────────────────────────────
+    try:
+        date_str = payload.interview_date.strip()
+        if "T" in date_str:
+            interview_dt = datetime.fromisoformat(date_str.replace("Z", "+00:00"))
+        else:
+            interview_dt = datetime.strptime(date_str, "%Y-%m-%d").replace(hour=12, minute=0, second=0)
+    except (ValueError, AttributeError) as e:
+        return JSONResponse(
+            status_code=422,
+            content={"detail": [{"loc": ["body", "interview_date"], "msg": f"Invalid date format: {str(e)}"}]}
+        )
+
+    # ── Sanitize string fields ─────────────────────────────────────────────────
+    def _strip(v):
+        return v.strip() if isinstance(v, str) else v
+
+    interview_data = {
+        "candidate_name": _strip(payload.candidate_name),
+        "mobile_number": mobile,
+        "alternate_number": _strip(payload.alternate_number),
+        "gender": _strip(payload.gender),
+        "qualification": _strip(payload.qualification),
+        "qualification_status": _strip(payload.qualification_status),
+        "job_opening": _strip(payload.job_opening),
+        "interview_type": _strip(payload.interview_type),
+        "source_portal": _strip(payload.source_portal),
+        "city": _strip(payload.city),
+        "state": _strip(payload.state),
+        "experience_type": _strip(payload.experience_type),
+        "total_experience": _strip(payload.total_experience),
+        "old_salary": payload.old_salary,
+        "offer_salary": payload.offer_salary,
+        "monthly_salary_offered": payload.monthly_salary_offered,
+        "marital_status": _strip(payload.marital_status),
+        "age": _strip(payload.age),
+        "living_arrangement": _strip(payload.living_arrangement),
+        "primary_earning_member": _strip(payload.primary_earning_member),
+        "type_of_business": _strip(payload.type_of_business),
+        "banking_experience": _strip(payload.banking_experience),
+        "interview_date": interview_dt,
+        "interview_time": _strip(payload.interview_time),
+        "status": _strip(payload.status) or "new_interview",
+        "user_id": "google_form_webhook",
+        "created_by": "google_form_webhook",
+        "source": "google_form",
+    }
+
+    # ── Duplicate check ────────────────────────────────────────────────────────
+    existing = await interviews_db.find_interviews_by_phone(mobile)
+    duplicate_warning = len(existing) > 0
+    existing_ids = [str(e["_id"]) for e in existing[:10]]
+
+    # ── Create interview ───────────────────────────────────────────────────────
+    try:
+        created = await interviews_db.create_interview(interview_data)
+    except Exception as e:
+        logger.error(f"Webhook: DB write failed: {e}")
+        return JSONResponse(
+            status_code=500,
+            content={"detail": "Failed to create interview record"}
+        )
+
+    if not created:
+        return JSONResponse(
+            status_code=500,
+            content={"detail": "Failed to create interview record"}
+        )
+
+    response_body: Dict[str, Any] = {
+        "success": True,
+        "id": str(created["_id"]),
+        "message": "Interview created successfully",
+    }
+    if duplicate_warning:
+        response_body["duplicate_warning"] = True
+        response_body["existing_ids"] = existing_ids
+
+    logger.info(f"Webhook: interview {created['_id']} created from Google Form (ip={client_ip})")
+    return JSONResponse(status_code=201, content=response_body)
+
 
 @router.get("/interviews", response_model=List[InterviewResponse])
 async def get_all_interviews(

@@ -11,8 +11,14 @@ import PublicLeadForm from "./components/PublicLeadForm"
 import PublicLoginForm from "./components/PublicLoginForm"
 import PublicFormShortLink from "./components/PublicFormShortLink"
 import PublicAppViewer from "./components/PublicAppViewer"
+import QRCheckInPage from "./pages/QRCheckInPage"
 import OptimizedAppRoutes from './routes/OptimizedAppRoutes'
-import AttendanceCheckInOut from './components/attendance/AttendanceCheckInOut'
+import React, { lazy, Suspense } from 'react'
+// Lazy-load AttendanceCheckInOut so that @vladmandic/face-api (and its
+// bundled TensorFlow.js) are NOT initialized until the attendance shell
+// is actually rendered. Eager loading caused "Cannot read properties of
+// undefined (reading 'fp')" on TF.js backend init for all users.
+const AttendanceCheckInOut = lazy(() => import('./components/attendance/AttendanceCheckInOut'))
 import PopNotificationModal from './components/PopNotificationModal'
 import PopWarningModal from './components/PopWarningModal'
 import PopTaskTicketModal from './components/PopTaskTicketModal'
@@ -126,7 +132,9 @@ const AttendanceOnlyShell = ({ user, onLogout }) => {
         >Logout</button>
       </div>
       <div style={{ padding: 16 }}>
-        <AttendanceCheckInOut userId={userId} userInfo={user} />
+        <Suspense fallback={<div style={{ color: 'white', textAlign: 'center', padding: 40 }}>Loading…</div>}>
+          <AttendanceCheckInOut userId={userId} userInfo={user} />
+        </Suspense>
       </div>
     </div>
   );
@@ -1270,6 +1278,9 @@ function App() {
           
           {/* Public route for app viewer - no authentication required */}
           <Route path="/public/app/:shareToken" element={<PublicAppViewer />} />
+
+          {/* QR Code Attendance Check-In — public, no auth guard (handles own auth) */}
+          <Route path="/checkin" element={<QRCheckInPage />} />
 
           {/* Speed Dial — standalone full page (no Sidebar/Navbar), auth-gated inside component */}
           <Route

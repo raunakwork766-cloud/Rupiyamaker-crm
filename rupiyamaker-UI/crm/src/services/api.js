@@ -1357,6 +1357,32 @@ export const interviewSettingsAPI = {
         const userId = getUserId() || 'test';
         return apiCall(`/interview-settings/hr-head?user_id=${userId}`);
     },
+
+    // ── Google Form Integration ──
+    getGoogleFormUrl: async () => {
+        const userId = getUserId() || 'test';
+        return apiCall(`/interview-settings/google-form-url?user_id=${userId}`);
+    },
+
+    saveGoogleFormUrl: async (url) => {
+        const userId = getUserId() || 'test';
+        return apiCall(`/interview-settings/google-form-url?user_id=${userId}`, {
+            method: 'PUT',
+            body: JSON.stringify({ google_form_url: url }),
+        });
+    },
+
+    generateWebhookApiKey: async () => {
+        const userId = getUserId() || 'test';
+        return apiCall(`/interview-settings/webhook-api-key?user_id=${userId}`, {
+            method: 'POST',
+        });
+    },
+
+    getWebhookApiKeyStatus: async () => {
+        const userId = getUserId() || 'test';
+        return apiCall(`/interview-settings/webhook-api-key?user_id=${userId}`);
+    },
 };
 
 // Helper function to get current user ID

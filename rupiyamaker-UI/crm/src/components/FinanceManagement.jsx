@@ -996,14 +996,25 @@ export default function FinanceManagement() {
   const handleCreateDeduct = async (form) => {
     setSaving(true);
     const approvers = financeApprovers.deduction || [];
+    // Derive month/year from the actual date entered by user (not from filter month)
+    // This ensures deduction is applied to the correct salary month
+    let dedMonth = selectedMonth;  // 0-indexed fallback
+    let dedYear  = selectedYear;
+    if (form.date) {
+      const d = new Date(form.date);
+      if (!isNaN(d.getTime())) {
+        dedMonth = d.getMonth();   // 0-indexed (Jan=0)
+        dedYear  = d.getFullYear();
+      }
+    }
     const rec = {
       _id: mkid(), employee_id: form.employee_id,
       employee_name: form.employee_name,
       deduction_type: form.deduction_type,
       amount: Number(form.amount), date: form.date,
-      // Store month/year explicitly so salary page can filter without date parsing
-      month: selectedMonth,  // 0-indexed (Jan=0)
-      year:  selectedYear,
+      // Store month/year derived from actual date so salary page filters correctly
+      month: dedMonth,  // 0-indexed (Jan=0)
+      year:  dedYear,
       description: form.description,
       status: 'approved', created_at: new Date().toISOString(),
       approver_ids: approvers.map(a => a.id),

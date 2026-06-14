@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, Depends, status, Query
+from fastapi import APIRouter, HTTPException, Depends, status, Query, Request
 from typing import Dict, List, Any, Optional
 from datetime import datetime, date, timedelta, timezone, timezone
 import calendar
@@ -25,7 +25,8 @@ from app.database.Holidays import get_holidays_db
 from app.routes.settings import get_settings_db
 from app.utils.performance_cache import (
     cached_response, cache_user_permissions, get_cached_user_permissions,
-    performance_monitor, invalidate_cache_pattern, cache_response, get_cached_response
+    performance_monitor, invalidate_cache_pattern, cache_response, get_cached_response,
+    cache  # direct cache access for sync invalidation in edit/mark handlers
 )
 from app.schemas.attendance_schemas import (
     AttendanceCreate, AttendanceUpdate, BulkAttendanceCreate,
@@ -149,6 +150,9 @@ async def get_leaves_db():
 
 def save_attendance_photo(photo_data: str, user_id: str, date_str: str, photo_type: str = "checkin") -> str:
     """Save base64 encoded photo to file system with type (checkin/checkout)"""
+    # QR check-in may not send a photo — return empty string (allowed)
+    if not photo_data or not photo_data.strip():
+        return ""
     try:
         # Create directory structure
         media_dir = "media/attendance"
@@ -343,7 +347,7 @@ async def get_attendance_permissions(
         )
 
 @router.get("/calendar")
-@cached_response(ttl=30)  # ⚡ Cache for 30 seconds - attendance data changes frequently
+@cached_response(ttl=5)  # ⚡ Very short TTL — cache invalidated synchronously on edit/mark
 async def get_attendance_calendar(
     user_id: str = Query(..., description="User _id making the request"),
     year: Optional[int] = Query(None, description="Year (default: current year)"),
@@ -803,7 +807,17 @@ async def get_attendance_calendar(
                     "is_holiday": is_holiday,
                     "status": status,
                     "status_text": status_text,
-                    "is_manually_edited": attendance_record.get("edited_by") is not None or attendance_record.get("marked_by") is not None if attendance_record else False,
+                    "is_manually_edited": (
+                        # True only when a HUMAN admin explicitly changed this record.
+                        # System auto-marks (marked_by="system", auto_absconding=True) are NOT manual edits —
+                        # they should still be subject to Sunday sandwich rule re-evaluation.
+                        bool(attendance_record.get("edited_by"))
+                        or (attendance_record.get("marked_by") not in [None, "", "system", "auto"])
+                    ) and not (
+                        bool(attendance_record.get("auto_absconding"))
+                        or bool(attendance_record.get("auto_absent_no_checkin"))
+                        or bool(attendance_record.get("auto_absent_late"))
+                    ) if attendance_record else False,
                     "check_in_time": attendance_record.get("check_in_time") if attendance_record else None,
                     "check_out_time": attendance_record.get("check_out_time") if attendance_record else None,
                     "total_working_hours": attendance_record.get("total_working_hours") if attendance_record else None,
@@ -825,8 +839,11 @@ async def get_attendance_calendar(
 
                 def _day_absent(check_date):
                     """True if check_date is a working day that is absent/not-present."""
-                    if check_date.weekday() in weekend_days:
-                        return False  # Weekend itself — not a working absence
+                    # NOTE: Saturday (weekday=5) is a chargeable attendance day even if it's in
+                    # weekend_days — it is NOT a rest day like Sunday (weekday=6).
+                    # Only skip Sunday itself for the sandwich rule absence check.
+                    if check_date.weekday() == 6:
+                        return False  # Sunday itself — not a working absence
                     # Pre-joining days are NOT absent — they simply don't exist for this employee
                     if _joining_day_cutoff > 0 and check_date.year == year and check_date.month == month and check_date.day < _joining_day_cutoff:
                         return False
@@ -1349,8 +1366,8 @@ async def mark_attendance(
         
         # Invalidate calendar cache so the UI gets fresh data on next fetch
         try:
-            invalidate_cache_pattern("get_calendar_attendance")
-            invalidate_cache_pattern("get_attendance_calendar")
+            await invalidate_cache_pattern("get_calendar_attendance")
+            await invalidate_cache_pattern("get_attendance_calendar")
         except Exception:
             pass
 
@@ -2183,13 +2200,62 @@ async def get_attendance_details_for_date(
                 "status_text": get_status_text(attendance_record.get("status"))
             }
         
-        # No record found
+        # No DB record found — return a synthetic "not marked / absent / weekend" response
+        # instead of 404, so the frontend modal can still display something useful.
         else:
-            print(f"DEBUG: No attendance or leave record found for employee_id={employee_id} (user_id={actual_user_id}) on {date}")
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="No attendance or leave record found for this date"
-            )
+            from app.database.Settings import SettingsDB as _SettingsDB
+            _sdb = _SettingsDB()
+            _att_settings = await _sdb.get_attendance_settings()
+            _weekend_days = _att_settings.get("weekend_days", [6])
+            _is_weekend = check_date.weekday() in _weekend_days
+            _is_holiday = False  # no holiday check here (holiday would have a record)
+            _today = get_ist_now().date()
+            if _is_weekend:
+                _status = None
+                _status_text = "Weekend"
+            elif check_date > _today:
+                _status = None
+                _status_text = "Not Marked"
+            else:
+                _status = -1.0
+                _status_text = "Absent"
+
+            return {
+                "success": True,
+                "type": "attendance",
+                "employee": {
+                    "employee_id": employee.get("employee_id", employee_id),
+                    "user_id": actual_user_id,
+                    "employee_name": employee_name,
+                    "email": employee.get("email", ""),
+                    "department_name": "Unknown Department",
+                    "role_name": employee.get("role_name", "Unknown Role"),
+                    "profile_picture": employee.get("profile_picture", "")
+                },
+                "attendance": {
+                    "attendance_id": None,
+                    "employee_id": employee.get("employee_id", employee_id),
+                    "employee_name": employee_name,
+                    "date": date,
+                    "status": _status,
+                    "status_text": _status_text,
+                    "check_in_time": None,
+                    "check_out_time": None,
+                    "total_working_hours": None,
+                    "comments": "",
+                    "is_holiday": _is_holiday,
+                    "is_weekend": _is_weekend,
+                    "photo_path": "",
+                    "check_in_photo_path": "",
+                    "check_out_photo_path": "",
+                    "check_in_geolocation": {},
+                    "check_out_geolocation": {}
+                },
+                "attendance_details": None,
+                "date": date,
+                "status": _status,
+                "status_text": _status_text
+            }
         
     except HTTPException:
         raise
@@ -2245,6 +2311,7 @@ async def check_in_attendance(
     users_db: UsersDB = Depends(get_users_db)
 ):
     """Check-in with photo and geolocation (required)"""
+    print(f"[CHECK-IN] user={user_id} face_descriptor={check_in_data.face_descriptor is not None} descriptor_len={len((check_in_data.face_descriptor or {}).get('descriptor', [])) if check_in_data.face_descriptor else 0}", flush=True)
     try:
         # Get user info
         user = await users_db.get_user(user_id)
@@ -2284,66 +2351,97 @@ async def check_in_attendance(
                     detail="You are outside the allowed check-in area"
                 )
         
-        # ==== FACIAL VERIFICATION (if face descriptor provided) ====
+        # ==== FACIAL VERIFICATION ====
+        enforce_face = settings.get("enforce_facial_verification", False)
         face_verification_result = None
+        logger.info(f"[FACE DEBUG] enforce_face={enforce_face}, face_descriptor={check_in_data.face_descriptor is not None}, descriptor_len={len((check_in_data.face_descriptor or {}).get('descriptor', [])) if check_in_data.face_descriptor else 0}")
+
+        if enforce_face and not check_in_data.face_descriptor:
+            # Face is required but frontend did not send a descriptor at all
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Face verification is required for attendance. Please allow camera access and try again."
+            )
+
         if check_in_data.face_descriptor:
             try:
-                # Get registered face data
+                import numpy as np
+
                 registered_face = await attendance_db.get_employee_face_data(user_id)
-                
-                if registered_face:
-                    # Verify face
-                    import numpy as np
-                    
+
+                if not registered_face:
+                    if enforce_face:
+                        raise HTTPException(
+                            status_code=status.HTTP_403_FORBIDDEN,
+                            detail="No face registered for your account. Please ask admin to register your face first."
+                        )
+                else:
                     current_descriptor = check_in_data.face_descriptor.get("descriptor", [])
-                    
-                    if len(current_descriptor) == 128:
-                        # Compare with all registered samples
-                        registered_descriptors = registered_face.get("face_descriptors", [])
-                        
-                        if registered_descriptors:
-                            min_distance = float('inf')
-                            for sample in registered_descriptors:
-                                sample_desc = sample.get("descriptor", [])
-                                if len(sample_desc) == 128:
-                                    # Calculate Euclidean distance
-                                    distance = np.linalg.norm(np.array(current_descriptor) - np.array(sample_desc))
-                                    min_distance = min(min_distance, distance)
-                            
-                            threshold = 0.6
-                            verified = min_distance < threshold
-                            confidence = max(0, 1 - (min_distance / threshold))
-                            
-                            face_verification_result = {
-                                "verified": verified,
-                                "confidence": round(confidence, 3),
-                                "distance": round(min_distance, 3)
-                            }
-                            
-                            # Log verification attempt
-                            log_data = {
-                                "employee_id": user_id,
-                                "verification_result": "success" if verified else "failure",
-                                "confidence_score": confidence,
-                                "threshold_used": threshold
-                            }
-                            await attendance_db.log_face_verification_attempt(log_data)
-                            
-                            # If facial verification is enforced in settings, reject on failure
-                            if settings.get("enforce_facial_verification", False) and not verified:
+
+                    if len(current_descriptor) != 128:
+                        if enforce_face:
+                            raise HTTPException(
+                                status_code=status.HTTP_400_BAD_REQUEST,
+                                detail="Invalid face descriptor received. Please retake the photo."
+                            )
+                    else:
+                        # Filter only valid (128-dim) stored samples
+                        valid_samples = [
+                            s for s in registered_face.get("face_descriptors", [])
+                            if len(s.get("descriptor", [])) == 128
+                        ]
+
+                        if not valid_samples:
+                            if enforce_face:
                                 raise HTTPException(
                                     status_code=status.HTTP_403_FORBIDDEN,
-                                    detail=f"Facial verification failed. Confidence: {round(confidence*100, 1)}%"
+                                    detail="Stored face data is invalid or empty. Please re-register your face."
                                 )
+                        else:
+                            # Euclidean distance — consistent threshold 0.6
+                            FACE_THRESHOLD = 0.6
+                            min_distance = float('inf')
+                            for sample in valid_samples:
+                                d = np.linalg.norm(
+                                    np.array(current_descriptor) - np.array(sample["descriptor"])
+                                )
+                                if d < min_distance:
+                                    min_distance = d
+
+                            verified = min_distance < FACE_THRESHOLD
+                            confidence = round(max(0.0, 1.0 - (min_distance / FACE_THRESHOLD)), 3)
+
+                            face_verification_result = {
+                                "verified": verified,
+                                "confidence": confidence,
+                                "distance": round(min_distance, 3)
+                            }
+
+                            # Log attempt
+                            try:
+                                await attendance_db.log_face_verification_attempt({
+                                    "employee_id": user_id,
+                                    "verification_result": "success" if verified else "failure",
+                                    "confidence_score": confidence,
+                                    "threshold_used": FACE_THRESHOLD
+                                })
+                            except Exception:
+                                pass  # logging failure must never block attendance
+
+                            if enforce_face and not verified:
+                                raise HTTPException(
+                                    status_code=status.HTTP_403_FORBIDDEN,
+                                    detail=f"Face does not match. Confidence: {round(confidence * 100, 1)}%. Please look directly at the camera and try again."
+                                )
+
             except HTTPException:
                 raise
             except Exception as e:
-                logger.warning(f"Face verification error (non-blocking): {e}")
-                # Don't block check-in if face verification fails (unless enforced)
-                if settings.get("enforce_facial_verification", False):
+                logger.warning(f"Face verification error: {e}")
+                if enforce_face:
                     raise HTTPException(
                         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                        detail="Face verification system error"
+                        detail="Face verification system error. Please try again."
                     )
         
         # Check if already checked in today
@@ -2355,12 +2453,12 @@ async def check_in_attendance(
                 detail="Already checked in today"
             )
         
-        # Save check-in photo
+        # Save check-in photo (empty string is OK for QR check-in without photo)
         check_in_photo_path = save_attendance_photo(
-            check_in_data.photo_data, user_id, today, "checkin"
+            check_in_data.photo_data or "", user_id, today, "checkin"
         )
         
-        if not check_in_photo_path:
+        if check_in_photo_path is None:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="Failed to save check-in photo"
@@ -2781,8 +2879,8 @@ async def edit_attendance(
 
         # Invalidate calendar cache so the UI gets fresh data on next fetch
         try:
-            invalidate_cache_pattern("get_calendar_attendance")
-            invalidate_cache_pattern("get_attendance_calendar")
+            await invalidate_cache_pattern("get_calendar_attendance")
+            await invalidate_cache_pattern("get_attendance_calendar")
         except Exception:
             pass
 
@@ -3465,7 +3563,8 @@ async def get_attendance_settings(
             "geofence_enabled": settings.get("geofence_enabled", False),
             "geofence_radius": settings.get("geofence_radius", 100.0),
             "office_latitude": settings.get("office_latitude"),
-            "office_longitude": settings.get("office_longitude")
+            "office_longitude": settings.get("office_longitude"),
+            "enforce_facial_verification": settings.get("enforce_facial_verification", False),
         }
         
         # Status explanations
@@ -3714,7 +3813,8 @@ async def add_holiday(
 
         # Invalidate calendar cache so the UI gets fresh data immediately
         try:
-            invalidate_cache_pattern("get_calendar_attendance")
+            await invalidate_cache_pattern("get_calendar_attendance")
+            await invalidate_cache_pattern("get_attendance_calendar")
         except Exception:
             pass
 
@@ -3922,7 +4022,8 @@ async def delete_holiday(
 
         # Invalidate calendar cache so the UI gets fresh data immediately
         try:
-            invalidate_cache_pattern("get_calendar_attendance")
+            await invalidate_cache_pattern("get_calendar_attendance")
+            await invalidate_cache_pattern("get_attendance_calendar")
         except Exception:
             pass
 
@@ -4200,15 +4301,23 @@ async def register_employee_face(
     Requires at least 3 face samples for accuracy
     """
     try:
-        # Verify admin permissions
+        # ── Step 1: extract employee_id from body FIRST ──────────
+        employee_id = registration_data.get("employee_id")
+        if not employee_id:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Employee ID is required"
+            )
+
+        # ── Step 2: verify admin user exists ─────────────────────
         admin_user = await users_db.get_user(admin_user_id)
         if not admin_user:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Admin user not found"
             )
-        
-        # Check admin permissions (allow admin, super admin, HR, manager, team leader)
+
+        # ── Step 3: check permissions ─────────────────────────────
         SUPER_ADMIN_ROLE_ID = "685292be8d7cdc3a71c4829b"
         admin_roles = ["admin", "super admin", "hr", "human resources", "manager", "team leader", "tl"]
         is_self_registration = admin_user_id == employee_id
@@ -4225,36 +4334,38 @@ async def register_employee_face(
                 detail="Only admins, HR, or managers can register employee faces"
             )
         
-        # Validate employee
-        employee_id = registration_data.get("employee_id")
-        if not employee_id:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Employee ID is required"
-            )
-        
+        # ── Step 4: validate employee exists ─────────────────────
         employee = await users_db.get_user(employee_id)
         if not employee:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Employee not found"
             )
-        
-        # Validate face descriptors
+
+        # ── Step 5: validate face descriptors ────────────────────
         face_descriptors = registration_data.get("face_descriptors", [])
-        if len(face_descriptors) < 3:
+        if len(face_descriptors) < 1:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="At least 3 face samples required for registration"
+                detail="At least 1 face sample is required"
             )
-        
-        # Validate each descriptor has 128 dimensions
-        for i, desc in enumerate(face_descriptors):
-            if len(desc.get("descriptor", [])) != 128:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail=f"Face descriptor {i+1} must have exactly 128 dimensions"
-                )
+
+        # Filter to only descriptors with exactly 128 dimensions
+        valid_descriptors = [
+            desc for desc in face_descriptors
+            if len(desc.get("descriptor", [])) == 128
+        ]
+
+        if len(valid_descriptors) < 3:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"At least 3 samples with valid face detection required. "
+                       f"Got {len(valid_descriptors)} valid out of {len(face_descriptors)} total. "
+                       f"Please ensure your face is clearly visible when capturing."
+            )
+
+        # Use only valid descriptors
+        face_descriptors = valid_descriptors
         
         # Save reference photo if provided
         photo_data = registration_data.get("photo_data")
@@ -4331,9 +4442,16 @@ async def get_employee_face_data(
                 detail="User not found"
             )
         
-        # Check if user is requesting their own data or is admin
+        # Check if user is requesting their own data or has management role
         is_own_data = user_id == employee_id
-        is_admin = user.get("is_super_admin") or str(user.get("role_id", "")) == "685292be8d7cdc3a71c4829b" or user.get("role_name", "").lower() in ["admin", "super admin"]
+        mgmt_roles = ["admin", "super admin", "hr", "human resources", "manager", "team leader", "tl"]
+        SUPER_ADMIN_ROLE_ID = "685292be8d7cdc3a71c4829b"
+        is_admin = (
+            user.get("is_super_admin") or
+            str(user.get("role_id", "")) == SUPER_ADMIN_ROLE_ID or
+            user.get("role_name", "").lower() in mgmt_roles or
+            user.get("role", {}).get("name", "").lower() in mgmt_roles
+        )
         
         if not is_own_data and not is_admin:
             raise HTTPException(
@@ -4441,8 +4559,8 @@ async def verify_employee_face(
                 distance = np.linalg.norm(np.array(current_descriptor) - np.array(sample_desc))
                 min_distance = min(min_distance, distance)
         
-        # Threshold for real-world webcam conditions (0.6 is LFW benchmark; 0.8 is better for webcam)
-        threshold = 0.8
+        # Threshold for real-world webcam conditions — consistent with check-in route
+        threshold = 0.6
         verified = min_distance < threshold
         # Confidence: 100% at distance 0, 0% at distance == threshold
         confidence = max(0.0, round(1 - (min_distance / threshold), 3))
@@ -4634,3 +4752,154 @@ async def trigger_daily_absent_job(
             raise HTTPException(status_code=400, detail="Invalid date format, use YYYY-MM-DD")
     await run_daily_absent_job(target_date=target)
     return {"success": True, "message": f"Daily absent job triggered for {for_date or 'yesterday'}."}
+
+
+# ============================================================================
+# QR CODE TOKEN ENDPOINTS — PERMANENT TOKEN (stored in DB, never changes)
+# ============================================================================
+
+async def _get_or_create_permanent_qr_token() -> str:
+    """
+    Return the permanent QR token from attendance_settings.
+    Creates one on first call and stores it permanently in DB.
+    This token NEVER expires or changes unless admin explicitly resets it.
+    """
+    settings_db = SettingsDB()
+    settings = await settings_db.get_attendance_settings()
+    existing_token = settings.get("qr_token")
+    if existing_token:
+        return existing_token
+    # First time — generate and persist
+    new_token = uuid.uuid4().hex + uuid.uuid4().hex  # 64 hex chars
+    await settings_db.update_attendance_settings({"qr_token": new_token})
+    return new_token
+
+
+def _build_checkin_url(token: str, request: "Request | None" = None) -> str:
+    # 1. Explicit env var (highest priority)
+    base_url = os.environ.get("FRONTEND_URL", "").rstrip("/")
+    if base_url:
+        return f"{base_url}/checkin?token={token}"
+    # 2. Derive from incoming request host
+    if request:
+        scheme = request.headers.get("x-forwarded-proto", request.url.scheme)
+        host = request.headers.get("x-forwarded-host", request.headers.get("host", ""))
+        if host:
+            return f"{scheme}://{host}/checkin?token={token}"
+    # 3. Fallback — relative path (still works if scanned from same domain)
+    return f"/checkin?token={token}"
+
+
+@router.get("/qr-token")
+async def get_attendance_qr_token(
+    request: Request,
+    user_id: str = Query(..., description="Admin user ID requesting QR token"),
+):
+    """
+    Return the permanent QR token for attendance check-in.
+    Token is created once and stored in DB — survives server restarts.
+    Only admins can view it.
+    """
+    try:
+        db_instances = get_database_instances()
+        users_db = db_instances["users"]
+        roles_db = db_instances["roles"]
+
+        perms = await PermissionManager.get_user_permissions(user_id, users_db, roles_db)
+        is_admin = (
+            PermissionManager.has_permission(perms, "attendance", "all") or
+            PermissionManager.has_permission(perms, "attendance", "view_all") or
+            PermissionManager.has_permission(perms, "settings", "show") or
+            PermissionManager.has_permission(perms, "settings", "edit")
+        )
+        if not is_admin:
+            raise HTTPException(status_code=403, detail="Admin permission required to view QR token")
+
+        token = await _get_or_create_permanent_qr_token()
+        return {
+            "success": True,
+            "token": token,
+            "attendance_url": _build_checkin_url(token, request),
+            "permanent": True,
+            "message": "This QR code is permanent and never expires.",
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting QR token: {e}")
+        raise HTTPException(status_code=500, detail=f"Error getting QR token: {str(e)}")
+
+
+@router.post("/qr-token/refresh")
+async def refresh_attendance_qr_token(
+    request: Request,
+    user_id: str = Query(..., description="Admin user ID"),
+):
+    """
+    Generate a brand-new permanent token (replaces the old one).
+    Use only if the QR code was compromised.
+    """
+    try:
+        db_instances = get_database_instances()
+        users_db = db_instances["users"]
+        roles_db = db_instances["roles"]
+
+        perms = await PermissionManager.get_user_permissions(user_id, users_db, roles_db)
+        is_admin = (
+            PermissionManager.has_permission(perms, "attendance", "all") or
+            PermissionManager.has_permission(perms, "attendance", "view_all") or
+            PermissionManager.has_permission(perms, "settings", "show") or
+            PermissionManager.has_permission(perms, "settings", "edit")
+        )
+        if not is_admin:
+            raise HTTPException(status_code=403, detail="Admin permission required")
+
+        new_token = uuid.uuid4().hex + uuid.uuid4().hex
+        settings_db = SettingsDB()
+        await settings_db.update_attendance_settings({"qr_token": new_token})
+
+        return {
+            "success": True,
+            "token": new_token,
+            "attendance_url": _build_checkin_url(new_token, request),
+            "permanent": True,
+            "message": "New permanent QR token generated. Update the printed QR code.",
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error refreshing QR token: {e}")
+        raise HTTPException(status_code=500, detail=f"Error refreshing QR token: {str(e)}")
+
+
+@router.get("/qr-token/verify")
+async def verify_attendance_qr_token(
+    token: str = Query(..., description="QR token to verify"),
+):
+    """
+    Verify if a QR token is valid.
+    No auth required — called by employee's phone after scanning.
+    Also returns geofence settings so frontend can check location.
+    """
+    try:
+        settings_db = SettingsDB()
+        settings = await settings_db.get_attendance_settings()
+        stored_token = settings.get("qr_token")
+
+        if not stored_token or token != stored_token:
+            return {"valid": False, "reason": "Invalid QR code. Please scan the correct attendance QR code."}
+
+        return {
+            "valid": True,
+            "message": "QR code is valid",
+            "geofence_enabled": settings.get("geofence_enabled", False),
+            "office_latitude": settings.get("office_latitude"),
+            "office_longitude": settings.get("office_longitude"),
+            "geofence_radius": settings.get("geofence_radius", 10.0),
+        }
+
+    except Exception as e:
+        logger.error(f"Error verifying QR token: {e}")
+        raise HTTPException(status_code=500, detail=f"Error verifying token: {str(e)}")

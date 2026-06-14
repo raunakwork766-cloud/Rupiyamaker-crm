@@ -133,6 +133,17 @@ const InterviewSettings = ({
   const [editingSourceValue, setEditingSourceValue] = useState('');
   const [sourcePortalOptions, setSourcePortalOptions] = useState([]);
 
+  // Google Form Integration State
+  const [gfUrl, setGfUrl] = useState('');
+  const [gfUrlInput, setGfUrlInput] = useState('');
+  const [gfUrlSaving, setGfUrlSaving] = useState(false);
+  const [gfUrlMsg, setGfUrlMsg] = useState(null);
+  const [gfApiKeyMasked, setGfApiKeyMasked] = useState(null);
+  const [gfNewApiKey, setGfNewApiKey] = useState(null);
+  const [gfKeyGenerating, setGfKeyGenerating] = useState(false);
+  const [gfKeyMsg, setGfKeyMsg] = useState(null);
+  const [gfScriptCopied, setGfScriptCopied] = useState(false);
+
   // Active Tab State
   const [activeTab, setActiveTab] = useState('company');
 
@@ -148,6 +159,23 @@ const InterviewSettings = ({
   useEffect(() => {
     loadOptionsFromBackend();
   }, []);
+
+  // Load Google Form settings when tab is opened
+  useEffect(() => {
+    if (activeTab === 'googleForm') {
+      interviewSettingsAPI.getGoogleFormUrl().then(res => {
+        if (res?.success) {
+          setGfUrl(res.google_form_url || '');
+          setGfUrlInput(res.google_form_url || '');
+        }
+      }).catch(() => {});
+      interviewSettingsAPI.getWebhookApiKeyStatus().then(res => {
+        if (res?.success) {
+          setGfApiKeyMasked(res.has_key ? res.masked_key : null);
+        }
+      }).catch(() => {});
+    }
+  }, [activeTab]);
 
   const loadOptionsFromBackend = async () => {
     try {
@@ -929,6 +957,7 @@ const InterviewSettings = ({
           { id: 'interviewType',  label: '🎯 Interview Types' },
           { id: 'status',         label: '📊 Status Options' },
           { id: 'sourcePortal',   label: '🌐 Source/Portal' },
+          { id: 'googleForm',     label: '📝 Google Form' },
         ].map(t => (
           <button
             key={t.id}
@@ -1672,6 +1701,70 @@ const InterviewSettings = ({
             </>
           ) : null}
 
+          {/* ── GOOGLE FORM TAB ── */}
+          {activeTab === 'googleForm' ? (
+            <GoogleFormIntegrationTab
+              gfUrl={gfUrl}
+              gfUrlInput={gfUrlInput}
+              setGfUrlInput={setGfUrlInput}
+              gfUrlSaving={gfUrlSaving}
+              gfUrlMsg={gfUrlMsg}
+              gfApiKeyMasked={gfApiKeyMasked}
+              gfNewApiKey={gfNewApiKey}
+              gfKeyGenerating={gfKeyGenerating}
+              gfKeyMsg={gfKeyMsg}
+              gfScriptCopied={gfScriptCopied}
+              onSaveUrl={async () => {
+                setGfUrlSaving(true); setGfUrlMsg(null);
+                try {
+                  const res = await interviewSettingsAPI.saveGoogleFormUrl(gfUrlInput.trim());
+                  if (res?.success) {
+                    setGfUrl(gfUrlInput.trim());
+                    setGfUrlMsg({ type: 'success', text: 'Google Form URL saved successfully!' });
+                  } else {
+                    setGfUrlMsg({ type: 'error', text: res?.detail || 'Failed to save URL' });
+                  }
+                } catch (e) {
+                  setGfUrlMsg({ type: 'error', text: 'Failed to save URL' });
+                } finally {
+                  setGfUrlSaving(false);
+                  setTimeout(() => setGfUrlMsg(null), 4000);
+                }
+              }}
+              onRemoveUrl={async () => {
+                setGfUrlSaving(true); setGfUrlMsg(null);
+                try {
+                  await interviewSettingsAPI.saveGoogleFormUrl('');
+                  setGfUrl(''); setGfUrlInput('');
+                  setGfUrlMsg({ type: 'success', text: 'Google Form URL removed.' });
+                } catch (e) {
+                  setGfUrlMsg({ type: 'error', text: 'Failed to remove URL' });
+                } finally {
+                  setGfUrlSaving(false);
+                  setTimeout(() => setGfUrlMsg(null), 4000);
+                }
+              }}
+              onGenerateKey={async () => {
+                setGfKeyGenerating(true); setGfKeyMsg(null); setGfNewApiKey(null);
+                try {
+                  const res = await interviewSettingsAPI.generateWebhookApiKey();
+                  if (res?.success) {
+                    setGfNewApiKey(res.api_key);
+                    setGfApiKeyMasked(null);
+                    setGfKeyMsg({ type: 'warn', text: res.warning || 'New API key generated. Copy it now!' });
+                  } else {
+                    setGfKeyMsg({ type: 'error', text: 'Failed to generate key' });
+                  }
+                } catch (e) {
+                  setGfKeyMsg({ type: 'error', text: 'Failed to generate key' });
+                } finally {
+                  setGfKeyGenerating(false);
+                }
+              }}
+              onCopyScript={() => setGfScriptCopied(true)}
+            />
+          ) : null}
+
           {/* Action Buttons */}
           <div className="flex justify-between items-center mt-8 pt-6 border-t border-gray-600">
             <div className="text-sm text-gray-400">
@@ -1693,3 +1786,290 @@ const InterviewSettings = ({
 };
 
 export default InterviewSettings;
+
+
+// ── Google Form Integration Tab Component ─────────────────────────────────────
+function GoogleFormIntegrationTab({
+  gfUrl, gfUrlInput, setGfUrlInput,
+  gfUrlSaving, gfUrlMsg,
+  gfApiKeyMasked, gfNewApiKey,
+  gfKeyGenerating, gfKeyMsg,
+  gfScriptCopied, onCopyScript,
+  onSaveUrl, onRemoveUrl, onGenerateKey,
+}) {
+  const [keyCopied, setKeyCopied] = React.useState(false);
+  const [urlCopied, setUrlCopied] = React.useState(false);
+
+  // Derive backend webhook URL from current window origin
+  const webhookUrl = `${window.location.origin}/api/interviews/webhook/google-form`;
+
+  // Apps Script template
+  const appsScriptTemplate = `// ╔══════════════════════════════════════════════════════════╗
+// ║  Fixar Finance by Rupiya Maker — Google Form → CRM      ║
+// ║  Paste this in Google Forms → Extensions → Apps Script  ║
+// ║  Then: Triggers → Add Trigger → onFormSubmit            ║
+// ╚══════════════════════════════════════════════════════════╝
+
+// STEP 1: Replace with your CRM webhook URL
+var WEBHOOK_URL = "${webhookUrl}";
+
+// STEP 2: Paste the API key generated in CRM Settings → Google Form tab
+var API_KEY = "PASTE_YOUR_API_KEY_HERE";
+
+// STEP 3: Branding — set your Google Form title to:
+//   "Fixar Finance by Rupiya Maker"
+// STEP 4: (Optional) Add logo — change LOGO_URL below and add as
+//   form description or header image in Google Forms UI
+var LOGO_URL = "REPLACE_WITH_FIXAR_FINANCE_LOGO_URL";
+
+// ── Field label → JSON key mapping ──────────────────────────
+// Set each Google Form question title EXACTLY as shown below:
+//   "Candidate Name"  → candidate_name
+//   "Mobile Number"   → mobile_number
+//   "Alternate Number"→ alternate_number
+//   "Gender"          → gender  (Male / Female / Other)
+//   "Qualification"   → qualification
+//   "Qual. Status"    → qualification_status  (Pursuing / Completed)
+//   "Job Opening"     → job_opening
+//   "Interview Type"  → interview_type
+//   "Source Portal"   → source_portal
+//   "City"            → city
+//   "State"           → state
+//   "Experience Type" → experience_type  (fresher / experienced)
+//   "Total Experience"→ total_experience
+//   "Last Salary"     → old_salary
+//   "Expected Salary" → offer_salary
+//   "Offered Salary"  → monthly_salary_offered
+//   "Marital Status"  → marital_status
+//   "Age"             → age
+//   "Living With"     → living_arrangement
+//   "Primary Earner"  → primary_earning_member
+//   "Business Type"   → type_of_business
+//   "Banking Exp."    → banking_experience
+//   "Interview Date"  → interview_date  (YYYY-MM-DD)
+//   "Interview Time"  → interview_time
+
+function onFormSubmit(e) {
+  var responses = e.response.getItemResponses();
+
+  // Build a map from question title → answer
+  var answers = {};
+  responses.forEach(function(r) {
+    answers[r.getItem().getTitle()] = r.getResponse();
+  });
+
+  // Map to CRM field names
+  var payload = {
+    candidate_name:        answers["Candidate Name"]    || "",
+    mobile_number:         answers["Mobile Number"]     || "",
+    alternate_number:      answers["Alternate Number"]  || "",
+    gender:                answers["Gender"]            || "Male",
+    qualification:         answers["Qualification"]     || "",
+    qualification_status:  answers["Qual. Status"]      || "",
+    job_opening:           answers["Job Opening"]       || "",
+    interview_type:        answers["Interview Type"]    || "",
+    source_portal:         answers["Source Portal"]     || "",
+    city:                  answers["City"]              || "",
+    state:                 answers["State"]             || "",
+    experience_type:       answers["Experience Type"]   || "fresher",
+    total_experience:      answers["Total Experience"]  || "",
+    old_salary:            parseFloat(answers["Last Salary"])    || null,
+    offer_salary:          parseFloat(answers["Expected Salary"])|| null,
+    monthly_salary_offered:parseFloat(answers["Offered Salary"]) || null,
+    marital_status:        answers["Marital Status"]    || "",
+    age:                   answers["Age"]               || "",
+    living_arrangement:    answers["Living With"]       || "",
+    primary_earning_member:answers["Primary Earner"]    || "",
+    type_of_business:      answers["Business Type"]     || "",
+    banking_experience:    answers["Banking Exp."]      || "",
+    interview_date:        answers["Interview Date"]    || "",
+    interview_time:        answers["Interview Time"]    || "",
+    status:                "new_interview"
+  };
+
+  // Validate required fields before sending
+  var required = ["candidate_name","mobile_number","gender","job_opening",
+                  "interview_type","city","state","experience_type","interview_date"];
+  var missing = required.filter(function(f) { return !payload[f]; });
+  if (missing.length > 0) {
+    Logger.log("Missing required fields: " + missing.join(", "));
+    return;
+  }
+
+  // POST to CRM webhook
+  var options = {
+    method: "post",
+    contentType: "application/json",
+    headers: { "X-API-Key": API_KEY },
+    payload: JSON.stringify(payload),
+    muteHttpExceptions: true
+  };
+
+  try {
+    var response = UrlFetchApp.fetch(WEBHOOK_URL, options);
+    var code = response.getResponseCode();
+    if (code < 200 || code > 299) {
+      Logger.log("Webhook error - Status: " + code + " Body: " + response.getContentText());
+    } else {
+      Logger.log("Interview created successfully. Response: " + response.getContentText());
+    }
+  } catch (err) {
+    Logger.log("Webhook fetch error: " + err.toString());
+  }
+}`;
+
+  return (
+    <div className="space-y-6">
+      <h2 className="text-xl font-semibold text-white">📝 Google Form Integration</h2>
+      <p className="text-sm text-gray-400">
+        Connect a Google Form to automatically send candidate data to your CRM when the form is submitted.
+      </p>
+
+      {/* Google Form URL */}
+      <div className="bg-[#0d1117] border border-gray-700 rounded-xl p-5 space-y-4">
+        <h3 className="text-sm font-bold text-gray-200 uppercase tracking-wider">🔗 Google Form URL</h3>
+        <p className="text-xs text-gray-500">Paste your Google Form link here. It will appear as a "Share Form" button in the Interview section.</p>
+        <div className="flex gap-2">
+          <input
+            type="url"
+            value={gfUrlInput}
+            onChange={e => setGfUrlInput(e.target.value)}
+            placeholder="https://docs.google.com/forms/d/..."
+            className="flex-1 bg-[#1a2232] border border-gray-600 rounded-lg px-3 py-2.5 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-blue-500"
+          />
+          <button
+            onClick={onSaveUrl}
+            disabled={gfUrlSaving}
+            className="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-700 text-white text-sm font-medium rounded-lg transition-colors"
+          >
+            {gfUrlSaving ? 'Saving...' : 'Save'}
+          </button>
+          {gfUrl && (
+            <button
+              onClick={() => {
+                navigator.clipboard.writeText(gfUrl).then(() => { setUrlCopied(true); setTimeout(() => setUrlCopied(false), 3000); });
+              }}
+              className="px-3 py-2 bg-gray-700 hover:bg-gray-600 text-gray-300 text-sm rounded-lg transition-colors"
+              title="Copy URL"
+            >
+              {urlCopied ? '✓' : '⎘'}
+            </button>
+          )}
+          {gfUrl && (
+            <button onClick={onRemoveUrl} className="px-3 py-2 bg-red-900/40 hover:bg-red-900/70 text-red-400 text-sm rounded-lg transition-colors" title="Remove URL">✕</button>
+          )}
+        </div>
+        {gfUrlMsg && (
+          <div className={`flex items-center gap-2 text-xs px-3 py-2 rounded-lg ${gfUrlMsg.type === 'success' ? 'bg-green-900/30 text-green-400' : 'bg-red-900/30 text-red-400'}`}>
+            {gfUrlMsg.type === 'success' ? '✓' : '✗'} {gfUrlMsg.text}
+          </div>
+        )}
+        {gfUrl && (
+          <div className="flex items-center gap-2 text-xs text-green-400 bg-green-900/20 border border-green-800/40 px-3 py-2 rounded-lg">
+            ✓ Form linked — "Share Form" button is visible in the Interview section
+          </div>
+        )}
+      </div>
+
+      {/* Webhook API Key */}
+      <div className="bg-[#0d1117] border border-gray-700 rounded-xl p-5 space-y-4">
+        <h3 className="text-sm font-bold text-gray-200 uppercase tracking-wider">🔑 Webhook API Key</h3>
+        <p className="text-xs text-gray-500">
+          Generate a secret key to authenticate the Google Form webhook. Paste this key in your Apps Script (see template below).
+        </p>
+        <div className="flex items-center gap-3">
+          {gfApiKeyMasked && !gfNewApiKey && (
+            <div className="flex-1 bg-[#1a2232] border border-gray-600 rounded-lg px-3 py-2.5 text-sm text-gray-400 font-mono">{gfApiKeyMasked}</div>
+          )}
+          {gfNewApiKey && (
+            <div className="flex-1 bg-yellow-900/20 border border-yellow-700/50 rounded-lg px-3 py-2.5 text-sm text-yellow-300 font-mono break-all">{gfNewApiKey}</div>
+          )}
+          {!gfApiKeyMasked && !gfNewApiKey && (
+            <div className="flex-1 bg-[#1a2232] border border-dashed border-gray-600 rounded-lg px-3 py-2.5 text-sm text-gray-500">No key generated yet</div>
+          )}
+          {gfNewApiKey && (
+            <button
+              onClick={() => { navigator.clipboard.writeText(gfNewApiKey).then(() => { setKeyCopied(true); setTimeout(() => setKeyCopied(false), 3000); }); }}
+              className={`px-3 py-2 text-sm rounded-lg transition-colors font-medium ${keyCopied ? 'bg-green-700 text-white' : 'bg-gray-700 hover:bg-gray-600 text-gray-300'}`}
+            >
+              {keyCopied ? '✓ Copied' : '⎘ Copy'}
+            </button>
+          )}
+          <button
+            onClick={onGenerateKey}
+            disabled={gfKeyGenerating}
+            className="px-4 py-2 bg-orange-600 hover:bg-orange-700 disabled:bg-gray-700 text-white text-sm font-medium rounded-lg transition-colors whitespace-nowrap"
+          >
+            {gfKeyGenerating ? 'Generating...' : (gfApiKeyMasked || gfNewApiKey) ? '🔄 Regenerate' : '⚡ Generate Key'}
+          </button>
+        </div>
+        {gfKeyMsg && (
+          <div className={`flex items-start gap-2 text-xs px-3 py-2 rounded-lg ${gfKeyMsg.type === 'warn' ? 'bg-yellow-900/30 text-yellow-300' : 'bg-red-900/30 text-red-400'}`}>
+            ⚠ {gfKeyMsg.text}
+          </div>
+        )}
+        {gfNewApiKey && (
+          <div className="bg-yellow-900/20 border border-yellow-700/40 rounded-lg p-3 text-xs text-yellow-300">
+            <strong>⚠ Copy this key now</strong> — it will be shown masked on future visits. Paste it in your Apps Script as <code className="bg-yellow-900/40 px-1 rounded">API_KEY</code>.
+          </div>
+        )}
+      </div>
+
+      {/* Webhook URL for reference */}
+      <div className="bg-[#0d1117] border border-gray-700 rounded-xl p-5 space-y-3">
+        <h3 className="text-sm font-bold text-gray-200 uppercase tracking-wider">🌐 Webhook Endpoint</h3>
+        <p className="text-xs text-gray-500">This is the URL your Apps Script will POST to. It's pre-filled in the template below.</p>
+        <div className="flex items-center gap-2">
+          <code className="flex-1 bg-[#1a2232] border border-gray-600 rounded-lg px-3 py-2.5 text-xs text-blue-300 font-mono break-all">
+            POST {webhookUrl}
+          </code>
+        </div>
+      </div>
+
+      {/* Apps Script Template */}
+      <div className="bg-[#0d1117] border border-gray-700 rounded-xl p-5 space-y-3">
+        <div className="flex items-center justify-between">
+          <h3 className="text-sm font-bold text-gray-200 uppercase tracking-wider">📋 Google Apps Script Template</h3>
+          <button
+            onClick={() => {
+              navigator.clipboard.writeText(appsScriptTemplate).then(() => {
+                onCopyScript && onCopyScript();
+                setTimeout(() => {}, 3000);
+              });
+            }}
+            className={`px-3 py-1.5 text-xs rounded-lg font-medium transition-colors ${gfScriptCopied ? 'bg-green-700 text-white' : 'bg-blue-700 hover:bg-blue-600 text-white'}`}
+          >
+            {gfScriptCopied ? '✓ Copied' : '⎘ Copy Script'}
+          </button>
+        </div>
+        <p className="text-xs text-gray-500">
+          In your Google Form: <strong className="text-gray-300">Extensions → Apps Script</strong> → paste this code → save → set trigger to <strong className="text-gray-300">onFormSubmit</strong>.
+        </p>
+        <pre className="bg-[#0a0f1a] border border-gray-700/50 rounded-lg p-4 text-xs text-green-300 font-mono overflow-x-auto max-h-72 overflow-y-auto whitespace-pre leading-relaxed">
+          {appsScriptTemplate}
+        </pre>
+      </div>
+
+      {/* Setup Instructions */}
+      <div className="bg-blue-900/20 border border-blue-700/30 rounded-xl p-5 space-y-3">
+        <h3 className="text-sm font-bold text-blue-300 uppercase tracking-wider">📌 Setup Steps</h3>
+        <ol className="text-sm text-blue-200 space-y-2 list-none">
+          {[
+            'Create a Google Form with the fields listed in the Apps Script comments.',
+            'Set the form title to "Fixar Finance by Rupiya Maker".',
+            'Go to Extensions → Apps Script, paste the template, and save.',
+            'Generate an API Key above and paste it in the script as API_KEY.',
+            'In Apps Script: Triggers → Add Trigger → onFormSubmit.',
+            'Paste your Google Form URL above and click Save.',
+            'Done! Every form submission will auto-appear in Today or Upcoming tab.',
+          ].map((step, i) => (
+            <li key={i} className="flex gap-2">
+              <span className="w-5 h-5 rounded-full bg-blue-700 text-white text-xs flex items-center justify-center flex-shrink-0 mt-0.5 font-bold">{i + 1}</span>
+              <span>{step}</span>
+            </li>
+          ))}
+        </ol>
+      </div>
+    </div>
+  );
+}

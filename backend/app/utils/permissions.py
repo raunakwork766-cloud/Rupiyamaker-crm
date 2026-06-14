@@ -365,41 +365,32 @@ class PermissionManager:
         Returns:
             List of user IDs that are in subordinate roles
         """
-        print(f"DEBUG: Getting subordinate users for user_id {user_id}")
         user = await users_db.get_user(user_id)
         if not user or not user.get("role_id"):
-            print(f"DEBUG: User {user_id} not found or has no role_id")
             return []
-            
+
         user_role_id = user["role_id"]
-        print(f"DEBUG: User {user_id} has role_id {user_role_id}")
-        
-        # Get all subordinate roles
+
+        # Get all subordinate roles (BFS, one query per level — no recursion)
         subordinate_roles = await roles_db.get_all_subordinate_roles(user_role_id)
-        
+
         if not subordinate_roles:
-            print(f"DEBUG: No subordinate roles found for role_id {user_role_id}")
             return []
-            
-        print(f"DEBUG: Found {len(subordinate_roles)} subordinate roles for user {user_id}")
+
         subordinate_role_ids = [str(role["_id"]) for role in subordinate_roles]
-        print(f"DEBUG: Subordinate role IDs: {subordinate_role_ids}")
-        
+
         # Get all users with these subordinate roles
         subordinate_users = await users_db.get_users_by_roles(subordinate_role_ids)
         user_ids = [str(u["_id"]) for u in subordinate_users] if subordinate_users else []
-        print(f"DEBUG: Found {len(user_ids)} subordinate users: {user_ids}")
 
         # ── Peer Visibility: include same-role colleagues if the role has peer_visibility=True ──
         user_role = await roles_db.get_role(user_role_id)
         if user_role and user_role.get("peer_visibility", False):
-            print(f"DEBUG: peer_visibility is ON for role {user_role_id}, including same-role users")
             peer_users = await users_db.get_users_by_roles([user_role_id])
             for peer in (peer_users or []):
                 peer_id = str(peer["_id"])
                 if peer_id != user_id and peer_id not in user_ids:
                     user_ids.append(peer_id)
-            print(f"DEBUG: After peer visibility, total subordinate users: {len(user_ids)}")
 
         return user_ids
 

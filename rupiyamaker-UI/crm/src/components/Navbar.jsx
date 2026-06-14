@@ -6,6 +6,7 @@ import NotificationBell from "./NotificationBell";
 import { getProfilePictureUrlWithCacheBusting } from "../utils/mediaUtils";
 import hrmsService from "../services/hrmsService";
 import { dispatchNavbarPageSearch } from "../utils/navbarPageSearch";
+import { getLocationCrossDevice, isInAppBrowser, getAndroidChromeIntentUrl } from "../utils/locationUtils";
 
 // v2 - attendance without face recognition
 const API_BASE_URL = '/api'; // Always use proxy
@@ -325,6 +326,24 @@ const CameraModal = ({
           </button>
         </div>
         <div className="space-y-3 sm:space-y-4">
+          {/* In-App Browser Warning */}
+          {isInAppBrowser() && (
+            <div className="bg-amber-50 border border-amber-300 rounded-lg p-3 sm:p-4 text-amber-900 text-xs sm:text-sm">
+              <p className="font-semibold">⚠️ In-App Browser Detected (WhatsApp/Instagram)</p>
+              <p className="mt-1">
+                Location permissions often fail inside social media browsers. For best results, copy the link and open it in <strong>Chrome</strong> or <strong>Safari</strong>.
+              </p>
+              {/Android/i.test(navigator.userAgent) && (
+                <a
+                  href={getAndroidChromeIntentUrl()}
+                  className="inline-block mt-2 px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded text-xs font-semibold no-underline"
+                >
+                  🌐 Open in Chrome
+                </a>
+              )}
+            </div>
+          )}
+
           {/* Camera not available message */}
           {!cameraAvailable && !capturedPhoto && (
             <div className="bg-yellow-50 border border-yellow-300 rounded-lg p-3 sm:p-4">
@@ -1264,19 +1283,24 @@ export default function TopNavbar({
       const endpoint = pendingAction === 'checkin'
         ? `${API_BASE_URL}/attendance/check-in?user_id=${userId}`
         : `${API_BASE_URL}/attendance/check-out?user_id=${userId}`;
-      let geolocation = { latitude: 0.0, longitude: 0.0, accuracy: 0.0, address: "Unknown" };
+      let geolocation = null;
       try {
-        const position = await new Promise((resolve, reject) => {
-          navigator.geolocation.getCurrentPosition(resolve, reject, { timeout: 5000 });
-        });
+        const coords = await getLocationCrossDevice();
         geolocation = {
-          latitude: position.coords.latitude,
-          longitude: position.coords.longitude,
-          accuracy: position.coords.accuracy,
+          latitude: coords.latitude,
+          longitude: coords.longitude,
+          accuracy: coords.accuracy,
           address: "Geolocation acquired",
         };
-      } catch (error) {
-        console.warn('Geolocation unavailable:', error);
+      } catch (locationError) {
+        console.warn('Geolocation failed:', locationError);
+        if (locationError.message === 'LOCATION_BLOCKED' || locationError.code === 'PERMISSION_DENIED') {
+          alert("📍 Location access is blocked!\n\nPlease enable location access in your browser/device settings to mark attendance.\n\n(लोकेशन की अनुमति ब्लॉक है! कृपया ब्राउज़र/फोन सेटिंग्स में जाकर लोकेशन चालू करें।)");
+        } else {
+          alert(`📍 Location Error: ${locationError.message}\n\nPlease try again.`);
+        }
+        setAttendanceLoading(false);
+        return;
       }
       const requestBody = {
         photo_data: base64Data,

@@ -36,6 +36,8 @@ EXCLUDED_PREFIXES = [
     # Also allow the frontend route path just in case the proxy maps
     # requests differently (defensive): /public/app/<token>
     "/public/app",
+    # Google Form webhook — public, API-key protected
+    "/interviews/webhook/google-form",
 ]
 
 # Paths that should be excluded ONLY when matched exactly.

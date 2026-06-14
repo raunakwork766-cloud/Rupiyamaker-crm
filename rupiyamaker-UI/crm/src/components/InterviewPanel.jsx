@@ -400,6 +400,10 @@ const InterviewPanel = () => {
   // HR Head fetched from employees (for WhatsApp messages)
   const [hrHead, setHrHead] = useState({ name: '', phone: '', designation: 'HR Head' });
 
+  // Google Form URL state
+  const [googleFormUrl, setGoogleFormUrl] = useState('');
+  const [formLinkCopied, setFormLinkCopied] = useState(false);
+
   // Decline reason options
   const [declineReasons, setDeclineReasons] = useState([
     'Not Qualified', 'No Show', 'Salary Mismatch', 'Location Issue',
@@ -527,6 +531,14 @@ const InterviewPanel = () => {
         setHrHead(res.data);
       }
     }).catch(() => {});
+    // Load Google Form URL
+    interviewSettingsAPI.getGoogleFormUrl().then(res => {
+      if (res?.success && res?.google_form_url) {
+        setGoogleFormUrl(res.google_form_url);
+      }
+    }).catch(err => {
+      console.error('Could not load Google Form URL:', err);
+    });
   }, []);
 
   // Tab persistence is now handled by useTabWithHistory hook
@@ -617,6 +629,8 @@ const InterviewPanel = () => {
         });
         if (d.cooldown_days !== undefined) setCooldownDays(d.cooldown_days);
         if (d.decline_reasons?.length) setDeclineReasons(d.decline_reasons);
+        // Sync Google Form URL from global settings if present there
+        if (d.google_form_url) setGoogleFormUrl(d.google_form_url);
       }
     } catch (e) {
       console.warn('Could not load global settings from DB:', e);
@@ -2322,6 +2336,36 @@ const InterviewPanel = () => {
               <Settings size={14} /> <span className="hidden sm:inline">Settings</span>
             </button>
           )}
+          {googleFormUrl && (
+            <>
+              <button
+                onClick={() => window.open(googleFormUrl, '_blank')}
+                className="task-btn-secondary"
+                title="Open Google Form"
+              >
+                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+                <span>Share Form</span>
+              </button>
+              <button
+                onClick={() => {
+                  navigator.clipboard.writeText(googleFormUrl).then(() => {
+                    setFormLinkCopied(true);
+                    setTimeout(() => setFormLinkCopied(false), 3000);
+                  }).catch(() => {});
+                }}
+                className="task-btn-secondary"
+                title={formLinkCopied ? 'Copied!' : 'Copy form link'}
+                style={formLinkCopied ? { borderColor: '#34d399', color: '#34d399' } : {}}
+              >
+                {formLinkCopied ? (
+                  <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                ) : (
+                  <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                )}
+                {formLinkCopied ? 'Copied!' : ''}
+              </button>
+            </>
+          )}
           {permissions.can_add && (
             <button onClick={handleCreateInterview} className="task-btn-create">
               <Plus size={14} /> Create Interview
@@ -2765,6 +2809,7 @@ const InterviewPanel = () => {
         onCooldownChange={setCooldownDays}
         onRolesChange={loadDropdownOptions}
         onSourcesChange={loadDropdownOptions}
+        onGoogleFormUrlChange={(url) => setGoogleFormUrl(url)}
         onClose={() => setIsSettingsOpen(false)}
       />
     )}
@@ -2774,11 +2819,21 @@ const InterviewPanel = () => {
 };
 
 // ── SETTINGS MODAL (white, matches interview module.html) ──
-const SettingsModal = ({ onCompanySettingsChange, onDeclineReasonsChange, onCooldownChange, onRolesChange, onSourcesChange, onClose }) => {
+const SettingsModal = ({ onCompanySettingsChange, onDeclineReasonsChange, onCooldownChange, onRolesChange, onSourcesChange, onClose, onGoogleFormUrlChange }) => {
   const [tab, setTab] = React.useState('company');
   const [loading, setLoading] = React.useState(true);
   const [saving, setSaving] = React.useState(false);
   const [cs, setCs] = React.useState({ companyName: '', jobDescription: '', officeTiming: '', workingDays: '', interviewTiming: '', officeAddress: '', officeNearby: '', hrName: '', hrMobile: '', hrDesignation: '', interviewFormBaseUrl: '' });
+  // Google Form state
+  const [gfUrlInput, setGfUrlInput] = React.useState('');
+  const [gfUrlSaved, setGfUrlSaved] = React.useState('');
+  const [gfUrlSaving, setGfUrlSaving] = React.useState(false);
+  const [gfUrlMsg, setGfUrlMsg] = React.useState(null);
+  const [gfApiKeyMasked, setGfApiKeyMasked] = React.useState(null);
+  const [gfNewApiKey, setGfNewApiKey] = React.useState(null);
+  const [gfKeyGenerating, setGfKeyGenerating] = React.useState(false);
+  const [gfKeyCopied, setGfKeyCopied] = React.useState(false);
+  const [gfScriptCopied, setGfScriptCopied] = React.useState(false);
   const [reasons, setReasons] = React.useState([]);
   const [newReason, setNewReason] = React.useState('');
   const [days, setDays] = React.useState(7);
@@ -2838,6 +2893,22 @@ const SettingsModal = ({ onCompanySettingsChange, onDeclineReasonsChange, onCool
         if (res?.success && res?.data) setSourcesList(res.data);
       } catch (e) { console.error('Failed to load sources:', e); }
       finally { setSourcesLoading(false); }
+    })();
+    // Load Google Form URL + API key status
+    (async () => {
+      try {
+        const [urlRes, keyRes] = await Promise.all([
+          interviewSettingsAPI.getGoogleFormUrl(),
+          interviewSettingsAPI.getWebhookApiKeyStatus(),
+        ]);
+        if (urlRes?.success && urlRes?.google_form_url) {
+          setGfUrlSaved(urlRes.google_form_url);
+          setGfUrlInput(urlRes.google_form_url);
+        }
+        if (keyRes?.success && keyRes?.has_key) {
+          setGfApiKeyMasked(keyRes.masked_key);
+        }
+      } catch (e) { console.error('Failed to load Google Form config:', e); }
     })();
   }, []);
 
@@ -2899,6 +2970,7 @@ const SettingsModal = ({ onCompanySettingsChange, onDeclineReasonsChange, onCool
     { id: 'reasons', label: '📋 Reasons' },
     { id: 'roles', label: '💼 Roles' },
     { id: 'sources', label: '📡 Sources' },
+    { id: 'googleform', label: '📝 Google Form' },
   ];
 
   const handleSave = async () => {
@@ -3122,6 +3194,259 @@ const SettingsModal = ({ onCompanySettingsChange, onDeclineReasonsChange, onCool
               </div>
             </div>
           )}
+
+          {/* ── GOOGLE FORM TAB ── */}
+          {!loading && tab === 'googleform' && (() => {
+            const webhookUrl = `${window.location.origin}/api/interviews/webhook/google-form`;
+            const appsScriptTemplate = `// ══════════════════════════════════════════════════════
+// Fixar Finance by Rupiya Maker — Google Form → CRM
+// In Google Form: Extensions → Apps Script → paste this
+// Then: Triggers → Add Trigger → onFormSubmit
+// ══════════════════════════════════════════════════════
+
+var WEBHOOK_URL = "${webhookUrl}";
+var API_KEY = "PASTE_YOUR_API_KEY_HERE"; // from CRM Settings → Google Form tab
+
+// Google Form question titles → CRM field mapping:
+// "Candidate Name"   → candidate_name  (required)
+// "Mobile Number"    → mobile_number   (required, 10 digits)
+// "Alternate Number" → alternate_number
+// "Gender"           → gender  (Male / Female / Other)
+// "Qualification"    → qualification
+// "Qual. Status"     → qualification_status (Pursuing/Completed)
+// "Job Opening"      → job_opening    (required)
+// "Interview Type"   → interview_type (required)
+// "Source Portal"    → source_portal
+// "City"             → city   (required)
+// "State"            → state  (required)
+// "Experience Type"  → experience_type (fresher/experienced) (required)
+// "Total Experience" → total_experience
+// "Last Salary"      → old_salary
+// "Expected Salary"  → offer_salary
+// "Offered Salary"   → monthly_salary_offered
+// "Marital Status"   → marital_status
+// "Age"              → age
+// "Living With"      → living_arrangement
+// "Primary Earner"   → primary_earning_member
+// "Business Type"    → type_of_business
+// "Banking Exp."     → banking_experience
+// "Interview Date"   → interview_date  (YYYY-MM-DD) (required)
+// "Interview Time"   → interview_time
+
+function onFormSubmit(e) {
+  var answers = {};
+  e.response.getItemResponses().forEach(function(r) {
+    answers[r.getItem().getTitle()] = r.getResponse();
+  });
+
+  var payload = {
+    candidate_name:         answers["Candidate Name"]    || "",
+    mobile_number:          answers["Mobile Number"]     || "",
+    alternate_number:       answers["Alternate Number"]  || "",
+    gender:                 answers["Gender"]            || "Male",
+    qualification:          answers["Qualification"]     || "",
+    qualification_status:   answers["Qual. Status"]      || "",
+    job_opening:            answers["Job Opening"]       || "",
+    interview_type:         answers["Interview Type"]    || "",
+    source_portal:          answers["Source Portal"]     || "",
+    city:                   answers["City"]              || "",
+    state:                  answers["State"]             || "",
+    experience_type:        answers["Experience Type"]   || "fresher",
+    total_experience:       answers["Total Experience"]  || "",
+    old_salary:             parseFloat(answers["Last Salary"])    || null,
+    offer_salary:           parseFloat(answers["Expected Salary"])|| null,
+    monthly_salary_offered: parseFloat(answers["Offered Salary"]) || null,
+    marital_status:         answers["Marital Status"]    || "",
+    age:                    answers["Age"]               || "",
+    living_arrangement:     answers["Living With"]       || "",
+    primary_earning_member: answers["Primary Earner"]    || "",
+    type_of_business:       answers["Business Type"]     || "",
+    banking_experience:     answers["Banking Exp."]      || "",
+    interview_date:         answers["Interview Date"]    || "",
+    interview_time:         answers["Interview Time"]    || "",
+    status: "new_interview"
+  };
+
+  var required = ["candidate_name","mobile_number","gender","job_opening",
+                  "interview_type","city","state","experience_type","interview_date"];
+  var missing = required.filter(function(f) { return !payload[f]; });
+  if (missing.length > 0) {
+    Logger.log("Missing required fields: " + missing.join(", "));
+    return;
+  }
+
+  var response = UrlFetchApp.fetch(WEBHOOK_URL, {
+    method: "post",
+    contentType: "application/json",
+    headers: { "X-API-Key": API_KEY },
+    payload: JSON.stringify(payload),
+    muteHttpExceptions: true
+  });
+
+  var code = response.getResponseCode();
+  if (code < 200 || code > 299) {
+    Logger.log("Webhook error " + code + ": " + response.getContentText());
+  } else {
+    Logger.log("Interview created: " + response.getContentText());
+  }
+}`;
+
+            return (
+              <div className="space-y-5">
+                <h3 className="text-sm font-bold text-blue-500 uppercase tracking-wider">Google Form Integration</h3>
+                <p className="text-xs text-slate-500">Connect a Google Form so candidates can self-register — data auto-appears in Today/Upcoming tabs.</p>
+
+                {/* Google Form URL */}
+                <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 space-y-3">
+                  <label className="block text-xs font-bold text-slate-600 uppercase tracking-wide">Google Form URL</label>
+                  <p className="text-xs text-slate-500">Once saved, a "Share Form" button appears in the Interview Panel top bar.</p>
+                  <div className="flex gap-2">
+                    <input
+                      type="url"
+                      value={gfUrlInput}
+                      onChange={e => setGfUrlInput(e.target.value)}
+                      placeholder="https://docs.google.com/forms/d/..."
+                      className="flex-1 bg-white border border-slate-300 rounded-lg px-3 py-2.5 text-sm text-slate-900 outline-none focus:border-blue-500 font-mono"
+                    />
+                    <button
+                      disabled={gfUrlSaving}
+                      onClick={async () => {
+                        setGfUrlSaving(true); setGfUrlMsg(null);
+                        const url = gfUrlInput.trim();
+                        if (url && !url.startsWith('https://docs.google.com/forms/')) {
+                          setGfUrlMsg({ ok: false, text: 'Must be a valid Google Form URL starting with https://docs.google.com/forms/' });
+                          setGfUrlSaving(false); return;
+                        }
+                        try {
+                          const res = await interviewSettingsAPI.saveGoogleFormUrl(url);
+                          if (res?.success) {
+                            setGfUrlSaved(url);
+                            if (onGoogleFormUrlChange) onGoogleFormUrlChange(url);
+                            setGfUrlMsg({ ok: true, text: url ? 'Google Form URL saved!' : 'URL removed.' });
+                          } else {
+                            setGfUrlMsg({ ok: false, text: res?.detail || 'Save failed' });
+                          }
+                        } catch (e) {
+                          setGfUrlMsg({ ok: false, text: 'Save failed' });
+                        } finally {
+                          setGfUrlSaving(false);
+                          setTimeout(() => setGfUrlMsg(null), 4000);
+                        }
+                      }}
+                      className="px-4 py-2 bg-blue-600 hover:bg-blue-500 disabled:bg-slate-300 text-white text-sm font-bold rounded-lg transition-colors"
+                    >
+                      {gfUrlSaving ? 'Saving…' : 'Save'}
+                    </button>
+                    {gfUrlSaved && (
+                      <button
+                        onClick={async () => {
+                          setGfUrlSaving(true);
+                          try { await interviewSettingsAPI.saveGoogleFormUrl(''); setGfUrlSaved(''); setGfUrlInput(''); if (onGoogleFormUrlChange) onGoogleFormUrlChange(''); } catch (e) {}
+                          finally { setGfUrlSaving(false); }
+                        }}
+                        className="px-3 py-2 bg-red-50 hover:bg-red-100 text-red-500 text-sm rounded-lg border border-red-200 transition-colors"
+                        title="Remove URL"
+                      >
+                        <X size={14} />
+                      </button>
+                    )}
+                  </div>
+                  {gfUrlMsg && (
+                    <p className={`text-xs font-medium ${gfUrlMsg.ok ? 'text-green-600' : 'text-red-500'}`}>
+                      {gfUrlMsg.ok ? '✓' : '✗'} {gfUrlMsg.text}
+                    </p>
+                  )}
+                  {gfUrlSaved && <p className="text-xs text-green-600">✓ "Share Form" button is now visible in the Interview Panel</p>}
+                </div>
+
+                {/* Webhook API Key */}
+                <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 space-y-3">
+                  <label className="block text-xs font-bold text-slate-600 uppercase tracking-wide">Webhook API Key</label>
+                  <p className="text-xs text-slate-500">Generate a secret key. Paste it in the Apps Script below as <code className="bg-slate-200 px-1 rounded text-slate-700">API_KEY</code>.</p>
+                  <div className="flex items-center gap-2">
+                    {gfNewApiKey ? (
+                      <code className="flex-1 bg-yellow-50 border border-yellow-300 rounded-lg px-3 py-2.5 text-sm text-yellow-800 font-mono break-all">{gfNewApiKey}</code>
+                    ) : gfApiKeyMasked ? (
+                      <code className="flex-1 bg-white border border-slate-300 rounded-lg px-3 py-2.5 text-sm text-slate-500 font-mono">{gfApiKeyMasked}</code>
+                    ) : (
+                      <div className="flex-1 bg-white border border-dashed border-slate-300 rounded-lg px-3 py-2.5 text-sm text-slate-400">No key yet</div>
+                    )}
+                    {gfNewApiKey && (
+                      <button
+                        onClick={() => { navigator.clipboard.writeText(gfNewApiKey); setGfKeyCopied(true); setTimeout(() => setGfKeyCopied(false), 3000); }}
+                        className={`px-3 py-2.5 text-sm font-bold rounded-lg border transition-colors ${gfKeyCopied ? 'bg-green-600 text-white border-green-600' : 'bg-white border-slate-300 text-slate-600 hover:bg-slate-50'}`}
+                      >
+                        {gfKeyCopied ? '✓ Copied' : 'Copy'}
+                      </button>
+                    )}
+                    <button
+                      disabled={gfKeyGenerating}
+                      onClick={async () => {
+                        setGfKeyGenerating(true); setGfNewApiKey(null);
+                        try {
+                          const res = await interviewSettingsAPI.generateWebhookApiKey();
+                          if (res?.success) { setGfNewApiKey(res.api_key); setGfApiKeyMasked(null); }
+                          else alert('Failed to generate key');
+                        } catch (e) { alert('Error: ' + e.message); }
+                        finally { setGfKeyGenerating(false); }
+                      }}
+                      className="px-4 py-2.5 bg-orange-500 hover:bg-orange-600 disabled:bg-slate-300 text-white text-sm font-bold rounded-lg transition-colors whitespace-nowrap"
+                    >
+                      {gfKeyGenerating ? 'Generating…' : (gfApiKeyMasked || gfNewApiKey) ? '🔄 Regenerate' : '⚡ Generate Key'}
+                    </button>
+                  </div>
+                  {gfNewApiKey && (
+                    <p className="text-xs text-yellow-600 bg-yellow-50 border border-yellow-200 rounded-lg px-3 py-2">
+                      ⚠ Copy this key now — it will be shown masked on future visits. Paste it in your Apps Script as <code className="bg-yellow-100 px-1 rounded">API_KEY</code>.
+                    </p>
+                  )}
+                </div>
+
+                {/* Webhook URL */}
+                <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 flex items-center gap-3">
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-bold text-slate-600 uppercase tracking-wide mb-1">Webhook Endpoint (pre-filled in script)</p>
+                    <code className="text-xs text-blue-600 font-mono break-all">POST {webhookUrl}</code>
+                  </div>
+                </div>
+
+                {/* Apps Script Template */}
+                <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-bold text-slate-600 uppercase tracking-wide">Apps Script Template</label>
+                    <button
+                      onClick={() => { navigator.clipboard.writeText(appsScriptTemplate); setGfScriptCopied(true); setTimeout(() => setGfScriptCopied(false), 3000); }}
+                      className={`px-3 py-1.5 text-xs font-bold rounded-lg border transition-colors ${gfScriptCopied ? 'bg-green-600 text-white border-green-600' : 'bg-white border-slate-300 text-slate-600 hover:bg-slate-50'}`}
+                    >
+                      {gfScriptCopied ? '✓ Copied!' : '⎘ Copy Script'}
+                    </button>
+                  </div>
+                  <p className="text-xs text-slate-500">In Google Form: <strong>Extensions → Apps Script</strong> → paste → save → set trigger to <strong>onFormSubmit</strong>.</p>
+                  <pre className="bg-white border border-slate-200 rounded-lg p-3 text-xs text-slate-700 font-mono overflow-x-auto max-h-56 overflow-y-auto leading-relaxed whitespace-pre">{appsScriptTemplate}</pre>
+                </div>
+
+                {/* Setup Steps */}
+                <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
+                  <p className="text-xs font-bold text-blue-700 uppercase tracking-wide mb-2">Quick Setup</p>
+                  <ol className="text-xs text-blue-700 space-y-1.5 list-none">
+                    {['Create a Google Form with the fields listed in the script comments.',
+                      'Set form title to "Fixar Finance by Rupiya Maker".',
+                      'Go to Extensions → Apps Script, paste the template, save.',
+                      'Generate an API Key above → copy it → paste in script as API_KEY.',
+                      'In Apps Script: Triggers → Add Trigger → onFormSubmit.',
+                      'Paste Google Form URL above → Save.',
+                      'Done! Form submissions auto-appear in Today/Upcoming tabs.']
+                    .map((s, i) => (
+                      <li key={i} className="flex gap-2">
+                        <span className="w-4 h-4 rounded-full bg-blue-600 text-white text-[10px] flex items-center justify-center flex-shrink-0 mt-0.5 font-bold">{i+1}</span>
+                        {s}
+                      </li>
+                    ))}
+                  </ol>
+                </div>
+              </div>
+            );
+          })()}
         </div>
 
         {/* Footer */}

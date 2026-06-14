@@ -397,7 +397,74 @@ async def bulk_delete(
     return {"deleted": deleted}
 
 
-# ── Finance Summary (salary page integration) ─────────────────────────────────
+# ── Finance Summary (salary page + attendance page integration) ───────────────
+
+async def _can_view_finance_summary(
+    user_id: str,
+    users_db: UsersDB,
+    roles_db: RolesDB,
+) -> bool:
+    """
+    Returns True if the user can view finance summary data.
+    Allowed for:
+    - Super-admins
+    - Users with finance:all / finance:view_all
+    - Users with attendance:view_all / attendance:edit (salary column visible)
+    """
+    try:
+        user = await users_db.get_user(user_id)
+        if not user:
+            return False
+        if user.get("is_super_admin"):
+            return True
+
+        permissions = await PermissionManager.get_user_permissions(user_id, users_db, roles_db)
+        for perm in permissions:
+            page = perm.get("page", "")
+            acts = perm.get("actions")
+
+            # Super-admin wildcard
+            if page in ("*", "any"):
+                if acts == "*" or (isinstance(acts, list) and "*" in acts):
+                    return True
+
+            page_lower = page.lower() if isinstance(page, str) else ""
+
+            # Finance page access
+            if page_lower in ("finance", "hrms", "hrms_finance"):
+                if acts == "*":
+                    return True
+                if isinstance(acts, list) and any(
+                    a in ("*", "all", "view_all", "edit", "finance_admin")
+                    for a in acts
+                ):
+                    return True
+                if isinstance(acts, dict) and any(
+                    v and k in ("*", "all", "view_all", "edit", "finance_admin")
+                    for k, v in acts.items()
+                ):
+                    return True
+
+            # Attendance page — users who can see salary column can also see finance deductions
+            if page_lower in ("attendance", "hrms_attendance"):
+                if acts == "*":
+                    return True
+                if isinstance(acts, list) and any(
+                    a in ("*", "all", "view_all", "edit", "view_salary", "attendance_admin")
+                    for a in acts
+                ):
+                    return True
+                if isinstance(acts, dict) and any(
+                    v and k in ("*", "all", "view_all", "edit", "view_salary", "attendance_admin")
+                    for k, v in acts.items()
+                ):
+                    return True
+
+        return False
+    except Exception as e:
+        logger.warning(f"_can_view_finance_summary({user_id}): {e}")
+        return False
+
 
 @router.get("/finance-summary")
 async def get_finance_summary(
@@ -410,13 +477,13 @@ async def get_finance_summary(
     roles_db: RolesDB = Depends(get_roles_db),
 ):
     """
-    Single endpoint for SalaryManagement.jsx — returns approved reimbursements,
-    deductions, and outstanding advances for the given month in one call.
-    Admin-only (same permission check as other HRMS endpoints).
+    Returns approved reimbursements, deductions, and outstanding advances for
+    the given month. Used by SalaryManagement.jsx and AttendancePage.jsx.
+    Accessible to finance admins AND attendance admins (salary-view permission).
     """
-    is_admin = await _can_see_all(current_user_id, users_db, roles_db)
-    if not is_admin:
-        raise HTTPException(status_code=403, detail="Finance summary is admin-only")
+    can_view = await _can_view_finance_summary(current_user_id, users_db, roles_db)
+    if not can_view:
+        raise HTTPException(status_code=403, detail="Finance summary requires finance or attendance admin access")
     if not (0 <= month <= 11):
         raise HTTPException(status_code=422, detail="month must be 0–11")
     try:

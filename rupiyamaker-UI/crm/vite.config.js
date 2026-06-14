@@ -136,7 +136,12 @@ export default defineConfig({
             './src/components/Task.jsx',
             './src/components/CreateTask.jsx',
             './src/components/EditTask.jsx'
-          ]
+          ],
+          // face-api + TensorFlow: isolated chunk so TF.js backend init
+          // (which has side-effects at module parse time) only runs when
+          // the face recognition component is actually mounted, never
+          // during the initial page load / route evaluation.
+          'face-api': ['@vladmandic/face-api']
         },
         
         // Optimize chunk file names
@@ -207,7 +212,19 @@ export default defineConfig({
     ],
     exclude: [
       // Large libraries that should be loaded dynamically
-      'xlsx'
+      'xlsx',
+      // Exclude face-api and TensorFlow.js from pre-bundling.
+      // @vladmandic/face-api initialises TF.js backends (CPU/WebGL) as a
+      // side-effect at module parse time, which throws
+      // "Cannot read properties of undefined (reading 'fp')" in browsers
+      // where the backend is not yet ready.  Excluding it here forces Vite
+      // to leave it as a bare dynamic import that only runs when the component
+      // is actually rendered, not at bundle evaluation time.
+      '@vladmandic/face-api',
+      '@tensorflow/tfjs',
+      '@tensorflow/tfjs-core',
+      '@tensorflow/tfjs-backend-webgl',
+      '@tensorflow/tfjs-backend-cpu'
     ]
   },
   

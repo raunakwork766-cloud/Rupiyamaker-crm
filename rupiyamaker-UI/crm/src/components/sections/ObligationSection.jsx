@@ -291,7 +291,7 @@ const fetchCompanyCategories = async () => {
   }
 };
 
-export default function CustomerObligationForm({ leadData, handleChangeFunc, onDataUpdate, onUnsavedChangesUpdate, canEdit = true, onDownloadReady, saveContext, onProcessDataUpdate }) {
+export default function CustomerObligationForm({ leadData, handleChangeFunc, onDataUpdate, onUnsavedChangesUpdate, canEdit = true, onDownloadReady, saveContext, onProcessDataUpdate, activeTab }) {
   // Immediate safety check to prevent any initialization errors
   if (typeof React === 'undefined' || !React.useState) {
     console.error('React is not properly loaded');
@@ -2407,7 +2407,140 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
       });
     }, 100);
   }, [leadData?._id, (() => { try { return JSON.stringify(leadData?.dynamic_fields?.obligations); } catch { return ''; } })(), bankListLoaded]); // Stringify to detect content changes
-  
+
+  // For new lead creation context (where leadData exists but has no _id yet)
+  useEffect(() => {
+    if (leadData && !leadData._id) {
+      console.log('🌱 ObligationSection: Initializing/Syncing from leadData prop (Create Lead context)');
+      
+      const propSalary = leadData.salary !== undefined ? (typeof leadData.salary === 'string' ? leadData.salary : formatINR(String(leadData.salary))) : '';
+      if (propSalary !== salary) setSalary(propSalary);
+      
+      const propPartnerSalary = leadData.partnerSalary !== undefined ? (typeof leadData.partnerSalary === 'string' ? leadData.partnerSalary : formatINR(String(leadData.partnerSalary))) : '';
+      if (propPartnerSalary !== partnerSalary) setPartnerSalary(propPartnerSalary);
+      
+      const propYearlyBonus = leadData.yearlyBonus !== undefined ? (typeof leadData.yearlyBonus === 'string' ? leadData.yearlyBonus : formatINR(String(leadData.yearlyBonus))) : '';
+      if (propYearlyBonus !== yearlyBonus) setYearlyBonus(propYearlyBonus);
+      
+      if (leadData.bonusDivision !== undefined && leadData.bonusDivision !== bonusDivision) setBonusDivision(leadData.bonusDivision);
+      
+      const propLoanRequired = leadData.loanRequired !== undefined ? (typeof leadData.loanRequired === 'string' ? leadData.loanRequired : formatINR(String(leadData.loanRequired))) : '';
+      if (propLoanRequired !== loanRequired) setLoanRequired(propLoanRequired);
+      
+      if (leadData.companyName !== undefined && leadData.companyName !== companyName) setCompanyName(leadData.companyName);
+      if (leadData.cibilScore !== undefined && leadData.cibilScore !== cibilScore) setCibilScore(leadData.cibilScore);
+      
+      // Load obligations if different
+      const dynamicFieldsObligations = leadData.dynamic_fields?.obligations || leadData.obligations;
+      if (dynamicFieldsObligations && Array.isArray(dynamicFieldsObligations)) {
+        const obligationsJson = (() => { try { return JSON.stringify(obligations.map(o => ({ ...o, id: undefined }))); } catch { return '1'; } })();
+        const propObligationsJson = (() => { try { return JSON.stringify(dynamicFieldsObligations.map(o => ({ ...o, id: undefined }))); } catch { return '2'; } })();
+        if (obligationsJson !== propObligationsJson) {
+          console.log('🌱 Syncing obligations from prop:', dynamicFieldsObligations);
+          const normalized = dynamicFieldsObligations.map((ob, idx) => ({
+            id: ob.id || Date.now() + idx,
+            product: ob.product || '',
+            bankName: ob.bankName || ob.bank_name || '',
+            tenure: ob.tenure || '',
+            roi: ob.roi || '',
+            totalLoan: ob.totalLoan || ob.total_loan || '',
+            outstanding: ob.outstanding || '',
+            emi: ob.emi || '',
+            action: ob.action || 'Obligate',
+            selectedPercentage: ob.selectedPercentage || null,
+            selectedTenurePercentage: ob.selectedTenurePercentage || null,
+            selectedRoiPercentage: ob.selectedRoiPercentage || null
+          }));
+          setObligations(normalized.length > 0 ? normalized : [
+            {
+              id: Date.now(),
+              product: '',
+              bankName: '',
+              tenure: '',
+              roi: '',
+              totalLoan: '',
+              outstanding: '',
+              emi: '',
+              action: 'Obligate',
+              selectedPercentage: null,
+              selectedTenurePercentage: null,
+              selectedRoiPercentage: null
+            }
+          ]);
+        }
+      }
+    }
+  }, [leadData]); // Run when leadData prop changes
+
+  // Notify parent of state changes in Create Lead context (no leadData?._id) with DEBOUNCE (800ms)
+  useEffect(() => {
+    if (leadData && !leadData._id && handleChangeFunc) {
+      const handler = setTimeout(() => {
+        const stateObj = {
+          salary: salary,
+          partnerSalary: partnerSalary,
+          yearlyBonus: yearlyBonus,
+          bonusDivision: bonusDivision,
+          loanRequired: loanRequired,
+          companyName: companyName,
+          cibilScore: cibilScore,
+          obligations: obligations,
+          ceCompanyCategory: ceCompanyCategory,
+          ceFoirPercent: ceFoirPercent,
+          ceCustomFoirPercent: ceCustomFoirPercent,
+          ceMonthlyEmiCanPay: ceMonthlyEmiCanPay,
+          ceTenureMonths: ceTenureMonths,
+          ceTenureYears: ceTenureYears,
+          ceRoi: ceRoi,
+          ceMultiplier: ceMultiplier,
+          loanEligibilityStatus: loanEligibilityStatus
+        };
+        console.log('🔄 [DEBUNCED SYNC] Pushing obligation sheet updates to parent:', stateObj);
+        handleChangeFunc('all_obligation_fields', stateObj);
+      }, 400);
+      return () => clearTimeout(handler);
+    }
+  }, [
+    salary, partnerSalary, yearlyBonus, bonusDivision, loanRequired, companyName, cibilScore, obligations,
+    ceCompanyCategory, ceFoirPercent, ceCustomFoirPercent, ceMonthlyEmiCanPay, ceTenureMonths, ceTenureYears, ceRoi, ceMultiplier, loanEligibilityStatus,
+    handleChangeFunc, leadData
+  ]);
+
+  // Immediately notify parent when switching away from the obligation tab
+  const prevActiveTabRef = useRef(activeTab);
+  useEffect(() => {
+    if (prevActiveTabRef.current === 'obligation' && activeTab !== 'obligation') {
+      if (leadData && !leadData._id && handleChangeFunc) {
+        const stateObj = {
+          salary: salary,
+          partnerSalary: partnerSalary,
+          yearlyBonus: yearlyBonus,
+          bonusDivision: bonusDivision,
+          loanRequired: loanRequired,
+          companyName: companyName,
+          cibilScore: cibilScore,
+          obligations: obligations,
+          ceCompanyCategory: ceCompanyCategory,
+          ceFoirPercent: ceFoirPercent,
+          ceCustomFoirPercent: ceCustomFoirPercent,
+          ceMonthlyEmiCanPay: ceMonthlyEmiCanPay,
+          ceTenureMonths: ceTenureMonths,
+          ceTenureYears: ceTenureYears,
+          ceRoi: ceRoi,
+          ceMultiplier: ceMultiplier,
+          loanEligibilityStatus: loanEligibilityStatus
+        };
+        console.log('🔄 [TAB SWITCH SYNC] Navigation detected, immediate push of obligation sheet updates:', stateObj);
+        handleChangeFunc('all_obligation_fields', stateObj);
+      }
+    }
+    prevActiveTabRef.current = activeTab;
+  }, [
+    activeTab, salary, partnerSalary, yearlyBonus, bonusDivision, loanRequired, companyName, cibilScore, obligations,
+    ceCompanyCategory, ceFoirPercent, ceCustomFoirPercent, ceMonthlyEmiCanPay, ceTenureMonths, ceTenureYears, ceRoi, ceMultiplier, loanEligibilityStatus,
+    handleChangeFunc, leadData
+  ]);
+
   // Sync obligations when leadData.dynamic_fields.obligations changes (e.g., after parent refetch)
   useEffect(() => {
     const leadObligations = leadData?.dynamic_fields?.obligations;

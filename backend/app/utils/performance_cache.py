@@ -85,6 +85,14 @@ class HighPerformanceCache:
             for key in keys_to_remove:
                 self.cache.pop(key, None)
                 self.access_times.pop(key, None)
+
+    def invalidate_sync(self, pattern: str) -> int:
+        """Synchronously invalidate cache entries matching pattern (no lock — safe for route handlers)"""
+        keys_to_remove = [k for k in list(self.cache.keys()) if pattern in k]
+        for key in keys_to_remove:
+            self.cache.pop(key, None)
+            self.access_times.pop(key, None)
+        return len(keys_to_remove)
     
     def get_stats(self) -> Dict[str, Any]:
         """Get cache statistics"""
@@ -132,9 +140,9 @@ def cached_response(ttl: int = 300, cache_key_func: Optional[Callable] = None):
         return wrapper
     return decorator
 
-def invalidate_cache_pattern(pattern: str):
-    """Invalidate cache entries matching pattern"""
-    return asyncio.create_task(cache.invalidate(pattern))
+async def invalidate_cache_pattern(pattern: str) -> None:
+    """Invalidate cache entries matching a pattern (awaitable async function)."""
+    await cache.invalidate(pattern)
 
 # Quick access functions for common patterns
 async def cache_user_permissions(user_id: str, permissions: Dict[str, Any]):

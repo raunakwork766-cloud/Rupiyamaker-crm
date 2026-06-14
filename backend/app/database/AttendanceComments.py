@@ -83,7 +83,7 @@ class AttendanceCommentsDB:
                 "date": date
             }
             
-            comments = list(self.collection.find(query).sort("created_at", 1))
+            comments = await self.collection.find(query).sort("created_at", 1).to_list(length=None)
             
             # Convert ObjectIds to strings for JSON serialization
             for comment in comments:
@@ -119,7 +119,7 @@ class AttendanceCommentsDB:
                 "attendance_id": ObjectId(attendance_id) if ObjectId.is_valid(attendance_id) else attendance_id
             }
             
-            comments = list(self.collection.find(query).sort("created_at", 1))
+            comments = await self.collection.find(query).sort("created_at", 1).to_list(length=None)
             
             # Convert ObjectIds to strings for JSON serialization
             for comment in comments:

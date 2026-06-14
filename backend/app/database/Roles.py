@@ -197,48 +197,44 @@ class RolesDB:
         
     async def get_all_subordinate_roles(self, role_id: str) -> List[dict]:
         """
-        Get all roles that report to this role (any level deep)
-        Supports multiple reporting relationships
-        
+        Get all roles that report to this role (any level deep).
+        Uses iterative BFS with a single DB query per level to avoid the
+        N-recursive-queries problem that caused 504 timeouts.
+
         Args:
             role_id: Role ID to find subordinates for
-            
+
         Returns:
             List[dict]: List of role documents that report to this role
         """
-        print(f"DEBUG: Getting subordinate roles for role_id {role_id}")
         if not ObjectId.is_valid(role_id):
-            print(f"DEBUG: Invalid role_id format: {role_id}")
             return []
-            
-        # Get direct reports first - look for both string and ObjectId formats
-        object_role_id = ObjectId(role_id)
-        direct_reports = await self._async_to_list(self.collection.find({
-            "$or": [
-                {"reporting_ids": role_id},           # New array format
-                {"reporting_ids": object_role_id},    # New array format
-                {"reporting_id": role_id},            # Old single format (backward compatibility)
-                {"reporting_id": object_role_id}      # Old single format (backward compatibility)
-            ]
-        }))
-        
-        print(f"DEBUG: Found {len(direct_reports)} direct reports for role {role_id}")
-        
-        # If no direct reports, return empty list
-        if not direct_reports:
-            return []
-            
-        # Add all roles that report to the direct reports
-        all_subordinates = list(direct_reports)  # Start with direct reports
-        
-        for report in direct_reports:
-            report_id = str(report["_id"])
-            print(f"DEBUG: Recursively checking subordinates for role {report_id}")
-            subordinates = await self.get_all_subordinate_roles(report_id)  # Recursive call with await
-            print(f"DEBUG: Found {len(subordinates)} subordinates for role {report_id}")
-            all_subordinates.extend(subordinates)
-            
-        print(f"DEBUG: Total of {len(all_subordinates)} subordinate roles for {role_id}")
+
+        all_subordinates: List[dict] = []
+        visited: set = {role_id}           # prevent cycles
+        queue: List[str] = [role_id]       # BFS frontier (string IDs)
+
+        while queue:
+            # Build a combined $in query for all IDs in the current BFS level
+            # so we hit MongoDB once per level rather than once per role.
+            str_ids = queue
+            obj_ids = [ObjectId(rid) for rid in str_ids if ObjectId.is_valid(rid)]
+
+            batch = await self._async_to_list(self.collection.find({
+                "$or": [
+                    {"reporting_ids": {"$in": str_ids + obj_ids}},
+                    {"reporting_id":  {"$in": str_ids + obj_ids}},
+                ]
+            }))
+
+            queue = []
+            for role in batch:
+                rid = str(role["_id"])
+                if rid not in visited:
+                    visited.add(rid)
+                    all_subordinates.append(role)
+                    queue.append(rid)
+
         return all_subordinates
     
     async def get_reporting_chain(self, role_id: str) -> List[dict]:

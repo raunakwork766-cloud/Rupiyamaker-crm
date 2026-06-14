@@ -1531,16 +1531,17 @@ const DeductionDetailModal = ({ isOpen, onClose, data, onRevoke }) => {
     employee, stats, monthlySalary, perDaySalary, daysInMonth,
     warningPenalties, selectedYear, selectedMonth,
     attendanceDeduction, warningFine,
-    financeDeductions, shortfall, shortfallDeduction,
+    financeDeductions, financeReimbursements, shortfall, shortfallDeduction,
     effectiveSalary,
   } = data
 
   const totalWarningFine = (warningPenalties || []).reduce((s, p) => s + (p.penalty_amount || 0), 0)
   const financeDedTotal  = (financeDeductions || []).reduce((s, d) => s + (Number(d.amount) || 0), 0)
+  const financeReimbTotal = (financeReimbursements || []).reduce((s, r) => s + (Number(r.amount) || 0), 0)
   const totalDeduction   = Math.round((attendanceDeduction || 0) + totalWarningFine + financeDedTotal + (shortfallDeduction || 0))
   // Use effectiveSalary (pro-rated for mid-month joiners) as base for netSalary
   const baseSalary = effectiveSalary != null ? effectiveSalary : monthlySalary
-  const netSalary  = Math.max(0, baseSalary - totalDeduction)
+  const netSalary  = Math.max(0, baseSalary - totalDeduction + financeReimbTotal)
   const monthName  = months[selectedMonth - 1]
 
   const handleRevoke = async (warningId) => {
@@ -1584,11 +1585,20 @@ const DeductionDetailModal = ({ isOpen, onClose, data, onRevoke }) => {
               <div style={{ fontSize: '11px', color: '#6b7280', marginBottom: '2px' }}>Fixed Salary</div>
               <div style={{ fontSize: '16px', fontWeight: 700, color: '#e5e7eb' }}>&#x20B9;{monthlySalary.toLocaleString('en-IN')}</div>
             </div>
-            <div style={{ fontSize: '20px', color: '#4b5563' }}>&#x2212;</div>
-            <div style={{ textAlign: 'center' }}>
-              <div style={{ fontSize: '11px', color: '#6b7280', marginBottom: '2px' }}>Total Deductions</div>
-              <div style={{ fontSize: '16px', fontWeight: 700, color: '#ef4444' }}>&#x20B9;{totalDeduction.toLocaleString('en-IN')}</div>
-            </div>
+            {totalDeduction > 0 && <>
+              <div style={{ fontSize: '20px', color: '#4b5563' }}>&#x2212;</div>
+              <div style={{ textAlign: 'center' }}>
+                <div style={{ fontSize: '11px', color: '#6b7280', marginBottom: '2px' }}>Deductions</div>
+                <div style={{ fontSize: '16px', fontWeight: 700, color: '#ef4444' }}>&#x20B9;{totalDeduction.toLocaleString('en-IN')}</div>
+              </div>
+            </>}
+            {financeReimbTotal > 0 && <>
+              <div style={{ fontSize: '20px', color: '#4b5563' }}>&#x2B;</div>
+              <div style={{ textAlign: 'center' }}>
+                <div style={{ fontSize: '11px', color: '#6b7280', marginBottom: '2px' }}>Reimbursements</div>
+                <div style={{ fontSize: '16px', fontWeight: 700, color: '#34d399' }}>&#x20B9;{financeReimbTotal.toLocaleString('en-IN')}</div>
+              </div>
+            </>}
             <div style={{ fontSize: '20px', color: '#4b5563' }}>=</div>
             <div style={{ textAlign: 'center' }}>
               <div style={{ fontSize: '11px', color: '#6b7280', marginBottom: '2px' }}>Net Payable</div>
@@ -1596,10 +1606,10 @@ const DeductionDetailModal = ({ isOpen, onClose, data, onRevoke }) => {
             </div>
           </div>
 
-          {totalDeduction === 0 ? (
+          {totalDeduction === 0 && financeReimbTotal === 0 ? (
             <div style={{ textAlign: 'center', padding: '32px 0', color: '#6b7280' }}>
               <div style={{ fontSize: '36px', marginBottom: '8px' }}>&#x2705;</div>
-              <div style={{ fontSize: '16px', fontWeight: 600, color: '#9ca3af' }}>No Deductions</div>
+              <div style={{ fontSize: '16px', fontWeight: 600, color: '#9ca3af' }}>No Deductions or Reimbursements</div>
               <div style={{ fontSize: '12px', marginTop: '4px' }}>Full salary payable for {monthName} {selectedYear}</div>
             </div>
           ) : (
@@ -1692,19 +1702,44 @@ const DeductionDetailModal = ({ isOpen, onClose, data, onRevoke }) => {
                 </SectionCard>
               )}
 
+              {/* 5. Reimbursements (added to salary) */}
+              {financeReimbursements && financeReimbursements.length > 0 && (
+                <SectionCard icon="&#x1F4B5;" title={`Reimbursements (${financeReimbursements.length})`} color="#34d399" borderColor="#064e3b">
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                    {financeReimbursements.map((r, idx) => (
+                      <div key={r._id || idx} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '8px', paddingBottom: idx < financeReimbursements.length - 1 ? '10px' : 0, borderBottom: idx < financeReimbursements.length - 1 ? '1px solid #2a2a3a' : 'none' }}>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontSize: '13px', fontWeight: 600, color: '#6ee7b7' }}>{r.category || 'Reimbursement'}</div>
+                          {r.description && <div style={{ fontSize: '11px', color: '#6b7280', marginTop: '2px' }}>{r.description}</div>}
+                          {(r.date || r.created_at) && <div style={{ fontSize: '11px', color: '#4b5563', marginTop: '2px' }}>Date: {new Date(r.date || r.created_at).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}</div>}
+                          <div style={{ fontSize: '10px', color: '#34d399', marginTop: '2px', textTransform: 'uppercase', fontWeight: 600 }}>{r.status}</div>
+                        </div>
+                        <span style={{ fontSize: '14px', fontWeight: 700, color: '#34d399', flexShrink: 0 }}>+ ₹{Number(r.amount).toLocaleString('en-IN')}</span>
+                      </div>
+                    ))}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', paddingTop: '8px', borderTop: '1px solid #2a2a3a', fontSize: '13px', fontWeight: 600 }}>
+                      <span style={{ color: '#9ca3af' }}>Total Reimbursements</span>
+                      <span style={{ color: '#34d399' }}>+ ₹{Math.round(financeReimbTotal).toLocaleString('en-IN')}</span>
+                    </div>
+                  </div>
+                </SectionCard>
+              )}
+
               {/* Grand Total */}
-              <div style={{ background: 'linear-gradient(135deg, #450a0a, #7f1d1d)', border: '1px solid #b91c1c', borderRadius: '8px', padding: '14px 16px' }}>
+              <div style={{ background: 'linear-gradient(135deg, #052e16, #065f46)', border: '1px solid #059669', borderRadius: '8px', padding: '14px 16px' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
-                  <span style={{ color: '#fca5a5', fontWeight: 700, fontSize: '15px' }}>Total Deductions</span>
-                  <span style={{ color: '#ef4444', fontWeight: 700, fontSize: '22px' }}>− ₹{totalDeduction.toLocaleString('en-IN')}</span>
+                  <span style={{ color: '#a7f3d0', fontWeight: 700, fontSize: '15px' }}>Salary Summary</span>
+                  <span style={{ color: '#10b981', fontWeight: 700, fontSize: '22px' }}>₹{netSalary.toLocaleString('en-IN')}</span>
                 </div>
-                <div style={{ height: '1px', background: '#7f1d1d', marginBottom: '10px' }} />
+                <div style={{ height: '1px', background: '#065f46', marginBottom: '10px' }} />
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                  {(attendanceDeduction || 0) > 0 && <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px' }}><span style={{ color: '#6b7280' }}>Attendance</span><span style={{ color: '#fb923c' }}>₹{Math.round(attendanceDeduction).toLocaleString('en-IN')}</span></div>}
-                  {(shortfallDeduction || 0) > 0 && <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px' }}><span style={{ color: '#6b7280' }}>Target Shortfall</span><span style={{ color: '#c084fc' }}>₹{Math.round(shortfallDeduction).toLocaleString('en-IN')}</span></div>}
-                  {totalWarningFine > 0 && <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px' }}><span style={{ color: '#6b7280' }}>Warning Fines</span><span style={{ color: '#f87171' }}>₹{Math.round(totalWarningFine).toLocaleString('en-IN')}</span></div>}
-                  {financeDedTotal > 0 && <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px' }}><span style={{ color: '#6b7280' }}>Finance Deductions</span><span style={{ color: '#60a5fa' }}>₹{Math.round(financeDedTotal).toLocaleString('en-IN')}</span></div>}
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', marginTop: '4px', paddingTop: '6px', borderTop: '1px solid #7f1d1d' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px' }}><span style={{ color: '#6b7280' }}>Base (Effective)</span><span style={{ color: '#e5e7eb' }}>₹{(effectiveSalary != null ? effectiveSalary : monthlySalary).toLocaleString('en-IN')}</span></div>
+                  {(attendanceDeduction || 0) > 0 && <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px' }}><span style={{ color: '#6b7280' }}>Attendance Deduction</span><span style={{ color: '#fb923c' }}>− ₹{Math.round(attendanceDeduction).toLocaleString('en-IN')}</span></div>}
+                  {(shortfallDeduction || 0) > 0 && <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px' }}><span style={{ color: '#6b7280' }}>Target Shortfall</span><span style={{ color: '#c084fc' }}>− ₹{Math.round(shortfallDeduction).toLocaleString('en-IN')}</span></div>}
+                  {totalWarningFine > 0 && <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px' }}><span style={{ color: '#6b7280' }}>Warning Fines</span><span style={{ color: '#f87171' }}>− ₹{Math.round(totalWarningFine).toLocaleString('en-IN')}</span></div>}
+                  {financeDedTotal > 0 && <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px' }}><span style={{ color: '#6b7280' }}>Finance Deductions</span><span style={{ color: '#60a5fa' }}>− ₹{Math.round(financeDedTotal).toLocaleString('en-IN')}</span></div>}
+                  {financeReimbTotal > 0 && <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px' }}><span style={{ color: '#6b7280' }}>Reimbursements</span><span style={{ color: '#34d399' }}>+ ₹{Math.round(financeReimbTotal).toLocaleString('en-IN')}</span></div>}
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', marginTop: '4px', paddingTop: '6px', borderTop: '1px solid #065f46' }}>
                     <span style={{ color: '#9ca3af', fontWeight: 600 }}>Net Payable Salary</span>
                     <span style={{ color: '#10b981', fontWeight: 700 }}>₹{netSalary.toLocaleString('en-IN')}</span>
                   </div>
@@ -2280,7 +2315,17 @@ const EmployeeDetailModal = ({ employee, selectedDate, isOpen, onClose, onUpdate
   const displayEmployeeName = getDisplayEmployeeName(employee)
   const displayEmployeeCode = employee.employeeId || employee.employee_code || employee.employee_id || `EMP-${employee.id?.slice?.(-6) || '???'}`
 
-  const currentStatus = employee[`day${selectedDate}`] || "A"
+  const getStatusChar = (statusVal) => {
+    if (statusVal === 1 || statusVal === 1.0 || statusVal === '1.0' || statusVal === '1') return 'P'
+    if (statusVal === 0.5 || statusVal === '0.5') return 'HD'
+    if (statusVal === -1 || statusVal === -1.0 || statusVal === '-1.0' || statusVal === '-1') return 'A'
+    if (statusVal === -2 || statusVal === -2.0 || statusVal === '-2.0' || statusVal === '-2') return 'AB'
+    if (statusVal === 0 || statusVal === 0.0 || statusVal === '0.0' || statusVal === '0' || statusVal === 'L' || statusVal === 'LV') return 'LV'
+    return null
+  }
+
+  const detailStatusChar = attendanceDetail && attendanceDetail.status !== undefined ? getStatusChar(attendanceDetail.status) : null
+  const currentStatus = detailStatusChar || employee[`day${selectedDate}`] || "A"
   const statusText = getStatusText(currentStatus)
 
   const formatDate = (year, month, day) => {
@@ -2364,7 +2409,7 @@ const EmployeeDetailModal = ({ employee, selectedDate, isOpen, onClose, onUpdate
       
       // Clear reason and reset status selector back to current (closes remark textarea)
       setUpdateReason('')
-      setSelectedAttendance('')
+      setSelectedAttendance(selectedAttendance)
       
       console.log('🎉 [UPDATE] Attendance update completed successfully')
     } catch (error) {
@@ -2508,6 +2553,7 @@ const EmployeeDetailModal = ({ employee, selectedDate, isOpen, onClose, onUpdate
                 { value: 'HD', label: 'HALF DAY',   num: '0.5', dotClass: 'bg-amber-400',   badgeClass: 'bg-amber-400 text-amber-950' },
                 { value: 'A',  label: 'ABSENT',     num: '0',   dotClass: 'bg-zinc-500',    badgeClass: 'bg-zinc-800 text-zinc-400' },
                 { value: 'AB', label: 'ABSCONDING', num: '-1',  dotClass: 'bg-rose-500',    badgeClass: 'bg-rose-500 text-rose-950' },
+                { value: 'LV', label: 'LEAVE',      num: 'LV',  dotClass: 'bg-orange-500',  badgeClass: 'bg-orange-500 text-orange-950' },
               ]
               const activeOpt = statusOptions.find(o => o.value === selectedAttendance)
               const isStatusChanged = !!selectedAttendance && selectedAttendance !== currentStatus
@@ -2860,7 +2906,7 @@ const getDayNumericValue = (status) => {
     case "HD": return 0.5
     case "WK": return 1    // Working/checked-in today — counts as present
     case "LV": return 0    // Leave counts as 0 in present score (paid separately via plDays)
-    case "AB": return -1   // Absconding reduces score
+    case "AB": return 0   // Absconding — handled separately in calculateMonthlyStats penalty
     case "A": return 0     // Absent = 0, not a penalty (day simply not earned)
     case "SP": return 1    // Sunday Paid — full day paid
     case "S0": return 0    // Sunday Zero — not paid, not penalized
@@ -2876,7 +2922,9 @@ const calculateMonthlyStats = (record, selectedYear, selectedMonth, daysInMonth,
   let lvDaysTaken = 0  // Leave days taken (LV status) — counted for reference only
   let absconding = 0
   let absentDays = 0   // Pure absent days (A status)
+  let sundayZeroDays = 0 // Sunday Zero days (S0 status)
   let holidaysCount = 0
+  let halfDaysCount = 0
 
   // ── Joining date: days before joining are blacked out (null) and don't count ──
   const joiningRaw = record.joining_date || record.date_of_joining || null
@@ -2901,17 +2949,38 @@ const calculateMonthlyStats = (record, selectedYear, selectedMonth, daysInMonth,
     } else if (status === 'LV') {
       lvDaysTaken++
     } else if (status === 'AB') {
-      // Absconding: day not earned (-1 vs present) + extra penalty (-1) = total -2
-      presentScore -= 2
+      // Absconding: count it separately — penalty applied below after loop
       absconding++
     } else if (status === 'A') {
-      // Absent: day simply not earned — does NOT reduce score, just not added
+      // Absent: day simply not earned
       absentDays++
+    } else if (status === 'S0') {
+      sundayZeroDays++
+    } else if (status === 'HD') {
+      halfDaysCount++
+      presentScore += 0.5
+      actualPresent += 0.5
     } else if (val !== null) {
       presentScore += val
       if (val > 0) actualPresent += val  // count only actual present days
     }
   }
+
+  // ── Final Score Calculation (3 steps as per business logic) ──
+  // Step 1: Count present days → done above (actualPresent)
+  // Step 2: Absconding penalty and normal unpaid days deducted from month total days
+  //         adjustedBase = effectiveDays - (absconding × 2) - absentDays - sundayZeroDays
+  // Step 3: presentScore = min(actualPresent, adjustedBase)
+  //         (present days cannot exceed the adjusted base)
+  // Step 4: PL added LAST — after all deductions, not capped by daysInMonth
+  const abscondingPenalty = absconding * 2
+  const normalUnpaid = absentDays + sundayZeroDays
+  const adjustedBase = Math.max(0, effectiveDays - abscondingPenalty - normalUnpaid)
+
+  // Present days capped at adjustedBase (can't earn more than what's available after penalty)
+  presentScore = Math.min(actualPresent, adjustedBase)
+
+  // NOTE: actualPresent shows raw physical present days in the "Present" column (untouched by absconding).
 
   // PL days: use the actual PL remaining from Leave Management (per-employee, per-period)
   // This is exactly what shows in the Leave Management tab — same data, same source.
@@ -2938,10 +3007,13 @@ const calculateMonthlyStats = (record, selectedYear, selectedMonth, daysInMonth,
     ? Math.min(record.graceRemaining, graceMonthly)
     : graceMonthly
 
-  // Final = presentScore + PL days (shown in Final column)
-  // Capped at daysInMonth (or effectiveDays for mid-month joiners) — can never exceed total days
-  const rawFinal = Math.max(0, presentScore) + plDays
-  const finalScore = Math.min(rawFinal, joiningDay > 0 ? effectiveDays : daysInMonth)
+  // Final = presentScore + PL added LAST, but total cannot exceed adjustedBase.
+  // PL score contribution = actual LV days taken in calendar (lvDaysTaken), capped by plDays.
+  // NOTE: plDays represents the employee's current remaining PL balance. Capping it by plDays
+  //       ensures carried forward leave balance is fully respected, but they aren't paid beyond balance.
+  const plScore = Math.min(lvDaysTaken, plDays)  // PL days to add: actual taken, capped by available balance
+  const plApplicable = Math.min(plScore, Math.max(0, adjustedBase - Math.max(0, presentScore)))
+  const finalScore = Math.max(0, presentScore) + plApplicable
 
   const workingDays = daysInMonth - holidaysCount
   const attendancePercentage = workingDays > 0 ? ((Math.max(0, presentScore) / workingDays) * 100).toFixed(1) : "0"
@@ -2964,7 +3036,7 @@ const calculateMonthlyStats = (record, selectedYear, selectedMonth, daysInMonth,
     present: presentScore,
     late: 0,
     leave: lvDaysTaken,
-    halfDay: 0,
+    halfDay: halfDaysCount,
   }
 }
 
@@ -3021,6 +3093,8 @@ export default function MonthlyAttendanceTable() {
   const [warningPenaltiesMap, setWarningPenaltiesMap] = useState({})
   // financeDeductionsMap: { [mongoId]: [{ _id, deduction_type, amount, date, description, status }] }
   const [financeDeductionsMap, setFinanceDeductionsMap] = useState({})
+  // financeReimbursementsMap: { [mongoId]: [{ _id, category, amount, date, description, status }] }
+  const [financeReimbursementsMap, setFinanceReimbursementsMap] = useState({})
   const [deductionModalOpen, setDeductionModalOpen] = useState(false)
   const [selectedDeductionData, setSelectedDeductionData] = useState(null)
 
@@ -3461,13 +3535,16 @@ export default function MonthlyAttendanceTable() {
   };
 
   // Fetch attendance data when component mounts or month changes
-  const fetchAttendanceData = useCallback(async () => {
+  // silent=true → background sync after an update (no spinner, no editCounts reset)
+  const fetchAttendanceData = useCallback(async (silent = false) => {
       if (!user?.user_id) return
       
-      setLoading(true)
-      setError(null)
-      setEditCounts({}) // Reset edit counts when month/year changes
-      setWarningPenaltiesMap({}) // Reset warning penalties when month/year changes
+      if (!silent) {
+        setLoading(true)
+        setError(null)
+        setEditCounts({}) // Reset edit counts when month/year changes
+        setWarningPenaltiesMap({}) // Reset warning penalties when month/year changes
+      }
       
       try {
         // Fetch ALL employees (active + inactive) from Employee page for status filtering
@@ -3681,7 +3758,7 @@ export default function MonthlyAttendanceTable() {
               // IMPORTANT: bal=null means no DB record at all (use default), bal.paid_leaves_total=0 means 0 PL (keep 0)
               paidLeavesTotal:       bal != null ? (bal.paid_leaves_total       ?? settingsData.default_paid_leave_monthly ?? 1) : (settingsData.default_paid_leave_monthly ?? 1),
               paidLeavesUsed:        bal != null ? (bal.paid_leaves_used        ?? 0) : 0,
-              paidLeavesRemaining:   bal != null ? (bal.paid_leaves_remaining   ?? 0) : 0,
+              paidLeavesRemaining:   bal != null ? (bal.paid_leaves_remaining   ?? 0) : null,
               // Grace: always use stored DB value — DB is authoritative (synced from settings on save)
               graceTotal:     bal != null ? (bal.grace_leaves_total     ?? 0) : 0,
               graceUsed:      bal != null ? (bal.grace_leaves_used      ?? 0) : 0,
@@ -3742,8 +3819,9 @@ export default function MonthlyAttendanceTable() {
                 headers: getAuthHeaders()
               }
             )
+            console.log('💰 Finance summary loaded:', { year: selectedYear, month: selectedMonth - 1, deductions: finResp.data?.deductions?.length, reimbs: finResp.data?.reimbursements?.length })
             const finDeductions = finResp.data?.deductions || []
-            // Build map: mongoId (employee_id) → [deduction records]
+            // Build deductions map: mongoId (employee_id) → [deduction records]
             const finMap = {}
             finDeductions.forEach(d => {
               const empId = d.employee_id
@@ -3751,9 +3829,21 @@ export default function MonthlyAttendanceTable() {
               if (!finMap[empId]) finMap[empId] = []
               finMap[empId].push(d)
             })
+            console.log('💰 Finance deductions map keys:', Object.keys(finMap))
             setFinanceDeductionsMap(finMap)
+
+            // Build reimbursements map: mongoId (employee_id) → [reimbursement records]
+            const finReimbs = finResp.data?.reimbursements || []
+            const reimbMap = {}
+            finReimbs.forEach(r => {
+              const empId = r.employee_id
+              if (!empId) return
+              if (!reimbMap[empId]) reimbMap[empId] = []
+              reimbMap[empId].push(r)
+            })
+            setFinanceReimbursementsMap(reimbMap)
           } catch (finErr) {
-            console.warn('Could not load finance deductions:', finErr)
+            console.warn('Could not load finance deductions:', finErr?.response?.status, finErr?.message)
           }
 
           // Load real edit counts from DB so they survive hard refresh
@@ -4047,7 +4137,7 @@ export default function MonthlyAttendanceTable() {
     }
   }
 
-  const handleDeductionClick = (record, stats, calculatedSalary, attendanceDeduction, warningFine, empFinanceDeds, shortfall, shortfallDeduction, effectiveSalary) => {
+  const handleDeductionClick = (record, stats, calculatedSalary, attendanceDeduction, warningFine, empFinanceDeds, shortfall, shortfallDeduction, effectiveSalary, empFinanceReimbs) => {
     const empPenalties = warningPenaltiesMap[record.mongoId] || {}
     const monthlySalary = record.salary || 0
     setSelectedDeductionData({
@@ -4064,6 +4154,7 @@ export default function MonthlyAttendanceTable() {
       attendanceDeduction,
       warningFine,
       financeDeductions: empFinanceDeds || [],
+      financeReimbursements: empFinanceReimbs || [],
       shortfall,
       shortfallDeduction,
     })
@@ -4173,6 +4264,12 @@ export default function MonthlyAttendanceTable() {
     })
     // Increment local session edit count for this employee
     setEditCounts(prev => ({ ...prev, [employeeId]: (prev[employeeId] || 0) + 1 }))
+
+    // Re-fetch from backend after a short delay to pick up server-side rule changes
+    // Use silent=true so the optimistic UI update stays visible (no loading spinner)
+    setTimeout(() => {
+      fetchAttendanceData(true)
+    }, 800)
   }
 
   const handleUpdateHolidays = async (newHolidays) => {
@@ -4764,6 +4861,10 @@ export default function MonthlyAttendanceTable() {
                 const empFinanceDeds = financeDeductionsMap[record.mongoId] || []
                 const financeDedTotal = empFinanceDeds.reduce((s, d) => s + (Number(d.amount) || 0), 0)
 
+                // 3b. Finance reimbursements (approved/paid, this month — from Finance page)
+                const empFinanceReimbs = financeReimbursementsMap[record.mongoId] || []
+                const financeReimbTotal = empFinanceReimbs.reduce((s, r) => s + (Number(r.amount) || 0), 0)
+
                 // 4. Shortfall — carries forward to next month (NOT deducted from current salary)
                 // Carry forward is handled in SalaryManagement when month is "marked done"
                 const shortfall = record.monthlyTarget > 0
@@ -4773,7 +4874,8 @@ export default function MonthlyAttendanceTable() {
 
                 // Total deduction = attendance + warning fines + finance deductions only
                 const totalDeduction = Math.round(attendanceDeduction + warningFine + financeDedTotal)
-                const netSalary = Math.max(0, effectiveSalary - totalDeduction)
+                // Net salary includes reimbursements as additions
+                const netSalary = Math.max(0, effectiveSalary - totalDeduction + financeReimbTotal)
                 
                 return (
                   <tr
@@ -4934,12 +5036,12 @@ export default function MonthlyAttendanceTable() {
                     {canViewSalary && (
                       <td
                         className="px-2 py-1 text-center text-sm cursor-pointer hover:bg-red-900/20 transition-colors"
-                        style={{border:'1px solid #1f1f27',color: totalDeduction > 0 ? '#ef4444' : '#10b981',fontWeight:700}}
-                        title={totalDeduction > 0 ? `Total deductions: ₹${totalDeduction.toLocaleString('en-IN')} — click for details` : 'No deductions'}
-                        onClick={() => handleDeductionClick(record, stats, calculatedSalary, attendanceDeduction, warningFine, empFinanceDeds, shortfall, shortfallDeduction, effectiveSalary)}
+                        style={{border:'1px solid #1f1f27',color: totalDeduction > 0 ? '#ef4444' : financeReimbTotal > 0 ? '#10b981' : '#10b981',fontWeight:700}}
+                        title={totalDeduction > 0 ? `Total deductions: ₹${totalDeduction.toLocaleString('en-IN')} — click for details` : financeReimbTotal > 0 ? `Reimbursement: +₹${financeReimbTotal.toLocaleString('en-IN')} — click for details` : 'No deductions'}
+                        onClick={() => handleDeductionClick(record, stats, calculatedSalary, attendanceDeduction, warningFine, empFinanceDeds, shortfall, shortfallDeduction, effectiveSalary, empFinanceReimbs)}
                       >
-                        {totalDeduction > 0 ? `−₹${totalDeduction.toLocaleString('en-IN')}` : '✓'}
-                        {totalDeduction > 0 && <span style={{display:'block',fontSize:'9px',color:'#fca5a5',fontWeight:600}}>details ↗</span>}
+                        {totalDeduction > 0 ? `−₹${totalDeduction.toLocaleString('en-IN')}` : financeReimbTotal > 0 ? `+₹${financeReimbTotal.toLocaleString('en-IN')}` : '✓'}
+                        {(totalDeduction > 0 || financeReimbTotal > 0) && <span style={{display:'block',fontSize:'9px',color: totalDeduction > 0 ? '#fca5a5' : '#86efac',fontWeight:600}}>details ↗</span>}
                       </td>
                     )}
                   </tr>

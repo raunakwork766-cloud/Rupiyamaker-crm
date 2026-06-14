@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
-import * as faceapi from '@vladmandic/face-api';
+// Note: faceapi is loaded dynamically inside loadModels() to avoid TF.js
+// backend initialization errors (".fp undefined") at module parse time.
 import { getISTTimestamp } from '../../utils/dateUtils';
 
 const FaceRegistration = () => {
@@ -19,6 +20,8 @@ const FaceRegistration = () => {
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
   const streamRef = useRef(null);
+  // Holds the dynamically-loaded faceapi module
+  const faceapiRef = useRef(null);
 
   // Load user from localStorage
   useEffect(() => {
@@ -33,7 +36,10 @@ const FaceRegistration = () => {
   useEffect(() => {
     const loadModels = async () => {
       try {
-        const MODEL_URL = '/models'; // You'll need to add face-api models to public/models
+        const faceapi = await import('@vladmandic/face-api');
+        faceapiRef.current = faceapi;
+
+        const MODEL_URL = '/models';
         await Promise.all([
           faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL),
           faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL),
@@ -65,20 +71,27 @@ const FaceRegistration = () => {
     try {
       setLoading(true);
       const response = await axios.get(`/api/users/?user_id=${user._id}`);
-      // API returns array directly
       const empList = Array.isArray(response.data) ? response.data : (response.data.users || response.data.data || []);
       setEmployees(empList);
       
-      // Load face registration status for each employee (limit to first 20 to avoid too many calls)
-      const statusPromises = empList.slice(0, 20).map(emp =>
-        axios.get(`/api/attendance/face/${emp._id}?user_id=${user._id}`)
-          .then(res => ({ [emp._id]: res.data }))
-          .catch(() => ({ [emp._id]: { face_registered: false } }))
-      );
-      
-      const statuses = await Promise.all(statusPromises);
-      const statusMap = statuses.reduce((acc, curr) => ({ ...acc, ...curr }), {});
-      setFaceStatus(statusMap);
+      // Load face status for ALL employees in parallel batches of 10
+      const BATCH_SIZE = 10;
+      const allStatuses = {};
+
+      for (let i = 0; i < empList.length; i += BATCH_SIZE) {
+        const batch = empList.slice(i, i + BATCH_SIZE);
+        const batchResults = await Promise.all(
+          batch.map(emp =>
+            axios.get(`/api/attendance/face/${emp._id}?user_id=${user._id}`)
+              .then(res => ({ [emp._id]: res.data }))
+              .catch(() => ({ [emp._id]: { face_registered: false } }))
+          )
+        );
+        batchResults.forEach(r => Object.assign(allStatuses, r));
+        // Update state after each batch so UI shows progress
+        setFaceStatus({ ...allStatuses });
+      }
+
     } catch (error) {
       console.error('Error loading employees:', error);
     } finally {
@@ -132,54 +145,60 @@ const FaceRegistration = () => {
       canvas2.getContext('2d').drawImage(videoRef.current, 0, 0);
       const photoData = canvas2.toDataURL('image/jpeg', 0.8);
 
-      let descriptor = [];
-      let detectionScore = 1.0;
+      let descriptor = null; // null means "no descriptor" — backend will skip 128-dim check
+      let detectionScore = 0;
+      let faceDetected = false;
 
-      // Try face detection if models are loaded
+      // Try face detection only if models are loaded
       if (modelsLoaded) {
         try {
+          const faceapi = faceapiRef.current;
           const detection = await faceapi
-            .detectSingleFace(videoRef.current, new faceapi.TinyFaceDetectorOptions())
+            .detectSingleFace(videoRef.current, new faceapi.TinyFaceDetectorOptions({ scoreThreshold: 0.4 }))
             .withFaceLandmarks()
             .withFaceDescriptor();
 
-          if (!detection) {
-            alert('No face detected. Please ensure your face is clearly visible.');
-            return;
-          }
+          if (detection) {
+            descriptor = Array.from(detection.descriptor); // 128 floats
+            detectionScore = detection.detection.score;
+            faceDetected = true;
 
-          // Draw detection box on canvas
-          const canvas = canvasRef.current;
-          if (canvas) {
-            const ctx = canvas.getContext('2d');
-            canvas.width = videoRef.current.videoWidth;
-            canvas.height = videoRef.current.videoHeight;
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
-            const box = detection.detection.box;
-            ctx.strokeStyle = '#00ff00';
-            ctx.lineWidth = 3;
-            ctx.strokeRect(box.x, box.y, box.width, box.height);
+            // Draw detection box
+            const canvas = canvasRef.current;
+            if (canvas) {
+              const ctx = canvas.getContext('2d');
+              canvas.width = videoRef.current.videoWidth;
+              canvas.height = videoRef.current.videoHeight;
+              ctx.clearRect(0, 0, canvas.width, canvas.height);
+              const box = detection.detection.box;
+              ctx.strokeStyle = '#00ff00';
+              ctx.lineWidth = 3;
+              ctx.strokeRect(box.x, box.y, box.width, box.height);
+            }
+          } else {
+            // Face not detected — warn but don't block
+            const proceed = window.confirm(
+              '⚠️ No face clearly detected in this frame.\n\nSuggestions:\n• Look directly at the camera\n• Ensure good lighting\n• Move closer\n\nCapture anyway? (This sample won\'t be usable for face matching)'
+            );
+            if (!proceed) return;
           }
-
-          descriptor = Array.from(detection.descriptor);
-          detectionScore = detection.detection.score;
         } catch (faceError) {
-          console.warn('Face detection failed, using raw capture:', faceError);
+          console.warn('Face detection error:', faceError.message);
+          // Models loaded but detection threw — capture raw anyway
         }
       }
+      // If models not loaded yet, capture photo only (descriptor stays null)
 
       const sample = {
-        descriptor,
-        detection_score: detectionScore,
+        descriptor: descriptor || [],  // empty array if null (backend handles gracefully)
+        detection_score: faceDetected ? detectionScore : 0,
         photoData,
-        timestamp: getISTTimestamp()
+        timestamp: getISTTimestamp(),
+        face_detected: faceDetected,   // track locally for UI feedback
       };
 
-      setCapturedSamples(prev => {
-        const newSamples = [...prev, sample];
-        return newSamples;
-      });
-      
+      setCapturedSamples(prev => [...prev, sample]);
+
     } catch (error) {
       console.error('Error capturing face:', error);
       alert('Failed to capture sample. Please try again.');
@@ -197,17 +216,30 @@ const FaceRegistration = () => {
       return;
     }
 
+    // Count samples with valid 128-dim face descriptors
+    const validSamples = capturedSamples.filter(s => s.descriptor && s.descriptor.length === 128);
+    if (validSamples.length < 3) {
+      const invalidCount = capturedSamples.length - validSamples.length;
+      alert(
+        `⚠️ Only ${validSamples.length} of ${capturedSamples.length} samples have valid face data.\n\n` +
+        `${invalidCount} sample(s) had no face detected.\n\n` +
+        `Please capture ${3 - validSamples.length} more sample(s) with your face clearly visible.`
+      );
+      return;
+    }
+
     try {
       setLoading(true);
       setRegistrationStatus('Registering face...');
 
+      // Only send samples that have a valid descriptor
       const registrationData = {
         employee_id: selectedEmployee._id,
-        face_descriptors: capturedSamples.map(s => ({
+        face_descriptors: validSamples.map(s => ({
           descriptor: s.descriptor,
           detection_score: s.detection_score
         })),
-        photo_data: capturedSamples[0].photoData // Use first sample as reference photo
+        photo_data: (validSamples[0] || capturedSamples[0]).photoData
       };
 
       const response = await axios.post(
@@ -443,9 +475,20 @@ const FaceRegistration = () => {
                     alt={`Sample ${index + 1}`}
                     className="w-full rounded mb-2"
                   />
-                  <p className="text-xs text-gray-600">
-                    Sample {index + 1} - Confidence: {(sample.detection_score * 100).toFixed(1)}%
-                  </p>
+                  <div className="flex items-center justify-between">
+                    <p className="text-xs text-gray-600">
+                      Sample {index + 1}
+                    </p>
+                    {sample.face_detected ? (
+                      <span className="text-xs text-green-700 bg-green-50 px-2 py-0.5 rounded-full font-semibold">
+                        ✅ {(sample.detection_score * 100).toFixed(0)}%
+                      </span>
+                    ) : (
+                      <span className="text-xs text-red-600 bg-red-50 px-2 py-0.5 rounded-full font-semibold">
+                        ⚠️ No face
+                      </span>
+                    )}
+                  </div>
                   <button
                     onClick={() => setCapturedSamples(prev => prev.filter((_, i) => i !== index))}
                     className="text-red-500 text-xs mt-1"
@@ -456,6 +499,20 @@ const FaceRegistration = () => {
               ))
             )}
           </div>
+
+          {/* Valid face count summary */}
+          {capturedSamples.length > 0 && (() => {
+            const validCount = capturedSamples.filter(s => s.descriptor && s.descriptor.length === 128).length;
+            const totalCount = capturedSamples.length;
+            return (
+              <div className={`text-xs text-center p-2 rounded-lg mb-2 ${
+                validCount >= 3 ? 'bg-green-50 text-green-700' : 'bg-yellow-50 text-yellow-700'
+              }`}>
+                👤 {validCount}/{totalCount} samples have valid face data
+                {validCount < 3 && ` — need ${3 - validCount} more valid`}
+              </div>
+            );
+          })()}
 
           {/* Action Buttons */}
           {capturedSamples.length >= 3 && (

@@ -2,10 +2,11 @@
  * Standalone attendance entry — no CRM localStorage, no shared App auth state.
  * Opened in a new tab while CRM is logged in elsewhere: only this tab's sessionStorage counts.
  */
-import { useState, useEffect, useCallback } from 'react';
-import { Routes, Route, Navigate, useNavigate } from 'react-router-dom';
+import { useState, useEffect, useCallback, lazy, Suspense } from 'react';
+import { Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
 import Login from './components/Login';
-import AttendanceCheckInOut from './components/attendance/AttendanceCheckInOut';
+// Lazy-load to avoid TF.js ".fp" initialization error at module parse time
+const AttendanceCheckInOut = lazy(() => import('./components/attendance/AttendanceCheckInOut'));
 import { clearProfilePhotoFromStorage } from './utils/profilePhotoUtils';
 import {
   ATTENDANCE_LOGIN_PATH,
@@ -54,7 +55,9 @@ const AttendanceShell = ({ user, onLogout }) => {
         </button>
       </div>
       <div style={{ padding: 16 }}>
-        <AttendanceCheckInOut userId={userId} userInfo={user} />
+        <Suspense fallback={<div style={{ color: 'white', textAlign: 'center', padding: 40 }}>Loading…</div>}>
+          <AttendanceCheckInOut userId={userId} userInfo={user} />
+        </Suspense>
       </div>
     </div>
   );
@@ -62,6 +65,7 @@ const AttendanceShell = ({ user, onLogout }) => {
 
 export default function AttendanceApp() {
   const navigate = useNavigate();
+  const location = useLocation();
   const [user, setUser] = useState(null);
   const [ready, setReady] = useState(false);
 
@@ -79,7 +83,15 @@ export default function AttendanceApp() {
   const handleLogin = useCallback((userData) => {
     setUser(userData);
     syncFromTabStorage();
-  }, [syncFromTabStorage]);
+
+    // If came from QR scan — redirect back to /checkin with the token
+    const params = new URLSearchParams(location.search);
+    const qrToken = params.get('qr_token');
+    if (qrToken) {
+      navigate(`/checkin?token=${encodeURIComponent(qrToken)}`, { replace: true });
+      return;
+    }
+  }, [syncFromTabStorage, navigate, location.search]);
 
   const handleLogout = useCallback(() => {
     clearProfilePhotoFromStorage();

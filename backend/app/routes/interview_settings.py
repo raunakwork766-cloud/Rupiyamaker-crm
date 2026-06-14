@@ -1,6 +1,8 @@
 from fastapi import APIRouter, HTTPException, Query, Depends
 from typing import Optional, List
 from pydantic import BaseModel, Field
+import secrets
+import logging
 from ..database.InterviewSettings import (
     create_job_opening, get_job_openings, 
     update_job_opening, delete_job_opening,
@@ -18,7 +20,6 @@ from app.utils.common_utils import get_current_user_id
 from app.utils.permission_helpers import is_super_admin_permission
 from app.utils.permissions import get_user_permissions, get_user_role
 from app.database import get_database_instances
-import logging
 
 # Setup logging
 logger = logging.getLogger(__name__)
@@ -826,3 +827,80 @@ async def get_hr_head_info(user_id: str = Query(...)):
     except Exception as e:
         logger.error(f"Error in get_hr_head_info: {e}")
         return {"success": True, "data": {"name": "", "phone": "", "designation": "HR Head"}}
+
+
+# ── Google Form Integration Settings ─────────────────────────────────────────
+
+@router.post("/interview-settings/webhook-api-key")
+async def generate_webhook_api_key(user_id: str = Query(...)):
+    """Generate (or regenerate) the webhook API key for Google Form integration."""
+    try:
+        await require_interview_setting_permission(user_id)
+        new_key = secrets.token_hex(32)  # 64 hex chars = 32 bytes entropy
+        await upsert_global_settings({"webhook_api_key": new_key})
+        return {
+            "success": True,
+            "api_key": new_key,
+            "message": "API key generated. Copy it now — it will be shown masked on future requests.",
+            "warning": "Your previous API key (if any) has been invalidated. Update your Apps Script with the new key to restore webhook functionality."
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error generating webhook API key: {e}")
+        raise HTTPException(status_code=500, detail="Failed to generate API key")
+
+
+@router.get("/interview-settings/webhook-api-key")
+async def get_webhook_api_key_status(user_id: str = Query(...)):
+    """Check if a webhook API key exists (returns masked key, never plaintext)."""
+    try:
+        await require_interview_setting_permission(user_id)
+        doc = await get_global_settings()
+        key = (doc or {}).get("webhook_api_key", "")
+        if key:
+            # Show only last 4 characters
+            masked = "sk_" + "•" * (len(key) - 4) + key[-4:]
+            return {"success": True, "has_key": True, "masked_key": masked}
+        return {"success": True, "has_key": False, "masked_key": None}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting webhook API key status: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+class GoogleFormURLModel(BaseModel):
+    google_form_url: Optional[str] = Field(None, max_length=2048)
+
+
+@router.put("/interview-settings/google-form-url")
+async def save_google_form_url(body: GoogleFormURLModel, user_id: str = Query(...)):
+    """Save the Google Form URL in global settings."""
+    try:
+        await require_interview_setting_permission(user_id)
+        url = (body.google_form_url or "").strip()
+        if url and not url.startswith("https://docs.google.com/forms/"):
+            raise HTTPException(
+                status_code=422,
+                detail="URL must be a valid Google Form link starting with https://docs.google.com/forms/"
+            )
+        await upsert_global_settings({"google_form_url": url})
+        return {"success": True, "google_form_url": url, "message": "Google Form URL saved"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error saving Google Form URL: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+@router.get("/interview-settings/google-form-url")
+async def get_google_form_url(user_id: str = Query(...)):
+    """Get the saved Google Form URL."""
+    try:
+        doc = await get_global_settings()
+        url = (doc or {}).get("google_form_url", "")
+        return {"success": True, "google_form_url": url or None}
+    except Exception as e:
+        logger.error(f"Error getting Google Form URL: {e}")
+        return {"success": True, "google_form_url": None}

@@ -93,7 +93,7 @@ const SearchableSelect = ({
   };
 
   return (
-    <div className={`relative ${fillParent ? 'flex min-h-0 h-full' : ''} ${className}`} ref={dropdownRef}>
+    <div className={`relative ${isOpen ? 'z-[1000]' : ''} ${fillParent ? 'flex min-h-0 h-full' : ''} ${className}`} ref={dropdownRef}>
       {/* Main select button */}
       <div
         ref={triggerRef}

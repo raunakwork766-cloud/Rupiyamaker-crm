@@ -26,13 +26,13 @@ class CheckOutRequest(BaseModel):
     comments: Optional[str] = Field("", description="Optional comments")
 
 class AttendanceCheckInRequest(BaseModel):
-    photo_data: str = Field(..., description="Base64 encoded photo data")
+    photo_data: Optional[str] = Field(None, description="Base64 encoded photo data (optional for QR check-in)")
     geolocation: Optional[GeolocationData] = Field(None, description="GPS coordinates")
     comments: Optional[str] = Field("", description="Optional comments")
     face_descriptor: Optional[Dict[str, Any]] = Field(None, description="Optional face descriptor for facial verification")
 
 class AttendanceCheckOutRequest(BaseModel):
-    photo_data: str = Field(..., description="Base64 encoded photo data")
+    photo_data: Optional[str] = Field(None, description="Base64 encoded photo data (optional for QR check-out)")
     geolocation: Optional[GeolocationData] = Field(None, description="GPS coordinates")
     comments: Optional[str] = Field("", description="Optional comments")
 
@@ -162,6 +162,7 @@ class AttendanceSettingsUpdate(BaseModel):
     office_latitude: Optional[float] = Field(None, description="Office latitude")
     office_longitude: Optional[float] = Field(None, description="Office longitude")
     geofence_radius: Optional[float] = Field(None, description="Geofence radius in meters")
+    enforce_facial_verification: Optional[bool] = Field(None, description="Require face match before marking attendance")
 
 class AttendanceCreate(BaseModel):
     employee_id: str = Field(..., description="ID of the employee")
@@ -180,8 +181,8 @@ class AttendanceCreate(BaseModel):
     
     @validator('status')
     def validate_status(cls, v):
-        if v not in [1, 0.5, -1, 0]:
-            raise ValueError('Status must be 1 (Full Day), 0.5 (Half Day), 0 (Leave), or -1 (Absent)')
+        if v not in [1, 0.5, -1, 0, -2]:
+            raise ValueError('Status must be 1 (Full Day), 0.5 (Half Day), 0 (Leave), -1 (Absent), or -2 (Absconding)')
         return v
     
     @validator('date')
@@ -206,8 +207,8 @@ class AttendanceUpdate(BaseModel):
     
     @validator('status')
     def validate_status(cls, v):
-        if v is not None and v not in [1, 0.5, -1, 0]:
-            raise ValueError('Status must be 1 (Full Day), 0.5 (Half Day), 0 (Leave), or -1 (Absent)')
+        if v is not None and v not in [1, 0.5, -1, 0, -2]:
+            raise ValueError('Status must be 1 (Full Day), 0.5 (Half Day), 0 (Leave), -1 (Absent), or -2 (Absconding)')
         return v
 
 class BulkAttendanceCreate(BaseModel):
@@ -218,8 +219,8 @@ class BulkAttendanceCreate(BaseModel):
     
     @validator('status')
     def validate_status(cls, v):
-        if v not in [1, 0.5, -1, 0]:
-            raise ValueError('Status must be 1 (Full Day), 0.5 (Half Day), 0 (Leave), or -1 (Absent)')
+        if v not in [1, 0.5, -1, 0, -2]:
+            raise ValueError('Status must be 1 (Full Day), 0.5 (Half Day), 0 (Leave), -1 (Absent), or -2 (Absconding)')
         return v
     
     @validator('date')

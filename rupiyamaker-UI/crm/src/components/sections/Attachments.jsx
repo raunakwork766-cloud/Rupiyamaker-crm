@@ -945,14 +945,88 @@ export default function Attachments({ leadId, userId }) {
     }
   }, [leadId, leadData, loadingTypes, currentUserId]);
 
-  // Check if a PDF file is password-protected by scanning its bytes for the /Encrypt marker
+  // Check if a PDF file requires an OPEN password to view it.
+  // A PDF can have /Encrypt (for permissions like print/copy restrictions) without
+  // requiring a password to open. We must distinguish between:
+  //   - Owner-only encrypted PDFs (open password = empty) → NOT password protected for viewing
+  //   - User-password protected PDFs → Password required to open
+  //
+  // Standard PDF spec: the /U entry (32 bytes for RC4, 48 bytes for AES-128, 32+ for AES-256)
+  // when user password is empty will match a known constant. We check this heuristically
+  // by reading the PDF cross-reference (xref) and Encrypt dictionary.
   const isPdfEncrypted = (file) => new Promise((resolve) => {
     const reader = new FileReader();
     reader.onload = (ev) => {
       try {
         const bytes = new Uint8Array(ev.target.result);
         const text = new TextDecoder('latin1').decode(bytes);
-        resolve(text.includes('/Encrypt'));
+
+        // No /Encrypt at all → definitely not encrypted
+        if (!text.includes('/Encrypt')) {
+          resolve(false);
+          return;
+        }
+
+        // /Encrypt exists → check if it actually requires an open (user) password.
+        // PDFs with only permission restrictions (no open password) have a /P entry
+        // with a negative integer and the /U (user password hash) matches the
+        // known empty-password hash for that encryption revision.
+
+        // Known empty-password /U values (hex) per PDF spec:
+        // Rev 2/3 RC4: 28 bytes of padding + owner key bytes = specific 32-byte pattern
+        // We look for /EncryptMetadata false or /P with no /UserPassword set.
+
+        // Most reliable heuristic: check if /R (revision) and /O /U entries suggest
+        // an empty user password by looking for the standard padding sequence.
+        // Standard padding: 28 BF 4E 5E 4E 75 8A 41 64 00 4E 56 FF FA 01 08 2E 2E 00 B6 D0 68 3E 80 2F 0C A9 FE 64 53 69 7A
+        // If /U starts with this padding sequence, user password is empty.
+
+        const encryptIdx = text.indexOf('/Encrypt');
+        if (encryptIdx === -1) { resolve(false); return; }
+
+        // Extract the Encrypt dictionary content (search within ~2000 chars of marker)
+        const encryptSection = text.substring(encryptIdx, encryptIdx + 4000);
+
+        // Look for /U entry — the 32-byte user password hash (hex or literal)
+        // If /U contains the standard empty-password hash padding (28BF4E5E...), user pass is empty
+        const emptyPasswordPaddingHex = '28bf4e5e4e758a4164004e56fffa01082e2e00b6d0683e802f0ca9fe6453697a';
+        const emptyPasswordPaddingLatin = '\x28\xBF\x4E\x5E\x4E\x75\x8A\x41\x64\x00\x4E\x56\xFF\xFA\x01\x08\x2E\x2E\x00\xB6\xD0\x68\x3E\x80\x2F\x0C\xA9\xFE\x64\x53\x69\x7A';
+
+        // Check for /U (hex string) containing the known empty-password hash prefix
+        const uHexMatch = encryptSection.match(/\/U\s*<([0-9a-fA-F]+)>/);
+        if (uHexMatch) {
+          const uHex = uHexMatch[1].toLowerCase();
+          // If the /U hash starts with the standard empty-user-password padding bytes
+          // then the PDF does NOT require an open password (only owner/permissions locked)
+          if (uHex.startsWith(emptyPasswordPaddingHex.substring(0, 32))) {
+            resolve(false);
+            return;
+          }
+          // If /U is all zeros (AES-based empty password or unset), also not open-protected
+          if (/^0+$/.test(uHex)) {
+            resolve(false);
+            return;
+          }
+          // /U exists and doesn't match empty-password → PDF likely requires open password
+          resolve(true);
+          return;
+        }
+
+        // Check for /U (literal string) containing empty-password padding bytes
+        const uLiteralMatch = encryptSection.match(/\/U\s*\(([^)]*)\)/);
+        if (uLiteralMatch) {
+          const uVal = uLiteralMatch[1];
+          if (uVal.startsWith(emptyPasswordPaddingLatin.substring(0, 10))) {
+            resolve(false);
+            return;
+          }
+          resolve(true);
+          return;
+        }
+
+        // /Encrypt exists but no /U entry found clearly → assume NOT open-password required
+        // (conservative: avoid false positives, user can still upload)
+        resolve(false);
       } catch { resolve(false); }
     };
     reader.onerror = () => resolve(false);
