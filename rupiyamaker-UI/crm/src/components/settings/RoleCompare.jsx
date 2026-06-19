@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback, useLayoutEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { refreshCurrentUserPermissions } from '../../utils/immediatePermissionRefresh';
 
@@ -205,6 +205,8 @@ const RC = {
 // Column widths for the two frozen columns
 const NAME_COL_WIDTH = 200;
 const PERMS_COL_WIDTH = 80;
+const HEADER_HEIGHT = 72;
+const ROW_HEIGHT = 62;
 
 // CSS sticky frozen columns — position:sticky with explicit left offsets
 const thFixed = () => ({
@@ -243,8 +245,9 @@ const tdFixed = (rowBg) => ({
     background: rowBg || RC.stickyEven, backgroundColor: rowBg || RC.stickyEven,
     minWidth: `${NAME_COL_WIDTH}px`, width: `${NAME_COL_WIDTH}px`,
     boxSizing: 'border-box',
-    position: 'relative',
-    zIndex: 20,
+    position: 'sticky', left: 0,
+    zIndex: 12,
+    whiteSpace: 'nowrap',
 });
 const tdPerms = (rowBg) => ({
     padding: '10px 16px', textAlign: 'center',
@@ -253,12 +256,16 @@ const tdPerms = (rowBg) => ({
     whiteSpace: 'nowrap',
     minWidth: `${PERMS_COL_WIDTH}px`, width: `${PERMS_COL_WIDTH}px`,
     boxSizing: 'border-box',
-    position: 'relative',
-    zIndex: 18,
+    position: 'sticky', left: `${NAME_COL_WIDTH}px`,
+    zIndex: 11,
+    boxShadow: '4px 0 6px -2px rgba(45,62,80,0.14)',
 });
 const tdSA = (rowBg) => ({
-    padding: '6px 10px', textAlign: 'center',
+    padding: '0 10px', textAlign: 'center',
     borderRight: `1px solid ${RC.borderLight}`, background: rowBg || RC.rowEven,
+    height: `${ROW_HEIGHT}px`,
+    boxSizing: 'border-box',
+    verticalAlign: 'middle',
 });
 
 export default function RoleCompare({ embedded = false }) {
@@ -275,74 +282,31 @@ export default function RoleCompare({ embedded = false }) {
     const [compareFilter, setCompareFilter] = useState([]);
     const [compareOpen, setCompareOpen] = useState(false);
     const [compareSearch, setCompareSearch] = useState('');
+    const [hoveredRoleId, setHoveredRoleId] = useState(null);
     const compareRef = useRef(null);
     const scrollRef = useRef(null);   // the overflowX:auto scroll div
     const tableRef  = useRef(null);   // the <table> element
 
-    // ── JS-driven frozen columns ──────────────────────────────────────────────
-    // CSS position:sticky alone doesn't work reliably here because #main-scroll-container
-    // (in App.jsx) also has overflowX:auto, creating two competing horizontal scroll
-    // containers. Instead we listen to whichever container actually scrolls and
-    // translateX the frozen cells to keep them pinned.
-    useEffect(() => {
-        if (!tableRef.current) return;
-        const table = tableRef.current;
+    useLayoutEffect(() => {
+        const outer = document.getElementById('main-scroll-container');
+        if (!outer) return undefined;
 
-        // Find the real scroll container: prefer the inner wrapper (scrollRef),
-        // but also watch #main-scroll-container as a fallback.
-        const innerSC  = scrollRef.current;
-        const outerSC  = document.getElementById('main-scroll-container');
-
-        let frozenNameCells = [];
-        let frozenPermsCells = [];
-
-        const getFreezeCells = () => {
-            frozenNameCells  = Array.from(table.querySelectorAll('[data-freeze="name"]'));
-            frozenPermsCells = Array.from(table.querySelectorAll('[data-freeze="perms"]'));
+        const previousOverflowX = outer.style.overflowX;
+        const previousScrollLeft = outer.scrollLeft;
+        const keepAtSectionStart = () => {
+            if (outer.scrollLeft !== 0) outer.scrollLeft = 0;
         };
 
-        // Apply translateX to compensate for how far the scroll container has scrolled
-        const applyFreeze = (scrollLeft) => {
-            const shift = scrollLeft;
-            frozenNameCells.forEach(c => {
-                c.style.transform  = shift > 0 ? `translateX(${shift}px)` : '';
-                c.style.zIndex     = '20';
-                c.style.boxShadow  = shift > 0 ? '3px 0 5px rgba(0,0,0,0.10)' : '';
-            });
-            const permsShift = shift;
-            frozenPermsCells.forEach(c => {
-                c.style.transform  = permsShift > 0 ? `translateX(${permsShift}px)` : '';
-                c.style.zIndex     = '18';
-                c.style.boxShadow  = permsShift > 0 ? '4px 0 6px rgba(0,0,0,0.08)' : '';
-            });
-        };
-
-        const onInnerScroll  = () => applyFreeze(innerSC ? innerSC.scrollLeft : 0);
-        const onOuterScroll  = () => {
-            // When outer scrolls, inner.scrollLeft may be 0 — apply outer offset
-            const outerLeft = outerSC ? outerSC.scrollLeft : 0;
-            applyFreeze(outerLeft + (innerSC ? innerSC.scrollLeft : 0));
-        };
-
-        // Small delay to let React paint the table cells before querying them
-        const tid = setTimeout(() => {
-            getFreezeCells();
-            // Initial state (no scroll)
-            applyFreeze(0);
-        }, 100);
-
-        if (innerSC)  innerSC.addEventListener('scroll', onInnerScroll, { passive: true });
-        if (outerSC)  outerSC.addEventListener('scroll', onOuterScroll, { passive: true });
+        outer.style.overflowX = 'hidden';
+        keepAtSectionStart();
+        outer.addEventListener('scroll', keepAtSectionStart, { passive: true });
 
         return () => {
-            clearTimeout(tid);
-            if (innerSC)  innerSC.removeEventListener('scroll', onInnerScroll);
-            if (outerSC)  outerSC.removeEventListener('scroll', onOuterScroll);
-            // Reset on unmount
-            frozenNameCells.forEach(c => { c.style.transform = ''; c.style.boxShadow = ''; });
-            frozenPermsCells.forEach(c => { c.style.transform = ''; c.style.boxShadow = ''; });
+            outer.removeEventListener('scroll', keepAtSectionStart);
+            outer.style.overflowX = previousOverflowX;
+            outer.scrollLeft = previousScrollLeft;
         };
-    }, [roles]);
+    }, []);
     useEffect(() => {
         const handler = (e) => { if (compareRef.current && !compareRef.current.contains(e.target)) setCompareOpen(false); };
         document.addEventListener('mousedown', handler);
@@ -580,6 +544,20 @@ export default function RoleCompare({ embedded = false }) {
         else { setSortKey(key); setSortAsc(true); }
     };
 
+    const handleTableWheel = useCallback((e) => {
+        const scroller = scrollRef.current;
+        if (!scroller || scroller.scrollWidth <= scroller.clientWidth) return;
+        if (Math.abs(e.deltaX) <= Math.abs(e.deltaY) || e.deltaX === 0) return;
+
+        const maxScroll = scroller.scrollWidth - scroller.clientWidth;
+        const nextScroll = Math.max(0, Math.min(maxScroll, scroller.scrollLeft + e.deltaX));
+        if (nextScroll !== scroller.scrollLeft) {
+            scroller.scrollLeft = nextScroll;
+            e.preventDefault();
+            e.stopPropagation();
+        }
+    }, []);
+
     const SortIcon = ({ k }) => (
         <span className="ml-1 text-xs opacity-60">
             {sortKey === k ? (sortAsc ? '▲' : '▼') : '⇅'}
@@ -697,7 +675,7 @@ ${actionHeaders}
     }
 
     return (
-        <div style={{ background: RC.page, height: embedded ? 'auto' : '100vh', minHeight: embedded ? '400px' : undefined, color: RC.text, fontFamily: 'Segoe UI, sans-serif', display: 'flex', flexDirection: 'column', minWidth: 0, maxWidth: '100%', overflow: 'hidden' }}>
+        <div className="role-compare-shell" style={{ background: RC.page, height: embedded ? 'auto' : '100vh', minHeight: embedded ? '400px' : undefined, color: RC.text, fontFamily: 'Segoe UI, sans-serif', display: 'flex', flexDirection: 'column', minWidth: 0, maxWidth: '100%', overflow: 'hidden' }}>
             {/* Lock Roles Modal */}
             {lockRolesModal && (
                 <div style={{ position: 'fixed', inset: 0, background: RC.overlay, zIndex: 9998, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
@@ -910,118 +888,153 @@ ${actionHeaders}
             </div>
 
 
-            {/* Table wrapper — minWidth:0 is CRITICAL: as a flex item it would otherwise
-                grow to the table's full intrinsic width (min-width:auto default), which
-                stops overflowX:auto from ever scrolling and breaks position:sticky columns. */}
-            <div ref={scrollRef} style={{ overflowX: 'auto', overflowY: 'visible', scrollbarWidth: 'thin', flex: 1, minWidth: 0, width: '100%', maxWidth: '100%' }}>
-                <table ref={tableRef} style={{ borderCollapse: 'collapse', fontSize: '12px', minWidth: 'max-content', width: '100%' }}>
-                    <thead>
-                        {/* Row 1: frozen cols first (Name, Perms, SA), then scrolling cols */}
-                        <tr>
-                            <th data-freeze="name" rowSpan={2} onClick={() => handleSort('name')} style={thFixed()}>
-                                Role Name <SortIcon k="name" />
-                            </th>
-                            <th data-freeze="perms" rowSpan={2} onClick={() => handleSort('perms')} style={thPerms()}>
-                                Perms <SortIcon k="perms" />
-                            </th>
-                            <th rowSpan={2} style={thSA()}>SA</th>
-                            <th rowSpan={2} onClick={() => handleSort('dept')} style={thNormal()}>
-                                Department <SortIcon k="dept" />
-                            </th>
-                            <th rowSpan={2} onClick={() => handleSort('report')} style={thNormal()}>
-                                Reports To <SortIcon k="report" />
-                            </th>
-                            {permissionModules.map((mod, i) => (
-                                <th key={i} colSpan={mod.actions.length} style={{
-                                    background: RC.moduleHeader,
-                                    color: RC.accent,
-                                    padding: '8px 8px 4px',
-                                    fontWeight: '700',
-                                    fontSize: '10px',
-                                    textTransform: 'uppercase',
-                                    letterSpacing: '0.5px',
-                                    borderLeft: i > 0 ? `3px solid ${RC.accent}` : 'none',
-                                    borderBottom: `1px solid ${RC.border}`,
-                                    whiteSpace: 'nowrap',
-                                    textAlign: 'center',
-                                }}>
-                                    {mod.label}
+            <div className="role-compare-split" style={{ display: 'flex', flex: 1, minWidth: 0, width: '100%', maxWidth: '100%', overflow: 'hidden', position: 'relative' }}>
+                <div className="role-compare-frozen-pane" style={{ width: NAME_COL_WIDTH + PERMS_COL_WIDTH, minWidth: NAME_COL_WIDTH + PERMS_COL_WIDTH, flexShrink: 0, position: 'relative', zIndex: 5, boxShadow: '4px 0 8px -5px rgba(45,62,80,0.35)' }}>
+                    <table style={{ borderCollapse: 'separate', borderSpacing: 0, fontSize: '12px', tableLayout: 'fixed', width: NAME_COL_WIDTH + PERMS_COL_WIDTH }}>
+                        <thead>
+                            <tr style={{ height: HEADER_HEIGHT }}>
+                                <th onClick={() => handleSort('name')} style={{ ...thFixed(), position: 'static', height: HEADER_HEIGHT, minWidth: NAME_COL_WIDTH, width: NAME_COL_WIDTH, borderRight: `2px solid ${RC.border}`, verticalAlign: 'middle' }}>
+                                    Role Name <SortIcon k="name" />
                                 </th>
-                            ))}
-                        </tr>
-                        {/* Row 2: action names only (fixed cols have rowSpan=2) */}
-                        <tr>
-                            {permissionModules.map((mod, mi) =>
-                                mod.actions.map((action, ai) => (
-                                    <th key={`${mi}-${ai}`} style={{
-                                        background: RC.actionHeader,
-                                        color: RC.textMuted,
-                                        padding: '4px 6px 6px',
-                                        fontWeight: '600',
+                                <th onClick={() => handleSort('perms')} style={{ ...thPerms(), position: 'static', left: 'auto', height: HEADER_HEIGHT, minWidth: PERMS_COL_WIDTH, width: PERMS_COL_WIDTH, boxShadow: 'none', verticalAlign: 'middle' }}>
+                                    Perms <SortIcon k="perms" />
+                                </th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {sortedRoles.map((role, ri) => {
+                                const roleId = role.id || role._id;
+                                const isSuperAdmin = role.permissions?.some(p => p.page === '*');
+                                const permCount = getPermissionsCount(role.permissions);
+                                const rowBg = hoveredRoleId === roleId ? RC.hover : (ri % 2 === 0 ? RC.stickyEven : RC.stickyOdd);
+
+                                return (
+                                    <tr
+                                        key={roleId}
+                                        onMouseEnter={() => setHoveredRoleId(roleId)}
+                                        onMouseLeave={() => setHoveredRoleId(null)}
+                                        style={{ height: ROW_HEIGHT, borderBottom: `1px solid ${RC.borderLight}` }}
+                                    >
+                                        <td style={{ ...tdFixed(rowBg), position: 'static', height: ROW_HEIGHT, minWidth: NAME_COL_WIDTH, width: NAME_COL_WIDTH, overflow: 'hidden', verticalAlign: 'middle' }}>
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                {saving.has(roleId) ? (
+                                                    <div style={{ width: '8px', height: '8px', borderRadius: '50%', border: `2px solid ${RC.accent}`, borderTop: '2px solid transparent', animation: 'spin 0.7s linear infinite', flexShrink: 0 }} />
+                                                ) : (
+                                                    <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: isSuperAdmin ? RC.accent : RC.border, flexShrink: 0 }}></div>
+                                                )}
+                                                <span style={{ fontWeight: '600', color: RC.text, fontSize: '12px', overflow: 'hidden', textOverflow: 'ellipsis' }}>{role.name}</span>
+                                                {isSuperAdmin && (
+                                                    <span style={{ background: RC.accent, color: '#fff', fontSize: '8px', fontWeight: '800', padding: '1px 5px', borderRadius: '4px', flexShrink: 0 }}>SA</span>
+                                                )}
+                                            </div>
+                                        </td>
+                                        <td style={{ ...tdPerms(rowBg), position: 'static', left: 'auto', height: ROW_HEIGHT, minWidth: PERMS_COL_WIDTH, width: PERMS_COL_WIDTH, boxShadow: 'none', verticalAlign: 'middle' }}>
+                                            <span style={{ background: permCount > 0 ? RC.successBg : RC.pageAlt, color: permCount > 0 ? RC.success : RC.textLight, fontWeight: '700', padding: '2px 8px', borderRadius: '4px', fontSize: '11px' }}>
+                                                {permCount}
+                                            </span>
+                                        </td>
+                                    </tr>
+                                );
+                            })}
+                        </tbody>
+                    </table>
+                </div>
+
+                <div
+                    className="role-compare-scroller"
+                    ref={scrollRef}
+                    onWheel={handleTableWheel}
+                    style={{
+                        overflowX: 'auto',
+                        overflowY: 'visible',
+                        overscrollBehaviorX: 'contain',
+                        scrollbarWidth: 'thin',
+                        flex: 1,
+                        minWidth: 0,
+                        width: '100%',
+                        maxWidth: '100%',
+                        position: 'relative',
+                    }}
+                >
+                    <table className="role-compare-table" ref={tableRef} style={{ borderCollapse: 'separate', borderSpacing: 0, fontSize: '12px', minWidth: 'max-content', width: '100%' }}>
+                        <thead>
+                            <tr>
+                                <th rowSpan={2} style={{ ...thSA(), height: HEADER_HEIGHT, verticalAlign: 'middle' }}>SA</th>
+                                <th rowSpan={2} onClick={() => handleSort('dept')} style={{ ...thNormal(), height: HEADER_HEIGHT, verticalAlign: 'middle' }}>
+                                    Department <SortIcon k="dept" />
+                                </th>
+                                <th rowSpan={2} onClick={() => handleSort('report')} style={{ ...thNormal(), height: HEADER_HEIGHT, verticalAlign: 'middle' }}>
+                                    Reports To <SortIcon k="report" />
+                                </th>
+                                {permissionModules.map((mod, i) => (
+                                    <th key={i} colSpan={mod.actions.length} style={{
+                                        background: RC.moduleHeader,
+                                        color: RC.accent,
+                                        padding: '8px 8px 4px',
+                                        fontWeight: '700',
                                         fontSize: '10px',
-                                        borderLeft: ai === 0 && mi > 0 ? `3px solid ${RC.accent}` : `1px solid ${RC.borderLight}`,
-                                        borderBottom: `2px solid ${RC.border}`,
+                                        textTransform: 'uppercase',
+                                        letterSpacing: '0.5px',
+                                        borderLeft: i > 0 ? `3px solid ${RC.accent}` : 'none',
+                                        borderBottom: `1px solid ${RC.border}`,
                                         whiteSpace: 'nowrap',
                                         textAlign: 'center',
-                                        minWidth: '56px',
+                                        height: HEADER_HEIGHT / 2,
+                                        boxSizing: 'border-box',
+                                        verticalAlign: 'middle',
                                     }}>
-                                        {ACTION_LABELS[action] || action}
+                                        {mod.label}
                                     </th>
-                                ))
-                            )}
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {sortedRoles.length === 0 && (
-                            <tr>
-                                <td colSpan={4 + permissionModules.reduce((s, m) => s + m.actions.length, 0)}
-                                    style={{ textAlign: 'center', padding: '40px', color: RC.textLight, background: RC.page }}>
-                                    {search ? 'No roles match your search.' : 'No roles found.'}
-                                </td>
+                                ))}
                             </tr>
-                        )}
-                        {sortedRoles.map((role, ri) => {
-                            const isSuperAdmin = role.permissions?.some(p => p.page === '*');
-                            const permCount = getPermissionsCount(role.permissions);
+                            <tr>
+                                {permissionModules.map((mod, mi) =>
+                                    mod.actions.map((action, ai) => (
+                                        <th key={`${mi}-${ai}`} style={{
+                                            background: RC.actionHeader,
+                                            color: RC.textMuted,
+                                            padding: '4px 6px 6px',
+                                            fontWeight: '600',
+                                            fontSize: '10px',
+                                            borderLeft: ai === 0 && mi > 0 ? `3px solid ${RC.accent}` : `1px solid ${RC.borderLight}`,
+                                            borderBottom: `2px solid ${RC.border}`,
+                                            whiteSpace: 'nowrap',
+                                            textAlign: 'center',
+                                            minWidth: '56px',
+                                            height: HEADER_HEIGHT / 2,
+                                            boxSizing: 'border-box',
+                                            verticalAlign: 'middle',
+                                        }}>
+                                            {ACTION_LABELS[action] || action}
+                                        </th>
+                                    ))
+                                )}
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {sortedRoles.length === 0 && (
+                                <tr>
+                                    <td colSpan={3 + permissionModules.reduce((s, m) => s + m.actions.length, 0)}
+                                        style={{ textAlign: 'center', padding: '40px', color: RC.textLight, background: RC.page }}>
+                                        {search ? 'No roles match your search.' : 'No roles found.'}
+                                    </td>
+                                </tr>
+                            )}
+                            {sortedRoles.map((role, ri) => {
+                                const roleId = role.id || role._id;
+                                const isSuperAdmin = role.permissions?.some(p => p.page === '*');
+                                const rowBg = hoveredRoleId === roleId ? RC.hover : (ri % 2 === 0 ? RC.rowEven : RC.rowOdd);
 
-                            return (
-                                <tr key={role._id || role.id}
-                                    style={{ borderBottom: `1px solid ${RC.borderLight}`, background: ri % 2 === 0 ? RC.rowEven : RC.rowOdd }}
-                                    onMouseEnter={e => {
-                                        e.currentTarget.style.background = RC.hover;
-                                        e.currentTarget.querySelectorAll('td[data-sticky]').forEach(td => { td.style.background = RC.hover; td.style.backgroundColor = RC.hover; });
-                                    }}
-                                    onMouseLeave={e => {
-                                        const bg = ri % 2 === 0 ? RC.rowEven : RC.rowOdd;
-                                        const stickyBg = ri % 2 === 0 ? RC.stickyEven : RC.stickyOdd;
-                                        e.currentTarget.style.background = bg;
-                                        e.currentTarget.querySelectorAll('td[data-sticky]').forEach(td => { td.style.background = stickyBg; td.style.backgroundColor = stickyBg; });
-                                    }}
-                                >
-                                    {/* Role Name — sticky at left:0 */}
-                                    <td data-freeze="name" data-sticky="true" style={tdFixed(ri % 2 === 0 ? RC.stickyEven : RC.stickyOdd)}>
-                                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                            {saving.has(role.id || role._id) ? (
-                                                <div style={{ width: '8px', height: '8px', borderRadius: '50%', border: `2px solid ${RC.accent}`, borderTop: '2px solid transparent', animation: 'spin 0.7s linear infinite', flexShrink: 0 }} />
-                                            ) : (
-                                                <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: isSuperAdmin ? RC.accent : RC.border, flexShrink: 0 }}></div>
-                                            )}
-                                            <span style={{ fontWeight: '600', color: RC.text, fontSize: '12px' }}>{role.name}</span>
-                                            {isSuperAdmin && (
-                                                <span style={{ background: RC.accent, color: '#fff', fontSize: '8px', fontWeight: '800', padding: '1px 5px', borderRadius: '4px' }}>SA</span>
-                                            )}
-                                        </div>
-                                    </td>
-                                    {/* Perm Count — sticky at left:200 (right after Name) */}
-                                    <td data-freeze="perms" data-sticky="true" style={tdPerms(ri % 2 === 0 ? RC.stickyEven : RC.stickyOdd)}>
-                                        <span style={{ background: permCount > 0 ? RC.successBg : RC.pageAlt, color: permCount > 0 ? RC.success : RC.textLight, fontWeight: '700', padding: '2px 8px', borderRadius: '4px', fontSize: '11px' }}>
-                                            {permCount}
-                                        </span>
-                                    </td>
-                                    {/* SA Toggle — right after Perms, scrolls away */}
-                                    <td style={tdSA(ri % 2 === 0 ? RC.rowEven : RC.rowOdd)}>
+                                return (
+                                    <tr
+                                        key={roleId}
+                                        onMouseEnter={() => setHoveredRoleId(roleId)}
+                                        onMouseLeave={() => setHoveredRoleId(null)}
+                                        style={{ height: ROW_HEIGHT, borderBottom: `1px solid ${RC.borderLight}`, background: rowBg }}
+                                    >
+                                        <td style={{ ...tdSA(rowBg), height: ROW_HEIGHT }}>
                                         <div
-                                            onClick={() => toggleSuperAdmin(role.id || role._id, isSuperAdmin)}
+                                            onClick={() => toggleSuperAdmin(roleId, isSuperAdmin)}
                                             title={isSuperAdmin ? 'Remove Super Admin' : 'Grant Super Admin'}
                                             style={{ display: 'inline-flex', alignItems: 'center', cursor: 'pointer', position: 'relative', width: '40px', height: '22px', borderRadius: '11px', background: isSuperAdmin ? RC.accent : RC.border, transition: 'background 0.25s', border: isSuperAdmin ? `1.5px solid ${RC.accent}` : `1.5px solid ${RC.border}`, flexShrink: 0 }}
                                         >
@@ -1029,7 +1042,7 @@ ${actionHeaders}
                                         </div>
                                     </td>
                                     {/* Department — scrolls */}
-                                    <td style={{ padding: '10px 16px', borderRight: `1px solid ${RC.borderLight}`, whiteSpace: 'nowrap' }}>
+                                    <td style={{ padding: '0 16px', height: ROW_HEIGHT, boxSizing: 'border-box', verticalAlign: 'middle', borderRight: `1px solid ${RC.borderLight}`, whiteSpace: 'nowrap' }}>
                                         {role.department_id ? (
                                             <span style={{ background: RC.actionHeader, border: '1px solid #333', color: RC.textMuted, padding: '2px 8px', borderRadius: '4px', fontSize: '11px' }}>
                                                 {getDeptName(role.department_id)}
@@ -1037,7 +1050,7 @@ ${actionHeaders}
                                         ) : <span style={{ color: RC.textLight }}>-</span>}
                                     </td>
                                     {/* Reports To — scrolls */}
-                                    <td style={{ padding: '10px 16px', borderRight: `1px solid ${RC.borderLight}`, whiteSpace: 'nowrap' }}>
+                                    <td style={{ padding: '0 16px', height: ROW_HEIGHT, boxSizing: 'border-box', verticalAlign: 'middle', borderRight: `1px solid ${RC.borderLight}`, whiteSpace: 'nowrap' }}>
                                         <span style={{ color: RC.textMuted, fontSize: '11px' }}>{getReportNames(role)}</span>
                                     </td>
                                     {/* Permission cells */}
@@ -1048,7 +1061,7 @@ ${actionHeaders}
                                             const isLocked = action !== 'show' && mod.actions.includes('show') && !checkRolePerm(role, mod, 'show');
                                             return (
                                                 <td key={`${mi}-${ai}`}
-                                                    onClick={() => togglePermission(role.id || role._id, mod, action)}
+                                                    onClick={() => togglePermission(roleId, mod, action)}
                                                     title={
                                                         isLocked
                                                             ? `Enable "Show in Sidebar" for ${mod.label} first`
@@ -1058,7 +1071,10 @@ ${actionHeaders}
                                                     }
                                                     style={{
                                                         textAlign: 'center',
-                                                        padding: '7px 4px',
+                                                        padding: '0 4px',
+                                                        height: ROW_HEIGHT,
+                                                        boxSizing: 'border-box',
+                                                        verticalAlign: 'middle',
                                                         borderLeft: ai === 0 && mi > 0 ? `3px solid #222` : `1px solid ${RC.borderLight}`,
                                                         background: action === 'lock_role'
                                                             ? ((role.locked_roles || []).length > 0 ? RC.accentSoft : 'transparent')
@@ -1118,7 +1134,43 @@ ${actionHeaders}
                     </tbody>
                 </table>
             </div>
-            <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+            </div>
+            <style>{`
+                @keyframes spin { to { transform: rotate(360deg); } }
+                .role-compare-shell {
+                    width: 100% !important;
+                    max-width: 100% !important;
+                    min-width: 0 !important;
+                }
+                .role-compare-scroller {
+                    width: 100% !important;
+                    max-width: 100% !important;
+                    min-width: 0 !important;
+                    overflow-x: auto !important;
+                    overflow-y: visible !important;
+                }
+                .role-compare-table {
+                    width: max-content !important;
+                    min-width: max-content !important;
+                }
+                .role-compare-sticky-name {
+                    position: sticky !important;
+                    left: 0 !important;
+                    z-index: 60 !important;
+                    background-clip: padding-box !important;
+                }
+                .role-compare-sticky-perms {
+                    position: sticky !important;
+                    left: ${NAME_COL_WIDTH}px !important;
+                    z-index: 59 !important;
+                    background-clip: padding-box !important;
+                    box-shadow: 4px 0 8px -3px rgba(45,62,80,0.28) !important;
+                }
+                thead .role-compare-sticky-name,
+                thead .role-compare-sticky-perms {
+                    z-index: 90 !important;
+                }
+            `}</style>
         </div>
     );
 }

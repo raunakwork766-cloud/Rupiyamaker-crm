@@ -61,7 +61,10 @@ import FinanceApprovalSettings from './settings/FinanceApprovalSettings';
 import { hrmsService } from '../services/hrmsService';
 
 const settingsPageStyles = `
-  .hs-settings-shell { display: flex; min-height: calc(100vh - 0px); background: #f5f8fa; font-family: "Lexend Deca", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; color: #33475b; }
+  .hs-settings-shell { display: flex; min-height: calc(100vh - 0px); width: 100%; max-width: 100%; overflow-x: hidden; background: #f5f8fa; font-family: "Lexend Deca", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; color: #33475b; }
+  #main-scroll-container:has(.hs-settings-shell) {
+    overflow-x: hidden !important;
+  }
   .hs-settings-sidebar { width: 280px; min-width: 280px; background: #fff; border-right: 1px solid #cbd6e2; display: flex; flex-direction: column; position: sticky; top: 0; height: 100vh; overflow: hidden; }
   .hs-settings-sidebar-header { padding: 20px 20px 12px; border-bottom: 1px solid #eaf0f6; }
   .hs-settings-sidebar-header h1 { margin: 0; font-size: 20px; font-weight: 600; color: #33475b; display: flex; align-items: center; gap: 10px; }
@@ -83,12 +86,12 @@ const settingsPageStyles = `
   .hs-settings-nav-item svg { flex-shrink: 0; color: #516f90; }
   .hs-settings-nav-item.active svg { color: #ff7a59; }
   .hs-settings-nav-empty { padding: 16px 20px; font-size: 13px; color: #7c98b6; }
-  .hs-settings-main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
-  .hs-settings-main-inner { flex: 1; padding: 28px 32px 40px; overflow-y: auto; }
+  .hs-settings-main { flex: 1; min-width: 0; max-width: 100%; display: flex; flex-direction: column; overflow-x: hidden; }
+  .hs-settings-main-inner { flex: 1; min-width: 0; max-width: 100%; padding: 28px 32px 40px; overflow-y: auto; overflow-x: hidden; }
   .hs-settings-page-header { margin-bottom: 24px; }
   .hs-settings-page-header h2 { margin: 0 0 6px; font-size: 28px; font-weight: 600; color: #33475b; line-height: 1.2; }
   .hs-settings-page-header p { margin: 0; font-size: 14px; color: #516f90; line-height: 1.5; max-width: 720px; }
-  .hs-settings-content { display: flex; flex-direction: column; gap: 16px; }
+  .hs-settings-content { display: flex; flex-direction: column; gap: 16px; min-width: 0; max-width: 100%; }
   .hs-card { background: #fff; border: 1px solid #cbd6e2; border-radius: 3px; overflow: hidden; box-shadow: 0 1px 2px rgba(0,0,0,0.04); }
   .hs-card-header { padding: 20px 24px; border-bottom: 1px solid #eaf0f6; display: flex; justify-content: space-between; align-items: center; gap: 16px; flex-wrap: wrap; background: #fff; }
   .hs-card-title { margin: 0; font-size: 18px; font-weight: 600; color: #33475b; }
@@ -414,6 +417,35 @@ const settingsPageStyles = `
   .hs-settings-shell th[style*="background: '#000"] {
     background-color: #f5f8fa !important;
     color: #516f90 !important;
+  }
+  .hs-settings-shell .hs-company-data-actions {
+    width: 112px;
+    min-width: 112px;
+    text-align: center !important;
+  }
+  .hs-settings-shell .hs-company-action-btn {
+    width: 34px;
+    height: 34px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid #f8c7c9;
+    border-radius: 3px;
+    background: #fff7f7;
+    color: #d94b4b !important;
+    transition: background 0.15s, border-color 0.15s, color 0.15s;
+  }
+  .hs-settings-shell .hs-company-action-btn svg {
+    color: #d94b4b !important;
+    stroke: currentColor !important;
+  }
+  .hs-settings-shell .hs-company-action-btn:hover {
+    background: #fde8e8 !important;
+    border-color: #f2545b !important;
+    color: #b4232a !important;
+  }
+  .hs-settings-shell .hs-company-action-btn:hover svg {
+    color: #b4232a !important;
   }
   @media (max-width: 960px) {
     .hs-settings-shell { flex-direction: column; }
@@ -1001,6 +1033,30 @@ const SettingsPage = () => {
             'wildcard': 'Full access to all settings features (*)'
         }
     };
+
+    useEffect(() => {
+        const mainScrollContainer = document.getElementById('main-scroll-container');
+        if (!mainScrollContainer) return undefined;
+
+        const previousOverflowX = mainScrollContainer.style.overflowX;
+        const previousScrollLeft = mainScrollContainer.scrollLeft;
+
+        const lockHorizontalScroll = () => {
+            if (mainScrollContainer.scrollLeft !== 0) {
+                mainScrollContainer.scrollLeft = 0;
+            }
+        };
+
+        mainScrollContainer.style.overflowX = 'hidden';
+        lockHorizontalScroll();
+        mainScrollContainer.addEventListener('scroll', lockHorizontalScroll, { passive: true });
+
+        return () => {
+            mainScrollContainer.removeEventListener('scroll', lockHorizontalScroll);
+            mainScrollContainer.style.overflowX = previousOverflowX;
+            mainScrollContainer.scrollLeft = previousScrollLeft;
+        };
+    }, [activeTab]);
 
     // Check permissions on component mount
     useEffect(() => {
@@ -3545,23 +3601,24 @@ const updateStatus = async (statusId, statusData) => {
                                 onClick={() => setShowBankDropdown(v => !v)}
                                 style={{
                                     display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                                    background: '#0d0d10', border: `1px solid ${showBankDropdown ? '#f97316' : '#3f3f46'}`,
-                                    borderRadius: showBankDropdown ? '8px 8px 0 0' : 8,
-                                    padding: '8px 12px', cursor: 'pointer', transition: 'border-color 0.15s',
+                                    background: '#ffffff', border: `1px solid ${showBankDropdown ? '#ff7a59' : '#cbd6e2'}`,
+                                    borderRadius: showBankDropdown ? '3px 3px 0 0' : 3,
+                                    padding: '10px 12px', cursor: 'pointer', transition: 'border-color 0.15s, box-shadow 0.15s',
+                                    boxShadow: showBankDropdown ? '0 0 0 1px #ff7a59' : 'none',
                                     userSelect: 'none',
                                 }}
                             >
                                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                                    <Building size={14} style={{ color: '#f97316', flexShrink: 0 }} />
+                                    <Building size={14} style={{ color: '#ff7a59', flexShrink: 0 }} />
                                     {selectedBankFilter ? (
-                                        <span style={{ color: '#f97316', fontWeight: 600, fontSize: 13 }}>{selectedBankFilter}</span>
+                                        <span style={{ color: '#ff7a59', fontWeight: 600, fontSize: 13 }}>{selectedBankFilter}</span>
                                     ) : (
-                                        <span style={{ color: '#71717a', fontSize: 13 }}>
+                                        <span style={{ color: '#516f90', fontSize: 13 }}>
                                             {bankStats.length === 0 ? 'No banks available' : `Select a bank to filter... (${bankStats.length} banks)`}
                                         </span>
                                     )}
                                 </div>
-                                <svg width="12" height="8" viewBox="0 0 12 8" style={{ color: '#71717a', transition: 'transform 0.2s', transform: showBankDropdown ? 'rotate(180deg)' : 'rotate(0deg)', flexShrink: 0 }}>
+                                <svg width="12" height="8" viewBox="0 0 12 8" style={{ color: '#516f90', transition: 'transform 0.2s', transform: showBankDropdown ? 'rotate(180deg)' : 'rotate(0deg)', flexShrink: 0 }}>
                                     <path d="M1 1l5 5 5-5" stroke="currentColor" strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round"/>
                                 </svg>
                             </div>
@@ -3570,14 +3627,14 @@ const updateStatus = async (statusId, statusData) => {
                             {showBankDropdown && bankStats.length > 0 && (
                                 <div style={{
                                     position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 9999,
-                                    background: '#09090b', border: '1px solid #27272a', borderTop: 'none',
-                                    borderRadius: '0 0 8px 8px', boxShadow: '0 16px 40px rgba(0,0,0,0.9)',
+                                    background: '#ffffff', border: '1px solid #cbd6e2', borderTop: 'none',
+                                    borderRadius: '0 0 3px 3px', boxShadow: '0 14px 30px rgba(45, 62, 80, 0.18)',
                                     maxHeight: 340, display: 'flex', flexDirection: 'column',
                                 }}>
                                     {/* Search inside dropdown */}
-                                    <div style={{ padding: '8px 10px', borderBottom: '1px solid #1f1f22', flexShrink: 0 }}>
+                                    <div style={{ padding: '10px 12px', borderBottom: '1px solid #eaf0f6', background: '#f5f8fa', flexShrink: 0 }}>
                                         <div style={{ position: 'relative' }}>
-                                            <Search size={12} style={{ position: 'absolute', left: 8, top: '50%', transform: 'translateY(-50%)', color: '#52525b' }} />
+                                            <Search size={14} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: '#7c98b6' }} />
                                             <input
                                                 autoFocus
                                                 type="text"
@@ -3586,24 +3643,24 @@ const updateStatus = async (statusId, statusData) => {
                                                 placeholder="Search banks..."
                                                 style={{
                                                     width: '100%', boxSizing: 'border-box',
-                                                    background: '#111115', border: '1px solid #27272a', borderRadius: 6,
-                                                    padding: '5px 8px 5px 26px', color: '#fff',
-                                                    fontFamily: 'inherit', fontSize: 12, outline: 'none',
+                                                    background: '#ffffff', border: '1px solid #cbd6e2', borderRadius: 3,
+                                                    padding: '8px 10px 8px 32px', color: '#33475b',
+                                                    fontFamily: 'inherit', fontSize: 13, outline: 'none',
                                                 }}
                                             />
                                             {bankSearchQuery && (
-                                                <button onClick={() => setBankSearchQuery('')} style={{ position: 'absolute', right: 6, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: '#71717a', cursor: 'pointer', padding: 0, display: 'flex' }}>
-                                                    <X size={11} />
+                                                <button onClick={() => setBankSearchQuery('')} style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: '#516f90', cursor: 'pointer', padding: 2, display: 'flex', borderRadius: 3 }}>
+                                                    <X size={12} />
                                                 </button>
                                             )}
                                         </div>
                                     </div>
 
                                     {/* Table header */}
-                                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 80px 100px 32px', padding: '6px 10px', borderBottom: '1px solid #1f1f22', flexShrink: 0 }}>
-                                        <span style={{ fontSize: 9, fontWeight: 800, letterSpacing: '1px', textTransform: 'uppercase', color: '#52525b' }}>Bank Name</span>
-                                        <span style={{ fontSize: 9, fontWeight: 800, letterSpacing: '1px', textTransform: 'uppercase', color: '#52525b', textAlign: 'right' }}>Entries</span>
-                                        <span style={{ fontSize: 9, fontWeight: 800, letterSpacing: '1px', textTransform: 'uppercase', color: '#52525b', textAlign: 'right', paddingRight: 4 }}>Last Updated</span>
+                                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 80px 110px 36px', padding: '9px 12px', borderBottom: '1px solid #cbd6e2', background: '#f5f8fa', flexShrink: 0 }}>
+                                        <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.5px', textTransform: 'uppercase', color: '#516f90' }}>Bank Name</span>
+                                        <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.5px', textTransform: 'uppercase', color: '#516f90', textAlign: 'right' }}>Entries</span>
+                                        <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.5px', textTransform: 'uppercase', color: '#516f90', textAlign: 'right', paddingRight: 4 }}>Last Updated</span>
                                         <span></span>
                                     </div>
 
@@ -3624,15 +3681,15 @@ const updateStatus = async (statusId, statusData) => {
                                                     <div
                                                         key={stat.bank_name}
                                                         style={{
-                                                            display: 'grid', gridTemplateColumns: '1fr 80px 100px 32px',
-                                                            padding: '7px 10px', alignItems: 'center',
-                                                            borderBottom: '1px solid #111115', cursor: 'pointer',
-                                                            background: isSelected ? 'rgba(249,115,22,0.12)' : 'transparent',
-                                                            borderLeft: isSelected ? '2px solid #f97316' : '2px solid transparent',
+                                                            display: 'grid', gridTemplateColumns: '1fr 80px 110px 36px',
+                                                            padding: '10px 12px', alignItems: 'center',
+                                                            borderBottom: '1px solid #eaf0f6', cursor: 'pointer',
+                                                            background: isSelected ? '#fff7f5' : '#ffffff',
+                                                            borderLeft: isSelected ? '3px solid #ff7a59' : '3px solid transparent',
                                                             transition: 'background 0.1s',
                                                         }}
-                                                        onMouseEnter={e => { if (!isSelected) e.currentTarget.style.background = '#111115'; }}
-                                                        onMouseLeave={e => { if (!isSelected) e.currentTarget.style.background = 'transparent'; }}
+                                                        onMouseEnter={e => { if (!isSelected) e.currentTarget.style.background = '#f5f8fa'; }}
+                                                        onMouseLeave={e => { if (!isSelected) e.currentTarget.style.background = '#ffffff'; }}
                                                         onClick={() => {
                                                             handleBankFilterChange(isSelected ? '' : stat.bank_name);
                                                             setShowBankDropdown(false);
@@ -3641,19 +3698,19 @@ const updateStatus = async (statusId, statusData) => {
                                                     >
                                                         {/* Bank Name + bar */}
                                                         <div style={{ minWidth: 0 }}>
-                                                            <div style={{ fontSize: 12, fontWeight: isSelected ? 700 : 500, color: isSelected ? '#f97316' : '#e4e4e7', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                                            <div style={{ fontSize: 13, fontWeight: isSelected ? 700 : 600, color: isSelected ? '#ff7a59' : '#33475b', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                                                                 {stat.bank_name}
                                                             </div>
-                                                            <div style={{ height: 2, background: '#1f1f22', borderRadius: 2, marginTop: 3, overflow: 'hidden', maxWidth: 180 }}>
-                                                                <div style={{ height: '100%', background: isSelected ? '#f97316' : '#0ea5e9', width: `${pct}%`, borderRadius: 2 }} />
+                                                            <div style={{ height: 3, background: '#eaf0f6', borderRadius: 3, marginTop: 6, overflow: 'hidden', maxWidth: 220 }}>
+                                                                <div style={{ height: '100%', background: isSelected ? '#ff7a59' : '#00a4bd', width: `${pct}%`, borderRadius: 3 }} />
                                                             </div>
                                                         </div>
                                                         {/* Count */}
-                                                        <div style={{ fontSize: 13, fontWeight: 700, color: isSelected ? '#f97316' : '#0ea5e9', textAlign: 'right' }}>
+                                                        <div style={{ fontSize: 13, fontWeight: 700, color: isSelected ? '#ff7a59' : '#0091ae', textAlign: 'right' }}>
                                                             {stat.count.toLocaleString()}
                                                         </div>
                                                         {/* Date */}
-                                                        <div style={{ fontSize: 10, color: '#71717a', textAlign: 'right', paddingRight: 4 }}>
+                                                        <div style={{ fontSize: 11, color: '#516f90', textAlign: 'right', paddingRight: 4 }}>
                                                             {stat.last_updated ? new Date(stat.last_updated).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '—'}
                                                         </div>
                                                         {/* Delete */}
@@ -3661,9 +3718,9 @@ const updateStatus = async (statusId, statusData) => {
                                                             <button
                                                                 onClick={e => { e.stopPropagation(); setBankToDelete(stat.bank_name); setShowBankDeleteModal(true); setShowBankDropdown(false); }}
                                                                 title={`Delete ${stat.bank_name}`}
-                                                                style={{ background: 'none', border: 'none', color: '#f87171', cursor: 'pointer', padding: 3, opacity: 0.4, display: 'flex', borderRadius: 4 }}
+                                                                style={{ background: '#fff7f7', border: '1px solid #f8c7c9', color: '#d94b4b', cursor: 'pointer', padding: 5, opacity: 0.75, display: 'flex', borderRadius: 3 }}
                                                                 onMouseEnter={e => e.currentTarget.style.opacity = 1}
-                                                                onMouseLeave={e => e.currentTarget.style.opacity = 0.4}
+                                                                onMouseLeave={e => e.currentTarget.style.opacity = 0.75}
                                                             >
                                                                 <Trash2 size={12} />
                                                             </button>
@@ -3804,7 +3861,7 @@ const updateStatus = async (statusId, statusData) => {
                                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
                                             Bank Names
                                         </th>
-                                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
+                                        <th className="hs-company-data-actions px-6 py-3 text-xs font-medium text-gray-300 uppercase tracking-wider">
                                             Actions
                                         </th>
                                     </tr>
@@ -3856,10 +3913,10 @@ const updateStatus = async (statusId, statusData) => {
                                                         ))}
                                                     </div>
                                                 </td>
-                                                <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                                                <td className="hs-company-data-actions px-6 py-4 whitespace-nowrap text-sm font-medium">
                                                     <button
                                                         onClick={() => handleDelete(company.id, 'companyData')}
-                                                        className="text-red-400 hover:text-red-300 transition-colors p-1 rounded hover:bg-red-900/20"
+                                                        className="hs-company-action-btn"
                                                         title="Delete this company"
                                                     >
                                                         <Trash2 size={16} />
