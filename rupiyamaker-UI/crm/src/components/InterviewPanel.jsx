@@ -281,6 +281,7 @@ const InterviewPanel = () => {
     .interview-create-qual-option:hover { background: #1a1a24; color: #93c5fd; }
     .interview-create-select-trigger { width: 100%; padding: 8px 12px; border: 1px solid #2a2a3a; border-radius: 3px; background: #1a1a24; color: #c8d0e0; font-size: 13px; cursor: pointer; display: flex; justify-content: space-between; align-items: center; }
     .interview-create-select-trigger.placeholder { color: #8898b8; }
+    .interview-create-select-trigger.error { border-color: #f87171; }
     .interview-create-select-dropdown { position: absolute; z-index: 99999; width: 100%; margin-top: 4px; background: #13131c; border: 1px solid #2a2a3a; border-radius: 4px; box-shadow: 0 8px 24px rgba(0,0,0,0.4); max-height: 240px; overflow: auto; }
     .interview-create-select-search { padding: 8px; border-bottom: 1px solid #1f1f27; }
     .interview-create-select-search input { padding: 6px 10px; font-size: 12px; }
@@ -5713,6 +5714,7 @@ const CreateInterviewModal = ({ onClose, onInterviewCreated, jobOpeningOptions, 
     if (!formData.gender) newErrors.gender = 'Gender is required';
     if (!formData.qualification) newErrors.qualification = 'Qualification is required';
     if (!formData.date_time) newErrors.date_time = 'Date and time is required';
+    if (!formData.job_opening) newErrors.job_opening = 'Role is required';
     
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
@@ -6179,7 +6181,7 @@ const CreateInterviewModal = ({ onClose, onInterviewCreated, jobOpeningOptions, 
                 <div className="interview-create-section-head">Professional Details</div>
                 <div className="interview-create-section-body" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
                   <div className="interview-create-field">
-                    <label className="interview-create-label">Role</label>
+                    <label className="interview-create-label">Role <span className="req">*</span></label>
                     <SearchableSelect
                       name="job_opening"
                       value={formData.job_opening}
@@ -6187,7 +6189,9 @@ const CreateInterviewModal = ({ onClose, onInterviewCreated, jobOpeningOptions, 
                       options={jobOpeningOptions}
                       placeholder="Select role..."
                       variant="dark"
+                      className={errors.job_opening ? 'error' : ''}
                     />
+                    {errors.job_opening && <p className="interview-create-error">{errors.job_opening}</p>}
                   </div>
                   <div className="interview-create-field">
                     <label className="interview-create-label">Work Experience</label>

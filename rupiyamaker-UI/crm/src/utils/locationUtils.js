@@ -97,19 +97,6 @@ export const getLocationCrossDevice = () => new Promise(async (resolve, reject) 
 
   const ios = isIOSSafari();
 
-  // Pre-check permission state (Chrome, Edge, Android Chrome)
-  // NOTE: Skip on iOS — Safari's permissions.query returns wrong state sometimes
-  if (!ios && navigator.permissions && navigator.permissions.query) {
-    try {
-      const perm = await navigator.permissions.query({ name: 'geolocation' });
-      if (perm.state === 'denied') {
-        return fail('LOCATION_BLOCKED', 'PERMISSION_DENIED');
-      }
-    } catch (_) {
-      // permissions.query not supported — continue normally
-    }
-  }
-
   const toCoords = (pos) => ({
     latitude: pos.coords.latitude,
     longitude: pos.coords.longitude,
@@ -133,11 +120,7 @@ export const getLocationCrossDevice = () => new Promise(async (resolve, reject) 
       });
       return resolve(toCoords(pos));
     } catch (err1) {
-      // PERMISSION_DENIED = user explicitly blocked location
-      if (err1.code === 1) {
-        return fail('LOCATION_BLOCKED', 'PERMISSION_DENIED');
-      }
-      // code 2 = unavailable, code 3 = timeout — try next approach
+      console.warn("iOS Geolocation Attempt 1 failed:", err1);
     }
 
     // Attempt 2: Low accuracy (network/WiFi based), allow older cached position
@@ -161,7 +144,7 @@ export const getLocationCrossDevice = () => new Promise(async (resolve, reject) 
         );
       }
       return fail(
-        '📍 Location unavailable. Please ensure Location Services and GPS are ON, then tap Retry.\n(लोकेशन नहीं मिली — Settings में Location Services और GPS चालू करके Retry करें)',
+        '📍 Location unavailable. Please ensure Location Services and GPS are ON, then tap Retry.\n(लोकेशन नहीं मिली — Settings में Location Services and GPS चालू करके Retry करें)',
         'POSITION_UNAVAILABLE'
       );
     }
@@ -177,10 +160,7 @@ export const getLocationCrossDevice = () => new Promise(async (resolve, reject) 
       });
       return resolve(toCoords(pos));
     } catch (err1) {
-      if (err1.code === 1) {
-        return fail('LOCATION_BLOCKED', 'PERMISSION_DENIED');
-      }
-      // timeout or unavailable — try low accuracy
+      console.warn("Android Geolocation Attempt 1 failed:", err1);
     }
 
     // Attempt 2: Low accuracy (network-only, faster)

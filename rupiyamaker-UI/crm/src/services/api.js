@@ -115,9 +115,15 @@ export const apiCall = async (endpoint, options = {}) => {
         return { skipped: true, reason: 'empty_body', message: 'No changes to update' };
     }
 
+    // Detect multipart/form-data uploads (FormData body) so we DON'T force a
+    // Content-Type. The browser must set it automatically with the correct
+    // multipart boundary; setting application/json here breaks file uploads.
+    const isFormData = typeof FormData !== 'undefined' && options.body instanceof FormData;
+
     const defaultOptions = {
         headers: {
-            'Content-Type': 'application/json',
+            // Only default to JSON content-type for non-FormData requests
+            ...(isFormData ? {} : { 'Content-Type': 'application/json' }),
             'Authorization': user?.access_token || user?.token || localStorage.getItem('token') 
                 ? `Bearer ${user?.access_token || user?.token || localStorage.getItem('token')}` 
                 : 'Bearer test-token', // Fallback token
@@ -208,6 +214,18 @@ export const apiCall = async (endpoint, options = {}) => {
             errorMessage = error.detail
                 .map(e => e.msg || e.message || JSON.stringify(e))
                 .join('; ');
+        } else if (error.detail && typeof error.detail === 'object') {
+            if (error.detail.message && Array.isArray(error.detail.errors)) {
+                // If it is our structured validation error: {"message": "Validation failed", "errors": [...]}
+                errorMessage = `${error.detail.message}: ` + error.detail.errors
+                    .map(e => {
+                        const fieldName = e.field ? e.field.replace('body.', '') : '';
+                        return `${fieldName ? fieldName + ': ' : ''}${e.message || JSON.stringify(e)}`;
+                    })
+                    .join(', ');
+            } else {
+                errorMessage = error.detail.message || JSON.stringify(error.detail);
+            }
         } else {
             errorMessage = error.detail || `HTTP error! status: ${response.status}`;
         }

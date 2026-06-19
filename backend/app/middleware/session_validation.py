@@ -56,7 +56,19 @@ ATTENDANCE_ALLOWED_PREFIXES = [
     "/attendance/my-calendar",
     "/attendance/detail",
     "/attendance/details",
+    "/attendance/settings",
 ]
+
+def _cors_response(content: dict, status_code: int, request: Request) -> JSONResponse:
+    """Return JSONResponse with CORS headers to avoid client 'Failed to fetch' issues."""
+    origin = request.headers.get("origin") or "*"
+    headers = {
+        "Access-Control-Allow-Origin": origin,
+        "Access-Control-Allow-Credentials": "true",
+        "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS, PATCH",
+        "Access-Control-Allow-Headers": "*",
+    }
+    return JSONResponse(content, status_code=status_code, headers=headers)
 
 def _reinject_request_body(request: Request, body: bytes) -> None:
     """Restore request body after middleware read so route handlers can still parse it."""
@@ -140,9 +152,10 @@ class SessionValidationMiddleware(BaseHTTPMiddleware):
                 )
                 if not att_user:
                     logger.warning(f"🚫 Attendance token INVALID on {path}")
-                    return JSONResponse(
+                    return _cors_response(
                         {"detail": "Invalid attendance session"},
                         status_code=status.HTTP_401_UNAUTHORIZED,
+                        request=request
                     )
                 # Token is valid — enforce path scope
                 is_allowed = any(path.startswith(p) for p in ATTENDANCE_ALLOWED_PREFIXES)
@@ -150,27 +163,30 @@ class SessionValidationMiddleware(BaseHTTPMiddleware):
                     logger.warning(
                         f"🚫 Attendance scope BLOCKED: User {att_user.get('_id')} tried {path}"
                     )
-                    return JSONResponse(
+                    return _cors_response(
                         {
                             "detail": "Attendance session cannot access CRM. "
                                       "Please login with full credentials."
                         },
                         status_code=status.HTTP_403_FORBIDDEN,
+                        request=request
                     )
                 # Account-level checks still apply (deactivated/disabled
                 # employees cannot mark attendance) — but we SKIP the
                 # session_invalidated_at check since that flag governs the CRM
                 # session lifecycle, not the attendance one.
                 if not att_user.get("login_enabled", True):
-                    return JSONResponse(
+                    return _cors_response(
                         {"detail": "Login access disabled - session terminated"},
                         status_code=status.HTTP_403_FORBIDDEN,
+                        request=request
                     )
                 if att_user.get("is_employee", False):
                     if att_user.get("employee_status", "active") != "active":
-                        return JSONResponse(
+                        return _cors_response(
                             {"detail": "Account inactive"},
                             status_code=status.HTTP_403_FORBIDDEN,
+                            request=request
                         )
                 logger.info(
                     f"✅ Attendance session OK: User {att_user.get('_id')} on {path}"
@@ -182,9 +198,10 @@ class SessionValidationMiddleware(BaseHTTPMiddleware):
                     exc_info=True,
                 )
                 # Fail-closed for attendance: do not let a broken check leak CRM
-                return JSONResponse(
+                return _cors_response(
                     {"detail": "Attendance session validation error"},
                     status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    request=request
                 )
 
         # Get user_id from various sources
@@ -237,9 +254,10 @@ class SessionValidationMiddleware(BaseHTTPMiddleware):
                     # Check if user's login is still enabled
                     if not user.get("login_enabled", True):
                         logger.warning(f"🚫 Session validation FAILED: User {user_id} - login disabled")
-                        return JSONResponse(
+                        return _cors_response(
                             {"detail": "Login access disabled - session terminated"},
                             status_code=status.HTTP_403_FORBIDDEN,
+                            request=request
                         )
                     
                     # Check if session was invalidated after last login
@@ -249,9 +267,10 @@ class SessionValidationMiddleware(BaseHTTPMiddleware):
                     if session_invalidated_at:
                         if not last_login or session_invalidated_at > last_login:
                             logger.warning(f"🚫 Session validation FAILED: User {user_id} - session invalidated at {session_invalidated_at}, last login {last_login}")
-                            return JSONResponse(
+                            return _cors_response(
                                 {"detail": "Your session has been invalidated - please login again"},
                                 status_code=status.HTTP_403_FORBIDDEN,
+                                request=request
                             )
                     
                     logger.info(f"✅ Session validation PASSED: User {user_id}")

@@ -694,8 +694,8 @@ export default function EditInterview({
 
     try {
       // Validate required fields
-      if (!interview.candidate_name || !interview.mobile_number || !interview.interview_date) {
-        throw new Error("Please fill in all required fields");
+      if (!interview.candidate_name || !interview.mobile_number || !interview.interview_date || !interview.job_opening) {
+        throw new Error("Please fill in all required fields (Candidate Name, Mobile Number, Interview Date, and Job Opening are required)");
       }
 
       // Detect if interview date has changed
@@ -854,7 +854,7 @@ export default function EditInterview({
               className="block font-bold text-gray-700 mb-1"
               htmlFor="candidate_name"
             >
-              Candidate Name
+              Candidate Name <span className="text-red-500">*</span>
             </label>
             <input
               id="candidate_name"
@@ -870,7 +870,7 @@ export default function EditInterview({
           <div className="flex flex-col md:flex-row gap-4 mt-4">
             <div className="flex-1">
               <label className="block font-bold text-gray-700 mb-1" htmlFor="mobile_number">
-                Mobile Number
+                Mobile Number <span className="text-red-500">*</span>
               </label>
               <input
                 id="mobile_number"
@@ -932,7 +932,7 @@ export default function EditInterview({
             </div>
             <div className="flex-1">
               <label className="block font-bold text-gray-700 mb-1" htmlFor="job_opening">
-                Job Opening
+                Job Opening <span className="text-red-500">*</span>
               </label>
               <select
                 id="job_opening"
@@ -1081,7 +1081,7 @@ export default function EditInterview({
           <div className="flex flex-col md:flex-row gap-4 mt-4">
             <div className="flex-1">
               <label className="block font-bold text-gray-700 mb-1" htmlFor="interview_date">
-                Interview Date
+                Interview Date <span className="text-red-500">*</span>
               </label>
               <input
                 id="interview_date"

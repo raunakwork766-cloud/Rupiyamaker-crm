@@ -187,6 +187,8 @@ async def list_posts(
                 if comment_creator:
                     comment_dict["user_name"] = f"{comment_creator.get('first_name', '')} {comment_creator.get('last_name', '')}"
                     comment_dict["username"] = comment_creator.get("username", "")
+                    if comment_creator.get("profile_photo"):
+                        comment_dict["profile_picture"] = comment_creator.get("profile_photo")
                 else:
                     comment_dict["user_name"] = "Unknown User"
                     comment_dict["username"] = "unknown"
@@ -601,6 +603,8 @@ async def get_post_comments(
             if user:
                 comment_dict["user_name"] = f"{user.get('first_name', '')} {user.get('last_name', '')}"
                 comment_dict["username"] = user.get("username", "")
+                if user.get("profile_photo"):
+                    comment_dict["profile_picture"] = user.get("profile_photo")
                 
                 # Add edit permission flag
                 if user_id:

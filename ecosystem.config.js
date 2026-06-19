@@ -3,9 +3,13 @@ module.exports = {
     {
       name: 'rupiyame-backend',
       cwd: '/www/wwwroot/RupiyaMe/backend',
-      script: 'venv/bin/python',
-      args: '-m app',
-      interpreter: 'none',
+      // Use wrapper script instead of direct venv/bin/python.
+      // The wrapper auto-fixes execute permissions on venv/bin/* before every
+      // launch — permanently prevents "Permission denied" crashes that can occur
+      // after git pulls, rsync deploys, or server reboots reset file permissions.
+      script: '/www/wwwroot/RupiyaMe/backend/start_backend.sh',
+      args: '',
+      interpreter: 'bash',
       instances: 1,
       exec_mode: 'fork',
       autorestart: true,

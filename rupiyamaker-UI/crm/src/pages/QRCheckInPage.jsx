@@ -13,7 +13,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import axios from 'axios';
-import { getAttendanceTabSession } from '../utils/authSession';
+import { getAttendanceTabSession, getAttendanceAuthHeaders } from '../utils/authSession';
 import { getLocationCrossDevice, isInAppBrowser, getAndroidChromeIntentUrl } from '../utils/locationUtils';
 
 const API = '/api';
@@ -446,7 +446,7 @@ const QRCheckInPage = () => {
         const userId = user?._id || user?.id;
         if (userId) {
           axios.get(`${API}/attendance/status/current/${userId}`, {
-            headers: { 'X-Attendance-Token': sessionStorage.getItem('attendanceSessionToken') || '' },
+            headers: getAttendanceAuthHeaders(),
           }).then(st => {
             const isIn  = st.data?.checked_in  || false;
             const isOut = st.data?.checked_out || false;
@@ -490,7 +490,7 @@ const QRCheckInPage = () => {
     try {
       // Check current status first
       const statusRes = await axios.get(`${API}/attendance/status/current/${userId}`, {
-        headers: { 'X-Attendance-Token': sessionStorage.getItem('attendanceSessionToken') || '' },
+        headers: getAttendanceAuthHeaders(),
       });
 
       const alreadyIn  = statusRes.data?.checked_in  || false;
@@ -513,7 +513,7 @@ const QRCheckInPage = () => {
           { photo_data: photoBase64, geolocation: location, comments: 'QR Code Check-in', face_descriptor: null },
           {
             params: { user_id: userId },
-            headers: { 'X-Attendance-Token': sessionStorage.getItem('attendanceSessionToken') || '' },
+            headers: getAttendanceAuthHeaders(),
             timeout: 30000,
           }
         );
@@ -531,7 +531,7 @@ const QRCheckInPage = () => {
           { photo_data: photoBase64, geolocation: location, comments: 'QR Code Check-out', face_descriptor: null },
           {
             params: { user_id: userId },
-            headers: { 'X-Attendance-Token': sessionStorage.getItem('attendanceSessionToken') || '' },
+            headers: getAttendanceAuthHeaders(),
             timeout: 30000,
           }
         );

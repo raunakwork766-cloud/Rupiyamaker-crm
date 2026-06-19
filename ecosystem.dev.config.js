@@ -3,9 +3,12 @@ module.exports = {
     {
       name: 'rupiyame-backend-dev',
       cwd: '/www/wwwroot/RupiyaMe/backend-dev',
-      script: 'venv/bin/python',
-      args: '-m app',
-      interpreter: 'none',
+      // Use wrapper script instead of direct Python — the wrapper auto-fixes
+      // venv/bin execute permissions before every start, permanently preventing
+      // the "Permission denied" crash loop (was causing 68+ PM2 restarts).
+      script: '/www/wwwroot/RupiyaMe/backend-dev/start_backend_dev.sh',
+      args: '',
+      interpreter: 'bash',
       instances: 1,
       exec_mode: 'fork',
       autorestart: true,

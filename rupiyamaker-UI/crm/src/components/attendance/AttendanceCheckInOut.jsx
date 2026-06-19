@@ -324,7 +324,7 @@ const AttendanceCheckInOut = ({ userId, userInfo }) => {
       );
       setAttendanceSettings(r.data?.timing_rules || {});
     } catch (e) {
-      if (e?.response?.status === 401) handleSessionExpired();
+      if (e?.response?.status === 401 || e?.response?.status === 403) handleSessionExpired();
       else console.error('Attendance settings fetch error', e?.response?.data || e.message);
       setAttendanceSettings({});
     }
@@ -338,7 +338,7 @@ const AttendanceCheckInOut = ({ userId, userInfo }) => {
       );
       if (r.data.success) setCurrentStatus(r.data);
     } catch (e) {
-      if (e?.response?.status === 401) handleSessionExpired();
+      if (e?.response?.status === 401 || e?.response?.status === 403) handleSessionExpired();
       else console.error(e);
     }
   };
@@ -373,7 +373,7 @@ const AttendanceCheckInOut = ({ userId, userInfo }) => {
       setCalData(map);
       setCalStats(emp.stats || null);
     } catch (e) {
-      if (e?.response?.status === 401) {
+      if (e?.response?.status === 401 || e?.response?.status === 403) {
         handleSessionExpired();
         return;
       }
@@ -404,7 +404,7 @@ const AttendanceCheckInOut = ({ userId, userInfo }) => {
       const det = r.data?.attendance || r.data?.attendance_details || null;
       setDayDetail(det);
     } catch (e) {
-      if (e?.response?.status === 401) handleSessionExpired();
+      if (e?.response?.status === 401 || e?.response?.status === 403) handleSessionExpired();
       else if (e?.response?.status !== 404) console.error('Day detail error', e.message);
       setDayDetail(null);
     } finally {

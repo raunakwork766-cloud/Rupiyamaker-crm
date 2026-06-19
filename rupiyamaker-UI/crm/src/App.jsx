@@ -742,6 +742,12 @@ function App() {
     // Only poll if user is authenticated
     if (!isAuthenticated) return;
 
+    const loginType = localStorage.getItem('loginType') || sessionStorage.getItem('loginType');
+    if (loginType === 'attendance_only') {
+      console.log('Skipping notification polling for attendance-only session');
+      return;
+    }
+
     let pollInterval = null;
     let consecutiveErrors = 0;
     let currentInterval = 3000; // Start with 3 second interval for immediate notification updates
