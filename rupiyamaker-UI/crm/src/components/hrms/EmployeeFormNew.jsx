@@ -7,6 +7,36 @@ import { isSuperAdmin, getUserPermissions, getUserId } from '../../utils/permiss
 import CurrencyInput from '../common/CurrencyInput';
 import './EmployeeFormNew.css';
 
+const UPPERCASE_EMPLOYEE_TEXT_FIELDS = new Set([
+    'first_name',
+    'last_name',
+    'pan_number',
+    'current_address',
+    'current_city',
+    'current_state',
+    'permanent_address',
+    'permanent_city',
+    'emergency_contact_1_name',
+    'emergency_contact_2_name',
+    'salary_bank_name',
+    'salary_account_name',
+    'salary_ifsc_code'
+]);
+
+const toUppercaseEmployeeText = (value) => (
+    typeof value === 'string' ? value.toUpperCase() : value
+);
+
+const normalizeEmployeeTextFields = (data) => {
+    const normalized = { ...data };
+    UPPERCASE_EMPLOYEE_TEXT_FIELDS.forEach((field) => {
+        if (field in normalized) {
+            normalized[field] = toUppercaseEmployeeText(normalized[field]);
+        }
+    });
+    return normalized;
+};
+
 const EmployeeForm = ({
     employee = null,
     onFinish,
@@ -14,7 +44,7 @@ const EmployeeForm = ({
     loading,
     disableSuccessModal = false // New prop to disable success modal
 }) => {
-    const [formData, setFormData] = useState({
+    const [formData, setFormData] = useState(normalizeEmployeeTextFields({
         // Profile Photo
         profile_photo: employee?.profile_photo || '',
         
@@ -76,7 +106,7 @@ const EmployeeForm = ({
         // Login Credentials
         username: employee?.username || '',
         password: ''
-    });
+    }));
 
     const [imageUrl, setImageUrl] = useState(getProfilePictureUrlWithCacheBusting(employee?.profile_photo));
     const [imageFile, setImageFile] = useState(null);
@@ -196,7 +226,7 @@ const EmployeeForm = ({
             };
             
             console.log('🔄 EmployeeFormNew: New form data to be set:', newFormData);
-            setFormData(newFormData);
+            setFormData(normalizeEmployeeTextFields(newFormData));
             
             // Force a re-render to ensure form inputs reflect the new data
             setForceRender(prev => prev + 1);
@@ -542,7 +572,7 @@ const EmployeeForm = ({
             console.log('🔍 Mapped form data that will be set:', mappedFormData);
             console.log('✅ Setting form data with mapped values');
             
-            setFormData(mappedFormData);
+            setFormData(normalizeEmployeeTextFields(mappedFormData));
             
             // Update image URL with cache-busting
             setImageUrl(getProfilePictureUrlWithCacheBusting(employee?.profile_photo));
@@ -593,7 +623,7 @@ const EmployeeForm = ({
         } catch (error) {
             console.error('Error generating employee ID:', error);
         }
-        setFormData({
+        setFormData(normalizeEmployeeTextFields({
             profile_photo: '',
             employee_id: nextId,
             first_name: '',
@@ -643,7 +673,7 @@ const EmployeeForm = ({
             salary_account_name: '',
             username: '',
             password: ''
-        });
+        }));
         setImageUrl(null);
     };
 
@@ -740,11 +770,9 @@ const EmployeeForm = ({
         } else {
             let processedValue = value;
             
-            // NOTE: We intentionally do NOT force-uppercase free-text fields here.
-            // Forcing uppercase caused employee data (names, city, designation, etc.)
-            // to be stored in ALL-CAPS and then show up that way across the app.
-            // Data is now stored as typed; PAN is still normalized below since PAN
-            // numbers are legitimately uppercase.
+            if (UPPERCASE_EMPLOYEE_TEXT_FIELDS.has(name)) {
+                processedValue = toUppercaseEmployeeText(processedValue);
+            }
 
             // Apply specific validations and formatting for unique fields
             switch (name) {
@@ -1626,6 +1654,8 @@ const EmployeeForm = ({
             if (isEditing && formData.password && formData.password.trim()) {
                 submissionData.password = formData.password;
             }
+
+            Object.assign(submissionData, normalizeEmployeeTextFields(submissionData));
             
             console.log('📤 Submitting employee data:', submissionData);
             console.log('📋 Submission data keys:', Object.keys(submissionData));
@@ -2193,7 +2223,7 @@ const EmployeeForm = ({
                                             <input 
                                                 type="text" 
                                                 value={newCompany}
-                                                onChange={(e) => setNewCompany(e.target.value)}
+                                                onChange={(e) => setNewCompany(e.target.value.toUpperCase())}
                                                 onKeyDown={handleCompanyKeyDown}
                                                 placeholder="Type company name and press Enter or click Add"
                                             />

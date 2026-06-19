@@ -50,22 +50,13 @@ const isOtpRequired = (employee) => {
     return false;
 };
 
-// Display helper: existing employee records were historically stored in ALL-CAPS.
-// CSS text-transform can only force-uppercase, it cannot undo stored caps — so we
-// normalize the display text to Title Case here. Tokens that are clearly codes
-// (contain digits, e.g. employee IDs / PAN) are left untouched.
+// Display helper: All Employees row data should be shown in capital letters,
+// regardless of how older records were entered.
 const toDisplayText = (value) => {
     if (value === null || value === undefined) return value;
     const str = String(value).trim();
     if (!str) return str;
-    return str
-        .split(/\s+/)
-        .map((word) => {
-            // Leave codes/identifiers (anything with a digit) exactly as stored.
-            if (/\d/.test(word)) return word;
-            return word.charAt(0).toUpperCase() + word.slice(1).toLowerCase();
-        })
-        .join(' ');
+    return str.toUpperCase();
 };
 
 // CSS Styles for the toggle switches
@@ -311,10 +302,10 @@ const hrmsEmployeesPageStyles = `
   .hrms-employees-page .hrms-table thead { background: #ffffff; border-bottom: 2px solid #e5e7eb; position: relative; z-index: 20; }
   .hrms-employees-page .hrms-table-th { position: sticky; top: 0; z-index: 25; background: #ffffff !important; color: #03b0f5 !important; font-size: 12px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em; padding: 5px 12px; text-align: left; border-bottom: 1px solid #e5e7eb; white-space: nowrap; box-shadow: 0 1px 0 #e5e7eb, 0 4px 8px rgba(0, 0, 0, 0.12); }
   .hrms-employees-page .hrms-table tbody { position: relative; z-index: 1; }
-  .hrms-employees-page .hrms-table tbody td { padding: 5px 12px; font-size: 13px; color: #ffffff; font-weight: 600; vertical-align: middle; background: #000; text-transform: none !important; position: relative; z-index: 1; white-space: nowrap; }
+  .hrms-employees-page .hrms-table tbody td { padding: 5px 12px; font-size: 13px; color: #ffffff; font-weight: 600; vertical-align: middle; background: #000; text-transform: uppercase !important; position: relative; z-index: 1; white-space: nowrap; }
   .hrms-employees-page .hrms-table tbody tr.hrms-table-row { background: #000; border-bottom: 1px solid #2a2a38; cursor: pointer; transition: background 0.1s; }
   .hrms-employees-page .hrms-table tbody tr.hrms-table-row:hover td { background: #13131c; }
-  .hrms-employees-page .hrms-table tbody td * { text-transform: none !important; }
+  .hrms-employees-page .hrms-table tbody td * { text-transform: uppercase !important; }
   .hrms-employees-page .hrms-table tbody td.hrms-name-cell { padding: 5px 12px; font-weight: 700; color: #ffffff; vertical-align: middle; }
   .hrms-employees-page .cell-name-wrap { display: flex; align-items: center; gap: 12px; min-width: 0; }
   .hrms-employees-page .cell-avatar { width: 52px; height: 44px; border-radius: 4px; background: #1a1a24; border: 1px solid #2a2a3a; color: #93c5fd; display: flex; align-items: center; justify-content: center; font-size: 16px; font-weight: 700; flex-shrink: 0; overflow: hidden; box-shadow: inset 0 0 0 1px rgba(255,255,255,0.04); }
@@ -1453,8 +1444,9 @@ const AllEmployees = () => {
 
     // Compute master access state
     // NOTE: The Login master toggle is intentionally BINARY (On/Off only) — no
-    // "Mixed" state. It reads as "On" only when every toggleable employee has
-    // login enabled; otherwise "Off". Clicking it bulk-enables/disables all.
+    // "Mixed" state. It represents the bulk action direction, so one row-level
+    // override should not visually switch the column master off. Only an all-off
+    // column reads as Off; any enabled login keeps the master On.
     const computeMasterAccessState = (employeeList = employees) => {
         const toggleableEmployees = employeeList.filter(emp => emp.role_id !== SUPER_ADMIN_ROLE_ID);
 
@@ -1465,7 +1457,7 @@ const AllEmployees = () => {
 
         const accessCount = toggleableEmployees.filter(emp => isLoginEnabled(emp)).length;
 
-        if (accessCount === toggleableEmployees.length) {
+        if (accessCount > 0) {
             setMasterAccessState({ checked: true, label: 'On' });
         } else {
             setMasterAccessState({ checked: false, label: 'Off' });
