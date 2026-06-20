@@ -41,27 +41,32 @@ const DEFAULT_TPL = {
   header_type: 'logo',
   header_logo_text: 'Fix Your Finance',
   header_image_base64: '',
-  header_company_name: 'Insta Credit Solution Pvt Ltd',
+  header_company_name: 'Rupiya Maker Private Limited',
   header_tagline: '',
-  header_address_line1: 'Office No. 302, Third Floor, H160',
-  header_address_line2: 'Sector 63, Noida - 201301',
-  header_address_line3: 'Uttar Pradesh, India',
+  header_address_line1: 'Office No. 301, Third Floor, H160,',
+  header_address_line2: 'Sector 63, Noida - 201301, Uttar Pradesh, India',
+  header_address_line3: '',
   header_website: 'www.FixYourFinance.ai',
+  header_phone: '+91 98765 43210',
+  header_email: 'info@fixyourfinance.ai',
   header_bg_color: '#000000',
   header_text_color: '#ffffff',
   content_scale: 1,
-  header_logo_width: 200,
-  header_logo_x: 16,
-  header_logo_y: 16,
-  header_addr_x: 490,
-  header_addr_y: 16,
-  header_name_x: 16,
-  header_name_y: 85,
+  header_logo_width: 286,
+  header_logo_x: 26,
+  header_logo_y: 31,
+  header_addr_x: 356,
+  header_addr_y: 50,
+  header_name_x: 356,
+  header_name_y: 28,
+  header_contact_x: 608,
+  header_contact_y: 42,
   header_min_height: 110,
   header_logo_height: 0,
-  header_company_name_size: 12,
-  header_addr_size: 11,
+  header_company_name_size: 13,
+  header_addr_size: 9,
   header_addr_scale: 1,
+  header_contact_scale: 1,
   header_all_pages: true,
   footer_image_width: 140,
   footer_image_height: 38,
@@ -71,7 +76,7 @@ const DEFAULT_TPL = {
   watermark_image_base64: '',
   watermark_opacity: 0.10,
   watermark_size: 88,
-  footer_text: 'Fix Your Finance  Insta Credit Solution Pvt Ltd Office No. 302, Third Floor, H160, Sector 63, Noida \u2013 201301, UP',
+  footer_text: 'Fix Your Finance  Rupiya Maker Private Limited Office No. 301, Third Floor, H160, Sector 63, Noida \u2013 201301, UP',
   footer_sub_text: 'www.FixYourFinance.ai    This document is confidential and intended solely for the named recipient.',
   footer_has_image: false,
   footer_image_base64: '',
@@ -144,6 +149,46 @@ const DEFAULT_TPL = {
     ]},
   ],
 };
+
+function migrateOfferTemplate(data) {
+  const next = { ...data };
+  if (!next.header_company_name || next.header_company_name === 'Insta Credit Solution Pvt Ltd') {
+    next.header_company_name = DEFAULT_TPL.header_company_name;
+  }
+  if (!next.header_address_line1 || next.header_address_line1 === 'Office No. 302, Third Floor, H160') {
+    next.header_address_line1 = DEFAULT_TPL.header_address_line1;
+  }
+  if (!next.header_address_line2 || next.header_address_line2 === 'Sector 63, Noida - 201301') {
+    next.header_address_line2 = DEFAULT_TPL.header_address_line2;
+  }
+  if (next.header_address_line3 === 'Uttar Pradesh, India') {
+    next.header_address_line3 = '';
+  }
+  if (!next.header_phone) next.header_phone = DEFAULT_TPL.header_phone;
+  if (!next.header_email) next.header_email = DEFAULT_TPL.header_email;
+  if (!next.header_company_name_size || next.header_company_name_size === 12) {
+    next.header_company_name_size = DEFAULT_TPL.header_company_name_size;
+  }
+  if (!next.header_addr_size || next.header_addr_size === 11) {
+    next.header_addr_size = DEFAULT_TPL.header_addr_size;
+  }
+  if (!next.header_logo_width || next.header_logo_width === 200) {
+    next.header_logo_width = DEFAULT_TPL.header_logo_width;
+  }
+  if (next.header_logo_x === undefined || next.header_logo_x === 16) next.header_logo_x = DEFAULT_TPL.header_logo_x;
+  if (next.header_logo_y === undefined || next.header_logo_y === 16) next.header_logo_y = DEFAULT_TPL.header_logo_y;
+  if (next.header_name_x === undefined || next.header_name_x === 16) next.header_name_x = DEFAULT_TPL.header_name_x;
+  if (next.header_name_y === undefined || next.header_name_y === 85) next.header_name_y = DEFAULT_TPL.header_name_y;
+  if (next.header_addr_x === undefined || next.header_addr_x === 490) next.header_addr_x = DEFAULT_TPL.header_addr_x;
+  if (next.header_addr_y === undefined || next.header_addr_y === 16) next.header_addr_y = DEFAULT_TPL.header_addr_y;
+  if (next.header_contact_x === undefined) next.header_contact_x = DEFAULT_TPL.header_contact_x;
+  if (next.header_contact_y === undefined) next.header_contact_y = DEFAULT_TPL.header_contact_y;
+  if (!next.header_contact_scale) next.header_contact_scale = DEFAULT_TPL.header_contact_scale;
+  if (!next.footer_text || next.footer_text.includes('Insta Credit Solution Pvt Ltd')) {
+    next.footer_text = DEFAULT_TPL.footer_text;
+  }
+  return next;
+}
 
 const iStyle = {
   width:'100%', padding:'8px 10px', border:'1.5px solid #e2e8f0', borderRadius:7,
@@ -260,6 +305,7 @@ const OfferLetterGenerator = ({ user }) => {
   const [resizeState, setResizeState] = useState(null);
   const [previewZoom, setPreviewZoom] = useState(85);
   const [isEditMode, setIsEditMode] = useState(false);
+  const [headerEditorBlock, setHeaderEditorBlock] = useState('logo');
   const [employees, setEmployees] = useState([]);
   const [empSearch, setEmpSearch] = useState('');
   const [empDropOpen, setEmpDropOpen] = useState(false);
@@ -274,7 +320,7 @@ const OfferLetterGenerator = ({ user }) => {
     if (!userId) return;
     fetch(API_BASE_URL + '/settings/offer-letter-template?user_id=' + userId)
       .then(r => r.ok ? r.json() : null)
-      .then(d => { if (d) setTpl(p => ({ ...DEFAULT_TPL, ...d })); })
+      .then(d => { if (d) setTpl(p => migrateOfferTemplate({ ...DEFAULT_TPL, ...d })); })
       .catch(() => {});
   }, [userId]);
 
@@ -319,7 +365,7 @@ const OfferLetterGenerator = ({ user }) => {
     r.onload = ev => {
       try {
         const d = JSON.parse(ev.target.result);
-        setTpl(p => ({ ...DEFAULT_TPL, ...d }));
+        setTpl(p => migrateOfferTemplate({ ...DEFAULT_TPL, ...d }));
       } catch { alert('Invalid template file. Please use a valid .json template.'); }
     };
     r.readAsText(f);
@@ -329,8 +375,9 @@ const OfferLetterGenerator = ({ user }) => {
   useEffect(() => {
     if (!dragState) return;
     const onMove = e => {
-      const dx = e.clientX - dragState.startX;
-      const dy = e.clientY - dragState.startY;
+      const scale = dragState.scale || 1;
+      const dx = (e.clientX - dragState.startX) / scale;
+      const dy = (e.clientY - dragState.startY) / scale;
       setTpl(p => ({
         ...p,
         [dragState.xKey]: Math.max(0, dragState.origX + dx),
@@ -346,19 +393,29 @@ const OfferLetterGenerator = ({ user }) => {
   useEffect(() => {
     if (!resizeState) return;
     const onMove = e => {
-      const dw = e.clientX - resizeState.startX;
-      const dh = e.clientY - resizeState.startY;
+      const scale = resizeState.scale || 1;
+      const dw = (e.clientX - resizeState.startX) / scale;
+      const dh = (e.clientY - resizeState.startY) / scale;
       if (resizeState.type === 'logo') {
         setTpl(p => ({
           ...p,
-          header_logo_width: Math.max(40, resizeState.origW + dw),
-          header_logo_height: resizeState.origH > 0 ? Math.max(20, resizeState.origH + dh) : 0,
+          header_logo_width: Math.max(80, Math.min(430, resizeState.origW + dw)),
+          header_logo_height: Math.max(20, Math.min(180, resizeState.origH + dh)),
         }));
       } else if (resizeState.type === 'header') {
         setTpl(p => ({ ...p, header_min_height: Math.max(60, resizeState.origH + dh) }));
+      } else if (resizeState.type === 'company') {
+        const delta = Math.abs(dh) > Math.abs(dw) ? dh : dw;
+        const ns = Math.max(8, Math.min(30, resizeState.origSize + delta / 8));
+        setTpl(p => ({ ...p, header_company_name_size: Math.round(ns) }));
       } else if (resizeState.type === 'addr') {
-        const ns = Math.max(0.5, Math.min(3, resizeState.origScale + dw / 120));
+        const delta = Math.abs(dh) > Math.abs(dw) ? dh : dw;
+        const ns = Math.max(0.5, Math.min(3, resizeState.origScale + delta / 120));
         setTpl(p => ({ ...p, header_addr_scale: parseFloat(ns.toFixed(2)) }));
+      } else if (resizeState.type === 'contact') {
+        const delta = Math.abs(dh) > Math.abs(dw) ? dh : dw;
+        const ns = Math.max(0.5, Math.min(2.5, resizeState.origScale + delta / 120));
+        setTpl(p => ({ ...p, header_contact_scale: parseFloat(ns.toFixed(2)) }));
       }
     };
     const onUp = () => setResizeState(null);
@@ -532,158 +589,267 @@ const OfferLetterGenerator = ({ user }) => {
   const startDrag = (xKey, yKey, origX, origY) => e => {
     if (!isEditMode) return;
     e.preventDefault(); e.stopPropagation();
-    setDragState({ startX: e.clientX, startY: e.clientY, xKey, yKey, origX, origY });
+    setDragState({ startX: e.clientX, startY: e.clientY, xKey, yKey, origX, origY, scale:previewZoom / 100 });
   };
 
-  // Header (logo + address both draggable & resizable on A4 preview)
+  // Header letterhead styled to match the FYF black banner sample.
   const renderHeader = () => {
     const bg = tpl.header_bg_color || '#000';
     const tc = tpl.header_text_color || '#fff';
-    const lx = tpl.header_logo_x ?? 16;
-    const ly = tpl.header_logo_y ?? 16;
-    const ax = tpl.header_addr_x ?? 490;
-    const ay = tpl.header_addr_y ?? 16;
-    const nx = tpl.header_name_x ?? 16;
-    const ny = tpl.header_name_y ?? 85;
-    const logoW = tpl.header_logo_width || 200;
-    const logoH = tpl.header_logo_height > 0 ? tpl.header_logo_height : 'auto';
+    const logoW = Math.max(80, Math.min(430, tpl.header_logo_width || DEFAULT_TPL.header_logo_width));
+    const logoHValue = tpl.header_logo_height > 0 ? tpl.header_logo_height : 0;
+    const logoX = tpl.header_logo_x ?? DEFAULT_TPL.header_logo_x;
+    const logoY = tpl.header_logo_y ?? DEFAULT_TPL.header_logo_y;
+    const nameX = tpl.header_name_x ?? DEFAULT_TPL.header_name_x;
+    const nameY = tpl.header_name_y ?? DEFAULT_TPL.header_name_y;
+    const addrX = tpl.header_addr_x ?? DEFAULT_TPL.header_addr_x;
+    const addrY = tpl.header_addr_y ?? DEFAULT_TPL.header_addr_y;
+    const contactX = tpl.header_contact_x ?? DEFAULT_TPL.header_contact_x;
+    const contactY = tpl.header_contact_y ?? DEFAULT_TPL.header_contact_y;
     const hdrH = tpl.header_min_height || 110;
-    const cnSize = tpl.header_company_name_size || 12;
+    const cnSize = tpl.header_company_name_size || DEFAULT_TPL.header_company_name_size;
     const addrSize = tpl.header_addr_size || 11;
     const addrScale = tpl.header_addr_scale || 1;
-
+    const contactScale = tpl.header_contact_scale || 1;
     const startLogoResize = e => {
       if (!isEditMode) return;
       e.preventDefault(); e.stopPropagation();
-      setResizeState({ type:'logo', startX:e.clientX, startY:e.clientY, origW:logoW, origH: tpl.header_logo_height || 0 });
-    };
-    const startAddrResize = e => {
-      if (!isEditMode) return;
-      e.preventDefault(); e.stopPropagation();
-      setResizeState({ type:'addr', startX:e.clientX, startY:e.clientY, origScale: addrScale });
+      setHeaderEditorBlock('logo');
+      setResizeState({ type:'logo', startX:e.clientX, startY:e.clientY, origW:logoW, origH:logoRenderH, scale:previewZoom / 100 });
     };
     const startHdrResize = e => {
       if (!isEditMode) return;
       e.preventDefault(); e.stopPropagation();
-      setResizeState({ type:'header', startX:e.clientX, startY:e.clientY, origH: hdrH });
+      setHeaderEditorBlock('header');
+      setResizeState({ type:'header', startX:e.clientX, startY:e.clientY, origH: hdrH, scale:previewZoom / 100 });
+    };
+    const startCompanyResize = e => {
+      if (!isEditMode) return;
+      e.preventDefault(); e.stopPropagation();
+      setHeaderEditorBlock('name');
+      setResizeState({ type:'company', startX:e.clientX, startY:e.clientY, origSize:cnSize, scale:previewZoom / 100 });
+    };
+    const startAddrResize = e => {
+      if (!isEditMode) return;
+      e.preventDefault(); e.stopPropagation();
+      setHeaderEditorBlock('address');
+      setResizeState({ type:'addr', startX:e.clientX, startY:e.clientY, origScale:addrScale, scale:previewZoom / 100 });
+    };
+    const startContactResize = e => {
+      if (!isEditMode) return;
+      e.preventDefault(); e.stopPropagation();
+      setHeaderEditorBlock('contact');
+      setResizeState({ type:'contact', startX:e.clientX, startY:e.clientY, origScale:contactScale, scale:previewZoom / 100 });
     };
 
-    const CORNER = { position:'absolute', bottom:-5, right:-5, width:14, height:14, background:'#0099cc', borderRadius:2, cursor:'se-resize', zIndex:10, boxShadow:'0 1px 4px rgba(0,0,0,.4)' };
-    const DRAG_BADGE = { position:'absolute', top:0, right:0, background:'rgba(0,153,204,0.85)', borderRadius:'0 2px 0 4px', padding:'2px 4px', pointerEvents:'none', display:'flex', alignItems:'center' };
+    const accent = '#d86c37';
+    const brandBlue = '#4f82e8';
+    const mutedWhite = 'rgba(255,255,255,.86)';
+    const scaledText = Math.max(7, Math.min(18, addrSize * addrScale));
+    const contactText = Math.max(7, Math.min(18, (addrSize + 0.5) * contactScale));
+    const companyName = tpl.header_company_name || DEFAULT_TPL.header_company_name;
+    const addressLines = [
+      tpl.header_address_line1,
+      tpl.header_address_line2,
+      tpl.header_address_line3,
+    ].filter(Boolean);
+    const phone = tpl.header_phone || DEFAULT_TPL.header_phone;
+    const email = tpl.header_email || DEFAULT_TPL.header_email;
+    const website = tpl.header_website || DEFAULT_TPL.header_website;
+    const logoText = (tpl.header_logo_text || DEFAULT_TPL.header_logo_text).trim();
+    const logoParts = logoText.split(/\s+/);
+    const logoFirst = logoParts[0] || 'Fix';
+    const logoRest = logoParts.slice(1).join(' ') || 'Your Finance';
+    const baseLogoWidth = DEFAULT_TPL.header_logo_width;
+    const baseLogoHeight = 50;
+    const logoRenderH = Math.max(20, Math.min(180, logoHValue || Math.round(baseLogoHeight * (logoW / baseLogoWidth))));
+    const logoScaleX = Math.max(0.28, Math.min(1.8, logoW / baseLogoWidth));
+    const logoScaleY = Math.max(0.4, Math.min(3.6, logoRenderH / baseLogoHeight));
 
-    let logoContent;
-    if (tpl.header_type === 'image' && tpl.header_image_base64) {
-      logoContent = (
-        <>
-          <div style={{ display:'flex', flexDirection:'column', alignItems:'flex-start', gap:2 }}>
-            <img src={tpl.header_image_base64} alt="logo" style={{ width:logoW, height:logoH, objectFit:'contain', display:'block', userSelect:'none', pointerEvents:'none' }} />
-          </div>
-          {/* Corner resize handle — drag to resize image */}
-          <div data-pdf-hide="1" className="olg-drag-handle" style={CORNER} onMouseDown={startLogoResize} title="Drag to resize logo" />
-        </>
+    const Icon = ({ type, size = 12, top = 2 }) => {
+      const paths = {
+        pin: 'M12 21s7-6.2 7-12A7 7 0 1 0 5 9c0 5.8 7 12 7 12Zm0-9.5A2.5 2.5 0 1 1 12 6a2.5 2.5 0 0 1 0 5.5Z',
+        globe: 'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18Zm0-18c2.5 2.4 3.7 5.4 3.7 9S14.5 18.6 12 21M12 3C9.5 5.4 8.3 8.4 8.3 12S9.5 18.6 12 21M3.6 9h16.8M3.6 15h16.8',
+        phone: 'M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.4 19.4 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1 1 .4 1.9.7 2.8a2 2 0 0 1-.5 2.1L8.1 9.9a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.5c.9.3 1.8.6 2.8.7a2 2 0 0 1 1.7 2.1Z',
+        mail: 'M4 4h16a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2Zm18 3-10 6L2 7',
+      };
+      return (
+        <svg width={size} height={size} viewBox="0 0 24 24" fill={type === 'pin' ? accent : 'none'} stroke={accent} strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink:0, marginTop:top }}>
+          <path d={paths[type]} />
+        </svg>
       );
-    } else if (tpl.header_type === 'text') {
-      logoContent = (
-        <div style={{ display:'flex', flexDirection:'column', alignItems:'flex-start' }}>
-          <div style={{ fontFamily:"'Arial Black',Arial,sans-serif", fontSize:32, fontWeight:900, color:tc, lineHeight:1 }}>{tpl.header_logo_text || 'Company'}</div>
-          {tpl.header_tagline && <div style={{ fontSize:'.7rem', color:tc+'99', fontStyle:'italic', marginTop:2 }}>{tpl.header_tagline}</div>}
-        </div>
-      );
-    } else {
-      const parts = (tpl.header_logo_text || 'Fix Your Finance').split(' ');
-      const p1 = parts[0] || 'Fix', p2 = parts[1] || 'Your', p3 = parts.slice(2).join(' ') || 'Finance';
-      logoContent = (
-        <div style={{ display:'flex', flexDirection:'column', alignItems:'flex-start', gap:4 }}>
-          <div style={{ display:'flex', alignItems:'stretch', gap:12 }}>
-            <span style={{ fontFamily:"'Arial Black',Arial,sans-serif", fontSize:62, fontWeight:900, color:tc, lineHeight:1, letterSpacing:-2 }}>{p1}</span>
-            <span style={{ width:4, background:'#f2632b', borderRadius:3, flexShrink:0, alignSelf:'stretch' }} />
-            <div style={{ display:'flex', flexDirection:'column', justifyContent:'center', gap:1 }}>
-              <span style={{ fontFamily:'Arial,Helvetica,sans-serif', fontSize:14, fontWeight:700, letterSpacing:5, color:'#00bfff', textTransform:'uppercase' }}>{p2}</span>
-              <span style={{ fontFamily:"'Arial Black',Arial,sans-serif", fontSize:32, fontWeight:900, color:'#00bfff', letterSpacing:-1, lineHeight:1 }}>{p3}</span>
-            </div>
-          </div>
-          {tpl.header_tagline && <div style={{ fontSize:'.7rem', color:tc+'99', fontStyle:'italic', marginTop:1 }}>{tpl.header_tagline}</div>}
-        </div>
-      );
-    }
+    };
 
-    const addrContent = (
-      <div style={{ textAlign:'right', fontFamily:'Arial,sans-serif', transformOrigin:'top right', transform:`scale(${addrScale})` }}>
-        {/* Label row */}
-        <div style={{ display:'flex', alignItems:'center', justifyContent:'flex-end', gap:6, marginBottom:5 }}>
-          <div style={{ height:1, width:28, background:'#FF4802', opacity:0.8 }} />
-          <span style={{ fontSize:addrSize - 1, fontWeight:800, letterSpacing:'0.12em', textTransform:'uppercase', color:'#FF4802' }}>Registered Office</span>
+    const DragBadge = ({ label }) => isEditMode ? (
+      <div
+        className="olg-drag-handle"
+        data-pdf-hide="1"
+        style={{
+          position:'absolute', top:-16, left:0, background:'rgba(3,105,161,.95)', color:'#fff',
+          fontSize:8, lineHeight:1, fontWeight:800, padding:'3px 5px', borderRadius:3,
+          fontFamily:'Inter,sans-serif', textTransform:'uppercase', pointerEvents:'none',
+        }}
+      >{label}</div>
+    ) : null;
+
+    const ResizeHandle = ({ onMouseDown, color = '#22c55e', title = 'Resize' }) => isEditMode ? (
+      <div
+        className="olg-drag-handle"
+        data-pdf-hide="1"
+        onMouseDown={onMouseDown}
+        title={title}
+        style={{
+          position:'absolute', right:-8, bottom:-8, width:13, height:13, borderRadius:4,
+          background:color, border:'2px solid #fff', boxShadow:'0 1px 5px rgba(0,0,0,.35)',
+          cursor:'nwse-resize', boxSizing:'border-box',
+        }}
+      />
+    ) : null;
+
+    const HeaderBlock = ({ x, y, xKey, yKey, label, children, onResize, resizeColor, style }) => (
+      <div
+        className="olg-header-block"
+        style={{
+          position:'absolute',
+          left:x,
+          top:y,
+          zIndex:2,
+          cursor:isEditMode ? 'grab' : 'default',
+          userSelect:'none',
+          outline:isEditMode ? (headerEditorBlock === label ? '1.5px solid ' + (resizeColor || '#38bdf8') : '1px dashed rgba(255,255,255,.28)') : 'none',
+          outlineOffset:4,
+          borderRadius:2,
+          ...style,
+        }}
+        onMouseDown={e => { setHeaderEditorBlock(label); startDrag(xKey, yKey, x, y)(e); }}
+      >
+        {children}
+        <DragBadge label={label} />
+        <ResizeHandle onMouseDown={onResize} color={resizeColor} title={'Resize ' + label} />
+      </div>
+    );
+
+    const logoContent = tpl.header_type === 'image' && tpl.header_image_base64 ? (
+      <img
+        src={tpl.header_image_base64}
+        alt="logo"
+        style={{
+          width:logoW,
+          height:logoHValue > 0 ? logoRenderH : 'auto',
+          maxHeight:logoHValue > 0 ? 'none' : Math.max(28, hdrH - 24),
+          objectFit:'contain',
+          display:'block',
+          userSelect:'none',
+          pointerEvents:'none',
+        }}
+      />
+    ) : (
+      <div style={{ width:logoW, height:logoRenderH, position:'relative' }}>
+        <div style={{ display:'flex', alignItems:'center', gap:10, whiteSpace:'nowrap', minWidth:0, transform:'scale(' + logoScaleX + ',' + logoScaleY + ')', transformOrigin:'left top', width:baseLogoWidth, height:baseLogoHeight }}>
+          <span style={{ fontFamily:"'Arial Black',Arial,sans-serif", fontSize:40, fontWeight:900, color:tc, lineHeight:1, letterSpacing:0 }}>{logoFirst}</span>
+          <span style={{ width:4, height:47, background:accent, borderRadius:3, flexShrink:0 }} />
+          <span style={{ fontFamily:"'Arial Black',Arial,sans-serif", fontSize:29, fontWeight:900, color:brandBlue, lineHeight:1, letterSpacing:0 }}>{logoRest}</span>
         </div>
-        {/* Address lines */}
-        <div style={{ fontSize:addrSize, lineHeight:1.7, color:'#ffffff' }}>
-          {tpl.header_address_line1 && (
-            <div style={{ display:'flex', alignItems:'baseline', justifyContent:'flex-end', gap:5 }}>
-              <span style={{ fontSize:addrSize - 1, opacity:0.5 }}>&#9679;</span>
-              <span>{tpl.header_address_line1}</span>
-            </div>
-          )}
-          {tpl.header_address_line2 && (
-            <div style={{ display:'flex', alignItems:'baseline', justifyContent:'flex-end', gap:5 }}>
-              <span style={{ fontSize:addrSize - 1, opacity:0.5 }}>&#9679;</span>
-              <span>{tpl.header_address_line2}</span>
-            </div>
-          )}
-          {tpl.header_address_line3 && (
-            <div style={{ display:'flex', alignItems:'baseline', justifyContent:'flex-end', gap:5 }}>
-              <span style={{ fontSize:addrSize - 1, opacity:0.5 }}>&#9679;</span>
-              <span>{tpl.header_address_line3}</span>
-            </div>
-          )}
-        </div>
-        {/* Website */}
-        {tpl.header_website && (
-          <div style={{ marginTop:5, display:'flex', alignItems:'center', justifyContent:'flex-end', gap:5 }}>
-            <div style={{ height:1, flex:1, maxWidth:48, background:'rgba(77,201,230,0.35)' }} />
-            <span style={{ fontSize:addrSize - 0.5, color:'#4dc9e6', fontWeight:700, letterSpacing:'0.04em' }}>&#127760; {tpl.header_website}</span>
-          </div>
-        )}
       </div>
     );
 
     return (
-      <div style={{ background:bg, position:'relative', minHeight:hdrH, overflow:'visible' }}>
-        {/* Logo/Brand — drag to move, corner to resize */}
-        <div
-          style={{ position:'absolute', left:lx, top:ly, cursor: dragState?.xKey==='header_logo_x' ? 'grabbing' : 'grab', userSelect:'none', zIndex:2 }}
-          onMouseDown={startDrag('header_logo_x', 'header_logo_y', lx, ly)}
+      <div style={{ background:bg, position:'relative', minHeight:hdrH, overflow:'hidden', color:tc, fontFamily:'Arial,Helvetica,sans-serif' }}>
+        <div style={{
+          position:'absolute',
+          top:0,
+          right:0,
+          bottom:0,
+          width:225,
+          background:'linear-gradient(135deg, rgba(255,255,255,0.06), rgba(255,255,255,0.01))',
+          clipPath:'polygon(36% 0, 100% 0, 100% 100%, 0 100%)',
+        }} />
+        <HeaderBlock
+          x={logoX}
+          y={logoY}
+          xKey="header_logo_x"
+          yKey="header_logo_y"
+          label="logo"
+          onResize={startLogoResize}
+          resizeColor="#38bdf8"
         >
           {logoContent}
-          <div className="olg-drag-handle" style={DRAG_BADGE}>
-            <span style={{ color:'#ffffff', fontSize:8, lineHeight:1 }}>&#x2630;</span>
-          </div>
-        </div>
-        {/* Address block — drag to move, corner to scale */}
-        <div
-          style={{ position:'absolute', left:ax, top:ay, cursor: dragState?.xKey==='header_addr_x' ? 'grabbing' : 'grab', userSelect:'none', zIndex:2 }}
-          onMouseDown={startDrag('header_addr_x', 'header_addr_y', ax, ay)}
+        </HeaderBlock>
+
+        <HeaderBlock
+          x={nameX}
+          y={nameY}
+          xKey="header_name_x"
+          yKey="header_name_y"
+          label="name"
+          onResize={startCompanyResize}
+          resizeColor="#f59e0b"
+          style={{ maxWidth:280 }}
         >
-          {addrContent}
-          <div className="olg-drag-handle" style={DRAG_BADGE}>
-            <span style={{ color:'#ffffff', fontSize:8, lineHeight:1 }}>&#x2630;</span>
+          <div style={{ fontSize:cnSize + 1, lineHeight:1, fontWeight:800, color:accent, whiteSpace:'nowrap' }}>
+            {companyName}
           </div>
-          {/* Corner scale handle */}
-          <div data-pdf-hide="1" className="olg-drag-handle" style={{ ...CORNER, cursor:'ew-resize', background:'#059669' }} onMouseDown={startAddrResize} title="Drag to scale address" />
-        </div>
-        {/* Legal Name — separate draggable block */}
-        {tpl.header_company_name && (
-          <div
-            style={{ position:'absolute', left:nx, top:ny, cursor: dragState?.xKey==='header_name_x' ? 'grabbing' : 'grab', userSelect:'none', zIndex:3, whiteSpace:'nowrap' }}
-            onMouseDown={startDrag('header_name_x', 'header_name_y', nx, ny)}
-          >
-            <div style={{ fontSize:cnSize, fontWeight:700, color:tc+'dd', fontFamily:'Arial,sans-serif' }}>{tpl.header_company_name}</div>
-            <div className="olg-drag-handle" style={{ ...DRAG_BADGE, background:'rgba(204,24,24,0.85)', top:0, right:0 }}>
-              <span style={{ color:'#fff', fontSize:8, lineHeight:1 }}>&#x2630;</span>
+        </HeaderBlock>
+
+        <HeaderBlock
+          x={addrX}
+          y={addrY}
+          xKey="header_addr_x"
+          yKey="header_addr_y"
+          label="address"
+          onResize={startAddrResize}
+          resizeColor="#22c55e"
+          style={{ minWidth:260, maxWidth:320 }}
+        >
+          <div style={{ display:'flex', flexDirection:'column', gap:Math.max(4, 7 * addrScale), color:mutedWhite, fontSize:scaledText, lineHeight:1.55 }}>
+            {addressLines.length > 0 && (
+              <div style={{ display:'flex', alignItems:'flex-start', gap:Math.max(6, 9 * addrScale) }}>
+                <Icon type="pin" size={Math.max(10, 12 * addrScale)} top={2} />
+                <div style={{ minWidth:0 }}>
+                  {addressLines.map((line, idx) => <div key={idx}>{line}</div>)}
+                </div>
+              </div>
+            )}
+            {website && (
+              <div style={{ display:'flex', alignItems:'center', gap:Math.max(6, 9 * addrScale), lineHeight:1.35 }}>
+                <Icon type="globe" size={Math.max(10, 12 * addrScale)} top={0} />
+                <span>{website}</span>
+              </div>
+            )}
+          </div>
+        </HeaderBlock>
+
+        <HeaderBlock
+          x={contactX}
+          y={contactY}
+          xKey="header_contact_x"
+          yKey="header_contact_y"
+          label="contact"
+          onResize={startContactResize}
+          resizeColor="#a855f7"
+        >
+          <div style={{ display:'flex', alignItems:'center', gap:Math.max(12, 20 * contactScale), color:mutedWhite, fontSize:contactText, lineHeight:1.25 }}>
+            <div style={{ width:1, height:66 * contactScale, background:'rgba(255,255,255,.58)', flexShrink:0 }} />
+            <div style={{ width:156 * contactScale, display:'flex', flexDirection:'column', gap:Math.max(8, 13 * contactScale) }}>
+              {phone && (
+                <div style={{ display:'flex', alignItems:'center', gap:Math.max(7, 11 * contactScale), whiteSpace:'nowrap' }}>
+                  <Icon type="phone" size={Math.max(10, 12 * contactScale)} top={0} />
+                  <span>{phone}</span>
+                </div>
+              )}
+              {email && (
+                <div style={{ display:'flex', alignItems:'center', gap:Math.max(7, 11 * contactScale), whiteSpace:'nowrap' }}>
+                  <Icon type="mail" size={Math.max(10, 12 * contactScale)} top={0} />
+                  <span>{email}</span>
+                </div>
+              )}
             </div>
           </div>
-        )}
+        </HeaderBlock>
         {/* Header height resize — bottom edge */}
         <div
           className="olg-drag-handle"
+          data-pdf-hide="1"
           style={{ position:'absolute', bottom:0, left:0, right:0, height:8, cursor:'ns-resize', background:'rgba(0,153,204,0.25)', zIndex:5, display:'flex', alignItems:'center', justifyContent:'center' }}
           onMouseDown={startHdrResize}
           title="Drag to change header height"
@@ -694,7 +860,7 @@ const OfferLetterGenerator = ({ user }) => {
     );
   };
 
-  const brandStrip = <div style={{ height:5, background:'linear-gradient(90deg,#0a1c3e 0%,#cc1818 40%,#0099cc 100%)' }} />;
+  const brandStrip = <div style={{ height:5, background:'linear-gradient(90deg,#d86c37 0%,#d86c37 58%,#5b7cff 100%)' }} />;
 
   const renderWatermark = () => {
     const op = tpl.watermark_opacity || 0.1;
@@ -1032,6 +1198,7 @@ const OfferLetterGenerator = ({ user }) => {
           }
           .olg-page:last-child { page-break-after: auto; }
           .olg-drag-handle, [data-pdf-hide] { display:none!important; }
+          .olg-header-block { outline:none!important; }
         </style>`,
         `<title>${fn}</title>`,
         '</head><body>',
@@ -1060,6 +1227,199 @@ const OfferLetterGenerator = ({ user }) => {
       setPdfLoading(false);
     }
   }, [candidateName, letterType, tpl]);
+
+  const clampValue = (value, min, max) => {
+    const n = Number(value);
+    if (!Number.isFinite(n)) return min;
+    return Math.max(min, Math.min(max, n));
+  };
+
+  const setNum = (key, value, min, max) => set(key, clampValue(value, min, max));
+  const logoEditorHeight = Math.max(20, Math.min(180, tpl.header_logo_height > 0
+    ? tpl.header_logo_height
+    : Math.round(50 * ((tpl.header_logo_width || DEFAULT_TPL.header_logo_width) / DEFAULT_TPL.header_logo_width))));
+
+  const resetHeaderBlock = (block) => setTpl(p => {
+    if (block === 'logo') return {
+      ...p,
+      header_logo_x: DEFAULT_TPL.header_logo_x,
+      header_logo_y: DEFAULT_TPL.header_logo_y,
+      header_logo_width: DEFAULT_TPL.header_logo_width,
+      header_logo_height: DEFAULT_TPL.header_logo_height,
+    };
+    if (block === 'name') return {
+      ...p,
+      header_name_x: DEFAULT_TPL.header_name_x,
+      header_name_y: DEFAULT_TPL.header_name_y,
+      header_company_name: DEFAULT_TPL.header_company_name,
+      header_company_name_size: DEFAULT_TPL.header_company_name_size,
+    };
+    if (block === 'address') return {
+      ...p,
+      header_addr_x: DEFAULT_TPL.header_addr_x,
+      header_addr_y: DEFAULT_TPL.header_addr_y,
+      header_address_line1: DEFAULT_TPL.header_address_line1,
+      header_address_line2: DEFAULT_TPL.header_address_line2,
+      header_address_line3: DEFAULT_TPL.header_address_line3,
+      header_website: DEFAULT_TPL.header_website,
+      header_addr_size: DEFAULT_TPL.header_addr_size,
+      header_addr_scale: DEFAULT_TPL.header_addr_scale,
+    };
+    if (block === 'contact') return {
+      ...p,
+      header_contact_x: DEFAULT_TPL.header_contact_x,
+      header_contact_y: DEFAULT_TPL.header_contact_y,
+      header_phone: DEFAULT_TPL.header_phone,
+      header_email: DEFAULT_TPL.header_email,
+      header_contact_scale: DEFAULT_TPL.header_contact_scale,
+    };
+    return {
+      ...p,
+      header_logo_x: DEFAULT_TPL.header_logo_x,
+      header_logo_y: DEFAULT_TPL.header_logo_y,
+      header_addr_x: DEFAULT_TPL.header_addr_x,
+      header_addr_y: DEFAULT_TPL.header_addr_y,
+      header_name_x: DEFAULT_TPL.header_name_x,
+      header_name_y: DEFAULT_TPL.header_name_y,
+      header_contact_x: DEFAULT_TPL.header_contact_x,
+      header_contact_y: DEFAULT_TPL.header_contact_y,
+      header_logo_width: DEFAULT_TPL.header_logo_width,
+      header_logo_height: DEFAULT_TPL.header_logo_height,
+      header_company_name: DEFAULT_TPL.header_company_name,
+      header_address_line1: DEFAULT_TPL.header_address_line1,
+      header_address_line2: DEFAULT_TPL.header_address_line2,
+      header_address_line3: DEFAULT_TPL.header_address_line3,
+      header_phone: DEFAULT_TPL.header_phone,
+      header_email: DEFAULT_TPL.header_email,
+      header_website: DEFAULT_TPL.header_website,
+      header_min_height: DEFAULT_TPL.header_min_height,
+      header_company_name_size: DEFAULT_TPL.header_company_name_size,
+      header_addr_size: DEFAULT_TPL.header_addr_size,
+      header_addr_scale: DEFAULT_TPL.header_addr_scale,
+      header_contact_scale: DEFAULT_TPL.header_contact_scale,
+    };
+  });
+
+  const MiniNumber = ({ label, value, onChange, min, max }) => (
+    <Field label={label}>
+      <input
+        type="number"
+        value={Math.round(value || 0)}
+        min={min}
+        max={max}
+        onChange={e => onChange(e.target.value)}
+        style={iStyle}
+      />
+    </Field>
+  );
+
+  const RangeField = ({ label, value, min, max, onChange, suffix = 'px' }) => (
+    <Field label={label + ': ' + value + suffix}>
+      <input type="range" min={min} max={max} value={value} onChange={e => onChange(+e.target.value)} style={{ width:'100%' }} />
+    </Field>
+  );
+
+  const PositionControl = ({ xKey, yKey, xLabel = 'X', yLabel = 'Y' }) => {
+    const x = tpl[xKey] ?? DEFAULT_TPL[xKey] ?? 0;
+    const y = tpl[yKey] ?? DEFAULT_TPL[yKey] ?? 0;
+    const nudge = (dx, dy) => setTpl(p => ({
+      ...p,
+      [xKey]: Math.max(0, (p[xKey] ?? DEFAULT_TPL[xKey] ?? 0) + dx),
+      [yKey]: Math.max(0, (p[yKey] ?? DEFAULT_TPL[yKey] ?? 0) + dy),
+    }));
+    const btn = { width:32, height:28, border:'1.5px solid #dbeafe', borderRadius:6, background:'#f8fbff', color:'#0a1c3e', fontWeight:800, cursor:'pointer' };
+    return (
+      <>
+        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8 }}>
+          <MiniNumber label={xLabel + ' Position'} value={x} min={0} max={760} onChange={v => setNum(xKey, v, 0, 760)} />
+          <MiniNumber label={yLabel + ' Position'} value={y} min={0} max={260} onChange={v => setNum(yKey, v, 0, 260)} />
+        </div>
+        <Field label="Nudge">
+          <div style={{ display:'flex', gap:6, alignItems:'center' }}>
+            <button type="button" onClick={() => nudge(-1, 0)} style={btn}>&larr;</button>
+            <button type="button" onClick={() => nudge(0, -1)} style={btn}>&uarr;</button>
+            <button type="button" onClick={() => nudge(0, 1)} style={btn}>&darr;</button>
+            <button type="button" onClick={() => nudge(1, 0)} style={btn}>&rarr;</button>
+            <button type="button" onClick={() => nudge(-10, 0)} style={{ ...btn, width:40 }}>-10</button>
+            <button type="button" onClick={() => nudge(10, 0)} style={{ ...btn, width:40 }}>+10</button>
+          </div>
+        </Field>
+      </>
+    );
+  };
+
+  const renderHeaderSettings = () => {
+    const active = headerEditorBlock || 'logo';
+    const blocks = [['logo','Logo'], ['name','Company'], ['address','Address'], ['contact','Contact'], ['header','Header']];
+    return (
+      <>
+        <Field label="Edit Block">
+          <div style={{ display:'flex', gap:6, flexWrap:'wrap' }}>
+            {blocks.map(([id, label]) => <Chip key={id} active={active===id} onClick={() => setHeaderEditorBlock(id)}>{label}</Chip>)}
+          </div>
+        </Field>
+
+        {active === 'logo' && (
+          <>
+            <Field label="Logo Type"><div style={{ display:'flex', gap:6, flexWrap:'wrap' }}>
+              {[['logo','Logo Text'],['image','Image'],['text','Plain Text']].map(([t,l]) => <Chip key={t} active={tpl.header_type===t} onClick={() => set('header_type',t)}>{l}</Chip>)}
+            </div></Field>
+            {tpl.header_type !== 'image' && <Field label="Logo Text"><input value={tpl.header_logo_text||''} onChange={e => set('header_logo_text',e.target.value)} style={iStyle} /></Field>}
+            {tpl.header_type === 'image' && <ImageUploader value={tpl.header_image_base64} onChange={v=>set('header_image_base64',v)} label="Logo Image" hint="Upload PNG/JPG" />}
+            <PositionControl xKey="header_logo_x" yKey="header_logo_y" />
+            <RangeField label="Logo Width" min={80} max={430} value={tpl.header_logo_width||DEFAULT_TPL.header_logo_width} onChange={v=>set('header_logo_width',v)} />
+            <RangeField label="Logo Height" min={20} max={180} value={logoEditorHeight} onChange={v=>set('header_logo_height',v)} />
+            <div style={{ display:'flex', gap:7 }}>
+              <button type="button" onClick={() => set('header_logo_height', 0)} style={{ flex:1, padding:'6px 8px', background:'#f8fafc', border:'1.5px solid #e2e8f0', borderRadius:6, fontSize:'.68rem', color:'#475569', cursor:'pointer', fontWeight:700 }}>Auto Height</button>
+              <button type="button" onClick={() => resetHeaderBlock('logo')} style={{ flex:1, padding:'6px 8px', background:'#fff7ed', border:'1.5px solid #fed7aa', borderRadius:6, fontSize:'.68rem', color:'#c2410c', cursor:'pointer', fontWeight:700 }}>Reset Logo</button>
+            </div>
+          </>
+        )}
+
+        {active === 'name' && (
+          <>
+            <Field label="Company Name"><input value={tpl.header_company_name||''} onChange={e => set('header_company_name',e.target.value)} style={iStyle} /></Field>
+            <PositionControl xKey="header_name_x" yKey="header_name_y" />
+            <RangeField label="Text Size" min={8} max={30} value={tpl.header_company_name_size||DEFAULT_TPL.header_company_name_size} onChange={v=>set('header_company_name_size',v)} />
+            <button type="button" onClick={() => resetHeaderBlock('name')} style={{ width:'100%', padding:'6px 8px', background:'#fff7ed', border:'1.5px solid #fed7aa', borderRadius:6, fontSize:'.68rem', color:'#c2410c', cursor:'pointer', fontWeight:700 }}>Reset Company</button>
+          </>
+        )}
+
+        {active === 'address' && (
+          <>
+            <Field label="Address 1"><input value={tpl.header_address_line1||''} onChange={e => set('header_address_line1',e.target.value)} style={iStyle} /></Field>
+            <Field label="Address 2"><input value={tpl.header_address_line2||''} onChange={e => set('header_address_line2',e.target.value)} style={iStyle} /></Field>
+            <Field label="Address 3"><input value={tpl.header_address_line3||''} onChange={e => set('header_address_line3',e.target.value)} style={iStyle} /></Field>
+            <Field label="Website"><input value={tpl.header_website||''} onChange={e => set('header_website',e.target.value)} style={iStyle} /></Field>
+            <PositionControl xKey="header_addr_x" yKey="header_addr_y" />
+            <RangeField label="Font Size" min={7} max={18} value={tpl.header_addr_size||DEFAULT_TPL.header_addr_size} onChange={v=>set('header_addr_size',v)} />
+            <RangeField label="Block Scale" min={50} max={250} suffix="%" value={Math.round((tpl.header_addr_scale||1)*100)} onChange={v=>set('header_addr_scale',v/100)} />
+            <button type="button" onClick={() => resetHeaderBlock('address')} style={{ width:'100%', padding:'6px 8px', background:'#fff7ed', border:'1.5px solid #fed7aa', borderRadius:6, fontSize:'.68rem', color:'#c2410c', cursor:'pointer', fontWeight:700 }}>Reset Address</button>
+          </>
+        )}
+
+        {active === 'contact' && (
+          <>
+            <Field label="Phone"><input value={tpl.header_phone||''} onChange={e => set('header_phone',e.target.value)} style={iStyle} /></Field>
+            <Field label="Email"><input value={tpl.header_email||''} onChange={e => set('header_email',e.target.value)} style={iStyle} /></Field>
+            <PositionControl xKey="header_contact_x" yKey="header_contact_y" />
+            <RangeField label="Contact Scale" min={50} max={250} suffix="%" value={Math.round((tpl.header_contact_scale||1)*100)} onChange={v=>set('header_contact_scale',v/100)} />
+            <button type="button" onClick={() => resetHeaderBlock('contact')} style={{ width:'100%', padding:'6px 8px', background:'#fff7ed', border:'1.5px solid #fed7aa', borderRadius:6, fontSize:'.68rem', color:'#c2410c', cursor:'pointer', fontWeight:700 }}>Reset Contact</button>
+          </>
+        )}
+
+        {active === 'header' && (
+          <>
+            <Field label="BG Color"><div style={{display:'flex',gap:8,alignItems:'center'}}><input type="color" value={tpl.header_bg_color||'#000'} onChange={e=>set('header_bg_color',e.target.value)} style={{width:34,height:34,border:'1.5px solid #e2e8f0',borderRadius:6,padding:2,cursor:'pointer'}} /><span style={{fontSize:'.76rem',color:'#64748b'}}>{tpl.header_bg_color}</span></div></Field>
+            <Field label="Text Color"><div style={{display:'flex',gap:8,alignItems:'center'}}><input type="color" value={tpl.header_text_color||'#fff'} onChange={e=>set('header_text_color',e.target.value)} style={{width:34,height:34,border:'1.5px solid #e2e8f0',borderRadius:6,padding:2,cursor:'pointer'}} /><span style={{fontSize:'.76rem',color:'#64748b'}}>{tpl.header_text_color}</span></div></Field>
+            <RangeField label="Header Height" min={60} max={280} value={tpl.header_min_height||DEFAULT_TPL.header_min_height} onChange={v=>set('header_min_height',v)} />
+            <Toggle label="Show header on all pages" checked={tpl.header_all_pages !== false} onChange={v=>set('header_all_pages',v)} />
+            <button type="button" onClick={() => resetHeaderBlock('all')} style={{ width:'100%', padding:'7px 8px', background:'#f0f9ff', border:'1.5px solid #bae6fd', borderRadius:6, fontSize:'.68rem', color:'#0369a1', cursor:'pointer', fontWeight:700 }}>Reset Full Header</button>
+          </>
+        )}
+      </>
+    );
+  };
 
   return (
     <div style={{ display:'flex', height:'100%', fontFamily:'Inter,system-ui,sans-serif', background:'#e8ecf4', overflow:'hidden' }}>
@@ -1241,54 +1601,7 @@ const OfferLetterGenerator = ({ user }) => {
               <p style={{ fontSize:'.73rem', color:'#64748b', marginBottom:14 }}>Changes preview instantly.</p>
 
               {[
-                ['hdr','🏢 Header', (
-                  <>
-                    <Field label="Type"><div style={{ display:'flex', gap:6, flexWrap:'wrap' }}>
-                      {[['logo','Logo'],['image','Image'],['text','Text']].map(([t,l]) => <Chip key={t} active={tpl.header_type===t} onClick={() => set('header_type',t)}>{l}</Chip>)}
-                    </div></Field>
-                    {tpl.header_type !== 'image' && <Field label="Logo/Company Text"><input value={tpl.header_logo_text||''} onChange={e => set('header_logo_text',e.target.value)} style={iStyle} /></Field>}
-                    {tpl.header_type === 'image' && <ImageUploader value={tpl.header_image_base64} onChange={v=>set('header_image_base64',v)} label="Logo Image" hint="Upload PNG/JPG" />}
-                    {tpl.header_type === 'image' && tpl.header_image_base64 && (
-                      <Field label={'Logo Width: ' + (tpl.header_logo_width||200) + 'px'}>
-                        <input type="range" min="60" max="400" value={tpl.header_logo_width||200} onChange={e=>set('header_logo_width',parseInt(e.target.value))} style={{width:'100%'}} />
-                        <div style={{display:'flex',justifyContent:'space-between',fontSize:'.6rem',color:'#94a3b8',marginTop:1}}><span>60px (small)</span><span>400px (large)</span></div>
-                      </Field>
-                    )}
-                    <Field label="Reposition Layout">
-                      <button onClick={() => setTpl(p => ({...p, header_logo_x:16, header_logo_y:16, header_addr_x:490, header_addr_y:16, header_name_x:16, header_name_y:85}))} style={{ padding:'5px 10px', background:'#f0f9ff', border:'1.5px solid #bae6fd', borderRadius:6, fontSize:'.68rem', color:'#0369a1', cursor:'pointer', fontWeight:700, width:'100%' }}>&#x27F3; Reset All Positions</button>
-                      <p style={{fontSize:'.63rem',color:'#64748b',marginTop:4,marginBottom:0,lineHeight:1.5}}>&#128161; Drag logo (teal), address (teal), or legal name (red handle) on the A4 preview</p>
-                    </Field>
-                    <Field label="Legal Name"><input value={tpl.header_company_name||''} onChange={e => set('header_company_name',e.target.value)} style={iStyle} /></Field>
-                    <Field label="Address 1"><input value={tpl.header_address_line1||''} onChange={e => set('header_address_line1',e.target.value)} style={iStyle} /></Field>
-                    <Field label="Address 2"><input value={tpl.header_address_line2||''} onChange={e => set('header_address_line2',e.target.value)} style={iStyle} /></Field>
-                    <Field label="Address 3"><input value={tpl.header_address_line3||''} onChange={e => set('header_address_line3',e.target.value)} style={iStyle} /></Field>
-                    <Field label="Website"><input value={tpl.header_website||''} onChange={e => set('header_website',e.target.value)} style={iStyle} /></Field>
-                    <Field label="BG Color"><div style={{display:'flex',gap:8,alignItems:'center'}}><input type="color" value={tpl.header_bg_color||'#000'} onChange={e=>set('header_bg_color',e.target.value)} style={{width:34,height:34,border:'1.5px solid #e2e8f0',borderRadius:6,padding:2,cursor:'pointer'}} /><span style={{fontSize:'.76rem',color:'#64748b'}}>{tpl.header_bg_color}</span></div></Field>
-                    <Field label="Text Color"><div style={{display:'flex',gap:8,alignItems:'center'}}><input type="color" value={tpl.header_text_color||'#fff'} onChange={e=>set('header_text_color',e.target.value)} style={{width:34,height:34,border:'1.5px solid #e2e8f0',borderRadius:6,padding:2,cursor:'pointer'}} /><span style={{fontSize:'.76rem',color:'#64748b'}}>{tpl.header_text_color}</span></div></Field>
-                    <Field label={'Header Height: ' + (tpl.header_min_height||110) + 'px'}>
-                      <input type="range" min={60} max={280} value={tpl.header_min_height||110} onChange={e=>set('header_min_height',+e.target.value)} style={{width:'100%'}} />
-                      <p style={{fontSize:'.61rem',color:'#94a3b8',marginTop:2,marginBottom:0}}>Or drag the bottom edge of the header on the A4 preview</p>
-                    </Field>
-                    {tpl.header_type === 'image' && tpl.header_image_base64 && (
-                      <Field label={'Logo Height: ' + (tpl.header_logo_height > 0 ? tpl.header_logo_height + 'px' : 'Auto')}>
-                        <input type="range" min={0} max={200} value={tpl.header_logo_height||0} onChange={e=>set('header_logo_height',+e.target.value)} style={{width:'100%'}} />
-                        <div style={{display:'flex',justifyContent:'space-between',fontSize:'.6rem',color:'#94a3b8',marginTop:1}}><span>0 = Auto ratio</span><span>Set fixed height</span></div>
-                        <p style={{fontSize:'.61rem',color:'#94a3b8',marginTop:2,marginBottom:0}}>Or drag the corner handle (blue) on the logo in the preview</p>
-                      </Field>
-                    )}
-                    <Field label={'Company Name Size: ' + (tpl.header_company_name_size||12) + 'px'}>
-                      <input type="range" min={8} max={24} value={tpl.header_company_name_size||12} onChange={e=>set('header_company_name_size',+e.target.value)} style={{width:'100%'}} />
-                    </Field>
-                    <Field label={'Address Font Size: ' + (tpl.header_addr_size||11) + 'px'}>
-                      <input type="range" min={7} max={18} value={tpl.header_addr_size||11} onChange={e=>set('header_addr_size',+e.target.value)} style={{width:'100%'}} />
-                    </Field>
-                    <Field label={'Address Scale: ' + Math.round((tpl.header_addr_scale||1)*100) + '%'}>
-                      <input type="range" min={50} max={250} value={Math.round((tpl.header_addr_scale||1)*100)} onChange={e=>set('header_addr_scale',+e.target.value/100)} style={{width:'100%'}} />
-                      <p style={{fontSize:'.61rem',color:'#94a3b8',marginTop:2,marginBottom:0}}>Or drag the green corner handle on the address block</p>
-                    </Field>
-                    <Toggle label="Show header on all pages" checked={tpl.header_all_pages !== false} onChange={v=>set('header_all_pages',v)} />
-                  </>
-                )],
+                ['hdr','🏢 Header', renderHeaderSettings()],
                 ['wm','💧 Watermark', (
                   <>
                     <Field label="Type"><div style={{display:'flex',gap:6,flexWrap:'wrap'}}>

@@ -1683,10 +1683,14 @@ function Sidebar({ selectedLabel: initialSelectedLabel, setSelectedLabel: parent
         #sidebar-nav::-webkit-scrollbar { display: none; }
       `}</style>
       <div className="flex flex-col h-full relative z-50">
-        {/* Header — FYF brand text */}
-        <div className="flex flex-col items-center flex-shrink-0 pt-3 pb-2 border-b border-white/[0.08] gap-0.5 px-1">
-          <span className="text-[#ffeb00] font-black text-[11px] leading-none tracking-tight select-none">Fix</span>
-          <span className="text-[#00d2ff] font-black text-[10px] leading-none tracking-tight select-none">Finance</span>
+        {/* Header — FYF brand logo */}
+        <div className="flex items-center justify-center flex-shrink-0 pt-1.5 pb-1.5 border-b border-white/[0.08] px-1">
+          <img
+            src="/WhatsApp%20Image%202026-06-20%20at%206.16.05%20PM.jpeg"
+            alt="Fix Your Finance"
+            className="h-[52px] w-[52px] object-contain select-none"
+            draggable="false"
+          />
         </div>
 
         {/* Up arrow */}
