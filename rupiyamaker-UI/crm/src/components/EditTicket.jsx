@@ -1059,14 +1059,15 @@ export default function EditTicket({ ticket: initialTicket, onSave, onClose }) {
       <style>{`@keyframes ticketEditDrawerIn { from { transform: translateX(100%); } to { transform: translateX(0); } }`}</style>
       <div className="relative bg-white p-6 shadow-2xl w-full space-y-6 overflow-y-auto" style={{ position: 'fixed', top: 0, right: 0, height: '100vh', maxWidth: '760px', borderRadius: 0, boxShadow: '-12px 0 40px rgba(0,0,0,0.28)', animation: 'ticketEditDrawerIn 0.28s cubic-bezier(0.4,0,0.2,1)' }}>
         <button
-          className="absolute right-2 top-2 text-gray-500 hover:text-red-500 transition text-2xl font-bold"
+          className="text-2xl font-bold"
+          style={{ position: 'fixed', top: '32px', right: 'min(760px, calc(100vw - 44px))', background: '#1d7df2', width: '44px', height: '38px', borderRadius: '8px 0 0 8px', border: 'none', fontSize: '22px', lineHeight: 1, color: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 10, boxShadow: '-4px 6px 14px rgba(15,23,42,0.18)' }}
           onClick={handleClose}
           aria-label="Close"
           type="button"
         >
           ×
         </button>
-        <h2 className="text-xl font-bold text-blue-500 mb-4 flex items-center gap-3">
+        <h2 className="text-xl font-bold text-blue-500 mb-4 flex items-center gap-3" style={{ paddingLeft: 'clamp(0px, calc(761px - 100vw), 40px)' }}>
           EDIT TICKET
           {autoSaving && (
             <span className="text-sm font-normal text-gray-400 flex items-center gap-1">

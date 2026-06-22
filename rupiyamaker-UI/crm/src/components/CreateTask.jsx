@@ -628,7 +628,7 @@ export default function CreateTask({ onClose, onSave, preselectedLead, defaultTa
         }}
       />
       <div
-        className="relative bg-white flex flex-col overflow-hidden"
+        className="relative bg-white flex flex-col"
         style={{
           position: 'fixed',
           top: 0,
@@ -641,6 +641,7 @@ export default function CreateTask({ onClose, onSave, preselectedLead, defaultTa
           transform: panelVisible ? 'translateX(0)' : 'translateX(100%)',
           transition: 'transform 0.28s cubic-bezier(0.4, 0, 0.2, 1)',
           outline: 'none',
+          overflow: 'visible',
         }}
         ref={modalRef}
         tabIndex={-1}
@@ -649,8 +650,8 @@ export default function CreateTask({ onClose, onSave, preselectedLead, defaultTa
         aria-label="Create New Task"
       >
         <button
-          className="absolute right-5 top-5 flex items-center justify-center z-10 cursor-pointer transition hover:text-[#334155]"
-          style={{ background: '#f1f5f9', width: '28px', height: '28px', borderRadius: '50%', border: 'none', fontSize: '16px', color: '#64748b' }}
+          className="absolute flex items-center justify-center z-10 cursor-pointer transition"
+          style={{ top: '32px', left: 'max(-44px, calc(100% - 100vw))', background: '#1d7df2', width: '44px', height: '38px', borderRadius: '8px 0 0 8px', border: 'none', fontSize: '22px', lineHeight: 1, color: '#fff', boxShadow: '-4px 6px 14px rgba(15,23,42,0.18)' }}
           onClick={handleClose}
           aria-label="Close"
           type="button"
@@ -659,7 +660,7 @@ export default function CreateTask({ onClose, onSave, preselectedLead, defaultTa
         </button>
 
         <div className="flex-1 overflow-y-auto" style={{ padding: '14px 18px' }}>
-        <div style={{ fontSize: '18px', fontWeight: 800, color: '#0f172a', marginBottom: '5px' }}>Create New Task</div>
+        <div style={{ fontSize: '18px', fontWeight: 800, color: '#0f172a', marginBottom: '5px', paddingLeft: 'clamp(0px, calc(561px - 100vw), 38px)' }}>Create New Task</div>
 
         {/* Task Type Tabs */}
         <div style={{ display: 'flex', backgroundColor: '#f1f5f9', borderRadius: '8px', padding: '3px', gap: '3px', marginTop: '8px', marginBottom: '12px' }}>

@@ -608,7 +608,7 @@ export default function CreateTicket({ onClose, onSubmit }) {
       <div
         ref={modalRef}
         tabIndex={-1}
-        className="relative bg-white flex flex-col overflow-hidden"
+        className="relative bg-white flex flex-col"
         style={{
           position: 'fixed',
           top: 0,
@@ -621,14 +621,15 @@ export default function CreateTicket({ onClose, onSubmit }) {
           transform: panelVisible ? 'translateX(0)' : 'translateX(100%)',
           transition: 'transform 0.28s cubic-bezier(0.4, 0, 0.2, 1)',
           outline: 'none',
+          overflow: 'visible',
         }}
         role="dialog"
         aria-modal="true"
         aria-label="Create Ticket"
       >
         <button
-          className="absolute right-5 top-5 flex items-center justify-center z-10 cursor-pointer transition hover:text-[#334155]"
-          style={{ background: '#f1f5f9', width: '28px', height: '28px', borderRadius: '50%', border: 'none', fontSize: '16px', color: '#64748b' }}
+          className="absolute flex items-center justify-center z-10 cursor-pointer transition"
+          style={{ top: '32px', left: 'max(-44px, calc(100% - 100vw))', background: '#1d7df2', width: '44px', height: '38px', borderRadius: '8px 0 0 8px', border: 'none', fontSize: '22px', lineHeight: 1, color: '#fff', boxShadow: '-4px 6px 14px rgba(15,23,42,0.18)' }}
           onClick={handleClose}
           aria-label="Close"
           type="button"
@@ -636,7 +637,7 @@ export default function CreateTicket({ onClose, onSubmit }) {
           ×
         </button>
         <div className="flex-1 overflow-y-auto p-6 space-y-2">
-        <h2 className="text-xl font-bold text-blue-500 mb-4">Create Ticket</h2>
+        <h2 className="text-xl font-bold text-blue-500 mb-4" style={{ paddingLeft: 'clamp(0px, calc(561px - 100vw), 40px)' }}>Create Ticket</h2>
         <form onSubmit={handleSubmit}>
             <div className="flex flex-col md:flex-row gap-4">
               <div className="flex-1">
@@ -893,17 +894,10 @@ export default function CreateTicket({ onClose, onSubmit }) {
               )}
             </div>
 
-            <div className="flex gap-4 mt-6">
-              <button
-                type="button"
-                className="flex-1 px-6 py-3 border border-gray-300 text-gray-700 font-medium rounded-lg hover:bg-gray-100 transition text-lg"
-                onClick={handleClose}
-              >
-                Cancel
-              </button>
+            <div className="flex justify-end mt-6">
               <button
                 type="submit"
-                className="flex-1 px-6 py-3 bg-cyan-600 text-white font-bold rounded-lg shadow hover:bg-cyan-700 transition text-lg"
+                className="px-6 py-3 bg-cyan-600 text-white font-bold rounded-lg shadow hover:bg-cyan-700 transition text-lg"
               >
                 Add Ticket
               </button>

@@ -1277,11 +1277,7 @@ export default function TicketPage() {
     <>
       <style>{ticketPageStyles}</style>
       <div className="task-page-container">
-        <div className="task-top-bar">
-          <div className="task-top-bar-left">
-            <h1>Tickets</h1>
-          </div>
-        </div>
+        
 
         <div className="task-view-toggle-bar">
           <div className="ticket-toolbar-left">

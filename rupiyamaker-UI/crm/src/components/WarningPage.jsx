@@ -129,11 +129,27 @@ const WarningPage = memo(() => {
     .similar-warnings-row:hover { background-color: #13131c !important; }
     .warning-drawer-panel { animation: warningSlideInRight 0.24s ease-out; }
     @keyframes warningSlideInRight { from { transform: translateX(100%); opacity: 0.65; } to { transform: translateX(0); opacity: 1; } }
+    .warning-drawer-overlay { position: fixed; inset: 0; background: rgba(15, 23, 42, 0.55); backdrop-filter: blur(3px); }
+    .warning-drawer-shell { position: fixed; top: 0; right: 0; height: 100vh; width: 100%; max-width: 700px; background: #fff; color: #0f172a; box-shadow: -12px 0 40px rgba(0,0,0,0.28); border-left: 1px solid rgba(0,0,0,0.1); display: flex; flex-direction: column; overflow: visible; outline: none; }
+    .warning-drawer-close { position: absolute; top: 32px; left: max(-44px, calc(100% - 100vw)); background: #1d7df2; width: 44px; height: 38px; border-radius: 8px 0 0 8px; border: none; font-size: 22px; line-height: 1; color: #fff; cursor: pointer; display: flex; align-items: center; justify-content: center; z-index: 10; box-shadow: -4px 6px 14px rgba(15,23,42,0.18); transition: background 0.15s, transform 0.15s; }
+    .warning-drawer-close:hover { background: #0f6ee8; transform: translateX(-1px); }
+    .warning-drawer-body { flex: 1; min-height: 0; overflow-y: auto; padding: 14px 18px; }
+    .warning-drawer-title { display: flex; align-items: center; gap: 8px; margin: 0 0 10px 0; font-size: 18px; font-weight: 800; color: #0f172a; line-height: 1.2; }
+    .warning-drawer-footer { padding: 12px 18px; border-top: 1px solid #e2e8f0; background: #f8fafc; display: flex; align-items: center; justify-content: flex-end; gap: 10px; flex-shrink: 0; }
+    .warning-drawer-primary { padding: 8px 18px; border: none; background: #0284c7; color: #fff; border-radius: 6px; font-size: 13px; font-weight: 800; cursor: pointer; display: inline-flex; align-items: center; gap: 7px; text-transform: uppercase; box-shadow: 0 6px 14px rgba(2,132,199,0.22); }
+    .warning-drawer-primary:hover { background: #0369a1; }
+    .warning-form-label { display: block; margin-bottom: 6px; font-size: 11px; font-weight: 800; color: #475569; text-transform: uppercase; letter-spacing: 0.5px; }
+    .warning-form-input { width: 100%; border: 1.5px solid #94a3b8; background: #fff; color: #0f172a; border-radius: 6px; font-size: 13px; font-weight: 600; outline: none; }
+    .warning-form-input-readonly { border-color: #cbd5e1; background: #f1f5f9; color: #64748b; cursor: not-allowed; }
+    .warning-detail-card { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px; }
     @media (max-width: 900px) {
       .task-view-toggle-bar { padding: 8px 16px; gap: 8px; }
       .task-view-toggle-btn { padding: 10px 12px; font-size: 12px; }
       .task-search-box--in-bar { min-width: 150px; max-width: 220px; }
       .task-btn-create, .task-btn-secondary { padding: 7px 10px; font-size: 12px; }
+    }
+    @media (max-width: 700px) {
+      .warning-drawer-title { margin-left: 40px; }
     }
   `;
 
@@ -1893,11 +1909,6 @@ const WarningPage = memo(() => {
       <>
         <style>{warningPageStyles}</style>
         <div className="task-page-container">
-          <div className="task-top-bar">
-            <div className="task-top-bar-left">
-              <h1>Warnings</h1>
-            </div>
-          </div>
 
           <div className="task-view-toggle-bar">
             <div className="warning-toolbar-left">
@@ -2590,44 +2601,36 @@ const WarningPage = memo(() => {
               inset: 0,
               zIndex: 1000,
               background: 'rgba(15, 23, 42, 0.55)',
+              backdropFilter: 'blur(3px)',
               opacity: addDrawerVisible ? 1 : 0,
               transition: 'opacity 0.28s ease',
             }}
           />
           <div
             tabIndex={-1}
-            className="relative bg-white flex flex-col overflow-hidden"
+            className="warning-drawer-shell"
             style={{
-              position: 'fixed',
-              top: 0,
-              right: 0,
-              height: '100vh',
-              width: '100%',
               maxWidth: '640px',
               zIndex: 1001,
-              boxShadow: '-12px 0 40px rgba(0, 0, 0, 0.28)',
               transform: addDrawerVisible ? 'translateX(0)' : 'translateX(100%)',
               transition: 'transform 0.28s cubic-bezier(0.4, 0, 0.2, 1)',
-              outline: 'none',
             }}
             role="dialog"
             aria-modal="true"
             aria-label="Issue New Warning"
           >
-            {/* Header */}
-            <div className="flex items-center justify-between px-5 py-3.5 border-b border-gray-200 bg-gray-50 shrink-0">
-              <h2 className="text-base font-black text-gray-800 flex items-center gap-2 uppercase tracking-tight">
-                <Send className="w-4 h-4 text-red-500" /> Issue New Warning
+            <button
+              type="button"
+              onClick={closeAddDialog}
+              className="warning-drawer-close"
+              aria-label="Close"
+            >
+              ×
+            </button>
+            <div className="warning-drawer-body">
+              <h2 className="warning-drawer-title">
+                <Send className="w-5 h-5 text-red-500" /> Issue New Warning
               </h2>
-              <button
-                type="button"
-                onClick={closeAddDialog}
-                className="text-gray-400 hover:text-red-500 hover:bg-red-50 transition w-7 h-7 flex items-center justify-center rounded-full"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-            <div className="p-5 overflow-y-auto flex-1 min-h-0">
             <form onSubmit={(e) => { e.preventDefault(); handleSubmit(); }} className="space-y-0">
                 {/* Date & Time and Issued By Row */}
                 <div className="grid grid-cols-2 gap-4 mb-5">
@@ -3107,18 +3110,11 @@ const WarningPage = memo(() => {
             </div>
 
             {/* Footer */}
-            <div className="px-5 py-3.5 border-t border-gray-200 bg-gray-50 flex items-center justify-end gap-3 shrink-0">
-              <button
-                type="button"
-                onClick={closeAddDialog}
-                className="px-5 py-2 text-sm font-bold text-gray-600 bg-white border border-gray-300 hover:bg-gray-100 rounded-lg transition-colors uppercase"
-              >
-                Cancel
-              </button>
+            <div className="warning-drawer-footer">
               <button
                 type="button"
                 onClick={() => handleSubmit()}
-                className="px-6 py-2 text-sm font-bold text-white bg-red-600 hover:bg-red-700 rounded-lg shadow-md transition-all flex items-center gap-2 uppercase"
+                className="warning-drawer-primary"
               >
                 <Send className="w-4 h-4" /> Send Warning
               </button>
@@ -3130,37 +3126,42 @@ const WarningPage = memo(() => {
       {/* View Warning Modal */}
       {viewDialogOpen && selectedWarning && createPortal(
         <div
-          className="fixed inset-0 bg-black/60 backdrop-blur-sm flex justify-end"
+          className="warning-drawer-overlay"
           style={{ zIndex: WARNING_MODAL_Z_INDEX }}
+          onClick={(e) => {
+            if (e.target === e.currentTarget) {
+              setViewDialogOpen(false);
+              setEditingWarning(null);
+            }
+          }}
         >
-          <div className="warning-drawer-panel bg-gray-900 shadow-xl h-full w-full max-w-2xl overflow-hidden relative border-l border-gray-700 flex flex-col">
-            {/* Header */}
-            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-700 bg-gray-800/80">
-              <h2 className="text-lg font-bold text-white flex items-center gap-2">
-                {permissions?.can_edit ? <Edit className="w-5 h-5 text-cyan-400" /> : <FileText className="w-5 h-5 text-cyan-400" />}
+          <div className="warning-drawer-panel warning-drawer-shell">
+            <button
+              type="button"
+              onClick={() => {
+                setViewDialogOpen(false);
+                setEditingWarning(null);
+              }}
+              className="warning-drawer-close"
+              aria-label="Close"
+            >
+              ×
+            </button>
+
+            <div className="warning-drawer-body space-y-5">
+              <h2 className="warning-drawer-title">
+                {permissions?.can_edit ? <Edit className="w-5 h-5 text-blue-500" /> : <FileText className="w-5 h-5 text-blue-500" />}
                 {permissions?.can_edit ? 'Edit Warning' : 'Warning Record Details'}
               </h2>
-              <button
-                onClick={() => {
-                  setViewDialogOpen(false);
-                  setEditingWarning(null);
-                }}
-                className="text-gray-400 hover:text-white hover:bg-gray-700 p-2 rounded-full transition-colors"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <div className="p-6 space-y-6 flex-1 overflow-y-auto">
               {/* 2x2 Grid: Employee, Issued By, Mistake Category, Penalty */}
-              <div className="grid grid-cols-2 gap-4 bg-gray-800/60 p-4 rounded-xl border border-gray-700">
+              <div className="grid grid-cols-2 gap-4 warning-detail-card">
                 <div>
                   <p className="text-[10px] text-gray-500 font-bold uppercase tracking-wider mb-1">Employee Name</p>
-                  <p className="text-sm font-bold text-white">{selectedWarning.issued_to_name || 'Unknown Employee'}</p>
+                  <p className="text-sm font-bold text-gray-900">{selectedWarning.issued_to_name || 'Unknown Employee'}</p>
                 </div>
                 <div>
                   <p className="text-[10px] text-gray-500 font-bold uppercase tracking-wider mb-1">Issued By</p>
-                  <p className="text-sm font-bold text-white">{selectedWarning.issued_by_name || 'Unknown'}</p>
+                  <p className="text-sm font-bold text-gray-900">{selectedWarning.issued_by_name || 'Unknown'}</p>
                 </div>
                 <div>
                   <p className="text-[10px] text-gray-500 font-bold uppercase tracking-wider mb-1">Mistake Category</p>
@@ -3168,7 +3169,7 @@ const WarningPage = memo(() => {
                     <select
                       value={formData.warning_type}
                       onChange={(e) => handleFormChange('warning_type', e.target.value)}
-                      className="w-full px-3 py-2 border border-gray-600 rounded-lg bg-gray-800 text-gray-200 text-sm font-medium"
+                      className="warning-form-input px-3 py-2"
                     >
                       <option value="">Select Mistake Type</option>
                       {mistakeTypes.map((type) => {
@@ -3188,8 +3189,8 @@ const WarningPage = memo(() => {
                 <div>
                   <p className="text-[10px] text-gray-500 font-bold uppercase tracking-wider mb-1">Penalty Amount</p>
                   {permissions?.can_edit ? (
-                    <div className="relative border border-gray-600 rounded-lg bg-gray-800 flex items-center overflow-hidden">
-                      <span className="px-3 py-2 text-gray-400 bg-gray-700 border-r border-gray-600 font-medium">₹</span>
+                    <div className="relative border border-gray-300 rounded-lg bg-white flex items-center overflow-hidden">
+                      <span className="px-3 py-2 text-gray-500 bg-gray-100 border-r border-gray-300 font-medium">₹</span>
                       <input
                         type="text"
                         inputMode="numeric"
@@ -3202,12 +3203,12 @@ const WarningPage = memo(() => {
                           const raw = e.target.value.replace(/[^0-9]/g, '');
                           handleFormChange('penalty_amount', raw);
                         }}
-                        className="w-full text-sm text-gray-200 outline-none px-3 py-2 bg-transparent font-medium"
+                        className="w-full text-sm text-gray-800 outline-none px-3 py-2 bg-transparent font-medium"
                         placeholder="0"
                       />
                     </div>
                   ) : (
-                    <p className="text-sm font-bold text-white">
+                    <p className="text-sm font-bold text-gray-900">
                       {(waivedPenalties[selectedWarning.id] || selectedWarning.is_waived) ? (
                         <span className="flex items-center gap-2">
                           <span className="line-through text-gray-500">₹{Number(selectedWarning.penalty_amount).toLocaleString('en-IN')}</span>
@@ -3222,10 +3223,10 @@ const WarningPage = memo(() => {
               </div>
 
               {/* Extra Info Row */}
-              <div className="grid grid-cols-2 gap-4 bg-gray-800/40 p-4 rounded-xl border border-gray-700/50">
+              <div className="grid grid-cols-2 gap-4 warning-detail-card">
                 <div>
                   <p className="text-[10px] text-gray-500 font-bold uppercase tracking-wider mb-1">Date & Time</p>
-                  <p className="text-sm font-medium text-gray-300">
+                  <p className="text-sm font-medium text-gray-700">
                     {selectedWarning.issued_date ? new Date(selectedWarning.issued_date).toLocaleDateString('en-GB', { 
                       day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Asia/Kolkata'
                     }).replace(',', '') : formatDate(selectedWarning.issued_date)}
@@ -3233,7 +3234,7 @@ const WarningPage = memo(() => {
                 </div>
                 <div>
                   <p className="text-[10px] text-gray-500 font-bold uppercase tracking-wider mb-1">Department</p>
-                  <p className="text-sm font-medium text-gray-300">{selectedWarning.department_name || 'N/A'}</p>
+                  <p className="text-sm font-medium text-gray-700">{selectedWarning.department_name || 'N/A'}</p>
                 </div>
               </div>
 
@@ -3245,11 +3246,11 @@ const WarningPage = memo(() => {
                     value={formData.warning_message}
                     onChange={(e) => handleFormChange('warning_message', e.target.value)}
                     rows={5}
-                    className="w-full text-sm text-gray-200 outline-none p-3 resize-none bg-gray-800 border border-gray-600 rounded-lg focus:border-cyan-500 transition-all leading-relaxed"
+                    className="warning-form-input p-3 resize-none leading-relaxed focus:border-blue-400"
                     placeholder="Enter detailed warning message..."
                   />
                 ) : (
-                  <p className="text-sm text-gray-300 bg-gray-800 border border-gray-700 p-4 rounded-lg leading-relaxed">
+                  <p className="text-sm text-gray-700 bg-gray-50 border border-gray-200 p-4 rounded-lg leading-relaxed">
                     "{selectedWarning.warning_message || 'No message provided'}"
                   </p>
                 )}
@@ -3259,36 +3260,26 @@ const WarningPage = memo(() => {
               <div>
                 <p className="text-[10px] text-gray-500 font-bold uppercase tracking-wider mb-2">Employee's Remark</p>
                 {getEmployeeRemark(selectedWarning) ? (
-                  <div className="bg-green-900/30 border border-green-700/40 p-4 rounded-lg">
-                    <p className="text-sm text-green-300 italic">
+                  <div className="bg-green-50 border border-green-200 p-4 rounded-lg">
+                    <p className="text-sm text-green-700 italic">
                       "{getEmployeeRemark(selectedWarning)}"
                     </p>
                   </div>
                 ) : (
-                  <div className="bg-amber-900/30 border border-amber-700/40 p-4 rounded-lg flex items-center gap-2">
+                  <div className="bg-amber-50 border border-amber-200 p-4 rounded-lg flex items-center gap-2">
                     <svg className="w-4 h-4 text-amber-400 shrink-0" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.415-1.415L11 9.586V6z" clipRule="evenodd"/></svg>
-                    <p className="text-sm text-amber-300">Waiting for employee response...</p>
+                    <p className="text-sm text-amber-700">Waiting for employee response...</p>
                   </div>
                 )}
               </div>
 
             </div>
             {permissions?.can_edit && (
-              <div className="px-6 py-4 border-t border-gray-700 bg-gray-800/80 flex items-center justify-end gap-3 shrink-0">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setViewDialogOpen(false);
-                    setEditingWarning(null);
-                  }}
-                  className="px-5 py-2.5 text-sm font-semibold text-gray-400 hover:bg-gray-700 rounded-lg transition-colors"
-                >
-                  Cancel
-                </button>
+              <div className="warning-drawer-footer">
                 <button
                   type="button"
                   onClick={() => handleEditSubmit()}
-                  className="px-6 py-2.5 text-sm font-bold text-white bg-cyan-600 hover:bg-cyan-700 rounded-lg shadow-md transition-all"
+                  className="warning-drawer-primary"
                 >
                   Update Warning
                 </button>
@@ -3302,32 +3293,35 @@ const WarningPage = memo(() => {
       {/* Edit Warning Modal */}
       {editDialogOpen && createPortal(
         <div
-          className="fixed inset-0 bg-black/60 backdrop-blur-sm flex justify-end"
+          className="warning-drawer-overlay"
           style={{ zIndex: WARNING_MODAL_Z_INDEX }}
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setEditDialogOpen(false);
+          }}
         >
-          <div className="warning-drawer-panel bg-gray-900 shadow-xl h-full w-full max-w-2xl overflow-hidden relative border-l border-gray-700 flex flex-col">
-            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-700 bg-gray-800/80">
-              <h2 className="text-lg font-bold text-white flex items-center gap-2">
-                <Edit className="w-5 h-5 text-cyan-400" /> Edit Warning
+          <div className="warning-drawer-panel warning-drawer-shell">
+            <button
+              type="button"
+              onClick={() => setEditDialogOpen(false)}
+              className="warning-drawer-close"
+              aria-label="Close"
+            >
+              ×
+            </button>
+            <div className="warning-drawer-body">
+              <h2 className="warning-drawer-title">
+                <Edit className="w-5 h-5 text-blue-500" /> Edit Warning
               </h2>
-              <button
-                onClick={() => setEditDialogOpen(false)}
-                className="text-gray-400 hover:text-white hover:bg-gray-700 p-2 rounded-full transition-colors"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-            <div className="p-6 flex-1 overflow-y-auto">
             <form onSubmit={(e) => { e.preventDefault(); handleEditSubmit(); }} className="space-y-5">
               {/* Date & Time and Created By Row */}
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-1.5">
-                  <label className="text-sm font-semibold text-gray-300">Date & Time</label>
-                  <div className="relative border border-gray-600 rounded-lg bg-gray-800 flex items-center">
+                  <label className="warning-form-label">Date & Time</label>
+                  <div className="relative warning-form-input warning-form-input-readonly flex items-center">
                     <Calendar className="w-4 h-4 text-gray-500 absolute left-3" />
                     <input
                       type="text"
-                      className="w-full text-sm text-gray-300 outline-none py-3 pl-9 pr-3 bg-transparent font-medium cursor-not-allowed"
+                      className="w-full text-sm text-gray-600 outline-none py-3 pl-9 pr-3 bg-transparent font-medium cursor-not-allowed"
                       value={editingWarning ? new Date(editingWarning.issue_date).toLocaleDateString('en-GB', { 
                         day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Asia/Kolkata'
                       }).replace(',', '') : ''}
@@ -3336,12 +3330,12 @@ const WarningPage = memo(() => {
                   </div>
                 </div>
                 <div className="space-y-1.5">
-                  <label className="text-sm font-semibold text-gray-300">Created By</label>
-                  <div className="relative border border-gray-600 rounded-lg bg-gray-800 flex items-center">
+                  <label className="warning-form-label">Created By</label>
+                  <div className="relative warning-form-input warning-form-input-readonly flex items-center">
                     <User className="w-4 h-4 text-gray-500 absolute left-3" />
                     <input
                       type="text"
-                      className="w-full text-sm text-gray-300 outline-none py-3 pl-9 pr-3 bg-transparent font-medium cursor-not-allowed"
+                      className="w-full text-sm text-gray-600 outline-none py-3 pl-9 pr-3 bg-transparent font-medium cursor-not-allowed"
                       value={editingWarning ? editingWarning.issued_by_name || 'Unknown' : ''}
                       readOnly
                     />
@@ -3352,29 +3346,29 @@ const WarningPage = memo(() => {
               {/* Two Column Layout */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-1.5">
-                  <label className="text-sm font-semibold text-gray-300">Department</label>
+                  <label className="warning-form-label">Department</label>
                   <input
                     type="text"
-                    className="w-full px-3 py-2.5 border border-gray-600 rounded-lg bg-gray-800 text-gray-300 text-sm font-medium cursor-not-allowed"
+                    className="warning-form-input warning-form-input-readonly px-3 py-2.5 text-sm font-medium"
                     value={editingWarning ? editingWarning.department_name || 'N/A' : ''}
                     readOnly
                   />
                 </div>
                 <div className="space-y-1.5">
-                  <label className="text-sm font-semibold text-gray-300">Employee</label>
+                  <label className="warning-form-label">Employee</label>
                   <input
                     type="text"
-                    className="w-full px-3 py-2.5 border border-gray-600 rounded-lg bg-gray-800 text-gray-300 text-sm font-medium cursor-not-allowed"
+                    className="warning-form-input warning-form-input-readonly px-3 py-2.5 text-sm font-medium"
                     value={editingWarning ? editingWarning.issued_to_name || 'Unknown Employee' : ''}
                     readOnly
                   />
                 </div>
                 <div className="space-y-1.5">
-                  <label className="text-sm font-semibold text-gray-300">Mistake Type <span className="text-red-500">*</span></label>
+                  <label className="warning-form-label">Mistake Type <span className="text-red-500">*</span></label>
                   <select
                     value={formData.warning_type}
                     onChange={(e) => handleFormChange('warning_type', e.target.value)}
-                    className="w-full px-3 py-2.5 border border-gray-600 rounded-lg bg-gray-800 text-gray-200 text-sm font-medium"
+                    className="warning-form-input px-3 py-2.5"
                     required
                   >
                     <option value="">Select Mistake Type</option>
@@ -3390,9 +3384,9 @@ const WarningPage = memo(() => {
                   </select>
                 </div>
                 <div className="space-y-1.5">
-                  <label className="text-sm font-semibold text-gray-300">Penalty Amount <span className="text-red-500">*</span></label>
-                  <div className="relative border border-gray-600 rounded-lg bg-gray-800 flex items-center overflow-hidden">
-                    <span className="px-3 py-2.5 text-gray-400 bg-gray-700 border-r border-gray-600 font-medium">₹</span>
+                  <label className="warning-form-label">Penalty Amount <span className="text-red-500">*</span></label>
+                  <div className="relative border border-gray-300 rounded-lg bg-white flex items-center overflow-hidden">
+                    <span className="px-3 py-2.5 text-gray-500 bg-gray-100 border-r border-gray-300 font-medium">₹</span>
                     <input
                       type="text"
                       inputMode="numeric"
@@ -3405,7 +3399,7 @@ const WarningPage = memo(() => {
                         const raw = e.target.value.replace(/[^0-9]/g, '');
                         handleFormChange('penalty_amount', raw);
                       }}
-                      className="w-full text-sm text-gray-200 outline-none px-3 py-2.5 bg-transparent font-medium"
+                      className="w-full text-sm text-gray-800 outline-none px-3 py-2.5 bg-transparent font-medium"
                       placeholder="0"
                       required
                     />
@@ -3415,30 +3409,23 @@ const WarningPage = memo(() => {
 
               {/* Warning Message */}
               <div className="space-y-1.5">
-                <label className="text-sm font-semibold text-gray-300">Warning Message</label>
+                <label className="warning-form-label">Warning Message</label>
                 <textarea
                   value={formData.warning_message}
                   onChange={(e) => handleFormChange('warning_message', e.target.value)}
                   rows={4}
-                  className="w-full text-sm text-gray-200 outline-none p-3 resize-none bg-gray-800 border border-gray-600 rounded-lg focus:border-cyan-500 transition-all leading-relaxed"
+                  className="warning-form-input p-3 resize-none leading-relaxed focus:border-blue-400"
                   placeholder="Enter detailed warning message..."
                 />
               </div>
             </form>
             </div>
 
-            <div className="px-6 py-4 border-t border-gray-700 bg-gray-800/80 flex items-center justify-end gap-3 shrink-0">
-              <button
-                type="button"
-                onClick={() => setEditDialogOpen(false)}
-                className="px-5 py-2.5 text-sm font-semibold text-gray-400 hover:bg-gray-700 rounded-lg transition-colors"
-              >
-                Cancel
-              </button>
+            <div className="warning-drawer-footer">
               <button
                 type="button"
                 onClick={() => handleEditSubmit()}
-                className="px-6 py-2.5 text-sm font-bold text-white bg-cyan-600 hover:bg-cyan-700 rounded-lg shadow-md transition-all"
+                className="warning-drawer-primary"
               >
                 Update Warning
               </button>

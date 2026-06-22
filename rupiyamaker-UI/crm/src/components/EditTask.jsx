@@ -2049,18 +2049,18 @@ export default function EditTask({
   return (
     <div onClick={(e) => { if (e.target === e.currentTarget) handleClose(); }} style={{ position:'fixed', inset:0, zIndex:1000, background:'rgba(15,23,42,0.55)', backdropFilter:'blur(3px)', outline:'none' }} ref={modalRef} tabIndex={-1}>
       <style>{`@keyframes taskEditDrawerIn { from { transform: translateX(100%); } to { transform: translateX(0); } }`}</style>
-      <div style={{ background:'#fff', width:'100%', maxWidth:700, height:'100vh', borderRadius:0, position:'fixed', top:0, right:0, boxShadow:'-12px 0 40px rgba(0,0,0,0.28)', display:'flex', flexDirection:'column', borderLeft:'1px solid rgba(0,0,0,0.1)', overflow:'hidden', animation:'taskEditDrawerIn 0.28s cubic-bezier(0.4,0,0.2,1)' }}>
+      <div style={{ background:'#fff', width:'100%', maxWidth:700, height:'100vh', borderRadius:0, position:'fixed', top:0, right:0, boxShadow:'-12px 0 40px rgba(0,0,0,0.28)', display:'flex', flexDirection:'column', borderLeft:'1px solid rgba(0,0,0,0.1)', overflow:'visible', animation:'taskEditDrawerIn 0.28s cubic-bezier(0.4,0,0.2,1)' }}>
         {/* Close button */}
         <button
           onClick={handleClose}
           type="button"
-          style={{ position:'absolute', top:20, right:20, background:'#f1f5f9', width:28, height:28, borderRadius:'50%', border:'none', fontSize:16, color:'#64748b', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', zIndex:10 }}
+          style={{ position:'absolute', top:32, left:'max(-44px, calc(100% - 100vw))', background:'#1d7df2', width:44, height:38, borderRadius:'8px 0 0 8px', border:'none', fontSize:22, lineHeight:1, color:'#fff', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', zIndex:10, boxShadow:'-4px 6px 14px rgba(15,23,42,0.18)' }}
         >×</button>
 
         {/* Scrollable body */}
         <div style={{ flex:1, minHeight:0, overflowY:'auto', padding:'14px 18px 14px' }}>
           {/* Title row with type pill */}
-          <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:5 }}>
+          <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:5, paddingLeft:'clamp(0px, calc(701px - 100vw), 38px)' }}>
             <span style={{ fontSize:18, fontWeight:800, color:'#333' }}>View / Edit Task</span>
             <span style={{ display:'inline-flex', alignItems:'center', gap:5, padding:'4px 12px', borderRadius:20, fontSize:12, fontWeight:700, background:pc.bg, color:pc.color, border:pc.border }}>{typePill.label}</span>
           </div>
