@@ -2,31 +2,32 @@
   "apps": [
     {
       "name": "rupiyame-backend",
-      "script": "/www/wwwroot/rupiyamaker/RupiyaMe/backend/venv/bin/python",
-      "args": ["-m", "app"],
-      "cwd": "/www/wwwroot/rupiyamaker/RupiyaMe/backend",
-      "interpreter": "none",
+      "script": "/www/wwwroot/RupiyaMe/backend/start_backend.sh",
+      "args": "",
+      "cwd": "/www/wwwroot/RupiyaMe/backend",
+      "interpreter": "bash",
       "instances": 1,
       "exec_mode": "fork",
       "watch": false,
-      "max_memory_restart": "1G",
+      "max_memory_restart": "1200M",
       "env": {
-        "PYTHONPATH": "/www/wwwroot/rupiyamaker/RupiyaMe/backend",
-        "ENVIRONMENT": "production"
+        "PYTHONPATH": "/www/wwwroot/RupiyaMe/backend",
+        "ENVIRONMENT": "production",
+        "PYTHONUNBUFFERED": "1"
       },
-      "log_file": "/www/wwwroot/rupiyamaker/RupiyaMe/logs/rupiyame-backend.log",
-      "out_file": "/www/wwwroot/rupiyamaker/RupiyaMe/logs/rupiyame-backend-out.log",
-      "error_file": "/www/wwwroot/rupiyamaker/RupiyaMe/logs/rupiyame-backend-error.log",
+      "out_file": "/www/wwwroot/RupiyaMe/backend/logs/backend-out.log",
+      "error_file": "/www/wwwroot/RupiyaMe/backend/logs/backend-error.log",
       "time": true,
-      "restart_delay": 5000,
-      "max_restarts": 10,
-      "min_uptime": "10s"
+      "restart_delay": 4000,
+      "max_restarts": 1000,
+      "min_uptime": "30s",
+      "kill_timeout": 35000
     },
     {
       "name": "rupiyame-frontend",
       "script": "npm",
       "args": "run dev -- --port 4521 --host 0.0.0.0",
-      "cwd": "/www/wwwroot/rupiyamaker/RupiyaMe/rupiyamaker-UI/crm",
+      "cwd": "/www/wwwroot/RupiyaMe/rupiyamaker-UI/crm",
       "interpreter": "none",
       "instances": 1,
       "exec_mode": "fork",
@@ -37,9 +38,8 @@
         "VITE_API_BASE_URL": "https://localhost:8049",
         "VITE_PORT": "4521"
       },
-      "log_file": "/www/wwwroot/rupiyamaker/RupiyaMe/logs/rupiyame-frontend.log",
-      "out_file": "/www/wwwroot/rupiyamaker/RupiyaMe/logs/rupiyame-frontend-out.log",
-      "error_file": "/www/wwwroot/rupiyamaker/RupiyaMe/logs/rupiyame-frontend-error.log",
+      "out_file": "/www/wwwroot/RupiyaMe/logs/rupiyame-frontend-out.log",
+      "error_file": "/www/wwwroot/RupiyaMe/logs/rupiyame-frontend-error.log",
       "time": true,
       "restart_delay": 3000,
       "max_restarts": 5,

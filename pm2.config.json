@@ -2,25 +2,26 @@
   "apps": [
     {
       "name": "rupiyame-backend",
-      "script": "/www/wwwroot/RupiyaMe/backend/venv/bin/python",
-      "args": ["-m", "app"],
+      "script": "/www/wwwroot/RupiyaMe/backend/start_backend.sh",
+      "args": "",
       "cwd": "/www/wwwroot/RupiyaMe/backend",
-      "interpreter": "none",
+      "interpreter": "bash",
       "instances": 1,
       "exec_mode": "fork",
       "watch": false,
-      "max_memory_restart": "1G",
+      "max_memory_restart": "1200M",
       "env": {
         "PYTHONPATH": "/www/wwwroot/RupiyaMe/backend",
-        "ENVIRONMENT": "production"
+        "ENVIRONMENT": "production",
+        "PYTHONUNBUFFERED": "1"
       },
-      "log_file": "/www/wwwroot/RupiyaMe/logs/rupiyame-backend.log",
-      "out_file": "/www/wwwroot/RupiyaMe/logs/rupiyame-backend-out.log",
-      "error_file": "/www/wwwroot/RupiyaMe/logs/rupiyame-backend-error.log",
+      "out_file": "/www/wwwroot/RupiyaMe/backend/logs/backend-out.log",
+      "error_file": "/www/wwwroot/RupiyaMe/backend/logs/backend-error.log",
       "time": true,
-      "restart_delay": 5000,
-      "max_restarts": 10,
-      "min_uptime": "10s"
+      "restart_delay": 4000,
+      "max_restarts": 1000,
+      "min_uptime": "30s",
+      "kill_timeout": 35000
     },
     {
       "name": "rupiyame-frontend",

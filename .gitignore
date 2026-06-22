@@ -23,6 +23,7 @@ rupiyamaker-UI/crm/node_modules/
 
 # Logs
 *.log
+*.log.*
 nohup.out
 backend/nohup.out
 logs/

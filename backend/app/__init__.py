@@ -6,15 +6,25 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 import logging
+from logging.handlers import RotatingFileHandler
 import asyncio
 from contextlib import asynccontextmanager
 
-# Setup logging with optimized configuration
+# Setup logging with rotation so backend/backend.log cannot grow forever.
+_backend_log_path = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+    "backend.log",
+)
 logging.basicConfig(
     level=logging.WARNING,  # Changed to WARNING to prevent log flooding
     format='%(asctime)s - %(levelname)s - %(message)s',
     handlers=[
-        logging.FileHandler("backend.log"),  # Standard file handler
+        RotatingFileHandler(
+            _backend_log_path,
+            maxBytes=10 * 1024 * 1024,
+            backupCount=5,
+            encoding="utf-8",
+        ),
         logging.StreamHandler()
     ]
 )

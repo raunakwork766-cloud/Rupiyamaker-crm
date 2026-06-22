@@ -10,6 +10,12 @@ LOGFILE="/www/wwwroot/RupiyaMe/backend/logs/healthcheck.log"
 MAX_LOG_LINES=500
 CONSEC_FILE="/tmp/.rupiyame-backend-healthcheck-consecutive-fails"
 
+trim_log() {
+    if [[ -f "$LOGFILE" ]]; then
+        tail -n "$MAX_LOG_LINES" "$LOGFILE" > "${LOGFILE}.tmp" && mv "${LOGFILE}.tmp" "$LOGFILE"
+    fi
+}
+
 check_backend() {
     # Try HTTPS first, then HTTP fallback. Any HTTP-style response (1xx-5xx) means the server is alive.
     local code
@@ -26,6 +32,7 @@ STATUS=$(check_backend)
 if [[ "$STATUS" != "000" && "$STATUS" != "" ]]; then
     # Reset consecutive-fail counter
     rm -f "$CONSEC_FILE"
+    trim_log
     exit 0
 fi
 
@@ -47,7 +54,4 @@ else
     rm -f "$CONSEC_FILE"
 fi
 
-# Keep log from growing indefinitely
-if [[ -f "$LOGFILE" ]]; then
-    tail -n "$MAX_LOG_LINES" "$LOGFILE" > "${LOGFILE}.tmp" && mv "${LOGFILE}.tmp" "$LOGFILE"
-fi
+trim_log

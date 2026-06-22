@@ -180,6 +180,23 @@ class CheckEligibilitySchema(BaseModel):
     multiplier: Optional[int] = None
     loan_eligibility_status: Optional[str] = None
 
+    @validator('foir_percent', 'multiplier', pre=True)
+    def parse_optional_int_fields(cls, v):
+        """Accept frontend placeholders for optional numeric fields."""
+        if v is None:
+            return None
+        if isinstance(v, (int, float)):
+            return int(v)
+        if isinstance(v, str):
+            cleaned = v.replace(',', '').replace('%', '').strip()
+            if cleaned.lower() in {'', 'none', 'null', 'custom'}:
+                return None
+            try:
+                return int(float(cleaned))
+            except ValueError:
+                return None
+        return v
+
 class ProcessSchema(BaseModel):
     processing_bank: Optional[str] = None
     loan_amount_required: Optional[float] = None
