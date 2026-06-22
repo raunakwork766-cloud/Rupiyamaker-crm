@@ -237,7 +237,7 @@ async def get_user_warning_permissions(user_id: str) -> WarningPermissions:
             can_view_own=True,  # All users can view their own warnings
             can_view_all=has_warnings_admin,  # Only admin can view all warnings
             can_add=has_warnings_admin,  # Only admin can add warnings
-            can_edit=has_warnings_admin,  # Only admin can edit warnings
+            can_edit=False,  # Warning edits are reserved for true super admins above
             can_delete=has_warnings_admin,  # Only admin can delete warnings
             can_export=has_warnings_admin,  # Only admin can export warnings
             # Granular action permissions - check specific action keys on warnings page

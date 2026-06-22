@@ -1,6 +1,6 @@
 import React, { useState, useEffect, lazy, Suspense, useMemo, useCallback, useRef } from "react";
 import {
-  CheckSquare, Plus, ChevronUp
+  CheckSquare, Plus, ChevronUp, ChevronDown
 } from 'lucide-react';
 import { toast } from 'react-toastify';
 import { getUserPermissions, hasPermission, isSuperAdmin } from '../utils/permissions';
@@ -286,23 +286,29 @@ export default function Task({ onTaskStatusChange, onTaskUpdate } = {}) {
     .task-btn-select:hover { background: #22222e; }
 
     /* Single toolbar row: tabs (left) | search + dropdowns (right) */
-    .task-view-toggle-bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 24px; background: #000; border-bottom: 1px solid #1f1f27; flex-wrap: wrap; }
-    .task-view-toggle-group { display: flex; gap: 0; flex-wrap: wrap; flex: 0 1 auto; min-width: 0; }
-    .task-view-toggle-btn { padding: 12px 16px; border: none; background: transparent; font-size: 13px; font-weight: 600; color: #c8d0e0; cursor: pointer; border-bottom: 3px solid transparent; transition: color 0.15s, border-color 0.15s; white-space: nowrap; }
+    .task-view-toggle-bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 24px; background: #000; border-bottom: 1px solid #1f1f27; flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
+    .task-view-toggle-bar--menu-open { overflow: visible; }
+    .task-view-toggle-bar::-webkit-scrollbar { display: none; }
+    .task-view-toggle-group { display: flex; gap: 0; flex-wrap: nowrap; flex: 0 0 auto; min-width: max-content; }
+    .task-view-toggle-btn { padding: 12px 14px; border: none; background: transparent; font-size: 13px; font-weight: 600; color: #c8d0e0; cursor: pointer; border-bottom: 3px solid transparent; transition: color 0.15s, border-color 0.15s; white-space: nowrap; display: inline-flex; align-items: center; gap: 4px; }
     .task-view-toggle-btn:hover { color: #c8d0e0; }
     .task-view-toggle-btn.active { color: #f97316; font-weight: 800; border-bottom-color: #f97316; }
-
+    .task-more-filter { position: relative; flex-shrink: 0; }
+    .task-more-menu { position: absolute; top: calc(100% + 6px); left: 0; min-width: 172px; padding: 6px; background: #111118; border: 1px solid #2a2a3a; border-radius: 4px; box-shadow: 0 14px 34px rgba(0,0,0,0.45); z-index: 60; }
+    .task-more-menu button { width: 100%; border: none; background: transparent; color: #c8d0e0; padding: 8px 10px; border-radius: 3px; font-size: 13px; font-weight: 600; text-align: left; cursor: pointer; display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+    .task-more-menu button:hover, .task-more-menu button.active { background: #1a1a24; color: #f97316; }
     .task-filter-dropdown { padding: 6px 28px 6px 10px; border-radius: 3px; border: 1px solid #2a2a3a; background-color: #1a1a24; color: #c8d0e0; font-size: 13px; font-weight: 500; appearance: none; min-height: 32px; background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="%236b7a99" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>'); background-repeat: no-repeat; background-position: right 8px center; cursor: pointer; outline: none; }
     .task-filter-dropdown:focus { border-color: #3b82f6; }
     .task-filter-dropdown-assign { min-width: 140px; }
 
-    .task-search-box--in-bar { position: relative; width: 260px; min-width: 200px; flex-shrink: 0; }
+    .task-search-box--in-bar { position: relative; width: 260px; min-width: 180px; flex: 1 1 220px; max-width: 280px; }
     .task-search-box--in-bar input { background: #1a1a24; border: 1px solid #2a2a3a; border-radius: 3px; padding: 6px 14px 6px 32px; color: #c8d0e0; font-size: 13px; width: 100%; outline: none; transition: border-color 0.15s; box-sizing: border-box; }
     .task-search-box--in-bar input::placeholder { color: #8898b8; }
     .task-search-box--in-bar input:focus { border-color: #3b82f6; box-shadow: 0 0 0 2px rgba(59,130,246,0.15); }
     .task-search-box--in-bar svg { position: absolute; left: 9px; top: 50%; transform: translateY(-50%); color: #c8d0e0; }
 
-    .task-toolbar-right { display: flex; align-items: center; justify-content: flex-end; gap: 8px; margin-left: auto; flex-shrink: 0; flex-wrap: wrap; }
+    .task-toolbar-right { display: flex; align-items: center; justify-content: flex-end; gap: 8px; margin-left: auto; flex: 1 1 auto; min-width: 0; flex-wrap: nowrap; }
+    .task-toolbar-action { flex-shrink: 0; }
 
     /* Select controls */
     .task-select-controls { display: flex; align-items: center; gap: 8px; }
@@ -312,6 +318,7 @@ export default function Task({ onTaskStatusChange, onTaskUpdate } = {}) {
     .task-select-btn-del:hover { background: #2a0f0f; }
     .task-select-btn-cancel { padding: 5px 12px; background: #1a1a24; color: #c8d0e0; border: 1px solid #2a2a3a; border-radius: 3px; font-size: 13px; cursor: pointer; }
     .task-select-btn-cancel:hover { background: #22222e; }
+    .task-select-controls-inline { flex-shrink: 0; }
 
     /* Table */
     .task-data-table-header { background: #ffffff; border-top: 1px solid #e5e7eb; border-bottom: 2px solid #e5e7eb; display: flex; padding: 5px 24px; align-items: center; box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1); }
@@ -387,6 +394,18 @@ export default function Task({ onTaskStatusChange, onTaskUpdate } = {}) {
     @keyframes taskModalIn { from { transform: scale(0.97) translateY(8px); opacity: 0; } to { transform: scale(1) translateY(0); opacity: 1; } }
     @keyframes taskSlideIn { from { opacity: 0; } to { opacity: 1; } }
     @keyframes slideInRight { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+    @media (max-width: 1100px) {
+      .task-view-toggle-bar { padding: 8px 16px; gap: 8px; }
+      .task-view-toggle-btn { padding: 10px 10px; font-size: 12px; }
+      .task-search-box--in-bar { min-width: 150px; max-width: 220px; }
+      .task-filter-dropdown-assign { min-width: 120px; }
+    }
+    @media (max-width: 760px) {
+      .task-toolbar-right { gap: 6px; }
+      .task-search-box--in-bar { min-width: 138px; max-width: 170px; }
+      .task-filter-dropdown { min-width: 112px; max-width: 132px; font-size: 12px; padding-left: 8px; padding-right: 24px; }
+      .task-btn-create, .task-btn-secondary { padding: 7px 10px; font-size: 12px; }
+    }
   `;
 
   // PERFORMANCE: Cache keys for localStorage
@@ -443,6 +462,8 @@ export default function Task({ onTaskStatusChange, onTaskUpdate } = {}) {
   const [activeFilter, setActiveFilter] = useTabWithHistory('filter', 'due_today', { localStorageKey: 'taskActiveFilter' });
   const [assignmentFilter, setAssignmentFilter] = useState("all");
   const [taskTypeFilter, setTaskTypeFilter] = useState("all");
+  const [showMoreFilters, setShowMoreFilters] = useState(false);
+  const [visiblePrimaryFilterCount, setVisiblePrimaryFilterCount] = useState(3);
   const [editTask, setEditTask] = useState(null);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [taskForm, setTaskForm] = useState(initialTaskForm);
@@ -479,6 +500,9 @@ export default function Task({ onTaskStatusChange, onTaskUpdate } = {}) {
 
   // Table horizontal scroll controls - matching LeadCRM.jsx
   const tableScrollRef = useRef(null);
+  const taskToolbarRef = useRef(null);
+  const taskToolbarRightRef = useRef(null);
+  const moreFilterRef = useRef(null);
   const [canScrollLeft, setCanScrollLeft] = useState(false);
   const [canScrollRight, setCanScrollRight] = useState(false);
 
@@ -1142,6 +1166,80 @@ export default function Task({ onTaskStatusChange, onTaskUpdate } = {}) {
     { key: "failed", label: "Failed", count: safeCounts.failed || 0 },
     { key: "all", label: "All Tasks", count: safeCounts.all, active: true },
   ], [safeCounts]);
+
+  const primaryFilters = useMemo(
+    () => FILTERS.filter((filter) => ['due_today', 'upcoming', 'overdue'].includes(filter.key)),
+    [FILTERS]
+  );
+
+  const secondaryFilters = useMemo(
+    () => FILTERS.filter((filter) => ['completed', 'failed', 'all'].includes(filter.key)),
+    [FILTERS]
+  );
+
+  const visiblePrimaryFilters = useMemo(
+    () => primaryFilters.slice(0, visiblePrimaryFilterCount),
+    [primaryFilters, visiblePrimaryFilterCount]
+  );
+
+  const moreFilters = useMemo(
+    () => [
+      ...primaryFilters.slice(visiblePrimaryFilterCount),
+      ...secondaryFilters
+    ],
+    [primaryFilters, secondaryFilters, visiblePrimaryFilterCount]
+  );
+
+  useEffect(() => {
+    const toolbarNode = taskToolbarRef.current;
+    if (!toolbarNode) return undefined;
+
+    let animationFrameId;
+    const updateVisibleFilters = () => {
+      if (animationFrameId) cancelAnimationFrame(animationFrameId);
+      animationFrameId = window.requestAnimationFrame(() => {
+        const toolbarWidth = toolbarNode.getBoundingClientRect().width;
+        const rightWidth = taskToolbarRightRef.current?.getBoundingClientRect().width || 0;
+        const availableForTabs = toolbarWidth - rightWidth - 96;
+        let nextCount = 1;
+
+        if (availableForTabs >= 300) {
+          nextCount = 3;
+        } else if (availableForTabs >= 200) {
+          nextCount = 2;
+        }
+
+        setVisiblePrimaryFilterCount((current) => (current === nextCount ? current : nextCount));
+      });
+    };
+
+    updateVisibleFilters();
+
+    const resizeObserver = typeof ResizeObserver !== 'undefined'
+      ? new ResizeObserver(updateVisibleFilters)
+      : null;
+
+    resizeObserver?.observe(toolbarNode);
+    if (taskToolbarRightRef.current) resizeObserver?.observe(taskToolbarRightRef.current);
+    window.addEventListener('resize', updateVisibleFilters);
+
+    return () => {
+      if (animationFrameId) cancelAnimationFrame(animationFrameId);
+      resizeObserver?.disconnect();
+      window.removeEventListener('resize', updateVisibleFilters);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!showMoreFilters) return;
+    const handleClickOutside = (event) => {
+      if (moreFilterRef.current && !moreFilterRef.current.contains(event.target)) {
+        setShowMoreFilters(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [showMoreFilters]);
 
   // Memoized "Show More" calculation - slice tasks based on displayedTasksCount
   const displayedTasks = useMemo(() => {
@@ -2247,39 +2345,12 @@ export default function Task({ onTaskStatusChange, onTaskUpdate } = {}) {
         <div className="task-page-container">
 
           {/* ── Top Bar: Title + Action Buttons ── */}
-          <div className="task-top-bar">
-            <div className="task-top-bar-left">
-              <h1>Tasks</h1>
-              <p>{filteredTasks.length} record{filteredTasks.length !== 1 ? 's' : ''}</p>
-            </div>
-            <div className="task-top-bar-right">
-              {(permissions.delete || isSuperAdmin(getUserPermissions())) && !showCheckboxes && (
-                <button className="task-btn-secondary" onClick={handleShowCheckboxes}>Select</button>
-              )}
-              {showCheckboxes && (
-                <div className="task-select-controls">
-                  <label>
-                    <input type="checkbox" checked={selectAll} onChange={(e) => handleSelectAll(e.target.checked)} style={{ width: 14, height: 14, accentColor: '#0091ae' }} />
-                    Select All
-                  </label>
-                  <span>{selectedRows.length} selected</span>
-                  <button className="task-select-btn-del" onClick={handleDeleteSelected} disabled={selectedRows.length === 0}>Delete ({selectedRows.length})</button>
-                  <button className="task-select-btn-cancel" onClick={handleCancelSelection}>Cancel</button>
-                </div>
-              )}
-              {(permissions.show || isSuperAdmin(getUserPermissions())) && (
-                <button className="task-btn-create" onClick={openCreateModal}>
-                  <Plus size={15} />
-                  Create task
-                </button>
-              )}
-            </div>
-          </div>
+
 
           {/* ── One row: view tabs (left) | search + dropdowns (right) ── */}
-          <div className="task-view-toggle-bar">
+          <div ref={taskToolbarRef} className={`task-view-toggle-bar${showMoreFilters ? ' task-view-toggle-bar--menu-open' : ''}`}>
             <div className="task-view-toggle-group">
-              {FILTERS.map(f => (
+              {visiblePrimaryFilters.map(f => (
                 <button
                   key={f.key}
                   className={`task-view-toggle-btn${activeFilter === f.key ? ' active' : ''}`}
@@ -2289,8 +2360,35 @@ export default function Task({ onTaskStatusChange, onTaskUpdate } = {}) {
                   {f.count > 0 && <span style={{ marginLeft: 5, fontSize: 11, color: activeFilter === f.key ? '#ff7a59' : '#99acc2' }}>{f.count}</span>}
                 </button>
               ))}
+              <div className="task-more-filter" ref={moreFilterRef}>
+                <button
+                  type="button"
+                  className={`task-view-toggle-btn${moreFilters.some((filter) => filter.key === activeFilter) ? ' active' : ''}`}
+                  onClick={() => setShowMoreFilters((open) => !open)}
+                >
+                  More <ChevronDown size={14} />
+                </button>
+                {showMoreFilters && (
+                  <div className="task-more-menu">
+                    {moreFilters.map((f) => (
+                      <button
+                        type="button"
+                        key={`more-${f.key}`}
+                        className={activeFilter === f.key ? 'active' : ''}
+                        onClick={() => {
+                          handleFilterChange(f.key);
+                          setShowMoreFilters(false);
+                        }}
+                      >
+                        <span>{f.label}</span>
+                        {f.count > 0 && <span>{f.count}</span>}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
-            <div className="task-toolbar-right">
+            <div className="task-toolbar-right" ref={taskToolbarRightRef}>
               <div className="task-search-box--in-bar">
                 <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
                 <input type="text" placeholder="Search task title and note" value={search} onChange={(e) => setSearch(e.target.value)} />
@@ -2319,6 +2417,26 @@ export default function Task({ onTaskStatusChange, onTaskUpdate } = {}) {
                 <option value="pendency">Pendency</option>
                 <option value="todo">To-Do</option>
               </select>
+              {(permissions.delete || isSuperAdmin(getUserPermissions())) && !showCheckboxes && (
+                <button className="task-btn-secondary task-toolbar-action" onClick={handleShowCheckboxes}>Select</button>
+              )}
+              {showCheckboxes && (
+                <div className="task-select-controls task-select-controls-inline">
+                  <label>
+                    <input type="checkbox" checked={selectAll} onChange={(e) => handleSelectAll(e.target.checked)} style={{ width: 14, height: 14, accentColor: '#0091ae' }} />
+                    Select All
+                  </label>
+                  <span>{selectedRows.length} selected</span>
+                  <button className="task-select-btn-del" onClick={handleDeleteSelected} disabled={selectedRows.length === 0}>Delete ({selectedRows.length})</button>
+                  <button className="task-select-btn-cancel" onClick={handleCancelSelection}>Cancel</button>
+                </div>
+              )}
+              {(permissions.show || isSuperAdmin(getUserPermissions())) && (
+                <button className="task-btn-create task-toolbar-action" onClick={openCreateModal}>
+                  <Plus size={15} />
+                  Create task
+                </button>
+              )}
             </div>
           </div>
 

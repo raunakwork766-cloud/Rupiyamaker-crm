@@ -2047,8 +2047,9 @@ export default function EditTask({
   const pc = pillColors[typePill.cls] || pillColors.todo;
 
   return (
-    <div style={{ position:'fixed', inset:0, zIndex:1000, display:'flex', justifyContent:'center', alignItems:'center', background:'rgba(0,0,0,0.7)', backdropFilter:'blur(4px)', outline:'none' }} ref={modalRef} tabIndex={-1}>
-      <div style={{ background:'#fff', width:'100%', maxWidth:700, maxHeight:'96vh', borderRadius:12, position:'relative', boxShadow:'0 15px 50px rgba(0,0,0,0.6)', display:'flex', flexDirection:'column', border:'1px solid rgba(0,0,0,0.1)', overflow:'hidden' }}>
+    <div onClick={(e) => { if (e.target === e.currentTarget) handleClose(); }} style={{ position:'fixed', inset:0, zIndex:1000, background:'rgba(15,23,42,0.55)', backdropFilter:'blur(3px)', outline:'none' }} ref={modalRef} tabIndex={-1}>
+      <style>{`@keyframes taskEditDrawerIn { from { transform: translateX(100%); } to { transform: translateX(0); } }`}</style>
+      <div style={{ background:'#fff', width:'100%', maxWidth:700, height:'100vh', borderRadius:0, position:'fixed', top:0, right:0, boxShadow:'-12px 0 40px rgba(0,0,0,0.28)', display:'flex', flexDirection:'column', borderLeft:'1px solid rgba(0,0,0,0.1)', overflow:'hidden', animation:'taskEditDrawerIn 0.28s cubic-bezier(0.4,0,0.2,1)' }}>
         {/* Close button */}
         <button
           onClick={handleClose}

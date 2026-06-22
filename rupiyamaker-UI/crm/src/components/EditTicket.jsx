@@ -1055,8 +1055,9 @@ export default function EditTicket({ ticket: initialTicket, onSave, onClose }) {
   };
  
   return (
-    <div ref={modalRef} tabIndex={-1} className="fixed inset-0 z-[1000] flex items-center justify-center bg-transparent" style={{ backdropFilter: "blur(3px)", outline: 'none' }}>
-      <div className="relative bg-white p-6 rounded-xl shadow-2xl w-full max-w-5xl mx-auto space-y-6 max-h-[90vh] overflow-y-auto">
+    <div ref={modalRef} tabIndex={-1} className="fixed inset-0 z-[1000] bg-transparent" style={{ backdropFilter: "blur(3px)", background: 'rgba(15,23,42,0.55)', outline: 'none' }} onClick={(e) => { if (e.target === e.currentTarget) handleClose(); }}>
+      <style>{`@keyframes ticketEditDrawerIn { from { transform: translateX(100%); } to { transform: translateX(0); } }`}</style>
+      <div className="relative bg-white p-6 shadow-2xl w-full space-y-6 overflow-y-auto" style={{ position: 'fixed', top: 0, right: 0, height: '100vh', maxWidth: '760px', borderRadius: 0, boxShadow: '-12px 0 40px rgba(0,0,0,0.28)', animation: 'ticketEditDrawerIn 0.28s cubic-bezier(0.4,0,0.2,1)' }}>
         <button
           className="absolute right-2 top-2 text-gray-500 hover:text-red-500 transition text-2xl font-bold"
           onClick={handleClose}

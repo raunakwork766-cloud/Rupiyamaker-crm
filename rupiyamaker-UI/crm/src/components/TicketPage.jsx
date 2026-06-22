@@ -47,21 +47,23 @@ export default function TicketPage() {
     .task-btn-secondary:hover { background: #22222e; border-color: #3a3a50; }
     .task-btn-create { background: #3b82f6; color: #fff; border: none; padding: 7px 14px; border-radius: 3px; font-size: 13px; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 6px; transition: background 0.15s; white-space: nowrap; }
     .task-btn-create:hover { background: #2563eb; }
-    .task-view-toggle-bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 24px; background: #000; border-bottom: 1px solid #1f1f27; flex-wrap: wrap; }
-    .task-view-toggle-group { display: flex; gap: 0; flex-wrap: wrap; flex: 0 1 auto; min-width: 0; }
+    .task-view-toggle-bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 24px; background: #000; border-bottom: 1px solid #1f1f27; flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
+    .task-view-toggle-bar::-webkit-scrollbar { display: none; }
+    .ticket-toolbar-left { display: flex; align-items: center; gap: 8px; flex: 1 1 auto; min-width: 0; flex-wrap: nowrap; }
+    .task-view-toggle-group { display: flex; gap: 0; flex-wrap: nowrap; flex: 0 0 auto; min-width: max-content; }
     .task-view-toggle-btn { padding: 12px 16px; border: none; background: transparent; font-size: 13px; font-weight: 600; color: #c8d0e0; cursor: pointer; border-bottom: 3px solid transparent; transition: color 0.15s, border-color 0.15s; white-space: nowrap; }
     .task-view-toggle-btn:hover { color: #c8d0e0; }
     .task-view-toggle-btn.active { color: #f97316; font-weight: 800; border-bottom-color: #f97316; }
     .task-filter-dropdown { padding: 6px 28px 6px 10px; border-radius: 3px; border: 1px solid #2a2a3a; background-color: #1a1a24; color: #c8d0e0; font-size: 13px; font-weight: 500; appearance: none; min-height: 32px; background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="%236b7a99" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>'); background-repeat: no-repeat; background-position: right 8px center; cursor: pointer; outline: none; }
     .task-filter-dropdown:focus { border-color: #3b82f6; }
     .task-filter-dropdown-assign { min-width: 140px; }
-    .task-search-box--in-bar { position: relative; width: 260px; min-width: 200px; flex-shrink: 0; }
+    .task-search-box--in-bar { position: relative; width: 260px; min-width: 170px; flex: 1 1 220px; max-width: 280px; }
     .task-search-box--in-bar input { background: #1a1a24; border: 1px solid #2a2a3a; border-radius: 3px; padding: 6px 14px 6px 32px; color: #c8d0e0; font-size: 13px; width: 100%; outline: none; transition: border-color 0.15s; box-sizing: border-box; }
     .task-search-box--in-bar input::placeholder { color: #8898b8; }
     .task-search-box--in-bar input:focus { border-color: #3b82f6; box-shadow: 0 0 0 2px rgba(59,130,246,0.15); }
     .task-search-box--in-bar svg { position: absolute; left: 9px; top: 50%; transform: translateY(-50%); color: #c8d0e0; }
-    .task-toolbar-right { display: flex; align-items: center; justify-content: flex-end; gap: 8px; margin-left: auto; flex-shrink: 0; flex-wrap: wrap; }
-    .task-select-controls { display: flex; align-items: center; gap: 8px; }
+    .task-toolbar-right { display: flex; align-items: center; justify-content: flex-end; gap: 8px; margin-left: auto; flex: 0 0 auto; flex-wrap: nowrap; }
+    .task-select-controls { display: flex; align-items: center; gap: 8px; flex-wrap: nowrap; }
     .task-select-controls label { display: flex; align-items: center; cursor: pointer; color: #c8d0e0; font-size: 13px; gap: 5px; }
     .task-select-controls span { color: #c8d0e0; font-size: 13px; }
     .task-select-btn-del { padding: 5px 12px; background: #1a0a0a; color: #f87171; border: 1px solid #7f1d1d; border-radius: 3px; font-size: 13px; cursor: pointer; }
@@ -102,6 +104,13 @@ export default function TicketPage() {
     .task-error-banner { margin: 0 24px 16px; padding: 12px 16px; background: #1a0a0a; border: 1px solid #7f1d1d; border-radius: 3px; color: #f87171; }
     .task-modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); display: flex; justify-content: center; align-items: center; z-index: 1000; backdrop-filter: blur(4px); }
     @keyframes taskSlideIn { from { opacity: 0; } to { opacity: 1; } }
+    @media (max-width: 900px) {
+      .task-view-toggle-bar { padding: 8px 16px; gap: 8px; }
+      .task-view-toggle-btn { padding: 10px 12px; font-size: 12px; }
+      .task-search-box--in-bar { min-width: 150px; max-width: 220px; }
+      .task-filter-dropdown-assign { min-width: 120px; }
+      .task-btn-create, .task-btn-secondary { padding: 7px 10px; font-size: 12px; }
+    }
   `;
 
   // State management - grouped for better performance
@@ -1271,44 +1280,23 @@ export default function TicketPage() {
         <div className="task-top-bar">
           <div className="task-top-bar-left">
             <h1>Tickets</h1>
-            <p>{filteredTickets.length} record{filteredTickets.length !== 1 ? 's' : ''}</p>
-          </div>
-          <div className="task-top-bar-right">
-            {canDeleteTickets && !showCheckboxes && (
-              <button className="task-btn-secondary" onClick={handleShowCheckboxes}>Select</button>
-            )}
-            {showCheckboxes && (
-              <div className="task-select-controls">
-                <label>
-                  <input type="checkbox" checked={selectAll} onChange={(e) => handleSelectAll(e.target.checked)} style={{ width: 14, height: 14, accentColor: '#3b82f6' }} />
-                  Select All
-                </label>
-                <span>{selectedRows.length} selected</span>
-                <button className="task-select-btn-del" onClick={handleDeleteSelected} disabled={selectedRows.length === 0}>Delete ({selectedRows.length})</button>
-                <button className="task-select-btn-cancel" onClick={handleCancelSelection}>Cancel</button>
-              </div>
-            )}
-            <button className="task-btn-create" onClick={openCreateModal}>
-              <Plus size={15} />
-              Create ticket
-            </button>
           </div>
         </div>
 
         <div className="task-view-toggle-bar">
-          <div className="task-view-toggle-group">
-            {FILTERS_WITH_COUNTS.map((f) => (
-              <button
-                key={f.key}
-                className={`task-view-toggle-btn${activeFilter === f.key ? ' active' : ''}`}
-                onClick={() => handleFilterChange(f.key)}
-              >
-                {f.label}
-                {f.count > 0 && <span style={{ marginLeft: 5, fontSize: 11, color: activeFilter === f.key ? '#f97316' : '#c8d0e0' }}>{f.count}</span>}
-              </button>
-            ))}
-          </div>
-          <div className="task-toolbar-right">
+          <div className="ticket-toolbar-left">
+            <div className="task-view-toggle-group">
+              {FILTERS_WITH_COUNTS.map((f) => (
+                <button
+                  key={f.key}
+                  className={`task-view-toggle-btn${activeFilter === f.key ? ' active' : ''}`}
+                  onClick={() => handleFilterChange(f.key)}
+                >
+                  {f.label}
+                  {f.count > 0 && <span style={{ marginLeft: 5, fontSize: 11, color: activeFilter === f.key ? '#f97316' : '#c8d0e0' }}>{f.count}</span>}
+                </button>
+              ))}
+            </div>
             <div className="task-search-box--in-bar">
               <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
               <input
@@ -1332,6 +1320,26 @@ export default function TicketPage() {
               {canViewTeam && <option value="team">Team Tickets</option>}
               {canViewAll && <option value="all">All Tickets</option>}
             </select>
+          </div>
+          <div className="task-toolbar-right">
+            {canDeleteTickets && !showCheckboxes && (
+              <button className="task-btn-secondary" onClick={handleShowCheckboxes}>Select</button>
+            )}
+            {showCheckboxes && (
+              <div className="task-select-controls">
+                <label>
+                  <input type="checkbox" checked={selectAll} onChange={(e) => handleSelectAll(e.target.checked)} style={{ width: 14, height: 14, accentColor: '#3b82f6' }} />
+                  Select All
+                </label>
+                <span>{selectedRows.length} selected</span>
+                <button className="task-select-btn-del" onClick={handleDeleteSelected} disabled={selectedRows.length === 0}>Delete ({selectedRows.length})</button>
+                <button className="task-select-btn-cancel" onClick={handleCancelSelection}>Cancel</button>
+              </div>
+            )}
+            <button className="task-btn-create" onClick={openCreateModal}>
+              <Plus size={15} />
+              Create ticket
+            </button>
           </div>
         </div>
 
@@ -1440,13 +1448,11 @@ export default function TicketPage() {
       </div>
 
       {selectedTicket && (
-        <div className="task-modal-overlay">
-          <EditTicket
-            ticket={selectedTicket}
-            onSave={handleSaveTicket}
-            onClose={handleCancelEdit}
-          />
-        </div>
+        <EditTicket
+          ticket={selectedTicket}
+          onSave={handleSaveTicket}
+          onClose={handleCancelEdit}
+        />
       )}
 
       {showCreateModal && (

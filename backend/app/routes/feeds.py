@@ -747,7 +747,7 @@ async def vote_on_poll(
     user_id: Optional[str] = None,
     feeds_db: FeedsDB = Depends(get_feeds_db)
 ):
-    """Cast a vote on a poll option. Each user can only vote once."""
+    """Cast or switch a vote on a poll option."""
     uid = user_id or body.get("user_id")
     if not uid:
         raise HTTPException(status_code=http_status.HTTP_422_UNPROCESSABLE_ENTITY, detail="user_id required")
@@ -779,9 +779,13 @@ async def vote_on_poll(
     if option_index < 0 or option_index >= len(options):
         raise HTTPException(status_code=http_status.HTTP_400_BAD_REQUEST, detail="Invalid option index")
 
-    for opt in options:
-        if uid in (opt.get("voters") or []):
-            raise HTTPException(status_code=http_status.HTTP_400_BAD_REQUEST, detail="Already voted")
+    for idx, opt in enumerate(options):
+        voters = opt.get("voters") or []
+        if uid in voters:
+            if idx == option_index:
+                raise HTTPException(status_code=http_status.HTTP_400_BAD_REQUEST, detail="Already voted")
+            opt["votes"] = max(0, opt.get("votes", 0) - 1)
+            opt["voters"] = [v for v in voters if v != uid]
 
     options[option_index]["votes"] = options[option_index].get("votes", 0) + 1
     if "voters" not in options[option_index]:

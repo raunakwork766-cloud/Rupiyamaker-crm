@@ -205,8 +205,78 @@ function PollDisplay({ poll, postId, currentUserId, onPollUpdate }) {
                 }
             } catch (_) {}
             setBusy(false);
+        } else if (curPhase === "voted" && curIdx !== i) {
+            // ── SWITCH VOTE ──
+            setBusy(true);
+            setCounts((p) =>
+                p.map((c, x) => {
+                    if (x === curIdx) return Math.max(0, c - 1);
+                    if (x === i) return c + 1;
+                    return c;
+                }),
+            );
+            setMyIdx(i);
+            stateRef.current = { phase: "voted", myIdx: i };
+
+            try {
+                const res = await fetch(
+                    buildApiUrl(
+                        `feeds/${postId}/poll/vote?user_id=${encodeURIComponent(currentUserId)}`,
+                    ),
+                    {
+                        method: "POST",
+                        headers: {
+                            "Content-Type": "application/json",
+                            Authorization: `Bearer ${localStorage.getItem("token") || ""}`,
+                        },
+                        body: JSON.stringify({ option_index: i }),
+                    },
+                );
+                const data = await res.json().catch(() => ({}));
+                if (res.ok && data?.poll?.options) {
+                    setCounts(data.poll.options.map((o) => o.votes || 0));
+                    onPollUpdate?.({
+                        ...poll,
+                        options: data.poll.options.map((o, x) => ({
+                            ...poll.options[x],
+                            ...o,
+                            voters:
+                                x === i
+                                    ? [
+                                          ...(poll.options[x]?.voters || []).filter(
+                                              (v) => v !== currentUserId,
+                                          ),
+                                          currentUserId,
+                                      ]
+                                    : (poll.options[x]?.voters || []).filter(
+                                          (v) => v !== currentUserId,
+                                      ),
+                        })),
+                    });
+                } else {
+                    setCounts((p) =>
+                        p.map((c, x) => {
+                            if (x === curIdx) return c + 1;
+                            if (x === i) return Math.max(0, c - 1);
+                            return c;
+                        }),
+                    );
+                    setMyIdx(curIdx);
+                    stateRef.current = { phase: "voted", myIdx: curIdx };
+                }
+            } catch (_) {
+                setCounts((p) =>
+                    p.map((c, x) => {
+                        if (x === curIdx) return c + 1;
+                        if (x === i) return Math.max(0, c - 1);
+                        return c;
+                    }),
+                );
+                setMyIdx(curIdx);
+                stateRef.current = { phase: "voted", myIdx: curIdx };
+            }
+            setBusy(false);
         }
-        // voted + different option → locked, ignore
     }
 
     const showBars = phase === "voted" || expired;
@@ -221,20 +291,17 @@ function PollDisplay({ poll, postId, currentUserId, onPollUpdate }) {
                     const pct =
                         total > 0 ? Math.round((counts[i] / total) * 100) : 0;
                     const isMe = phase === "voted" && myIdx === i;
-                    const locked = phase === "voted" && myIdx !== i;
                     return (
                         <button
                             key={i}
                             type="button"
                             onClick={() => click(i)}
-                            disabled={expired || locked || busy}
+                            disabled={expired || busy}
                             className={[
                                 "relative w-full overflow-hidden rounded-lg border h-9 flex items-center px-3 text-left transition-all",
                                 expired
                                     ? "border-gray-200 bg-white cursor-default"
-                                    : locked
-                                      ? "border-gray-200 bg-white opacity-60 cursor-not-allowed"
-                                      : isMe
+                                    : isMe
                                         ? "border-blue-400 bg-white hover:bg-blue-50 cursor-pointer"
                                         : "border-blue-200 bg-white hover:bg-blue-50 hover:border-blue-400 cursor-pointer",
                             ].join(" ")}
@@ -278,7 +345,7 @@ function PollDisplay({ poll, postId, currentUserId, onPollUpdate }) {
                     )}
                     {phase === "voted" && !expired && (
                         <span className="italic text-gray-400">
-                            Click \u2713 to undo
+                            Click another option to change
                         </span>
                     )}
                     {phase === "open" && !expired && (

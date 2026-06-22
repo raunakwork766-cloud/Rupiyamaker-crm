@@ -49,7 +49,8 @@ import {
   canDelete,
   getPermissionDisplayText,
   getCurrentUserId,
-  hasWarningsPermission
+  hasWarningsPermission,
+  isSuperAdmin as hasGlobalSuperAdminPermission
 } from '../utils/permissions';
 
 const API_URL = "/api";
@@ -66,18 +67,22 @@ const WarningPage = memo(() => {
     .task-btn-secondary.active-filter { background: #1e3a5f; border-color: #3b82f6; color: #93c5fd; }
     .task-btn-create { background: #3b82f6; color: #fff; border: none; padding: 7px 14px; border-radius: 3px; font-size: 13px; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 6px; transition: background 0.15s; white-space: nowrap; }
     .task-btn-create:hover { background: #2563eb; }
-    .task-view-toggle-bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 24px; background: #000; border-bottom: 1px solid #1f1f27; flex-wrap: wrap; }
-    .task-view-toggle-group { display: flex; gap: 0; flex-wrap: wrap; flex: 0 1 auto; min-width: 0; }
+    .task-view-toggle-bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 24px; background: #000; border-bottom: 1px solid #1f1f27; flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
+    .task-view-toggle-bar::-webkit-scrollbar { display: none; }
+    .warning-toolbar-left { display: flex; align-items: center; gap: 8px; flex: 1 1 auto; min-width: 0; flex-wrap: nowrap; }
+    .warning-toolbar-controls { display: flex; align-items: center; gap: 8px; flex: 1 1 auto; min-width: 0; flex-wrap: nowrap; }
+    .warning-toolbar-actions { display: flex; align-items: center; justify-content: flex-end; gap: 8px; margin-left: auto; flex: 0 0 auto; flex-wrap: nowrap; }
+    .task-view-toggle-group { display: flex; gap: 0; flex-wrap: nowrap; flex: 0 0 auto; min-width: max-content; }
     .task-view-toggle-btn { padding: 12px 16px; border: none; background: transparent; font-size: 13px; font-weight: 600; color: #c8d0e0; cursor: pointer; border-bottom: 3px solid transparent; transition: color 0.15s, border-color 0.15s; white-space: nowrap; }
     .task-view-toggle-btn:hover { color: #c8d0e0; }
     .task-view-toggle-btn.active { color: #f97316; font-weight: 800; border-bottom-color: #f97316; }
-    .task-search-box--in-bar { position: relative; width: 260px; min-width: 200px; flex-shrink: 0; }
+    .task-search-box--in-bar { position: relative; width: 260px; min-width: 170px; flex: 1 1 220px; max-width: 280px; }
     .task-search-box--in-bar input { background: #1a1a24; border: 1px solid #2a2a3a; border-radius: 3px; padding: 6px 14px 6px 32px; color: #c8d0e0; font-size: 13px; width: 100%; outline: none; transition: border-color 0.15s; box-sizing: border-box; }
     .task-search-box--in-bar input::placeholder { color: #8898b8; }
     .task-search-box--in-bar input:focus { border-color: #3b82f6; box-shadow: 0 0 0 2px rgba(59,130,246,0.15); }
     .task-search-box--in-bar svg { position: absolute; left: 9px; top: 50%; transform: translateY(-50%); color: #c8d0e0; pointer-events: none; }
     .task-toolbar-right { display: flex; align-items: center; justify-content: flex-end; gap: 8px; margin-left: auto; flex-shrink: 0; flex-wrap: wrap; }
-    .task-select-controls { display: flex; align-items: center; gap: 8px; }
+    .task-select-controls { display: flex; align-items: center; gap: 8px; flex-wrap: nowrap; }
     .task-select-controls label { display: flex; align-items: center; cursor: pointer; color: #c8d0e0; font-size: 13px; gap: 5px; }
     .task-select-controls span { color: #c8d0e0; font-size: 13px; }
     .task-select-btn-del { padding: 5px 12px; background: #1a0a0a; color: #f87171; border: 1px solid #7f1d1d; border-radius: 3px; font-size: 13px; cursor: pointer; }
@@ -122,6 +127,14 @@ const WarningPage = memo(() => {
     .similar-warnings-row:nth-child(even) { background-color: #000; }
     .similar-warnings-row:nth-child(odd) { background-color: #000; }
     .similar-warnings-row:hover { background-color: #13131c !important; }
+    .warning-drawer-panel { animation: warningSlideInRight 0.24s ease-out; }
+    @keyframes warningSlideInRight { from { transform: translateX(100%); opacity: 0.65; } to { transform: translateX(0); opacity: 1; } }
+    @media (max-width: 900px) {
+      .task-view-toggle-bar { padding: 8px 16px; gap: 8px; }
+      .task-view-toggle-btn { padding: 10px 12px; font-size: 12px; }
+      .task-search-box--in-bar { min-width: 150px; max-width: 220px; }
+      .task-btn-create, .task-btn-secondary { padding: 7px 10px; font-size: 12px; }
+    }
   `;
 
   // State management
@@ -367,6 +380,7 @@ const WarningPage = memo(() => {
 
   // Legacy compatibility functions
   const isSuperAdmin = () => canUserViewAll();
+  const canSuperAdminEditWarnings = () => hasGlobalSuperAdminPermission();
   const isManager = () => canUserViewJunior();
   const hasOwnPermission = () => canUserViewOwn();
 
@@ -468,9 +482,7 @@ const WarningPage = memo(() => {
       can_view_all: canUserViewAll(),
       can_view_team: canUserViewJunior(),
       can_add: canUserCreate(),
-      // Edit requires explicit 'issue' action (same permission as issuing/creating warnings)
-      // View scope ('all'/'junior') does NOT automatically grant edit capability
-      can_edit: hasStrictWarningsAction('issue'),
+      can_edit: canSuperAdminEditWarnings(),
       can_delete: hasDeletePermission(), // Check explicit delete permission
       can_export: canUserViewJunior(), // Junior and All can export
       permission_level: permLevel, // Store the permission level for use elsewhere
@@ -533,7 +545,18 @@ const WarningPage = memo(() => {
   useEffect(() => {
     if (viewDialogOpen && selectedWarning) {
       const updated = warnings.find(w => w.id === selectedWarning.id);
-      if (updated) setSelectedWarning(updated);
+      if (updated) {
+        setSelectedWarning(updated);
+        if (canSuperAdminEditWarnings()) {
+          setEditingWarning(updated);
+          setFormData({
+            warning_type: updated.warning_type || '',
+            issued_to: updated.issued_to || '',
+            penalty_amount: updated.penalty_amount != null ? String(updated.penalty_amount) : '',
+            warning_message: updated.warning_message || ''
+          });
+        }
+      }
     }
   }, [warnings]);
 
@@ -1537,6 +1560,8 @@ const WarningPage = memo(() => {
         if (result.success) {
           showNotification('Warning updated successfully', 'success');
           setEditDialogOpen(false);
+          setViewDialogOpen(false);
+          setSelectedWarning(null);
           setEditingWarning(null);
           setFormData({
             warning_type: '',
@@ -1748,6 +1773,22 @@ const WarningPage = memo(() => {
     setEditDialogOpen(true);
   };
 
+  const openWarningDetails = (warning) => {
+    setSelectedWarning(warning);
+    if (canSuperAdminEditWarnings()) {
+      setEditingWarning(warning);
+      setFormData({
+        warning_type: warning.warning_type || '',
+        issued_to: warning.issued_to || '',
+        penalty_amount: warning.penalty_amount != null ? String(warning.penalty_amount) : '',
+        warning_message: warning.warning_message || ''
+      });
+    } else {
+      setEditingWarning(null);
+    }
+    setViewDialogOpen(true);
+  };
+
   // Format date function
   const formatDate = (dateString) => {
     try {
@@ -1855,13 +1896,70 @@ const WarningPage = memo(() => {
           <div className="task-top-bar">
             <div className="task-top-bar-left">
               <h1>Warnings</h1>
-              <p>
-                {isMistakesDirectoryView
-                  ? `${filteredMistakeCount} categor${filteredMistakeCount !== 1 ? 'ies' : 'y'}`
-                  : `${totalWarnings} record${totalWarnings !== 1 ? 's' : ''}`}
-              </p>
             </div>
-            <div className="task-top-bar-right">
+          </div>
+
+          <div className="task-view-toggle-bar">
+            <div className="warning-toolbar-left">
+              <div className="task-view-toggle-group">
+                {isSuperAdmin() ? (
+                  <>
+                    <button type="button" className={`task-view-toggle-btn${selectedTab === 0 ? ' active' : ''}`} onClick={() => setSelectedTab(0)}>Warnings Log</button>
+                    {permissions.can_view_mistakes && (
+                      <button type="button" className={`task-view-toggle-btn${selectedTab === 1 ? ' active' : ''}`} onClick={() => setSelectedTab(1)}>Mistakes Directory</button>
+                    )}
+                  </>
+                ) : permissions.can_view_mistakes ? (
+                  <>
+                    <button type="button" className={`task-view-toggle-btn${selectedTab === 0 ? ' active' : ''}`} onClick={() => setSelectedTab(0)}>Warnings Log</button>
+                    <button type="button" className={`task-view-toggle-btn${selectedTab === 1 ? ' active' : ''}`} onClick={() => setSelectedTab(1)}>Mistakes Directory</button>
+                  </>
+                ) : isManager() ? (
+                  <>
+                    <button type="button" className={`task-view-toggle-btn${selectedTab === 0 ? ' active' : ''}`} onClick={() => setSelectedTab(0)}>Team Warnings</button>
+                    <button type="button" className={`task-view-toggle-btn${selectedTab === 1 ? ' active' : ''}`} onClick={() => setSelectedTab(1)}>My Warnings</button>
+                  </>
+                ) : (
+                  <button type="button" className="task-view-toggle-btn active">My Warnings</button>
+                )}
+              </div>
+              <div className="warning-toolbar-controls">
+                {isMistakesDirectoryView ? (
+                  <div className="task-search-box--in-bar">
+                    <Search size={14} />
+                    <input
+                      type="text"
+                      placeholder="Search directory..."
+                      value={mistakeDirectorySearch}
+                      onChange={(e) => setMistakeDirectorySearch(e.target.value)}
+                    />
+                  </div>
+                ) : (
+                  <>
+                    <div className="task-search-box--in-bar">
+                      <Search size={14} />
+                      <input
+                        type="text"
+                        placeholder="Search employee or mistake..."
+                        value={searchTerm}
+                        onChange={(e) => setSearchTerm(e.target.value)}
+                      />
+                    </div>
+                    <button
+                      type="button"
+                      className={`task-btn-secondary${Object.values(filters).some(f => f && f !== '') ? ' active-filter' : ''}`}
+                      onClick={() => setFilterDialogOpen(true)}
+                    >
+                      <Filter size={14} /> Filters
+                      {Object.values(filters).some(f => f && f !== '') && (
+                        <span style={{ marginLeft: 4, fontSize: 10, fontWeight: 700 }}>On</span>
+                      )}
+                    </button>
+                  </>
+                )}
+              </div>
+            </div>
+            <div className="warning-toolbar-actions">
               {permissions?.can_delete && !showCheckboxes && !isMistakesDirectoryView && (
                 <button className="task-btn-secondary" onClick={handleShowCheckboxes}>Select</button>
               )}
@@ -1885,66 +1983,6 @@ const WarningPage = memo(() => {
                 <button className="task-btn-create" onClick={openAddDialog}>
                   <Plus size={15} /> Issue warning
                 </button>
-              )}
-            </div>
-          </div>
-
-          <div className="task-view-toggle-bar">
-            <div className="task-view-toggle-group">
-              {isSuperAdmin() ? (
-                <>
-                  <button type="button" className={`task-view-toggle-btn${selectedTab === 0 ? ' active' : ''}`} onClick={() => setSelectedTab(0)}>Warnings Log</button>
-                  {permissions.can_view_mistakes && (
-                    <button type="button" className={`task-view-toggle-btn${selectedTab === 1 ? ' active' : ''}`} onClick={() => setSelectedTab(1)}>Mistakes Directory</button>
-                  )}
-                </>
-              ) : permissions.can_view_mistakes ? (
-                <>
-                  <button type="button" className={`task-view-toggle-btn${selectedTab === 0 ? ' active' : ''}`} onClick={() => setSelectedTab(0)}>Warnings Log</button>
-                  <button type="button" className={`task-view-toggle-btn${selectedTab === 1 ? ' active' : ''}`} onClick={() => setSelectedTab(1)}>Mistakes Directory</button>
-                </>
-              ) : isManager() ? (
-                <>
-                  <button type="button" className={`task-view-toggle-btn${selectedTab === 0 ? ' active' : ''}`} onClick={() => setSelectedTab(0)}>Team Warnings</button>
-                  <button type="button" className={`task-view-toggle-btn${selectedTab === 1 ? ' active' : ''}`} onClick={() => setSelectedTab(1)}>My Warnings</button>
-                </>
-              ) : (
-                <button type="button" className="task-view-toggle-btn active">My Warnings</button>
-              )}
-            </div>
-            <div className="task-toolbar-right">
-              {isMistakesDirectoryView ? (
-                <div className="task-search-box--in-bar">
-                  <Search size={14} />
-                  <input
-                    type="text"
-                    placeholder="Search directory..."
-                    value={mistakeDirectorySearch}
-                    onChange={(e) => setMistakeDirectorySearch(e.target.value)}
-                  />
-                </div>
-              ) : (
-                <>
-                  <div className="task-search-box--in-bar">
-                    <Search size={14} />
-                    <input
-                      type="text"
-                      placeholder="Search employee or mistake..."
-                      value={searchTerm}
-                      onChange={(e) => setSearchTerm(e.target.value)}
-                    />
-                  </div>
-                  <button
-                    type="button"
-                    className={`task-btn-secondary${Object.values(filters).some(f => f && f !== '') ? ' active-filter' : ''}`}
-                    onClick={() => setFilterDialogOpen(true)}
-                  >
-                    <Filter size={14} /> Filters
-                    {Object.values(filters).some(f => f && f !== '') && (
-                      <span style={{ marginLeft: 4, fontSize: 10, fontWeight: 700 }}>On</span>
-                    )}
-                  </button>
-                </>
               )}
             </div>
           </div>
@@ -2005,7 +2043,7 @@ const WarningPage = memo(() => {
                                         const isPending = status === 'Pending';
                                         
                                         return (
-                                          <tr key={warning.id} className="hover:bg-gray-800/50 transition-colors cursor-pointer group" onClick={() => { setSelectedWarning(warning); setViewDialogOpen(true); }}>
+                                          <tr key={warning.id} className="hover:bg-gray-800/50 transition-colors cursor-pointer group" onClick={() => openWarningDetails(warning)}>
                                             {showCheckboxes && (
                                               <td className="py-3 px-4" onClick={(e) => e.stopPropagation()}>
                                                 <input type="checkbox" checked={selectedRows.includes(warning.id)} onChange={() => handleRowSelect(warning.id)} className="rounded border-gray-600" />
@@ -2202,7 +2240,7 @@ const WarningPage = memo(() => {
                                       const isPending = status === 'Pending';
                                       
                                       return (
-                                        <tr key={warning.id} className="hover:bg-gray-800/50 transition-colors cursor-pointer group" onClick={() => { setSelectedWarning(warning); setViewDialogOpen(true); }}>
+                                        <tr key={warning.id} className="hover:bg-gray-800/50 transition-colors cursor-pointer group" onClick={() => openWarningDetails(warning)}>
                                           {showCheckboxes && (
                                             <td className="py-3 px-4" onClick={(e) => e.stopPropagation()}>
                                               <input type="checkbox" checked={selectedRows.includes(warning.id)} onChange={() => handleRowSelect(warning.id)} className="rounded border-gray-600" />
@@ -2330,7 +2368,7 @@ const WarningPage = memo(() => {
                                       const isPending = status === 'Pending';
                                       
                                       return (
-                                        <tr key={warning.id} className="hover:bg-gray-800/50 transition-colors cursor-pointer group" onClick={() => { setSelectedWarning(warning); setViewDialogOpen(true); }}>
+                                        <tr key={warning.id} className="hover:bg-gray-800/50 transition-colors cursor-pointer group" onClick={() => openWarningDetails(warning)}>
                                           {showCheckboxes && (
                                             <td className="py-3 px-4" onClick={(e) => e.stopPropagation()}>
                                               <input type="checkbox" checked={selectedRows.includes(warning.id)} onChange={() => handleRowSelect(warning.id)} className="rounded border-gray-600" />
@@ -2457,7 +2495,7 @@ const WarningPage = memo(() => {
                                   const isPending = status === 'Pending';
                                   
                                   return (
-                                    <tr key={warning.id} className="hover:bg-gray-800/50 transition-colors cursor-pointer group" onClick={() => { setSelectedWarning(warning); setViewDialogOpen(true); }}>
+                                    <tr key={warning.id} className="hover:bg-gray-800/50 transition-colors cursor-pointer group" onClick={() => openWarningDetails(warning)}>
                                       {showCheckboxes && (
                                         <td className="py-3 px-4" onClick={(e) => e.stopPropagation()}>
                                           <input type="checkbox" checked={selectedRows.includes(warning.id)} onChange={() => handleRowSelect(warning.id)} className="rounded border-gray-600" />
@@ -3092,24 +3130,28 @@ const WarningPage = memo(() => {
       {/* View Warning Modal */}
       {viewDialogOpen && selectedWarning && createPortal(
         <div
-          className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 sm:p-6"
+          className="fixed inset-0 bg-black/60 backdrop-blur-sm flex justify-end"
           style={{ zIndex: WARNING_MODAL_Z_INDEX }}
         >
-          <div className="bg-gray-900 rounded-2xl shadow-xl w-full max-w-2xl overflow-hidden relative border border-gray-700">
+          <div className="warning-drawer-panel bg-gray-900 shadow-xl h-full w-full max-w-2xl overflow-hidden relative border-l border-gray-700 flex flex-col">
             {/* Header */}
             <div className="flex items-center justify-between px-6 py-4 border-b border-gray-700 bg-gray-800/80">
               <h2 className="text-lg font-bold text-white flex items-center gap-2">
-                <FileText className="w-5 h-5 text-cyan-400" /> Warning Record Details
+                {permissions?.can_edit ? <Edit className="w-5 h-5 text-cyan-400" /> : <FileText className="w-5 h-5 text-cyan-400" />}
+                {permissions?.can_edit ? 'Edit Warning' : 'Warning Record Details'}
               </h2>
               <button
-                onClick={() => setViewDialogOpen(false)}
+                onClick={() => {
+                  setViewDialogOpen(false);
+                  setEditingWarning(null);
+                }}
                 className="text-gray-400 hover:text-white hover:bg-gray-700 p-2 rounded-full transition-colors"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            <div className="p-6 space-y-6 max-h-[75vh] overflow-y-auto">
+            <div className="p-6 space-y-6 flex-1 overflow-y-auto">
               {/* 2x2 Grid: Employee, Issued By, Mistake Category, Penalty */}
               <div className="grid grid-cols-2 gap-4 bg-gray-800/60 p-4 rounded-xl border border-gray-700">
                 <div>
@@ -3122,20 +3164,60 @@ const WarningPage = memo(() => {
                 </div>
                 <div>
                   <p className="text-[10px] text-gray-500 font-bold uppercase tracking-wider mb-1">Mistake Category</p>
-                  <p className="text-sm font-bold text-red-400">{selectedWarning.warning_type || 'N/A'}</p>
+                  {permissions?.can_edit ? (
+                    <select
+                      value={formData.warning_type}
+                      onChange={(e) => handleFormChange('warning_type', e.target.value)}
+                      className="w-full px-3 py-2 border border-gray-600 rounded-lg bg-gray-800 text-gray-200 text-sm font-medium"
+                    >
+                      <option value="">Select Mistake Type</option>
+                      {mistakeTypes.map((type) => {
+                        const typeValue = type.value || type;
+                        const typeLabel = type.label || type;
+                        return (
+                          <option key={typeValue} value={typeValue}>
+                            {typeLabel}
+                          </option>
+                        );
+                      })}
+                    </select>
+                  ) : (
+                    <p className="text-sm font-bold text-red-400">{selectedWarning.warning_type || 'N/A'}</p>
+                  )}
                 </div>
                 <div>
                   <p className="text-[10px] text-gray-500 font-bold uppercase tracking-wider mb-1">Penalty Amount</p>
-                  <p className="text-sm font-bold text-white">
-                    {(waivedPenalties[selectedWarning.id] || selectedWarning.is_waived) ? (
-                      <span className="flex items-center gap-2">
-                        <span className="line-through text-gray-500">₹{Number(selectedWarning.penalty_amount).toLocaleString('en-IN')}</span>
-                        <span className="text-green-400 text-xs font-bold">Waived Off</span>
-                      </span>
-                    ) : (
-                      <span className="text-red-400">₹{Number(selectedWarning.penalty_amount).toLocaleString('en-IN')}</span>
-                    )}
-                  </p>
+                  {permissions?.can_edit ? (
+                    <div className="relative border border-gray-600 rounded-lg bg-gray-800 flex items-center overflow-hidden">
+                      <span className="px-3 py-2 text-gray-400 bg-gray-700 border-r border-gray-600 font-medium">₹</span>
+                      <input
+                        type="text"
+                        inputMode="numeric"
+                        value={(() => {
+                          const raw = String(formData.penalty_amount || '').replace(/,/g, '');
+                          if (!raw || isNaN(raw)) return '';
+                          return Number(raw).toLocaleString('en-IN');
+                        })()}
+                        onChange={(e) => {
+                          const raw = e.target.value.replace(/[^0-9]/g, '');
+                          handleFormChange('penalty_amount', raw);
+                        }}
+                        className="w-full text-sm text-gray-200 outline-none px-3 py-2 bg-transparent font-medium"
+                        placeholder="0"
+                      />
+                    </div>
+                  ) : (
+                    <p className="text-sm font-bold text-white">
+                      {(waivedPenalties[selectedWarning.id] || selectedWarning.is_waived) ? (
+                        <span className="flex items-center gap-2">
+                          <span className="line-through text-gray-500">₹{Number(selectedWarning.penalty_amount).toLocaleString('en-IN')}</span>
+                          <span className="text-green-400 text-xs font-bold">Waived Off</span>
+                        </span>
+                      ) : (
+                        <span className="text-red-400">₹{Number(selectedWarning.penalty_amount).toLocaleString('en-IN')}</span>
+                      )}
+                    </p>
+                  )}
                 </div>
               </div>
 
@@ -3158,9 +3240,19 @@ const WarningPage = memo(() => {
               {/* Manager's Remark */}
               <div>
                 <p className="text-[10px] text-gray-500 font-bold uppercase tracking-wider mb-2">Manager's Remark</p>
-                <p className="text-sm text-gray-300 bg-gray-800 border border-gray-700 p-4 rounded-lg leading-relaxed">
-                  "{selectedWarning.warning_message || 'No message provided'}"
-                </p>
+                {permissions?.can_edit ? (
+                  <textarea
+                    value={formData.warning_message}
+                    onChange={(e) => handleFormChange('warning_message', e.target.value)}
+                    rows={5}
+                    className="w-full text-sm text-gray-200 outline-none p-3 resize-none bg-gray-800 border border-gray-600 rounded-lg focus:border-cyan-500 transition-all leading-relaxed"
+                    placeholder="Enter detailed warning message..."
+                  />
+                ) : (
+                  <p className="text-sm text-gray-300 bg-gray-800 border border-gray-700 p-4 rounded-lg leading-relaxed">
+                    "{selectedWarning.warning_message || 'No message provided'}"
+                  </p>
+                )}
               </div>
 
               {/* Employee's Remark */}
@@ -3181,6 +3273,27 @@ const WarningPage = memo(() => {
               </div>
 
             </div>
+            {permissions?.can_edit && (
+              <div className="px-6 py-4 border-t border-gray-700 bg-gray-800/80 flex items-center justify-end gap-3 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setViewDialogOpen(false);
+                    setEditingWarning(null);
+                  }}
+                  className="px-5 py-2.5 text-sm font-semibold text-gray-400 hover:bg-gray-700 rounded-lg transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleEditSubmit()}
+                  className="px-6 py-2.5 text-sm font-bold text-white bg-cyan-600 hover:bg-cyan-700 rounded-lg shadow-md transition-all"
+                >
+                  Update Warning
+                </button>
+              </div>
+            )}
           </div>
         </div>,
         document.body
@@ -3189,10 +3302,10 @@ const WarningPage = memo(() => {
       {/* Edit Warning Modal */}
       {editDialogOpen && createPortal(
         <div
-          className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 sm:p-6"
+          className="fixed inset-0 bg-black/60 backdrop-blur-sm flex justify-end"
           style={{ zIndex: WARNING_MODAL_Z_INDEX }}
         >
-          <div className="bg-gray-900 rounded-2xl shadow-xl w-full max-w-2xl overflow-hidden relative border border-gray-700">
+          <div className="warning-drawer-panel bg-gray-900 shadow-xl h-full w-full max-w-2xl overflow-hidden relative border-l border-gray-700 flex flex-col">
             <div className="flex items-center justify-between px-6 py-4 border-b border-gray-700 bg-gray-800/80">
               <h2 className="text-lg font-bold text-white flex items-center gap-2">
                 <Edit className="w-5 h-5 text-cyan-400" /> Edit Warning
@@ -3204,7 +3317,7 @@ const WarningPage = memo(() => {
                 <X className="w-5 h-5" />
               </button>
             </div>
-            <div className="p-6 max-h-[75vh] overflow-y-auto">
+            <div className="p-6 flex-1 overflow-y-auto">
             <form onSubmit={(e) => { e.preventDefault(); handleEditSubmit(); }} className="space-y-5">
               {/* Date & Time and Created By Row */}
               <div className="grid grid-cols-2 gap-4">
