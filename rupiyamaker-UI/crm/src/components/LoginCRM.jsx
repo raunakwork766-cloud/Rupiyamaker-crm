@@ -677,6 +677,39 @@ const LoginCRM = ({ user, selectedLoanType: initialLoanType, department = "login
     const [loading, setLoading] = useState(false);
     const [showingCachedData, setShowingCachedData] = useState(false);
 
+    const isLoginLeadRecord = (lead) => {
+        return !!(
+            lead?._id &&
+            (
+                lead.original_lead_id ||
+                lead.login_created_at ||
+                lead.login_date ||
+                lead.login_created_by
+            )
+        );
+    };
+
+    const normalizeLoginLeadList = (items) => {
+        if (!Array.isArray(items)) return [];
+        const loginRows = items.filter(isLoginLeadRecord);
+        if (loginRows.length !== items.length) {
+            console.warn(`LoginCRM: Dropped ${items.length - loginRows.length} non-login lead row(s) from list/cache`);
+        }
+        return loginRows;
+    };
+
+    const clearLoginLeadListCache = useCallback(() => {
+        try {
+            Object.keys(localStorage).forEach((key) => {
+                if (key.startsWith('logincrm_leads_')) {
+                    localStorage.removeItem(key);
+                }
+            });
+        } catch (error) {
+            console.warn('LoginCRM: Failed to clear lead list cache:', error);
+        }
+    }, []);
+
     // Column sort state
     const [sortConfig, setSortConfig] = useState({ key: null, direction: 'asc' });
     
@@ -963,6 +996,8 @@ const LoginCRM = ({ user, selectedLoanType: initialLoanType, department = "login
                 field,
                 result
             });
+
+            clearLoginLeadListCache();
             
             // Update the selected lead with the response data if available
             if (result && result._id) {
@@ -2177,11 +2212,12 @@ const LoginCRM = ({ user, selectedLoanType: initialLoanType, department = "login
             const cacheTime = localStorage.getItem(cacheTimeKey);
             
             if (cachedData && cacheTime) {
-                const parsedData = JSON.parse(cachedData);
+                const parsedData = normalizeLoginLeadList(JSON.parse(cachedData));
                 const cacheAge = Date.now() - parseInt(cacheTime);
                 
                 // Show cached data if less than 5 minutes old (increased from 60s)
                 if (cacheAge < 300000 && parsedData.length > 0) {
+                    localStorage.setItem(cacheKey, JSON.stringify(parsedData));
                     console.log('⚡ Showing cached leads instantly (age:', Math.round(cacheAge/1000), 'seconds)');
                     setLeads(parsedData);
                     setShowingCachedData(true);
@@ -2239,7 +2275,7 @@ const LoginCRM = ({ user, selectedLoanType: initialLoanType, department = "login
 
             if (response.ok) {
                 const data = await response.json();
-                const fetchedLeads = data.leads || [];
+                const fetchedLeads = normalizeLoginLeadList(data.leads || []);
                 
                 console.log(`📊 Received ${fetchedLeads.length} leads from API`);
                 
@@ -3358,6 +3394,16 @@ const LoginCRM = ({ user, selectedLoanType: initialLoanType, department = "login
             });
 
             if (response.ok) {
+                const result = await response.json();
+                if (result?.lead?._id) {
+                    setSelectedLead(prev => prev?._id === result.lead._id ? result.lead : prev);
+                    setLeads(prevLeads =>
+                        prevLeads.map(lead => lead._id === result.lead._id ? result.lead : lead)
+                    );
+                    setFilteredLeads(prevLeads =>
+                        prevLeads.map(lead => lead._id === result.lead._id ? result.lead : lead)
+                    );
+                }
                 message.success('Lead assigned successfully');
                 fetchLoginDepartmentLeads();
             } else {
@@ -3536,6 +3582,14 @@ const LoginCRM = ({ user, selectedLoanType: initialLoanType, department = "login
     // Handle clicking on a lead to open LeadDetails with fresh data
     const handleLeadClick = async (lead) => {
         console.log('handleLeadClick called with lead:', lead);
+        if (!isLoginLeadRecord(lead)) {
+            message.warning('This lead is not in Login CRM. Refreshing the list...');
+            setLeads(prev => normalizeLoginLeadList(prev));
+            setFilteredLeads(prev => normalizeLoginLeadList(prev));
+            await fetchLoginDepartmentLeads();
+            return;
+        }
+
         // Reset reassignment history state for the new lead
         setReassignmentHistory([]);
         setReassignmentHistoryLoaded(null);
@@ -4812,12 +4866,20 @@ const LoginCRM = ({ user, selectedLoanType: initialLoanType, department = "login
                   <AboutSection 
                     lead={lead} 
                     onSave={(updatePayload) => {
-                      // AboutSection sends the full update payload object
-                      // We need to save it properly to the login lead endpoint
+                      // AboutSection sends the full update payload object.
+                      // Save to login endpoint only for real login leads; main leads use /api/leads.
                       if (!selectedLead) return;
                       
                       const userId = localStorage.getItem('userId');
-                      const apiUrl = `/api/lead-login/login-leads/${selectedLead._id}?user_id=${userId}`;
+                      const targetLead = lead || selectedLead;
+                      const isLoginLead = !!(
+                        targetLead?.original_lead_id ||
+                        targetLead?.login_created_at ||
+                        targetLead?.login_created_by
+                      );
+                      const apiUrl = isLoginLead
+                        ? `/api/lead-login/login-leads/${targetLead._id}?user_id=${userId}`
+                        : `/api/leads/${targetLead._id}?user_id=${userId}`;
                       
                       return fetch(apiUrl, {
                         method: 'PUT',
@@ -4838,6 +4900,9 @@ const LoginCRM = ({ user, selectedLoanType: initialLoanType, department = "login
                         setSelectedLead(result);
                         // Update in the leads list
                         setLeads(prevLeads => 
+                          prevLeads.map(l => l._id === result._id ? result : l)
+                        );
+                        setFilteredLeads(prevLeads =>
                           prevLeads.map(l => l._id === result._id ? result : l)
                         );
                         console.log('✅ AboutSection data saved successfully');
@@ -5062,6 +5127,7 @@ const LoginCRM = ({ user, selectedLoanType: initialLoanType, department = "login
                      <Attachments 
                        leadId={lead._id} 
                        userId={userId}
+                       lead={lead}
                        onContentInteraction={(isInteracting) => {
                          // Optional: Handle when user is actively interacting with attachments
                          // This could be used to prevent accidental tab switches during file operations

@@ -106,8 +106,9 @@ class EmployeeMonthlyConfigDB:
     async def get_bulk_for_month(self, employee_ids: List[str], year: int, month: int) -> Dict[str, Dict]:
         """
         Returns { employee_id: config_doc } for all employees in one query.
-        Uses effective-at-or-before logic: for each employee returns the latest
-        config whose month <= target month.
+        Salary/monthly_target inherit from the latest config at or before the
+        target month. settled_target is exact-month only because it represents
+        the employee's achieved target for that month.
         """
         try:
             all_docs = await self.col.find(
@@ -115,18 +116,45 @@ class EmployeeMonthlyConfigDB:
             ).to_list(length=None)
 
             target_key = year * 100 + month
-            # Group by employee_id, keep only docs at or before target month
+            # Group by employee_id, keeping history for salary/target inheritance
+            # and exact-month entries for achieved target.
             by_emp: Dict[str, list] = {}
+            exact_by_emp: Dict[str, Dict[str, Any]] = {}
             for doc in all_docs:
                 eid = doc["employee_id"]
                 doc_key = doc["year"] * 100 + doc["month"]
+                if doc.get("year") == year and doc.get("month") == month:
+                    exact_by_emp[eid] = doc
                 if doc_key <= target_key:
                     by_emp.setdefault(eid, []).append(doc)
 
             result = {}
-            for eid, docs in by_emp.items():
+            for eid in set(by_emp.keys()) | set(exact_by_emp.keys()):
+                docs = by_emp.get(eid, [])
                 docs.sort(key=lambda d: d["year"] * 100 + d["month"], reverse=True)
-                result[eid] = docs[0]
+                inherited_values: Dict[str, Any] = {}
+                inherited_sources: Dict[str, Any] = {}
+                for doc in docs:
+                    for field in ("salary", "monthly_target"):
+                        if field not in inherited_values and doc.get(field) is not None:
+                            inherited_values[field] = doc.get(field)
+                            inherited_sources[f"{field}_source_year"] = doc.get("year")
+                            inherited_sources[f"{field}_source_month"] = doc.get("month")
+                exact_doc = exact_by_emp.get(eid)
+                result[eid] = {
+                    "employee_id": eid,
+                    "year": year,
+                    "month": month,
+                    "salary": inherited_values.get("salary"),
+                    "monthly_target": inherited_values.get("monthly_target"),
+                    "settled_target": exact_doc.get("settled_target") if exact_doc else None,
+                    "salary_source_year": inherited_sources.get("salary_source_year"),
+                    "salary_source_month": inherited_sources.get("salary_source_month"),
+                    "monthly_target_source_year": inherited_sources.get("monthly_target_source_year"),
+                    "monthly_target_source_month": inherited_sources.get("monthly_target_source_month"),
+                    "settled_source_year": exact_doc.get("year") if exact_doc else None,
+                    "settled_source_month": exact_doc.get("month") if exact_doc else None,
+                }
 
             return result
         except Exception as e:

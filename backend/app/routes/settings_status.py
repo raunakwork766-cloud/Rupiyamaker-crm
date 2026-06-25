@@ -183,6 +183,10 @@ _OL_DEFAULT = {
     "greeting_intro2": "Below are the details of your compensation, operational guidelines, and the terms of this professional association, thoughtfully designed to foster mutual growth, success, and long-term professional development.",
     "show_header_page1_only": False,
     "show_footer_page1_only": False,
+    "acceptance_title": "Acceptance of Offer",
+    "acceptance_prompt": "Reply to confirm your acceptance:",
+    "acceptance_label": "Copy & reply via email",
+    "acceptance_statement": "I, {{candidateName}}, accept the Offer of Appointment for the role of {{designation}} at Fix Your Finance (Insta Credit Solution Pvt Ltd), dated {{date}}. I have read and agree to all terms and conditions.",
     "acceptance_note": "Replying with the above statement constitutes your <strong>legally binding acceptance</strong> under the Indian Contract Act, 1872. Please respond within <strong>48 hours</strong>.",
 }
 

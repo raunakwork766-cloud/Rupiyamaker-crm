@@ -24,14 +24,29 @@ const API_BASE_URL = '/api'; // Always use proxy
 
 // Tab configuration - Pipeline stages matching interview module.html
 const TABS = [
-  { id: 'dashboard', label: 'Dashboard', icon: '📊' },
+  { id: 'dashboard', label: 'Dashboard', count: 0 },
   { id: 'interview', label: 'Interview', count: 0 },
-  { id: 'job_offered', label: 'Job Offered', count: 0 },
+  { id: 'job_offered', label: 'Job Offer', count: 0 },
   { id: 'training', label: 'Training', count: 0 },
   { id: 'hired', label: 'Hired', count: 0 },
   { id: 'rejected', label: 'Rejected', count: 0 },
-  { id: 'audit_logs', label: 'Audit Logs', icon: '📋' }
+  { id: 'audit_logs', label: 'Audit Logs', count: 0 }
 ];
+
+const PRIMARY_TAB_IDS = ['dashboard', 'interview', 'job_offered'];
+
+const PIPELINE_STAGE_ORDER = ['Interview', 'Round 2', 'Job Offered', 'Training', 'Hired'];
+
+const getRollbackTargets = (stage) => {
+  const stageIndex = PIPELINE_STAGE_ORDER.indexOf(stage);
+  if (stageIndex > 0) {
+    return PIPELINE_STAGE_ORDER.slice(0, stageIndex).reverse();
+  }
+  if (stage === 'Rejected') {
+    return [...PIPELINE_STAGE_ORDER].reverse();
+  }
+  return [];
+};
 
 const INTERVIEW_SUB_TABS = [
   { id: 'today', label: 'Today' },
@@ -103,12 +118,23 @@ const InterviewPanel = () => {
     .task-btn-secondary.active-filter { background: #1e3a5f; border-color: #3b82f6; color: #93c5fd; }
     .task-btn-create { background: #3b82f6; color: #fff; border: none; padding: 7px 14px; border-radius: 3px; font-size: 13px; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 6px; transition: background 0.15s; white-space: nowrap; }
     .task-btn-create:hover { background: #2563eb; }
-    .task-view-toggle-bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 24px; background: #000; border-bottom: 1px solid #1f1f27; flex-wrap: wrap; }
-    .task-view-toggle-group { display: flex; gap: 0; flex-wrap: wrap; flex: 0 1 auto; min-width: 0; overflow-x: auto; scrollbar-width: none; }
+    .task-view-toggle-bar { position: relative; z-index: 1200; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 24px; background: #000; border-bottom: 1px solid #1f1f27; flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
+    .task-view-toggle-bar.interview-toolbar--menu-open { overflow: visible; z-index: 10040; }
+    .task-view-toggle-bar.interview-toolbar--menu-open .task-view-toggle-group { overflow: visible; }
+    .task-view-toggle-bar::-webkit-scrollbar { display: none; }
+    .task-view-toggle-group { display: flex; gap: 0; flex-wrap: nowrap; flex: 0 0 auto; min-width: max-content; overflow-x: auto; scrollbar-width: none; }
     .task-view-toggle-group::-webkit-scrollbar { display: none; }
     .task-view-toggle-btn { padding: 12px 16px; border: none; background: transparent; font-size: 13px; font-weight: 600; color: #c8d0e0; cursor: pointer; border-bottom: 3px solid transparent; transition: color 0.15s, border-color 0.15s; white-space: nowrap; display: inline-flex; align-items: center; gap: 4px; }
     .task-view-toggle-btn:hover { color: #c8d0e0; }
     .task-view-toggle-btn.active { color: #f97316; font-weight: 800; border-bottom-color: #f97316; }
+    .interview-more-tabs { position: relative; flex-shrink: 0; }
+    .interview-more-caret { transition: transform 0.15s; }
+    .interview-more-caret.open { transform: rotate(180deg); }
+    .interview-more-menu { position: absolute; top: calc(100% + 6px); left: 0; min-width: 190px; background: #111118; border: 1px solid #2a2a3a; border-radius: 4px; box-shadow: 0 14px 34px rgba(0,0,0,0.48); z-index: 10060; overflow: hidden; padding: 4px 0; }
+    .interview-more-item { width: 100%; border: none; background: transparent; color: #c8d0e0; padding: 9px 12px; font-size: 13px; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 8px; text-align: left; white-space: nowrap; }
+    .interview-more-item:hover { background: #1a1a24; color: #e2e8f0; }
+    .interview-more-item.active { background: #1a1a24; color: #f97316; }
+    .interview-more-count { margin-left: auto; color: inherit; opacity: 0.78; font-size: 11px; font-weight: 800; }
     .task-filter-dropdown { padding: 6px 28px 6px 10px; border-radius: 3px; border: 1px solid #2a2a3a; background-color: #1a1a24; color: #c8d0e0; font-size: 13px; font-weight: 500; appearance: none; min-height: 32px; background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="%236b7a99" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>'); background-repeat: no-repeat; background-position: right 8px center; cursor: pointer; outline: none; }
     .task-filter-dropdown:focus { border-color: #3b82f6; }
     .task-search-box--in-bar { position: relative; width: 260px; min-width: 200px; flex-shrink: 0; }
@@ -118,7 +144,7 @@ const InterviewPanel = () => {
     .task-search-box--in-bar .search-icon { position: absolute; left: 9px; top: 50%; transform: translateY(-50%); color: #c8d0e0; pointer-events: none; }
     .task-search-box--in-bar .search-clear { position: absolute; right: 8px; top: 50%; transform: translateY(-50%); color: #c8d0e0; background: none; border: none; cursor: pointer; padding: 2px; display: flex; align-items: center; }
     .task-search-box--in-bar .search-clear:hover { color: #c8d0e0; }
-    .task-toolbar-right { display: flex; align-items: center; justify-content: flex-end; gap: 8px; margin-left: auto; flex-shrink: 0; flex-wrap: wrap; }
+    .task-toolbar-right { display: flex; align-items: center; justify-content: flex-end; gap: 8px; margin-left: auto; flex: 1 1 auto; min-width: 0; flex-wrap: nowrap; }
     .task-select-controls { display: flex; align-items: center; gap: 8px; }
     .task-select-controls label { display: flex; align-items: center; cursor: pointer; color: #c8d0e0; font-size: 13px; gap: 5px; }
     .task-select-controls span { color: #c8d0e0; font-size: 13px; }
@@ -131,22 +157,24 @@ const InterviewPanel = () => {
     .task-empty-state { display: flex; flex-direction: column; justify-content: center; align-items: center; padding: 80px 20px; text-align: center; }
     .task-empty-state-title { font-size: 17px; font-weight: 700; color: #c8d0e0; margin: 0 0 6px; }
     .task-empty-state-sub { font-size: 14px; color: #c8d0e0; margin: 0; }
-    .interview-page-content { padding: 16px 24px 24px; }
-    .interview-table-container { overflow-x: auto; max-height: calc(100vh - 280px); overflow-y: auto; border: 1px solid #1f1f27; border-radius: 4px; background: #000; }
-    .interview-table { width: 100%; border-collapse: collapse; min-width: 1200px; text-align: left; }
+    .interview-page-content { padding: 0; }
+    .interview-table-container { overflow-x: auto; max-height: none; overflow-y: visible; border: none; border-radius: 0; background: #000; }
+    .interview-table { width: 100%; border-collapse: collapse; min-width: 1220px; text-align: left; }
     .interview-table thead { background: #ffffff; position: sticky; top: 0; z-index: 10; box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1); border-bottom: 2px solid #e5e7eb; }
     .interview-table thead th { color: #03b0f5; font-weight: 800; font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; padding: 5px 12px; text-align: left; border-bottom: 1px solid #e5e7eb; white-space: nowrap; background: #ffffff; }
     .interview-table tbody td { padding: 5px 12px; font-size: 13px; color: #ffffff; font-weight: 600; vertical-align: middle; border-bottom: 1px solid #2a2a38; white-space: nowrap; }
     .interview-table tbody tr.interview-row { cursor: pointer; transition: background 0.1s; background: #000; }
     .interview-table tbody tr.interview-row:hover { background: #13131c; }
-    .interview-table tbody tr.interview-row.selected { background: #1e3a5f; }
+    .interview-table th:first-child, .interview-table td:first-child { padding-left: 24px; }
+    .interview-table th:last-child, .interview-table td:last-child { padding-right: 24px; }
+    .interview-table tbody tr.interview-row.selected { background: #102542; }
     .interview-table tbody tr.interview-row.no-show { background: #1a1508; }
     .interview-table .col-index { color: #c8d0e0; font-size: 12px; text-align: center; width: 36px; }
     .interview-table .cell-primary { font-size: 13px; font-weight: 700; color: #ffffff; line-height: 1.35; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 220px; }
     .interview-table .cell-secondary { font-size: 11px; color: #c8d0e0; margin-top: 2px; line-height: 1.35; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 220px; }
     .interview-table .cell-link { font-size: 13px; font-weight: 500; color: #60a5fa; background: none; border: none; padding: 0; cursor: pointer; text-align: left; line-height: 1.35; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 200px; display: block; }
     .interview-table .cell-link:hover { color: #93c5fd; text-decoration: underline; }
-    .interview-table .cell-avatar { width: 28px; height: 28px; border-radius: 50%; background: #1a1a24; border: 1px solid #2a2a3a; color: #93c5fd; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 600; flex-shrink: 0; text-transform: uppercase; }
+    .interview-table .cell-avatar { width: 28px; height: 28px; border-radius: 3px; background: #1a1a24; border: 1px solid #2a2a3a; color: #93c5fd; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 600; flex-shrink: 0; text-transform: uppercase; }
     .interview-table .cell-stack { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
     .interview-table .cell-inline { display: flex; align-items: center; gap: 8px; min-width: 0; }
     .interview-table .interview-pill { display: inline-flex; align-items: center; gap: 4px; padding: 2px 6px; border-radius: 2px; font-size: 11px; font-weight: 500; border: 1px solid #2a2a3a; background: #1a1a24; color: #c8d0e0; white-space: nowrap; }
@@ -194,6 +222,98 @@ const InterviewPanel = () => {
     .interview-global-search-banner .banner-meta { font-size: 12px; color: #d97706; }
     .interview-global-search-banner .banner-clear { background: none; border: none; color: #fbbf24; font-size: 12px; font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; gap: 4px; }
     .interview-global-search-banner .banner-clear:hover { color: #fde68a; }
+    .interview-filter-popover { position: absolute; top: calc(100% + 6px); right: 0; width: 280px; background: #111118; border: 1px solid #2a2a3a; border-radius: 4px; box-shadow: 0 14px 34px rgba(0,0,0,0.48); z-index: 9999; overflow: hidden; }
+    .interview-filter-popover-head { padding: 10px 12px; border-bottom: 1px solid #1f1f27; background: #000; display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+    .interview-filter-popover-title { color: #c8d0e0; font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.6px; }
+    .interview-filter-clear { background: none; border: none; color: #f87171; font-size: 12px; font-weight: 700; cursor: pointer; padding: 0; }
+    .interview-filter-clear:hover { color: #fca5a5; }
+    .interview-filter-popover-body { padding: 12px; max-height: 320px; overflow-y: auto; display: flex; flex-direction: column; gap: 14px; }
+    .interview-filter-group-title { color: #8898b8; font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.6px; margin-bottom: 8px; }
+    .interview-filter-empty { color: #6b7a99; font-size: 12px; font-style: italic; }
+    .interview-filter-options { display: flex; flex-direction: column; gap: 6px; }
+    .interview-filter-option { display: flex; align-items: center; gap: 8px; color: #c8d0e0; font-size: 12px; font-weight: 600; cursor: pointer; min-height: 26px; }
+    .interview-filter-option:hover { color: #93c5fd; }
+    .interview-filter-option input { width: 14px; height: 14px; accent-color: #3b82f6; }
+    .interview-filter-popover-foot { padding: 10px 12px; border-top: 1px solid #1f1f27; background: #000; display: flex; justify-content: flex-end; }
+    .interview-filter-done { background: #3b82f6; border: none; color: #fff; border-radius: 3px; padding: 6px 14px; font-size: 12px; font-weight: 700; cursor: pointer; }
+    .interview-filter-done:hover { background: #2563eb; }
+    .interview-dashboard { padding: 16px 24px 24px; display: flex; flex-direction: column; gap: 16px; }
+    .interview-dashboard-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+    .interview-dashboard-title h2 { margin: 0; color: #f0f0f5; font-size: 18px; font-weight: 800; line-height: 1.2; }
+    .interview-dashboard-title p { margin: 4px 0 0; color: #8898b8; font-size: 13px; }
+    .interview-dashboard-controls { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+    .interview-dashboard-date-toggle { display: flex; align-items: center; gap: 0; background: #1a1a24; border: 1px solid #2a2a3a; border-radius: 4px; padding: 2px; }
+    .interview-dashboard-date-btn { border: none; background: transparent; color: #c8d0e0; padding: 7px 12px; border-radius: 3px; font-size: 12px; font-weight: 700; cursor: pointer; }
+    .interview-dashboard-date-btn:hover { color: #e2e8f0; background: #22222e; }
+    .interview-dashboard-date-btn.active { background: #0f172a; color: #f97316; }
+    .interview-dashboard-custom-range { display: flex; align-items: center; gap: 8px; background: #1a1a24; border: 1px solid #2a2a3a; border-radius: 4px; padding: 5px 8px; color: #8898b8; font-size: 12px; }
+    .interview-dashboard-custom-range input { border: none; background: transparent; color: #c8d0e0; font-size: 12px; outline: none; }
+    .interview-kpi-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+    .interview-kpi-card { background: #000; border: 1px solid #1f1f27; border-radius: 4px; padding: 14px; min-height: 104px; display: flex; flex-direction: column; justify-content: space-between; }
+    .interview-kpi-card.blue { border-top: 3px solid #3b82f6; }
+    .interview-kpi-card.indigo { border-top: 3px solid #6366f1; }
+    .interview-kpi-card.green { border-top: 3px solid #10b981; }
+    .interview-kpi-card.red { border-top: 3px solid #ef4444; }
+    .interview-kpi-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; color: #8898b8; font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px; }
+    .interview-kpi-icon { color: #60a5fa; opacity: 0.85; }
+    .interview-kpi-card.green .interview-kpi-icon { color: #34d399; }
+    .interview-kpi-card.red .interview-kpi-icon { color: #f87171; }
+    .interview-kpi-value { color: #ffffff; font-size: 32px; line-height: 1; font-weight: 800; margin-top: 16px; }
+    .interview-dashboard-panel { background: #000; border: 1px solid #1f1f27; border-radius: 4px; overflow: hidden; }
+    .interview-dashboard-panel-head { padding: 12px 16px; border-bottom: 1px solid #1f1f27; display: flex; align-items: center; gap: 10px; }
+    .interview-dashboard-panel-head svg { color: #60a5fa; }
+    .interview-dashboard-panel-title { color: #f0f0f5; font-size: 14px; font-weight: 800; margin: 0; }
+    .interview-dashboard-panel-sub { color: #8898b8; font-size: 12px; margin: 2px 0 0; }
+    .interview-dashboard-table-wrap { overflow-x: auto; }
+    .interview-dashboard-table { width: 100%; min-width: 920px; border-collapse: collapse; text-align: left; }
+    .interview-dashboard-table thead { background: #ffffff; border-bottom: 2px solid #e5e7eb; }
+    .interview-dashboard-table th { background: #ffffff; color: #03b0f5; font-weight: 800; font-size: 11px; text-transform: uppercase; letter-spacing: 0.6px; padding: 7px 12px; white-space: nowrap; text-align: center; }
+    .interview-dashboard-table th:first-child { text-align: left; padding-left: 16px; }
+    .interview-dashboard-table td { padding: 8px 12px; color: #ffffff; font-size: 13px; font-weight: 600; border-bottom: 1px solid #2a2a38; white-space: nowrap; text-align: center; }
+    .interview-dashboard-table td:first-child { text-align: left; padding-left: 16px; }
+    .interview-dashboard-table tbody tr:hover { background: #13131c; }
+    .interview-dashboard-table tfoot td { background: #111118; color: #e2e8f0; font-weight: 800; border-top: 1px solid #2a2a3a; border-bottom: none; }
+    .interview-recruiter-cell { display: flex; align-items: center; gap: 10px; min-width: 190px; }
+    .interview-recruiter-avatar { width: 30px; height: 30px; border-radius: 3px; background: #1a1a24; border: 1px solid #2a2a3a; color: #93c5fd; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 800; flex-shrink: 0; }
+    .interview-recruiter-name { color: #ffffff; font-size: 13px; font-weight: 800; line-height: 1.2; }
+    .interview-recruiter-sub { color: #8898b8; font-size: 11px; margin-top: 2px; }
+    .interview-dashboard-metric { color: #c8d0e0; }
+    .interview-dashboard-metric.muted { color: #4a5570; }
+    .metric-blue { color: #60a5fa !important; }
+    .metric-indigo { color: #a78bfa !important; }
+    .metric-purple { color: #c084fc !important; }
+    .metric-orange { color: #fbbf24 !important; }
+    .metric-yellow { color: #fde68a !important; }
+    .metric-green { color: #34d399 !important; }
+    .metric-red { color: #f87171 !important; }
+    .metric-cyan { color: #22d3ee !important; }
+    .metric-rose { color: #fb7185 !important; }
+    .interview-pipeline-grid { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 10px; padding: 14px; }
+    .interview-stage-tile { background: #0b0b10; border: 1px solid #1f1f27; border-radius: 4px; padding: 12px; text-align: center; }
+    .interview-stage-tile.blue { border-top: 3px solid #3b82f6; }
+    .interview-stage-tile.indigo { border-top: 3px solid #6366f1; }
+    .interview-stage-tile.orange { border-top: 3px solid #f97316; }
+    .interview-stage-tile.yellow { border-top: 3px solid #eab308; }
+    .interview-stage-tile.green { border-top: 3px solid #10b981; }
+    .interview-stage-tile.red { border-top: 3px solid #ef4444; }
+    .interview-stage-value { color: #ffffff; font-size: 26px; font-weight: 800; line-height: 1; }
+    .interview-stage-label { color: #8898b8; font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px; margin-top: 8px; }
+    @media (max-width: 1100px) {
+      .task-view-toggle-bar { padding: 8px 16px; gap: 8px; }
+      .task-view-toggle-btn { padding: 10px 10px; font-size: 12px; }
+      .task-search-box--in-bar { min-width: 150px; max-width: 220px; }
+      .interview-kpi-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .interview-pipeline-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    }
+    @media (max-width: 760px) {
+      .task-toolbar-right { gap: 6px; }
+      .task-search-box--in-bar { min-width: 138px; max-width: 170px; }
+      .task-filter-dropdown { min-width: 132px; max-width: 160px; font-size: 12px; padding-left: 8px; padding-right: 24px; }
+      .task-btn-create, .task-btn-secondary { padding: 7px 10px; font-size: 12px; }
+      .interview-dashboard { padding: 14px 16px 20px; }
+      .interview-kpi-grid, .interview-pipeline-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .interview-filter-popover { right: auto; left: 0; width: min(280px, calc(100vw - 32px)); }
+    }
     .sticky-table-container { max-height: calc(100vh - 280px); overflow-y: auto; overflow-x: auto; border-radius: 4px; }
     .sticky-header { position: sticky; top: 0; background: #000; z-index: 10; box-shadow: 0 2px 4px rgba(0,0,0,0.3); }
     .sticky-th { position: sticky; top: 0; background: #ffffff; color: #03b0f5; z-index: 10; border-bottom: 1px solid #e5e7eb; font-weight: 800; }
@@ -381,6 +501,8 @@ const InterviewPanel = () => {
   // Pipeline action modals state
   const [isForwardRemarkOpen, setIsForwardRemarkOpen] = useState(false);
   const [forwardTarget, setForwardTarget] = useState(null);
+  const [isRollbackModalOpen, setIsRollbackModalOpen] = useState(false);
+  const [rollbackTarget, setRollbackTarget] = useState(null);
   const [selectedCandidate, setSelectedCandidate] = useState(null);
   const [isDeclineModalOpen, setIsDeclineModalOpen] = useState(false);
   const [isRescheduleOpen, setIsRescheduleOpen] = useState(false);
@@ -417,6 +539,7 @@ const InterviewPanel = () => {
 
   // Filter popup state
   const [showFilterPopup, setShowFilterPopup] = useState(false);
+  const [showMoreTabs, setShowMoreTabs] = useState(false);
   const [selectedFilterCategory, setSelectedFilterCategory] = useState('status');
   const [filterOptions, setFilterOptions] = useState({
     status: [],
@@ -2213,6 +2336,42 @@ const InterviewPanel = () => {
     }
   };
 
+  // Rollback action - opens stage picker modal
+  const handleRollbackAction = (interview) => {
+    const stage = getStageFromStatus(interview.status);
+    const targets = getRollbackTargets(stage);
+    if (targets.length === 0) {
+      alert('This candidate is already at the first pipeline stage.');
+      return;
+    }
+    setRollbackTarget({
+      candidateId: interview._id,
+      currentStage: stage,
+      targetStage: targets[0],
+      targets,
+      interview
+    });
+    setIsRollbackModalOpen(true);
+  };
+
+  // Rollback with remark confirmed
+  const handleRollbackWithRemark = async (candidateId, currentStage, targetStage, remark) => {
+    try {
+      if (!targetStage) return;
+      const newStatus = getStatusForStage(targetStage);
+      const rollbackRemark = `Rollback from ${currentStage} to ${targetStage}: ${remark}`;
+      await API.interviews.updateInterview(candidateId, {
+        status: newStatus,
+        status_remark: rollbackRemark
+      });
+      setIsRollbackModalOpen(false);
+      setRollbackTarget(null);
+      await loadInterviews();
+    } catch (error) {
+      alert('Failed to rollback candidate: ' + (error.message || error));
+    }
+  };
+
   // Decline/Reject
   const handleDeclineSubmit = async (candidateId, reason, remarks) => {
     try {
@@ -2299,20 +2458,241 @@ const InterviewPanel = () => {
     );
   }
 
-  const candidateCount = activeTab === 'dashboard' ? interviews.length : filteredInterviews.length;
+  const primaryTabs = TABS.filter(tab => PRIMARY_TAB_IDS.includes(tab.id));
+  const moreTabs = TABS.filter(tab => !PRIMARY_TAB_IDS.includes(tab.id));
+  const activeMoreTab = moreTabs.find(tab => tab.id === activeTab);
+
+  const renderTabIcon = (tabId, size = 14) => {
+    if (tabId === 'dashboard') return <BarChart3 size={size} />;
+    if (tabId === 'interview') return <Users size={size} />;
+    if (tabId === 'job_offered') return <Briefcase size={size} />;
+    if (tabId === 'training') return <PlayCircle size={size} />;
+    if (tabId === 'hired') return <CheckCircle size={size} />;
+    if (tabId === 'rejected') return <XCircle size={size} />;
+    if (tabId === 'audit_logs') return <ShieldAlert size={size} />;
+    return null;
+  };
+
+  const handlePipelineTabChange = (tabId) => {
+    setActiveTab(tabId);
+    if (tabId === 'interview') setActiveSubTab('today');
+    if (tabId === 'audit_logs') setAuditSubTab('Pending');
+    setReasonFilter('All');
+    setIsGlobalSearch(false);
+    setSearchTerm('');
+    setCheckboxVisible(false);
+    setSelectedInterviews([]);
+    setSelectAll(false);
+    setShowMoreTabs(false);
+    setShowFilterPopup(false);
+  };
 
   return (
     <>
       <style>{interviewPageStyles}</style>
       <div className="task-page-container interview-page-container">
-
-      {/* Top Bar */}
-      <div className="task-top-bar">
-        <div className="task-top-bar-left">
-          <h1>Interview Panel</h1>
-          <p>{candidateCount} candidate{candidateCount !== 1 ? 's' : ''}</p>
+      {/* Pipeline tabs + toolbar */}
+      <div className={`task-view-toggle-bar${showFilterPopup || showMoreTabs ? ' interview-toolbar--menu-open' : ''}`}>
+        <div className="task-view-toggle-group">
+          {primaryTabs.map((tab) => {
+            const tabCount = tabCounts.find(t => t.id === tab.id)?.count;
+            const isActive = activeTab === tab.id;
+            return (
+              <button
+                key={tab.id}
+                className={`task-view-toggle-btn${isActive ? ' active' : ''}`}
+                onClick={() => handlePipelineTabChange(tab.id)}
+              >
+                {renderTabIcon(tab.id)}
+                {tab.label}
+                {tab.id !== 'audit_logs' && tab.id !== 'dashboard' && tabCount !== undefined && (
+                  <span style={{ marginLeft: 5, fontSize: 11, color: isActive ? '#f97316' : '#c8d0e0' }}>({tabCount})</span>
+                )}
+              </button>
+            );
+          })}
+          <div className="interview-more-tabs">
+            <button
+              className={`task-view-toggle-btn${activeMoreTab ? ' active' : ''}`}
+              onClick={() => {
+                setShowMoreTabs(prev => !prev);
+                setShowFilterPopup(false);
+              }}
+              aria-haspopup="menu"
+              aria-expanded={showMoreTabs}
+            >
+              More
+              <ChevronDown size={14} className={`interview-more-caret${showMoreTabs ? ' open' : ''}`} />
+            </button>
+            {showMoreTabs && (
+              <div className="interview-more-menu" role="menu">
+                {moreTabs.map((tab) => {
+                  const tabCount = tabCounts.find(t => t.id === tab.id)?.count;
+                  const isActive = activeTab === tab.id;
+                  return (
+                    <button
+                      key={tab.id}
+                      className={`interview-more-item${isActive ? ' active' : ''}`}
+                      onClick={() => handlePipelineTabChange(tab.id)}
+                      role="menuitem"
+                    >
+                      {renderTabIcon(tab.id)}
+                      <span>{tab.label}</span>
+                      {tab.id !== 'audit_logs' && tabCount !== undefined && (
+                        <span className="interview-more-count">({tabCount})</span>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
         </div>
-        <div className="task-top-bar-right">
+        <div className="task-toolbar-right">
+          {activeTab !== 'dashboard' && (
+            <div className="task-search-box--in-bar">
+              <Search size={14} className="search-icon" />
+              <input
+                type="text"
+                placeholder="Search by name, mobile, owner, role..."
+                value={searchTerm}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setSearchTerm(val);
+                  if (val.length >= 3 && /^\d+$/.test(val)) {
+                    const match = interviews.find(i => i.mobile_number?.includes(val));
+                    if (match) {
+                      const matchStage = getStageFromStatus(match.status);
+                      const stageToTab = { 'Interview': 'interview', 'Round 2': 'interview', 'No-Show': 'interview', 'Job Offered': 'job_offered', 'Training': 'training', 'Hired': 'hired', 'Rejected': 'rejected' };
+                      const targetTab = stageToTab[matchStage] || 'interview';
+                      if (targetTab !== activeTab) {
+                        setActiveTab(targetTab);
+                        if (targetTab === 'interview') {
+                          if (matchStage === 'No-Show') setActiveSubTab('no_show');
+                          else if (matchStage === 'Round 2') setActiveSubTab('round2');
+                          else setActiveSubTab('today');
+                        }
+                      }
+                      setIsGlobalSearch(false);
+                    } else {
+                      setIsGlobalSearch(true);
+                    }
+                  } else {
+                    setIsGlobalSearch(val.length > 0);
+                  }
+                }}
+              />
+              {searchTerm && (
+                <button onClick={() => { setSearchTerm(''); setIsGlobalSearch(false); }} className="search-clear">
+                  <X size={14} />
+                </button>
+              )}
+            </div>
+          )}
+          {activeTab === 'rejected' && (
+            <select
+              className="task-filter-dropdown"
+              value={reasonFilter}
+              onChange={(e) => setReasonFilter(e.target.value)}
+            >
+              <option value="All">All Rejection Reasons</option>
+              {declineReasons.map(r => <option key={r} value={r}>{r}</option>)}
+            </select>
+          )}
+          {activeTab !== 'dashboard' && (
+            <div className="relative">
+              <button
+                onClick={() => {
+                  setShowFilterPopup(prev => !prev);
+                  setShowMoreTabs(false);
+                }}
+                className={`task-btn-secondary${
+                  (filterOptions.sourcePortal?.length > 0 || filterOptions.jobOpening?.length > 0) ? ' active-filter' : ''
+                }`}
+              >
+                <Filter size={14} />
+                Filter
+                {((filterOptions.sourcePortal?.length || 0) + (filterOptions.jobOpening?.length || 0)) > 0 && (
+                  <span style={{ background: '#3b82f6', color: '#fff', fontSize: 10, fontWeight: 700, padding: '1px 6px', borderRadius: 999 }}>
+                    {(filterOptions.sourcePortal?.length || 0) + (filterOptions.jobOpening?.length || 0)}
+                  </span>
+                )}
+              </button>
+              {showFilterPopup && (
+                <div className="interview-filter-popover">
+                  <div className="interview-filter-popover-head">
+                    <span className="interview-filter-popover-title">Filters</span>
+                    <button
+                      onClick={() => setFilterOptions(prev => ({ ...prev, sourcePortal: [], jobOpening: [] }))}
+                      className="interview-filter-clear"
+                    >
+                      Clear All
+                    </button>
+                  </div>
+                  <div className="interview-filter-popover-body">
+                    <div>
+                      <div className="interview-filter-group-title">Source Portal</div>
+                      {sourcePortalOptions.length === 0 ? (
+                        <div className="interview-filter-empty">No sources configured in settings.</div>
+                      ) : (
+                        <div className="interview-filter-options">
+                          {sourcePortalOptions.map(portal => (
+                            <label key={portal} className="interview-filter-option">
+                              <input
+                                type="checkbox"
+                                checked={filterOptions.sourcePortal?.includes(portal) || false}
+                                onChange={() => setFilterOptions(prev => {
+                                  const list = prev.sourcePortal || [];
+                                  return { ...prev, sourcePortal: list.includes(portal) ? list.filter(p => p !== portal) : [...list, portal] };
+                                })}
+                              />
+                              <span>{portal}</span>
+                            </label>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                    <div>
+                      <div className="interview-filter-group-title">Role</div>
+                      {jobOpeningOptions.length === 0 ? (
+                        <div className="interview-filter-empty">No roles configured in settings.</div>
+                      ) : (
+                        <div className="interview-filter-options">
+                          {jobOpeningOptions.map(role => (
+                            <label key={role} className="interview-filter-option">
+                              <input
+                                type="checkbox"
+                                checked={filterOptions.jobOpening?.includes(role) || false}
+                                onChange={() => setFilterOptions(prev => {
+                                  const list = prev.jobOpening || [];
+                                  return { ...prev, jobOpening: list.includes(role) ? list.filter(r => r !== role) : [...list, role] };
+                                })}
+                              />
+                              <span>{role}</span>
+                            </label>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                  <div className="interview-filter-popover-foot">
+                    <button
+                      onClick={() => setShowFilterPopup(false)}
+                      className="interview-filter-done"
+                    >
+                      Done
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+          {activeTab !== 'dashboard' && activeTab !== 'audit_logs' && (
+            <button onClick={handleExportExcel} className="task-btn-secondary" title="Export interviews to Excel (all tabs)">
+              <FileSpreadsheet size={14} />
+              Export Excel
+            </button>
+          )}
           {activeTab !== 'dashboard' && activeTab !== 'audit_logs' && permissions.can_delete && !checkboxVisible && (
             <button className="task-btn-secondary" onClick={handleShowCheckboxes}>
               <Trash2 size={14} />
@@ -2370,185 +2750,6 @@ const InterviewPanel = () => {
           {permissions.can_add && (
             <button onClick={handleCreateInterview} className="task-btn-create">
               <Plus size={14} /> Create Interview
-            </button>
-          )}
-        </div>
-      </div>
-
-      {/* Pipeline tabs + toolbar */}
-      <div className="task-view-toggle-bar">
-        <div className="task-view-toggle-group">
-          {TABS.map((tab) => {
-            const tabCount = tabCounts.find(t => t.id === tab.id)?.count;
-            const isActive = activeTab === tab.id;
-            return (
-              <button
-                key={tab.id}
-                className={`task-view-toggle-btn${isActive ? ' active' : ''}`}
-                onClick={() => {
-                  setActiveTab(tab.id);
-                  if (tab.id === 'interview') setActiveSubTab('today');
-                  if (tab.id === 'audit_logs') setAuditSubTab('Pending');
-                  setReasonFilter('All');
-                  setIsGlobalSearch(false);
-                  setSearchTerm('');
-                  setCheckboxVisible(false);
-                  setSelectedInterviews([]);
-                  setSelectAll(false);
-                }}
-              >
-                {tab.id === 'audit_logs' && <ShieldAlert size={14} />}
-                {tab.icon && <span>{tab.icon}</span>}
-                {tab.label}
-                {tab.id !== 'audit_logs' && tab.id !== 'dashboard' && tabCount !== undefined && (
-                  <span style={{ marginLeft: 5, fontSize: 11, color: isActive ? '#f97316' : '#c8d0e0' }}>({tabCount})</span>
-                )}
-              </button>
-            );
-          })}
-        </div>
-        <div className="task-toolbar-right">
-          {activeTab !== 'dashboard' && (
-            <div className="task-search-box--in-bar">
-              <Search size={14} className="search-icon" />
-              <input
-                type="text"
-                placeholder="Search by name, mobile, owner, role..."
-                value={searchTerm}
-                onChange={(e) => {
-                  const val = e.target.value;
-                  setSearchTerm(val);
-                  if (val.length >= 3 && /^\d+$/.test(val)) {
-                    const match = interviews.find(i => i.mobile_number?.includes(val));
-                    if (match) {
-                      const matchStage = getStageFromStatus(match.status);
-                      const stageToTab = { 'Interview': 'interview', 'Round 2': 'interview', 'No-Show': 'interview', 'Job Offered': 'job_offered', 'Training': 'training', 'Hired': 'hired', 'Rejected': 'rejected' };
-                      const targetTab = stageToTab[matchStage] || 'interview';
-                      if (targetTab !== activeTab) {
-                        setActiveTab(targetTab);
-                        if (targetTab === 'interview') {
-                          if (matchStage === 'No-Show') setActiveSubTab('no_show');
-                          else if (matchStage === 'Round 2') setActiveSubTab('round2');
-                          else setActiveSubTab('today');
-                        }
-                      }
-                      setIsGlobalSearch(false);
-                    } else {
-                      setIsGlobalSearch(true);
-                    }
-                  } else {
-                    setIsGlobalSearch(val.length > 0);
-                  }
-                }}
-              />
-              {searchTerm && (
-                <button onClick={() => { setSearchTerm(''); setIsGlobalSearch(false); }} className="search-clear">
-                  <X size={14} />
-                </button>
-              )}
-            </div>
-          )}
-          {activeTab === 'rejected' && (
-            <select
-              className="task-filter-dropdown"
-              value={reasonFilter}
-              onChange={(e) => setReasonFilter(e.target.value)}
-            >
-              <option value="All">All Rejection Reasons</option>
-              {declineReasons.map(r => <option key={r} value={r}>{r}</option>)}
-            </select>
-          )}
-          {activeTab !== 'dashboard' && (
-            <div className="relative">
-              <button
-                onClick={() => setShowFilterPopup(prev => !prev)}
-                className={`task-btn-secondary${
-                  (filterOptions.sourcePortal?.length > 0 || filterOptions.jobOpening?.length > 0) ? ' active-filter' : ''
-                }`}
-              >
-                <Filter size={14} />
-                Filter
-                {((filterOptions.sourcePortal?.length || 0) + (filterOptions.jobOpening?.length || 0)) > 0 && (
-                  <span style={{ background: '#3b82f6', color: '#fff', fontSize: 10, fontWeight: 700, padding: '1px 6px', borderRadius: 999 }}>
-                    {(filterOptions.sourcePortal?.length || 0) + (filterOptions.jobOpening?.length || 0)}
-                  </span>
-                )}
-              </button>
-              {showFilterPopup && (
-                <div className="absolute top-full right-0 mt-1 w-64 bg-white border border-slate-200 rounded-xl shadow-xl z-[9999] overflow-hidden">
-                  <div className="px-4 py-3 border-b border-slate-100 bg-slate-50 flex items-center justify-between">
-                    <span className="text-xs font-black text-slate-700 uppercase tracking-wider">Filters</span>
-                    <button
-                      onClick={() => setFilterOptions(prev => ({ ...prev, sourcePortal: [], jobOpening: [] }))}
-                      className="text-xs text-red-500 hover:text-red-700 font-semibold"
-                    >
-                      Clear All
-                    </button>
-                  </div>
-                  <div className="p-4 space-y-4 max-h-80 overflow-y-auto">
-                    <div>
-                      <div className="text-[11px] font-black text-slate-500 uppercase tracking-wider mb-2">Source Portal</div>
-                      {sourcePortalOptions.length === 0 ? (
-                        <div className="text-xs text-slate-400 italic">No sources configured in settings.</div>
-                      ) : (
-                        <div className="space-y-1.5">
-                          {sourcePortalOptions.map(portal => (
-                            <label key={portal} className="flex items-center gap-2 cursor-pointer group">
-                              <input
-                                type="checkbox"
-                                checked={filterOptions.sourcePortal?.includes(portal) || false}
-                                onChange={() => setFilterOptions(prev => {
-                                  const list = prev.sourcePortal || [];
-                                  return { ...prev, sourcePortal: list.includes(portal) ? list.filter(p => p !== portal) : [...list, portal] };
-                                })}
-                                className="w-3.5 h-3.5 rounded border-slate-300 accent-blue-600"
-                              />
-                              <span className="text-xs text-slate-700 group-hover:text-blue-700">{portal}</span>
-                            </label>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                    <div>
-                      <div className="text-[11px] font-black text-slate-500 uppercase tracking-wider mb-2">Role</div>
-                      {jobOpeningOptions.length === 0 ? (
-                        <div className="text-xs text-slate-400 italic">No roles configured in settings.</div>
-                      ) : (
-                        <div className="space-y-1.5">
-                          {jobOpeningOptions.map(role => (
-                            <label key={role} className="flex items-center gap-2 cursor-pointer group">
-                              <input
-                                type="checkbox"
-                                checked={filterOptions.jobOpening?.includes(role) || false}
-                                onChange={() => setFilterOptions(prev => {
-                                  const list = prev.jobOpening || [];
-                                  return { ...prev, jobOpening: list.includes(role) ? list.filter(r => r !== role) : [...list, role] };
-                                })}
-                                className="w-3.5 h-3.5 rounded border-slate-300 accent-blue-600"
-                              />
-                              <span className="text-xs text-slate-700 group-hover:text-blue-700">{role}</span>
-                            </label>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                  <div className="px-4 py-3 border-t border-slate-100 bg-slate-50 flex justify-end">
-                    <button
-                      onClick={() => setShowFilterPopup(false)}
-                      className="px-4 py-1.5 bg-slate-800 hover:bg-slate-700 text-white text-xs font-bold rounded-lg transition-colors"
-                    >
-                      Done
-                    </button>
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-          {activeTab !== 'dashboard' && activeTab !== 'audit_logs' && (
-            <button onClick={handleExportExcel} className="task-btn-secondary" title="Export interviews to Excel (all tabs)">
-              <FileSpreadsheet size={14} />
-              Export Excel
             </button>
           )}
         </div>
@@ -2671,6 +2872,7 @@ const InterviewPanel = () => {
                       const stage = getStageFromStatus(interview.status);
                       const primaryBtn = getForwardButton(stage);
                       const isNoShow = stage === 'No-Show';
+                      const rollbackTargets = getRollbackTargets(stage);
                       return (
                         <CandidateTableRow
                           key={interview._id || index}
@@ -2678,6 +2880,7 @@ const InterviewPanel = () => {
                           index={index + 1}
                           stage={stage}
                           primaryBtn={primaryBtn}
+                          rollbackTargets={rollbackTargets}
                           isNoShow={isNoShow}
                           activeTab={activeTab}
                           activeSubTab={activeSubTab}
@@ -2686,6 +2889,7 @@ const InterviewPanel = () => {
                           isSelected={selectedInterviews.includes(interview._id)}
                           onSelect={() => handleSelectInterview(interview._id)}
                           onForward={(targetStage) => handleForwardAction(interview, targetStage)}
+                          onRollback={() => handleRollbackAction(interview)}
                           onDecline={() => { setSelectedCandidate(interview); setIsDeclineModalOpen(true); }}
                           onReschedule={() => { setSelectedCandidate(interview); setIsRescheduleOpen(true); }}
                           onMarkNoShow={() => handleMarkNoShow(interview)}
@@ -2748,6 +2952,15 @@ const InterviewPanel = () => {
           onClose={() => { setIsForwardRemarkOpen(false); setForwardTarget(null); }}
           onConfirmForward={handleForwardWithRemark}
           onConfirmJobOffer={handleForwardToJobOffer}
+        />
+      )}
+
+      {/* Rollback Modal */}
+      {isRollbackModalOpen && rollbackTarget && (
+        <RollbackStageModal
+          target={rollbackTarget}
+          onClose={() => { setIsRollbackModalOpen(false); setRollbackTarget(null); }}
+          onConfirmRollback={handleRollbackWithRemark}
         />
       )}
 
@@ -3503,7 +3716,7 @@ const Tag = ({ icon, text, color }) => {
 };
 
 // --- CANDIDATE TABLE ROW (matching interview module.html) ---
-const CandidateTableRow = ({ interview, index, stage, primaryBtn, isNoShow, activeTab, activeSubTab, isGlobalSearch, checkboxVisible, isSelected, onSelect, onForward, onDecline, onReschedule, onMarkNoShow, onViewHistory, onViewReassignHistory, onViewRescheduleHistory, onViewDetails, onWhatsApp, onRowClick, onToggleAudit, onViewRound1 }) => {
+const CandidateTableRow = ({ interview, index, stage, primaryBtn, rollbackTargets = [], isNoShow, activeTab, activeSubTab, isGlobalSearch, checkboxVisible, isSelected, onSelect, onForward, onRollback, onDecline, onReschedule, onMarkNoShow, onViewHistory, onViewReassignHistory, onViewRescheduleHistory, onViewDetails, onWhatsApp, onRowClick, onToggleAudit, onViewRound1 }) => {
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [dropdownPos, setDropdownPos] = useState(null);
   const dropdownRef = useRef(null);
@@ -3683,6 +3896,12 @@ const CandidateTableRow = ({ interview, index, stage, primaryBtn, isNoShow, acti
             </button>
           )}
 
+          {rollbackTargets.length > 0 && (
+            <button type="button" onClick={(e) => { e.stopPropagation(); onRollback && onRollback(); }} className="action-btn-warn" title="Rollback candidate to a previous stage">
+              <ArrowRightLeft size={14} /> Rollback
+            </button>
+          )}
+
           {activeTab !== 'rejected' && activeTab !== 'hired' && (
             <div className="relative">
               <button type="button" ref={btnRef} onClick={handleToggleDropdown} className={`action-btn${isDropdownOpen ? ' open' : ''}`} aria-label="More actions" aria-expanded={isDropdownOpen}>
@@ -3795,18 +4014,18 @@ const DashboardView = ({ interviews }) => {
   const allMetrics = hrList.map(hr => ({ hr, ...getMetrics(hr) }));
   const T = (key) => allMetrics.reduce((s, m) => s + (m[key] || 0), 0);
 
-  const MC = ({ v, cls }) => (
-    <td className={`px-3 py-3.5 text-center text-sm font-bold ${v > 0 ? cls : 'text-slate-300'}`}>{v}</td>
+  const MC = ({ v, cls = '' }) => (
+    <td className={`interview-dashboard-metric ${v > 0 ? cls : 'muted'}`}>{v}</td>
   );
 
   const stages = ['Interview', 'Round 2', 'Job Offered', 'Training', 'Hired', 'Rejected'];
   const stageColors = {
-    Interview: 'bg-blue-50 border-blue-200 text-blue-700',
-    'Round 2': 'bg-indigo-50 border-indigo-200 text-indigo-700',
-    'Job Offered': 'bg-orange-50 border-orange-200 text-orange-700',
-    Training: 'bg-yellow-50 border-yellow-200 text-yellow-700',
-    Hired: 'bg-emerald-50 border-emerald-200 text-emerald-700',
-    Rejected: 'bg-red-50 border-red-200 text-red-700'
+    Interview: 'blue',
+    'Round 2': 'indigo',
+    'Job Offered': 'orange',
+    Training: 'yellow',
+    Hired: 'green',
+    Rejected: 'red'
   };
 
   const stageCounts = {};
@@ -3818,132 +4037,135 @@ const DashboardView = ({ interviews }) => {
   });
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div>
-          <h2 className="text-xl font-black text-slate-900 tracking-tight">HR Performance Dashboard</h2>
-          <p className="text-sm text-slate-500 mt-0.5">Real-time hiring pipeline overview by recruiter</p>
+    <div className="interview-dashboard">
+      <div className="interview-dashboard-header">
+        <div className="interview-dashboard-title">
+          <h2>HR Performance Dashboard</h2>
+          <p>Real-time hiring pipeline overview by recruiter</p>
         </div>
-        <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2">
-          <div className="flex items-center gap-1 bg-white border border-slate-200 rounded-xl p-1 shadow-sm">
+        <div className="interview-dashboard-controls">
+          <div className="interview-dashboard-date-toggle">
             {[['today', 'Today'], ['week', 'Week'], ['month', 'Month'], ['custom', 'Custom']].map(([val, label]) => (
-              <button key={val} onClick={() => setDateFilter(val)}
-                className={`px-3 py-1.5 text-xs rounded-lg font-bold transition-all ${dateFilter === val ? 'bg-blue-600 text-white shadow-md' : 'text-slate-500 hover:text-slate-800'}`}>
+              <button
+                key={val}
+                onClick={() => setDateFilter(val)}
+                className={`interview-dashboard-date-btn${dateFilter === val ? ' active' : ''}`}
+              >
                 {label}
               </button>
             ))}
           </div>
           {dateFilter === 'custom' && (
-            <div className="flex items-center gap-2 bg-white border border-blue-200 rounded-xl px-3 py-1.5">
-              <input type="date" value={customFrom} onChange={e => setCustomFrom(e.target.value)} className="text-xs border-0 outline-none text-slate-700 bg-transparent"/>
-              <span className="text-slate-400 text-xs">→</span>
-              <input type="date" value={customTo} onChange={e => setCustomTo(e.target.value)} className="text-xs border-0 outline-none text-slate-700 bg-transparent"/>
+            <div className="interview-dashboard-custom-range">
+              <input type="date" value={customFrom} onChange={e => setCustomFrom(e.target.value)} />
+              <span>to</span>
+              <input type="date" value={customTo} onChange={e => setCustomTo(e.target.value)} />
             </div>
           )}
         </div>
       </div>
 
-      {/* KPI Cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+      <div className="interview-kpi-grid">
         {[
-          { label: 'Total Pipeline', value: (interviews || []).length, bg: 'from-blue-500 to-blue-700', icon: Users },
-          { label: `Created (${dateFilter === 'today' ? 'Today' : dateFilter === 'week' ? 'Week' : 'Month'})`, value: T('created'), bg: 'from-indigo-500 to-indigo-700', icon: Plus },
-          { label: 'Total Hired', value: T('hired'), bg: 'from-emerald-500 to-emerald-700', icon: CheckCircle },
-          { label: 'Total Rejected', value: T('rejected'), bg: 'from-red-500 to-red-700', icon: XCircle }
-        ].map(({ label, value, bg, icon: Icon }) => (
-          <div key={label} className={`bg-gradient-to-br ${bg} rounded-xl p-5 text-white shadow-lg shadow-slate-900/10`}>
-            <div className="flex items-center justify-between mb-3">
-              <span className="text-xs font-semibold uppercase tracking-wider opacity-80">{label}</span>
-              <Icon size={18} className="opacity-70" />
+          { label: 'Total Pipeline', value: (interviews || []).length, tone: 'blue', icon: Users },
+          { label: `Created (${dateFilter === 'today' ? 'Today' : dateFilter === 'week' ? 'Week' : dateFilter === 'month' ? 'Month' : 'Custom'})`, value: T('created'), tone: 'indigo', icon: Plus },
+          { label: 'Total Hired', value: T('hired'), tone: 'green', icon: CheckCircle },
+          { label: 'Total Rejected', value: T('rejected'), tone: 'red', icon: XCircle }
+        ].map(({ label, value, tone, icon }) => (
+          <div key={label} className={`interview-kpi-card ${tone}`}>
+            <div className="interview-kpi-head">
+              <span>{label}</span>
+              {React.createElement(icon, { size: 18, className: 'interview-kpi-icon' })}
             </div>
-            <div className="text-4xl font-black">{value}</div>
+            <div className="interview-kpi-value">{value}</div>
           </div>
         ))}
       </div>
 
-      {/* Main Performance Table */}
-      <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
-        <div className="px-6 py-4 border-b border-slate-200 bg-gradient-to-r from-slate-50 to-white flex items-center gap-3">
-          <BarChart3 size={20} className="text-blue-600" />
+      <div className="interview-dashboard-panel">
+        <div className="interview-dashboard-panel-head">
+          <BarChart3 size={18} />
           <div>
-            <h3 className="font-black text-slate-900">HR-wise Performance</h3>
-            <p className="text-xs text-slate-500">Stage counts = current pipeline totals; Created & Conducted = date range filtered</p>
+            <h3 className="interview-dashboard-panel-title">HR-wise Performance</h3>
+            <p className="interview-dashboard-panel-sub">Stage counts are current pipeline totals; Created and Conducted follow the selected date range</p>
           </div>
         </div>
-        <div className="overflow-x-auto">
-          <table className="w-full text-left">
+        <div className="interview-dashboard-table-wrap">
+          <table className="interview-dashboard-table">
             <thead>
-              <tr className="border-b-2 border-slate-200 bg-slate-50">
-                <th className="px-5 py-3 text-xs font-black text-slate-700 uppercase tracking-wider sticky left-0 bg-slate-50 z-10">Recruiter</th>
-                <th className="px-3 py-3 text-xs font-black text-blue-700 uppercase tracking-wider text-center whitespace-nowrap">📥 Created</th>
-                <th className="px-3 py-3 text-xs font-black text-indigo-700 uppercase tracking-wider text-center whitespace-nowrap">🎯 Conducted</th>
-                <th className="px-3 py-3 text-xs font-black text-purple-700 uppercase tracking-wider text-center">R2</th>
-                <th className="px-3 py-3 text-xs font-black text-orange-700 uppercase tracking-wider text-center whitespace-nowrap">Job Offer</th>
-                <th className="px-3 py-3 text-xs font-black text-yellow-700 uppercase tracking-wider text-center">Train</th>
-                <th className="px-3 py-3 text-xs font-black text-emerald-700 uppercase tracking-wider text-center">✅ Hired</th>
-                <th className="px-3 py-3 text-xs font-black text-red-700 uppercase tracking-wider text-center">❌ Rejected</th>
-                <th className="px-3 py-3 text-xs font-black text-cyan-700 uppercase tracking-wider text-center">↩ Resched</th>
-                <th className="px-3 py-3 text-xs font-black text-rose-700 uppercase tracking-wider text-center">🔄 Reassign</th>
-                <th className="px-3 py-3 text-xs font-black text-slate-600 uppercase tracking-wider text-center">Total</th>
+              <tr>
+                <th>Recruiter</th>
+                <th>Created</th>
+                <th>Conducted</th>
+                <th>R2</th>
+                <th>Job Offer</th>
+                <th>Train</th>
+                <th>Hired</th>
+                <th>Rejected</th>
+                <th>Resched</th>
+                <th>Reassign</th>
+                <th>Total</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100">
-              {allMetrics.map((m, i) => (
-                <tr key={m.hr} className={`hover:bg-blue-50/30 transition-colors ${i % 2 === 0 ? 'bg-white' : 'bg-slate-50/40'}`}>
-                  <td className="px-5 py-4 sticky left-0 bg-inherit z-10">
-                    <div className="flex items-center gap-3">
-                      <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-blue-500 to-indigo-600 text-white flex items-center justify-center text-xs font-black shadow-md">
-                        {m.hr.split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase()}
+            <tbody>
+              {allMetrics.map((m) => (
+                <tr key={m.hr}>
+                  <td>
+                    <div className="interview-recruiter-cell">
+                      <div className="interview-recruiter-avatar">
+                        {m.hr.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase()}
                       </div>
                       <div>
-                        <div className="font-bold text-slate-900 text-sm">{m.hr}</div>
-                        <div className="text-xs text-slate-500">HR Desk</div>
+                        <div className="interview-recruiter-name">{m.hr}</div>
+                        <div className="interview-recruiter-sub">HR Desk</div>
                       </div>
                     </div>
                   </td>
-                  <MC v={m.created} cls="text-blue-700 bg-blue-50 rounded px-1" />
-                  <MC v={m.conducted} cls="text-indigo-700" />
-                  <MC v={m.round2} cls="text-purple-700" />
-                  <MC v={m.jobOffered} cls="text-orange-700" />
-                  <MC v={m.training} cls="text-yellow-700" />
-                  <MC v={m.hired} cls="text-emerald-700 font-black" />
-                  <MC v={m.rejected} cls="text-red-700" />
-                  <MC v={m.rescheduled} cls="text-cyan-700" />
-                  <MC v={m.reassigned} cls="text-rose-700" />
-                  <td className="px-3 py-4 text-center text-sm font-black text-slate-800">{m.total}</td>
+                  <MC v={m.created} cls="metric-blue" />
+                  <MC v={m.conducted} cls="metric-indigo" />
+                  <MC v={m.round2} cls="metric-purple" />
+                  <MC v={m.jobOffered} cls="metric-orange" />
+                  <MC v={m.training} cls="metric-yellow" />
+                  <MC v={m.hired} cls="metric-green" />
+                  <MC v={m.rejected} cls="metric-red" />
+                  <MC v={m.rescheduled} cls="metric-cyan" />
+                  <MC v={m.reassigned} cls="metric-rose" />
+                  <td>{m.total}</td>
                 </tr>
               ))}
             </tbody>
             <tfoot>
-              <tr className="bg-slate-100 border-t-2 border-slate-300">
-                <td className="px-5 py-3.5 text-xs font-black text-slate-800 uppercase tracking-wider">All HRs</td>
-                <td className="px-3 py-3.5 text-center text-sm font-black text-blue-800">{T('created')}</td>
-                <td className="px-3 py-3.5 text-center text-sm font-black text-indigo-800">{T('conducted')}</td>
-                <td className="px-3 py-3.5 text-center text-sm font-black text-purple-800">{T('round2')}</td>
-                <td className="px-3 py-3.5 text-center text-sm font-black text-orange-800">{T('jobOffered')}</td>
-                <td className="px-3 py-3.5 text-center text-sm font-black text-yellow-800">{T('training')}</td>
-                <td className="px-3 py-3.5 text-center text-sm font-black text-emerald-800">{T('hired')}</td>
-                <td className="px-3 py-3.5 text-center text-sm font-black text-red-800">{T('rejected')}</td>
-                <td className="px-3 py-3.5 text-center text-sm font-black text-cyan-800">{T('rescheduled')}</td>
-                <td className="px-3 py-3.5 text-center text-sm font-black text-rose-800">{T('reassigned')}</td>
-                <td className="px-3 py-3.5 text-center text-sm font-black text-slate-900">{(interviews || []).length}</td>
+              <tr>
+                <td>All HRs</td>
+                <td className="metric-blue">{T('created')}</td>
+                <td className="metric-indigo">{T('conducted')}</td>
+                <td className="metric-purple">{T('round2')}</td>
+                <td className="metric-orange">{T('jobOffered')}</td>
+                <td className="metric-yellow">{T('training')}</td>
+                <td className="metric-green">{T('hired')}</td>
+                <td className="metric-red">{T('rejected')}</td>
+                <td className="metric-cyan">{T('rescheduled')}</td>
+                <td className="metric-rose">{T('reassigned')}</td>
+                <td>{(interviews || []).length}</td>
               </tr>
             </tfoot>
           </table>
         </div>
       </div>
 
-      {/* Pipeline Funnel */}
-      <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
-        <h3 className="font-black text-slate-900 mb-4 flex items-center gap-2">
-          <TrendingUp size={18} className="text-blue-600" /> Current Pipeline Snapshot
-        </h3>
-        <div className="grid grid-cols-3 sm:grid-cols-6 gap-3">
+      <div className="interview-dashboard-panel">
+        <div className="interview-dashboard-panel-head">
+          <TrendingUp size={18} />
+          <div>
+            <h3 className="interview-dashboard-panel-title">Current Pipeline Snapshot</h3>
+            <p className="interview-dashboard-panel-sub">Live count across hiring stages</p>
+          </div>
+        </div>
+        <div className="interview-pipeline-grid">
           {stages.map(stage => (
-            <div key={stage} className={`border rounded-xl p-4 text-center ${stageColors[stage]}`}>
-              <div className="text-3xl font-black">{stageCounts[stage]}</div>
-              <div className="text-[11px] font-bold uppercase tracking-wider opacity-70 mt-1">{stage}</div>
+            <div key={stage} className={`interview-stage-tile ${stageColors[stage]}`}>
+              <div className="interview-stage-value">{stageCounts[stage]}</div>
+              <div className="interview-stage-label">{stage}</div>
             </div>
           ))}
         </div>
@@ -3989,6 +4211,74 @@ const ForwardRemarkModal = ({ target, onClose, onConfirmForward, onConfirmJobOff
                 <CheckCircle size={16} /> Direct Job Offer (Skip Round 2)
               </button>
             )}
+            <button onClick={onClose} className="w-full py-2.5 text-sm text-slate-500 hover:text-slate-800 font-medium transition-colors">Cancel</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// --- ROLLBACK STAGE MODAL ---
+const RollbackStageModal = ({ target, onClose, onConfirmRollback }) => {
+  const [targetStage, setTargetStage] = useState(target.targetStage || target.targets?.[0] || '');
+  const [remark, setRemark] = useState('');
+  const candidateName = target.interview?.candidate_name || 'candidate';
+  const canSubmit = targetStage && remark.trim().length >= 10;
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[9999] p-4">
+      <div className="bg-white border border-slate-200 rounded-2xl w-full max-w-md shadow-2xl overflow-hidden">
+        <div className="p-5 border-b border-slate-100 bg-gradient-to-r from-orange-50 to-amber-50 flex justify-between items-center">
+          <div>
+            <h2 className="text-base font-black text-slate-900 flex items-center gap-2">
+              <ArrowRightLeft size={18} className="text-orange-600" /> Rollback Candidate
+            </h2>
+            <p className="text-xs text-slate-500 mt-0.5">
+              Current stage: <span className="font-bold text-orange-700">{target.currentStage}</span>
+            </p>
+          </div>
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-800 p-1 rounded-lg hover:bg-white/80 transition-colors"><X size={18}/></button>
+        </div>
+        <div className="p-5">
+          <div className="mb-4">
+            <label className="block text-sm font-bold text-slate-700 mb-2">
+              Move {formatInterviewLabel(candidateName)} back to
+            </label>
+            <select
+              value={targetStage}
+              onChange={(e) => setTargetStage(e.target.value)}
+              className="w-full bg-slate-50 border-2 border-slate-200 focus:border-orange-500 rounded-xl px-3 py-2.5 text-sm text-slate-900 outline-none transition-colors"
+            >
+              {target.targets.map(stage => (
+                <option key={stage} value={stage}>{stage}</option>
+              ))}
+            </select>
+          </div>
+          <label className="block text-sm font-bold text-slate-700 mb-2">
+            Rollback reason <span className="text-red-500">*</span>
+            <span className="text-slate-400 font-normal ml-1 text-xs">(mandatory)</span>
+          </label>
+          <textarea
+            value={remark}
+            onChange={e => setRemark(e.target.value)}
+            placeholder="e.g. Candidate needs to repeat the previous stage due to documentation or review changes."
+            className="w-full h-28 bg-slate-50 border-2 border-slate-200 focus:border-orange-500 rounded-xl p-3 text-sm text-slate-900 outline-none resize-none transition-colors placeholder:text-slate-400"
+          />
+          <div className="flex justify-end mt-1 mb-4">
+            <span className={`text-xs ${remark.trim().length < 10 ? 'text-red-400' : 'text-emerald-600'}`}>{remark.trim().length} chars {remark.trim().length < 10 ? '(min 10)' : 'OK'}</span>
+          </div>
+          <div className="flex flex-col gap-2">
+            <button
+              disabled={!canSubmit}
+              onClick={() => {
+                onConfirmRollback(target.candidateId, target.currentStage, targetStage, remark.trim());
+                onClose();
+              }}
+              className={`w-full py-3 rounded-xl text-sm font-black flex items-center justify-center gap-2 transition-all ${canSubmit ? 'bg-orange-600 hover:bg-orange-500 text-white shadow-md shadow-orange-600/25' : 'bg-slate-100 text-slate-400 cursor-not-allowed'}`}
+            >
+              <ArrowRightLeft size={16} /> Rollback to {targetStage}
+            </button>
             <button onClick={onClose} className="w-full py-2.5 text-sm text-slate-500 hover:text-slate-800 font-medium transition-colors">Cancel</button>
           </div>
         </div>

@@ -28,7 +28,7 @@ const DOCUMENT_CATEGORIES = [
   },
 ];
 
-export default function Attachments({ leadId, userId }) {
+export default function Attachments({ leadId, userId, lead }) {
   // State for notifications
   const [notification, setNotification] = useState(null);
   
@@ -116,6 +116,11 @@ export default function Attachments({ leadId, userId }) {
 
   // Base URL for API calls
   const BASE_URL = '/api';
+
+  const isLoginLeadData = (data = leadData) => {
+    const source = data || lead;
+    return !!(source?.original_lead_id || source?.login_created_at || source?.login_created_by);
+  };
 
   // Get userId from multiple possible sources
   const getUserId = () => {
@@ -225,7 +230,7 @@ export default function Attachments({ leadId, userId }) {
     
     try {
       // Determine if this is a login lead
-      const isLoginLead = leadData && (leadData.original_lead_id || leadData.login_created_at);
+      const isLoginLead = isLoginLeadData();
       const apiUrl = isLoginLead
         ? `${BASE_URL}/lead-login/login-leads/${leadId}/documents?user_id=${currentUserId}`
         : `${BASE_URL}/leads/${leadId}/documents?user_id=${currentUserId}`;
@@ -314,28 +319,22 @@ export default function Attachments({ leadId, userId }) {
     if (!leadId) return null;
     
     try {
-      // First try to fetch as login lead, then fall back to regular lead
-      let response = await fetch(`${BASE_URL}/lead-login/login-leads/${leadId}?user_id=${currentUserId}`, {
+      const isLoginLead = isLoginLeadData();
+      const leadUrl = isLoginLead
+        ? `${BASE_URL}/lead-login/login-leads/${leadId}?user_id=${currentUserId}`
+        : `${BASE_URL}/leads/${leadId}?user_id=${currentUserId}`;
+      const response = await fetch(leadUrl, {
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('token')}`
         }
       });
-      
-      // If not found as login lead, try as regular lead
-      if (!response.ok) {
-        response = await fetch(`${BASE_URL}/leads/${leadId}?user_id=${currentUserId}`, {
-          headers: {
-            'Authorization': `Bearer ${localStorage.getItem('token')}`
-          }
-        });
-      }
       
       if (response.ok) {
         const data = await response.json();
         setLeadData(data);
         console.log('📋 Lead data loaded:', {
           id: data._id,
-          isLoginLead: !!(data.original_lead_id || data.login_created_at),
+          isLoginLead: isLoginLeadData(data),
           hasOriginalLeadId: !!data.original_lead_id
         });
         return data;
@@ -861,7 +860,7 @@ export default function Attachments({ leadId, userId }) {
     if (!leadId || !currentUserId) return;
     try {
       const ld = resolvedLeadData !== undefined ? resolvedLeadData : leadData;
-      const isLogin = ld && (ld.original_lead_id || ld.login_created_at);
+      const isLogin = isLoginLeadData(ld);
       const url = isLogin
         ? `${BASE_URL}/lead-login/login-leads/${leadId}/extra-document-fields?user_id=${currentUserId}`
         : `${BASE_URL}/leads/${leadId}/extra-document-fields?user_id=${currentUserId}`;
@@ -880,7 +879,7 @@ export default function Attachments({ leadId, userId }) {
     if (!name) return;
     setAddingExtraDoc(true);
     try {
-      const isLogin = leadData && (leadData.original_lead_id || leadData.login_created_at);
+      const isLogin = isLoginLeadData();
       const url = isLogin
         ? `${BASE_URL}/lead-login/login-leads/${leadId}/extra-document-fields?user_id=${currentUserId}`
         : `${BASE_URL}/leads/${leadId}/extra-document-fields?user_id=${currentUserId}`;
@@ -912,7 +911,7 @@ export default function Attachments({ leadId, userId }) {
 
   const handleDeleteExtraDocField = async (fieldId, fieldName) => {
     try {
-      const isLogin = leadData && (leadData.original_lead_id || leadData.login_created_at);
+      const isLogin = isLoginLeadData();
       const url = isLogin
         ? `${BASE_URL}/lead-login/login-leads/${leadId}/extra-document-fields/${fieldId}?user_id=${currentUserId}`
         : `${BASE_URL}/leads/${leadId}/extra-document-fields/${fieldId}?user_id=${currentUserId}`;
@@ -1197,7 +1196,7 @@ export default function Attachments({ leadId, userId }) {
       });
 
       // Determine if this is a login lead
-      const isLoginLead = leadData && (leadData.original_lead_id || leadData.login_created_at);
+      const isLoginLead = isLoginLeadData();
       const uploadUrl = isLoginLead
         ? `${BASE_URL}/lead-login/login-leads/${leadId}/documents?user_id=${currentUserId}`
         : `${BASE_URL}/leads/${leadId}/documents?user_id=${currentUserId}`;
@@ -1272,7 +1271,7 @@ export default function Attachments({ leadId, userId }) {
 
   // Handle downloading a document
   const handleDownload = (docId) => {
-    const isLoginLead = leadData && (leadData.original_lead_id || leadData.login_created_at);
+    const isLoginLead = isLoginLeadData();
     const downloadUrl = isLoginLead
       ? `${BASE_URL}/lead-login/login-leads/${leadId}/attachments/${docId}/download?user_id=${currentUserId}`
       : `${BASE_URL}/leads/${leadId}/attachments/${docId}/download?user_id=${currentUserId}`;
@@ -1295,7 +1294,7 @@ export default function Attachments({ leadId, userId }) {
     try {
       setIsLoading(true);
 
-      const isLoginLead = leadData && (leadData.original_lead_id || leadData.login_created_at);
+      const isLoginLead = isLoginLeadData();
       const deleteUrl = isLoginLead
         ? `${BASE_URL}/lead-login/login-leads/${leadId}/documents/${docId}?user_id=${currentUserId}`
         : `${BASE_URL}/leads/${leadId}/attachments/${docId}?user_id=${currentUserId}`;
@@ -1670,7 +1669,7 @@ export default function Attachments({ leadId, userId }) {
         } catch (e) { console.error('Co-Applicant form generation failed:', e); }
       }
 
-      const _isLoginForZip = currentLeadData && (currentLeadData.original_lead_id || currentLeadData.login_created_at);
+      const _isLoginForZip = isLoginLeadData(currentLeadData);
 
       // Fetch each file once, add to both "All" folder and its type-specific folder (in UI order)
       for (const docType of seenTypes) {
@@ -1736,7 +1735,7 @@ export default function Attachments({ leadId, userId }) {
   const _downloadPdfsAsZip = async (currentLeadData, folderName, orderedPdfDocs) => {
     try {
       const zip = new JSZip();
-      const _isLoginForZip = currentLeadData && (currentLeadData.original_lead_id || currentLeadData.login_created_at);
+      const _isLoginForZip = isLoginLeadData(currentLeadData);
       let downloadedCount = 0;
       let failedCount = 0;
 
@@ -1983,7 +1982,7 @@ export default function Attachments({ leadId, userId }) {
     if (!trimmed) { setEditingFileId(null); setEditingFileName(''); return; }
     const newFilename = trimmed.toUpperCase() + ext;
     try {
-      const isLoginLead = leadData && (leadData.original_lead_id || leadData.login_created_at);
+      const isLoginLead = isLoginLeadData();
       const renameUrl = isLoginLead
         ? `${BASE_URL}/lead-login/login-leads/${leadId}/documents/${docId}?user_id=${currentUserId}`
         : `${BASE_URL}/leads/${leadId}/documents/${docId}?user_id=${currentUserId}`;
@@ -2459,7 +2458,7 @@ export default function Attachments({ leadId, userId }) {
                                   const ext2 = fname2.split('.').pop();
                                   const isPdf = ext2 === 'pdf';
                                   const isImage = ['jpg','jpeg','png','gif','webp','svg','bmp'].includes(ext2);
-                                  const _isLoginLead = leadData && (leadData.original_lead_id || leadData.login_created_at);
+                                  const _isLoginLead = isLoginLeadData();
                                   const downloadUrl = _isLoginLead
                                     ? `${BASE_URL}/lead-login/login-leads/${leadId}/attachments/${doc._id}/download?user_id=${currentUserId}`
                                     : `${BASE_URL}/leads/${leadId}/attachments/${doc._id}/download?user_id=${currentUserId}`;
@@ -2803,4 +2802,3 @@ export default function Attachments({ leadId, userId }) {
     </div>
   );
 }
-

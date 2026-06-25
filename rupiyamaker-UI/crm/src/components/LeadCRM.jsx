@@ -2792,7 +2792,7 @@ const LeadCRM = memo(function LeadCRM({ user, selectedLoanType: initialLoanType,
                     content: (
                         <div>
                             <LazySection height="350px">
-                                <Attachments leadId={lead._id} userId={localStorage.getItem('userId') || localStorage.getItem('user_id')} />
+                                <Attachments leadId={lead._id} userId={localStorage.getItem('userId') || localStorage.getItem('user_id')} lead={lead} />
                             </LazySection>
                         </div>
                     ),

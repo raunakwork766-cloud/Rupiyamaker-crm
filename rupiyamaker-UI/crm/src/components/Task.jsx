@@ -286,15 +286,15 @@ export default function Task({ onTaskStatusChange, onTaskUpdate } = {}) {
     .task-btn-select:hover { background: #22222e; }
 
     /* Single toolbar row: tabs (left) | search + dropdowns (right) */
-    .task-view-toggle-bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 24px; background: #000; border-bottom: 1px solid #1f1f27; flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
-    .task-view-toggle-bar--menu-open { overflow: visible; }
+    .task-view-toggle-bar { position: relative; z-index: 1200; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 24px; background: #000; border-bottom: 1px solid #1f1f27; flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
+    .task-view-toggle-bar--menu-open { overflow: visible; z-index: 10040; }
     .task-view-toggle-bar::-webkit-scrollbar { display: none; }
     .task-view-toggle-group { display: flex; gap: 0; flex-wrap: nowrap; flex: 0 0 auto; min-width: max-content; }
     .task-view-toggle-btn { padding: 12px 14px; border: none; background: transparent; font-size: 13px; font-weight: 600; color: #c8d0e0; cursor: pointer; border-bottom: 3px solid transparent; transition: color 0.15s, border-color 0.15s; white-space: nowrap; display: inline-flex; align-items: center; gap: 4px; }
     .task-view-toggle-btn:hover { color: #c8d0e0; }
     .task-view-toggle-btn.active { color: #f97316; font-weight: 800; border-bottom-color: #f97316; }
     .task-more-filter { position: relative; flex-shrink: 0; }
-    .task-more-menu { position: absolute; top: calc(100% + 6px); left: 0; min-width: 172px; padding: 6px; background: #111118; border: 1px solid #2a2a3a; border-radius: 4px; box-shadow: 0 14px 34px rgba(0,0,0,0.45); z-index: 60; }
+    .task-more-menu { position: absolute; top: calc(100% + 6px); left: 0; min-width: 172px; padding: 6px; background: #111118; border: 1px solid #2a2a3a; border-radius: 4px; box-shadow: 0 14px 34px rgba(0,0,0,0.45); z-index: 10060; }
     .task-more-menu button { width: 100%; border: none; background: transparent; color: #c8d0e0; padding: 8px 10px; border-radius: 3px; font-size: 13px; font-weight: 600; text-align: left; cursor: pointer; display: flex; align-items: center; justify-content: space-between; gap: 10px; }
     .task-more-menu button:hover, .task-more-menu button.active { background: #1a1a24; color: #f97316; }
     .task-filter-dropdown { padding: 6px 28px 6px 10px; border-radius: 3px; border: 1px solid #2a2a3a; background-color: #1a1a24; color: #c8d0e0; font-size: 13px; font-weight: 500; appearance: none; min-height: 32px; background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="%236b7a99" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>'); background-repeat: no-repeat; background-position: right 8px center; cursor: pointer; outline: none; }

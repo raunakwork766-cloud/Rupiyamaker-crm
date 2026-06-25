@@ -44,6 +44,19 @@ import {
   scrubAttendanceFromLocalStorage,
 } from './utils/authSession'
 
+const toDisplayText = (value, fallback = '') => {
+  if (value === null || value === undefined || value === '') return fallback
+  if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') return String(value)
+  if (typeof value === 'object') {
+    return toDisplayText(
+      value.name ?? value.role_name ?? value.department_name ?? value.designation_name ??
+      value.title ?? value.label ?? value.value ?? value.message,
+      fallback
+    )
+  }
+  return fallback
+}
+
 /**
  * computeStartPath — Priority-based redirect: finds the FIRST page a user
  * has "show" permission for and returns { path, label }.
@@ -1434,6 +1447,12 @@ const GlobalAnnouncementModal = ({ announcementData, onAcknowledge, onDismiss, o
   const annCutCount = (() => { try { const r = localStorage.getItem('popup_cut_counts'); return r ? (JSON.parse(r)[`announcement_${announcementData?.notificationId}`] || 0) : 0; } catch (_) { return 0; } })();
   const canDismissAnn = !annForceAccept && annCutCount < annMaxCut && typeof onDismiss === 'function';
   const annDismissalsLeft = Math.max(0, annMaxCut - annCutCount);
+  const senderName = toDisplayText(announcementData?.senderName, 'Admin');
+  const senderRole = toDisplayText(announcementData?.senderRole, 'ADMIN');
+  const timestamp = toDisplayText(announcementData?.timestamp, 'Just now');
+  const title = toDisplayText(announcementData?.title, 'NOTIFICATION');
+  const message = toDisplayText(announcementData?.message, '');
+  const notificationType = toDisplayText(announcementData?.notificationType, 'general');
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -1855,17 +1874,17 @@ const GlobalAnnouncementModal = ({ announcementData, onAcknowledge, onDismiss, o
 
           <div className="global-announcement-sender-row">
             <div className="global-announcement-sender">
-              {announcementData.senderName} - {announcementData.senderRole || 'ADMIN'}
+              {senderName} - {senderRole}
             </div>
             <div className="global-announcement-timestamp">
-              {announcementData.timestamp || 'Just now'}
+              {timestamp}
             </div>
           </div>
 
           <div className="global-announcement-section">
             <div className="global-announcement-section-content">
               <div className="global-announcement-subject-content">
-                {announcementData.title || "NOTIFICATION"}
+                {title}
               </div>
             </div>
           </div>
@@ -1876,7 +1895,7 @@ const GlobalAnnouncementModal = ({ announcementData, onAcknowledge, onDismiss, o
                 className="global-announcement-details-content" 
                 id="global-announcement-details-content"
               >
-                {announcementData.message}
+                {message}
               </div>
               <div className="global-announcement-details-overlay" id="global-announcement-details-overlay"></div>
               <button 
@@ -1891,7 +1910,7 @@ const GlobalAnnouncementModal = ({ announcementData, onAcknowledge, onDismiss, o
           </div>
 
           {/* Show either Logout or Acknowledge button based on notification type */}
-          {announcementData.notificationType === 'logout' ? (
+          {notificationType === 'logout' ? (
             <button
               id="global-announcement-accept-btn"
               className="global-announcement-accept-btn"
@@ -1977,7 +1996,7 @@ const GlobalAnnouncementModal = ({ announcementData, onAcknowledge, onDismiss, o
           )}
 
           <div className="global-announcement-footer">
-            {announcementData.notificationType === 'logout' 
+            {notificationType === 'logout' 
               ? '⚠️ You must acknowledge this notice and logout to continue.'
               : 'This notification will remain until you acknowledge it'}
           </div>

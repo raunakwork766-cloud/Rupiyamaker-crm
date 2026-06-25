@@ -144,10 +144,20 @@ class LoginLeadsDB:
             raise
     
     async def get_login_lead(self, login_lead_id: str) -> Optional[dict]:
-        """Get a login lead by ID"""
+        """Get a login lead by its login ID, with original lead ID fallback."""
         if not ObjectId.is_valid(login_lead_id):
             return None
-        return await self.collection.find_one({"_id": ObjectId(login_lead_id)})
+        lead = await self.collection.find_one({"_id": ObjectId(login_lead_id)})
+        if lead:
+            return lead
+        return await self.get_login_lead_by_original_id(login_lead_id)
+
+    async def resolve_login_lead_id(self, login_lead_id: str) -> Optional[str]:
+        """Return the canonical login lead _id for either a login ID or original lead ID."""
+        lead = await self.get_login_lead(login_lead_id)
+        if not lead:
+            return None
+        return str(lead["_id"])
     
     async def list_login_leads(self, filter_dict: dict = None, limit: int = 1000) -> List[dict]:
         """List login leads with optional filtering"""
@@ -155,7 +165,7 @@ class LoginLeadsDB:
         cursor = self.collection.find(query).limit(limit).sort("login_created_at", -1)
         return await cursor.to_list(None)
     
-    async def update_login_lead(self, login_lead_id: str, update_data: dict, user_id: str) -> bool:
+    async def update_login_lead(self, login_lead_id: str, update_data: dict, user_id: str, allow_login_date_update: bool = False) -> bool:
         """Update a login lead"""
         if not ObjectId.is_valid(login_lead_id):
             return False
@@ -164,13 +174,19 @@ class LoginLeadsDB:
         current_lead = await self.get_login_lead(login_lead_id)
         if not current_lead:
             return False
+        resolved_login_lead_id = str(current_lead["_id"])
         
         # Add update timestamp
         update_data['updated_at'] = get_ist_now()
         update_data['last_updated_by'] = user_id
         
-        # CRITICAL GUARD: Never allow created_at or login_created_at to be overwritten
-        for protected_field in ('created_at', 'login_created_at', 'login_date'):
+        # CRITICAL GUARD: Never allow immutable timestamps to be overwritten.
+        # login_date can be edited only when the route explicitly authorizes it.
+        protected_fields = ['created_at', 'login_created_at']
+        if not allow_login_date_update:
+            protected_fields.append('login_date')
+
+        for protected_field in protected_fields:
             if protected_field in update_data:
                 original_value = current_lead.get(protected_field)
                 if original_value:
@@ -206,7 +222,7 @@ class LoginLeadsDB:
         
         # Perform update
         result = await self.collection.update_one(
-            {"_id": ObjectId(login_lead_id)},
+            {"_id": ObjectId(resolved_login_lead_id)},
             {"$set": mongodb_update}
         )
         
@@ -215,7 +231,7 @@ class LoginLeadsDB:
         # Log activity if status changed
         if 'status' in update_data and update_data['status'] != current_lead.get('status'):
             await self._log_activity(
-                login_lead_id=login_lead_id,
+                login_lead_id=resolved_login_lead_id,
                 activity_type='status_change',
                 description=f"Status changed from '{current_lead.get('status')}' to '{update_data['status']}'",
                 user_id=user_id,
@@ -227,7 +243,9 @@ class LoginLeadsDB:
                 }
             )
         
-        return result.modified_count > 0
+        # Treat as success if the document was matched, even if no fields changed
+        # (auto-save may resend identical data which yields modified_count=0)
+        return result.matched_count > 0
     
     async def delete_login_lead(self, login_lead_id: str, user_id: str) -> bool:
         """Delete a login lead"""
@@ -253,8 +271,12 @@ class LoginLeadsDB:
     
     async def get_login_lead_activities(self, login_lead_id: str, skip: int = 0, limit: int = 50) -> List[dict]:
         """Get activities for a login lead"""
+        resolved_login_lead_id = await self.resolve_login_lead_id(login_lead_id)
+        if not resolved_login_lead_id:
+            return []
+
         cursor = self.activity_collection.find(
-            {"login_lead_id": login_lead_id}
+            {"login_lead_id": resolved_login_lead_id}
         ).sort("created_at", -1).skip(skip).limit(limit)
         return await cursor.to_list(None)
     
@@ -284,7 +306,10 @@ class LoginLeadsDB:
     
     async def get_login_lead_by_original_id(self, original_lead_id: str) -> Optional[dict]:
         """Get a login lead by its original lead ID"""
-        return await self.collection.find_one({"original_lead_id": original_lead_id})
+        candidates = [original_lead_id]
+        if ObjectId.is_valid(original_lead_id):
+            candidates.append(ObjectId(original_lead_id))
+        return await self.collection.find_one({"original_lead_id": {"$in": candidates}})
     
     async def add_note(self, note_data: dict) -> str:
         """Add a note to a login lead"""
@@ -299,7 +324,8 @@ class LoginLeadsDB:
             return None
             
         # Rename lead_id to login_lead_id for consistency
-        note_data["login_lead_id"] = note_data.pop("lead_id")
+        note_data["login_lead_id"] = str(lead["_id"])
+        note_data.pop("lead_id")
         
         # Add timestamps
         note_data["created_at"] = get_ist_now()
@@ -309,8 +335,9 @@ class LoginLeadsDB:
         result = await self.notes_collection.insert_one(note_data)
         
         # Record activity
+        resolved_lead_id = str(lead["_id"])
         activity_data = {
-            "login_lead_id": lead_id,
+            "login_lead_id": resolved_lead_id,
             "user_id": note_data["created_by"],
             "activity_type": "note",
             "description": "Note added",
@@ -334,11 +361,12 @@ class LoginLeadsDB:
         
     async def get_lead_notes(self, login_lead_id: str, skip: int = 0, limit: int = 20) -> List[dict]:
         """Get notes for a login lead"""
-        if not ObjectId.is_valid(login_lead_id):
+        resolved_login_lead_id = await self.resolve_login_lead_id(login_lead_id)
+        if not resolved_login_lead_id:
             return []
             
         cursor = self.notes_collection.find(
-            {"login_lead_id": login_lead_id}
+            {"login_lead_id": resolved_login_lead_id}
         ).sort("created_at", -1).skip(skip).limit(limit)
         return await cursor.to_list(None)
     
@@ -381,9 +409,10 @@ class LoginLeadsDB:
         """
         import os
         from pathlib import Path
+        resolved_login_lead_id = await self.resolve_login_lead_id(login_lead_id) or login_lead_id
         
         # Create path for login lead's media files
-        media_dir = Path(os.getcwd()) / "media" / "login_leads" / str(login_lead_id)
+        media_dir = Path(os.getcwd()) / "media" / "login_leads" / str(resolved_login_lead_id)
         
         # Ensure directory exists
         os.makedirs(media_dir, exist_ok=True)
@@ -392,10 +421,11 @@ class LoginLeadsDB:
     
     async def get_lead_documents(self, login_lead_id: str) -> List[dict]:
         """Get all documents for a login lead"""
-        if not ObjectId.is_valid(login_lead_id):
+        resolved_login_lead_id = await self.resolve_login_lead_id(login_lead_id)
+        if not resolved_login_lead_id:
             return []
         
-        cursor = self.documents_collection.find({"login_lead_id": login_lead_id})
+        cursor = self.documents_collection.find({"login_lead_id": resolved_login_lead_id})
         documents = await cursor.to_list(None)
         return documents
 

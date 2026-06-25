@@ -12,6 +12,19 @@ import { getLocationCrossDevice, isInAppBrowser, getAndroidChromeIntentUrl } fro
 const API_BASE_URL = '/api'; // Always use proxy
 const _BUILD = 'v20260220-2'; // cache bust
 
+const toDisplayText = (value, fallback = '') => {
+  if (value === null || value === undefined || value === '') return fallback;
+  if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') return String(value);
+  if (typeof value === 'object') {
+    return toDisplayText(
+      value.name ?? value.role_name ?? value.department_name ?? value.designation_name ??
+      value.title ?? value.label ?? value.value,
+      fallback
+    );
+  }
+  return fallback;
+};
+
 // Convert 24h HH:MM:SS to 12h hh:mm AM/PM
 const formatTime12h = (timeStr) => {
   if (!timeStr || timeStr === '—') return '—'
@@ -1634,7 +1647,7 @@ export default function TopNavbar({
                 {userName}
               </p>
               <p className="text-[10px] text-white/40 font-medium uppercase tracking-wider mt-0.5">
-                {user?.designation || 'Staff'}
+                {toDisplayText(user?.designation || user?.role, 'Staff')}
               </p>
             </div>
             
@@ -1740,10 +1753,10 @@ export default function TopNavbar({
                       })()}
                     </p>
                     <p className="font-semibold truncate">
-                      <span className="font-medium">Designation</span> - {currentUserData?.designation || user?.designation || user?.role || 'Not Available'}
+                      <span className="font-medium">Designation</span> - {toDisplayText(currentUserData?.designation || user?.designation || user?.role, 'Not Available')}
                     </p>
                     <p className="font-semibold truncate">
-                      <span className="font-medium">Department</span> - {currentUserData?.department || user?.department?.name || user?.department || 'Not Available'}
+                      <span className="font-medium">Department</span> - {toDisplayText(currentUserData?.department || user?.department, 'Not Available')}
                     </p>
                   </div>
                 </div>

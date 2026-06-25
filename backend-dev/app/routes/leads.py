@@ -2336,6 +2336,22 @@ async def update_lead(
     
     # Final safety check: ensure we have something to update after all processing
     final_update_data = {k: v for k, v in update_dict.items() if v is not None}
+
+    # Super admin: handle override_created_at on existing leads
+    if "override_created_at" in final_update_data:
+        from app.utils.permissions import PermissionManager as PM_created_at
+        requester_is_super_admin_ca = await PM_created_at.is_admin(user_id, users_db, roles_db)
+        if requester_is_super_admin_ca:
+            try:
+                from dateutil import parser as dt_parser
+                parsed_dt = dt_parser.parse(final_update_data["override_created_at"])
+                final_update_data["created_at"] = parsed_dt
+                final_update_data["_force_override_created_at"] = True
+                logger.info(f"✅ Super admin override_created_at approved: {parsed_dt}")
+            except Exception as e:
+                logger.warning(f"⚠️ Failed to parse override_created_at: {e}")
+        del final_update_data["override_created_at"]
+
     if not final_update_data:
         logger.warning(f"⚠️ After processing, no data to update for lead {lead_id}, returning success")
         return {"message": "No changes to update"}

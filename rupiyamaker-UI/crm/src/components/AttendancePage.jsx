@@ -1621,12 +1621,12 @@ const DeductionDetailModal = ({ isOpen, onClose, data, onRevoke }) => {
                     <Row label="Fixed Monthly Salary" value={`₹${monthlySalary.toLocaleString('en-IN')}`} />
                     <Row label="Days in Month" value={daysInMonth} />
                     <Row label="Per Day Rate" value={`₹${(perDaySalary || monthlySalary / daysInMonth).toFixed(2)}`} />
-                    <Row label="Days Present (earned)" value={stats.presentScore ?? stats.finalScore} valueColor="#34d399" />
+                    <Row label="Days Present (earned)" value={formatAttendanceDays(stats.presentScore ?? stats.finalScore)} valueColor="#34d399" />
                     {(stats.plDays || 0) > 0 && (
-                      <Row label={`PL Benefit (+${stats.plDays} day${stats.plDays !== 1 ? 's' : ''})`} value={`+${stats.plDays} day${stats.plDays !== 1 ? 's' : ''}`} valueColor="#a78bfa" />
+                      <Row label={`PL Benefit (+${formatAttendanceDays(stats.plDays)} day${stats.plDays !== 1 ? 's' : ''})`} value={`+${formatAttendanceDays(stats.plDays)} day${stats.plDays !== 1 ? 's' : ''}`} valueColor="#a78bfa" />
                     )}
                     <Row label="Salary Earned" value={`₹${Math.round((perDaySalary || monthlySalary / daysInMonth) * Math.min(stats.finalScore, stats.effectiveDays || daysInMonth)).toLocaleString('en-IN')}`} valueColor="#34d399" />
-                    <Row label="Absent / Absconding days" value={`${(stats.absentDays || 0) + (stats.absconding || 0)} day(s)`} valueColor="#f87171" />
+                    <Row label="Absent / Absconding days" value={`${formatAttendanceDays((stats.absentDays || 0) + (stats.absconding || 0))} day(s)`} valueColor="#f87171" />
                     <Row label="Attendance Deduction" value={`− ₹${Math.round(attendanceDeduction).toLocaleString('en-IN')}`} valueColor="#fb923c" bold borderTop />
                   </div>
                 </SectionCard>
@@ -1941,32 +1941,32 @@ const SalaryDetailModal = ({ isOpen, onClose, salaryData }) => {
               </tr>
               <tr>
                 <td>&nbsp;&nbsp;Present Days (Score)</td>
-                <td style="text-align: right;">${stats.presentScore}</td>
+                <td style="text-align: right;">${formatAttendanceDays(stats.presentScore)}</td>
                 <td style="text-align: right;">₹${perDaySalary.toFixed(2)}</td>
                 <td style="text-align: right;">₹${(stats.presentScore * perDaySalary).toFixed(2)}</td>
               </tr>
               <tr>
                 <td>&nbsp;&nbsp;Paid Leave (PL)</td>
-                <td style="text-align: right;">${stats.plDays}</td>
+                <td style="text-align: right;">${formatAttendanceDays(stats.plDays)}</td>
                 <td style="text-align: right;">₹${perDaySalary.toFixed(2)}</td>
                 <td style="text-align: right;">₹${(stats.plDays * perDaySalary).toFixed(2)}</td>
               </tr>
               <tr>
                 <td>&nbsp;&nbsp;Earned Leave (EL)</td>
-                <td style="text-align: right;">${stats.elDays}</td>
+                <td style="text-align: right;">${formatAttendanceDays(stats.elDays)}</td>
                 <td style="text-align: right;">₹${perDaySalary.toFixed(2)}</td>
                 <td style="text-align: right;">₹${(stats.elDays * perDaySalary).toFixed(2)}</td>
               </tr>
               <tr>
                 <td><strong>Total Working Days (Final Score)</strong></td>
-                <td style="text-align: right;"><strong>${stats.finalScore}</strong></td>
+                <td style="text-align: right;"><strong>${formatAttendanceDays(stats.finalScore)}</strong></td>
                 <td style="text-align: right;">-</td>
                 <td style="text-align: right;">-</td>
               </tr>
               ${stats.absconding > 0 ? `
               <tr style="background: #ffebee;">
                 <td>&nbsp;&nbsp;Absconding Days (Penalty)</td>
-                <td style="text-align: right;">${stats.absconding}</td>
+                <td style="text-align: right;">${formatAttendanceDays(stats.absconding)}</td>
                 <td style="text-align: right;">- ₹${perDaySalary.toFixed(2)}</td>
                 <td style="text-align: right;" style="color: #dc2626;">- ₹${(stats.absconding * perDaySalary).toFixed(2)}</td>
               </tr>
@@ -2071,25 +2071,25 @@ const SalaryDetailModal = ({ isOpen, onClose, salaryData }) => {
                 <div className="space-y-2">
                   <div className="flex justify-between items-center">
                     <span className="text-gray-300 text-sm">Present Score</span>
-                    <span className="text-green-400 font-semibold">{stats.presentScore} days</span>
+                    <span className="text-green-400 font-semibold">{formatAttendanceDays(stats.presentScore)} days</span>
                   </div>
                   <div className="flex justify-between items-center">
                     <span className="text-gray-300 text-sm">Paid Leave (PL)</span>
-                    <span className="text-purple-400 font-semibold">{stats.plDays} days</span>
+                    <span className="text-purple-400 font-semibold">{formatAttendanceDays(stats.plDays)} days</span>
                   </div>
                   <div className="flex justify-between items-center">
                     <span className="text-gray-300 text-sm">Earned Leave (EL)</span>
-                    <span className="text-blue-400 font-semibold">{stats.elDays} days</span>
+                    <span className="text-blue-400 font-semibold">{formatAttendanceDays(stats.elDays)} days</span>
                   </div>
                   {stats.absconding > 0 && (
                     <div className="flex justify-between items-center text-red-400">
                       <span className="text-sm">Absconding Days</span>
-                      <span className="font-semibold">{stats.absconding} days</span>
+                      <span className="font-semibold">{formatAttendanceDays(stats.absconding)} days</span>
                     </div>
                   )}
                   <div className="flex justify-between items-center pt-2 border-t border-gray-600">
                     <span className="text-orange-300 font-semibold">Final Score</span>
-                    <span className="text-orange-400 font-bold">{stats.finalScore} days</span>
+                    <span className="text-orange-400 font-bold">{formatAttendanceDays(stats.finalScore)} days</span>
                   </div>
                 </div>
               </div>
@@ -2098,7 +2098,7 @@ const SalaryDetailModal = ({ isOpen, onClose, salaryData }) => {
                 <div className="flex justify-between items-center pb-2 border-b border-gray-600">
                   <div>
                     <div className="text-sm text-green-300">Attendance Pay</div>
-                    <div className="text-xs text-gray-400 mt-1">{stats.finalScore} days × ₹{perDaySalary.toFixed(2)}</div>
+                    <div className="text-xs text-gray-400 mt-1">{formatAttendanceDays(stats.finalScore)} days × ₹{perDaySalary.toFixed(2)}</div>
                   </div>
                   <span className="text-green-400 font-semibold">₹{calculatedSalary.toLocaleString('en-IN')}</span>
                 </div>
@@ -2916,38 +2916,102 @@ const getDayNumericValue = (status) => {
   }
 }
 
+const formatAttendanceDays = (value) => {
+  const n = Number(value)
+  if (!Number.isFinite(n)) return '0'
+  return Number.isInteger(n) ? String(n) : n.toFixed(2).replace(/\.?0+$/, '')
+}
+
+const toDisplayText = (value, fallback = '') => {
+  if (value === null || value === undefined || value === '') return fallback
+  if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+    return String(value)
+  }
+  if (typeof value === 'object') {
+    return toDisplayText(
+      value.name ?? value.role_name ?? value.department_name ?? value.designation_name ??
+      value.title ?? value.label ?? value.value,
+      fallback
+    )
+  }
+  return fallback
+}
+
+const isEarnedLeaveType = (leaveType) => {
+  const t = String(leaveType || '').toLowerCase()
+  return t.includes('earned') || t === 'el' || t.includes('earned_leave')
+}
+
+const getEffectiveAttendanceWindow = (selectedYear, selectedMonth, daysInMonth, joiningRaw, inactiveRaw) => {
+  const today = getISTToday()
+  let startDay = 1
+  let endDay = daysInMonth
+
+  if (selectedYear > today.year || (selectedYear === today.year && selectedMonth > today.month)) {
+    endDay = 0
+  } else if (selectedYear === today.year && selectedMonth === today.month) {
+    endDay = Math.min(daysInMonth, today.day)
+  }
+
+  if (joiningRaw) {
+    const jStr = typeof joiningRaw === 'string' ? joiningRaw.substring(0, 10) : ''
+    const jYear  = parseInt(jStr.substring(0, 4), 10)
+    const jMonth = parseInt(jStr.substring(5, 7), 10)
+    const jDay   = parseInt(jStr.substring(8, 10), 10)
+    if (jYear === selectedYear && jMonth === selectedMonth && jDay > 1) {
+      startDay = Math.max(startDay, jDay)
+    }
+  }
+
+  if (inactiveRaw) {
+    const iStr = typeof inactiveRaw === 'string' ? inactiveRaw.substring(0, 10) : ''
+    const iYear  = parseInt(iStr.substring(0, 4), 10)
+    const iMonth = parseInt(iStr.substring(5, 7), 10)
+    const iDay   = parseInt(iStr.substring(8, 10), 10)
+    if (iYear === selectedYear && iMonth === selectedMonth && iDay >= 1) {
+      endDay = Math.min(endDay, iDay)
+    }
+  }
+
+  return {
+    startDay,
+    endDay,
+    effectiveDays: Math.max(0, endDay - startDay + 1)
+  }
+}
+
 const calculateMonthlyStats = (record, selectedYear, selectedMonth, daysInMonth, holidays) => {
   let presentScore = 0
   let actualPresent = 0  // Only positive-value days (P, L, SP, HD, WK) — for display
-  let lvDaysTaken = 0  // Leave days taken (LV status) — counted for reference only
+  let plLeaveDaysTaken = 0  // Paid leave days taken (LV status)
+  let elLeaveDaysTaken = 0  // Earned leave days taken (LV status)
   let absconding = 0
   let absentDays = 0   // Pure absent days (A status)
   let sundayZeroDays = 0 // Sunday Zero days (S0 status)
   let holidaysCount = 0
   let halfDaysCount = 0
 
-  // ── Joining date: days before joining are blacked out (null) and don't count ──
-  const joiningRaw = record.joining_date || record.date_of_joining || null
-  let joiningDay = 0 // 0 = full month (no mid-month join)
-  if (joiningRaw) {
-    const jStr = typeof joiningRaw === 'string' ? joiningRaw.substring(0, 10) : ''
-    const jYear  = parseInt(jStr.substring(0, 4), 10)
-    const jMonth = parseInt(jStr.substring(5, 7), 10) // 1-based
-    const jDay   = parseInt(jStr.substring(8, 10), 10)
-    if (jYear === selectedYear && jMonth === selectedMonth && jDay > 1) {
-      joiningDay = jDay // employee joined mid-month this month
-    }
-  }
-  // effectiveDays = days employee was eligible in this month
-  const effectiveDays = joiningDay > 0 ? (daysInMonth - joiningDay + 1) : daysInMonth
+  const { startDay, endDay, effectiveDays } = getEffectiveAttendanceWindow(
+    selectedYear,
+    selectedMonth,
+    daysInMonth,
+    record.joining_date || record.date_of_joining || null,
+    record.inactive_from_date || null
+  )
 
   for (let day = 1; day <= daysInMonth; day++) {
+    if (day < startDay || day > endDay) continue
     const status = record[`day${day}`]
     const val = getDayNumericValue(status)
+    const leaveUnits = Number(record[`day${day}_leaveUnits`] || 0)
     if (status === 'H') {
       holidaysCount++
     } else if (status === 'LV') {
-      lvDaysTaken++
+      if (isEarnedLeaveType(record[`day${day}_leaveType`])) {
+        elLeaveDaysTaken += leaveUnits || 1
+      } else {
+        plLeaveDaysTaken += leaveUnits || 1
+      }
     } else if (status === 'AB') {
       // Absconding: count it separately — penalty applied below after loop
       absconding++
@@ -2960,25 +3024,20 @@ const calculateMonthlyStats = (record, selectedYear, selectedMonth, daysInMonth,
       halfDaysCount++
       presentScore += 0.5
       actualPresent += 0.5
+      if (leaveUnits > 0) {
+        if (isEarnedLeaveType(record[`day${day}_leaveType`])) {
+          elLeaveDaysTaken += leaveUnits
+        } else {
+          plLeaveDaysTaken += leaveUnits
+        }
+      }
     } else if (val !== null) {
       presentScore += val
       if (val > 0) actualPresent += val  // count only actual present days
     }
   }
 
-  // ── Final Score Calculation (3 steps as per business logic) ──
-  // Step 1: Count present days → done above (actualPresent)
-  // Step 2: Absconding penalty and normal unpaid days deducted from month total days
-  //         adjustedBase = effectiveDays - (absconding × 2) - absentDays - sundayZeroDays
-  // Step 3: presentScore = min(actualPresent, adjustedBase)
-  //         (present days cannot exceed the adjusted base)
-  // Step 4: PL added LAST — after all deductions, not capped by daysInMonth
-  const abscondingPenalty = absconding * 2
-  const normalUnpaid = absentDays + sundayZeroDays
-  const adjustedBase = Math.max(0, effectiveDays - abscondingPenalty - normalUnpaid)
-
-  // Present days capped at adjustedBase (can't earn more than what's available after penalty)
-  presentScore = Math.min(actualPresent, adjustedBase)
+  presentScore = actualPresent
 
   // NOTE: actualPresent shows raw physical present days in the "Present" column (untouched by absconding).
 
@@ -3001,21 +3060,26 @@ const calculateMonthlyStats = (record, selectedYear, selectedMonth, daysInMonth,
     { paidLeavesTotal: record.paidLeavesTotal, paidLeavesRemaining: record.paidLeavesRemaining,
       plAllotted, plRemaining, plDays });
 
-  const elDays = 0
+  const elAllotted  = record.earnedLeavesTotal ?? record.elMonthly ?? 0
+  const elRemaining = record.earnedLeavesRemaining ?? null
+  const elDays = elRemaining != null ? elRemaining : elAllotted
   const graceMonthly = record.graceMonthlyLimit != null ? record.graceMonthlyLimit : 0
   const graceRemainingMonthly = record.graceRemaining != null
     ? Math.min(record.graceRemaining, graceMonthly)
     : graceMonthly
 
-  // Final = presentScore + PL added LAST, but total cannot exceed adjustedBase.
-  // PL score contribution = actual LV days taken in calendar (lvDaysTaken), capped by plDays.
-  // NOTE: plDays represents the employee's current remaining PL balance. Capping it by plDays
-  //       ensures carried forward leave balance is fully respected, but they aren't paid beyond balance.
-  const plScore = Math.min(lvDaysTaken, plDays)  // PL days to add: actual taken, capped by available balance
-  const plApplicable = Math.min(plScore, Math.max(0, adjustedBase - Math.max(0, presentScore)))
-  const finalScore = Math.max(0, presentScore) + plApplicable
+  const plScore = Math.min(plLeaveDaysTaken, plDays)
+  const elScore = Math.min(elLeaveDaysTaken, elDays)
+  // Final = earned days (present + eligible leave) capped to eligible days,
+  // then one extra day penalty for every absconding day. The absconding day
+  // itself already contributes 0 in presentScore, so subtract only the extra penalty.
+  const earnedBeforeAbscondingPenalty = Math.min(
+    effectiveDays,
+    Math.max(0, presentScore) + plScore + elScore
+  )
+  const finalScore = Math.max(0, earnedBeforeAbscondingPenalty - absconding)
 
-  const workingDays = daysInMonth - holidaysCount
+  const workingDays = effectiveDays - holidaysCount
   const attendancePercentage = workingDays > 0 ? ((Math.max(0, presentScore) / workingDays) * 100).toFixed(1) : "0"
 
   return {
@@ -3035,7 +3099,7 @@ const calculateMonthlyStats = (record, selectedYear, selectedMonth, daysInMonth,
     // Legacy compat
     present: presentScore,
     late: 0,
-    leave: lvDaysTaken,
+    leave: plLeaveDaysTaken + elLeaveDaysTaken,
     halfDay: halfDaysCount,
   }
 }
@@ -3432,7 +3496,9 @@ export default function MonthlyAttendanceTable() {
 
       const hrmsName = [hrmsEmp?.first_name, hrmsEmp?.last_name].filter(Boolean).join(' ').trim()
       const resolvedName = hrmsName || employee.employee_name || hrmsEmp?.name || hrmsEmp?.username || String(empId)
-      const resolvedDesignation = employee.designation || hrmsEmp?.designation || ''
+      const resolvedDepartment = toDisplayText(employee.department_name || employee.department || hrmsEmp?.department_name || hrmsEmp?.department, "Unknown Department")
+      const resolvedRole = toDisplayText(employee.role_name || employee.role || hrmsEmp?.role_name || hrmsEmp?.role || '', '')
+      const resolvedDesignation = toDisplayText(employee.designation || hrmsEmp?.designation || '', '')
       const resolvedJoiningDate = employee.joining_date || hrmsEmp?.joining_date || hrmsEmp?.date_of_joining || ''
       // Inactive-from date: set by backend when employee is deactivated
       const resolvedInactiveFrom = hrmsEmp?.inactive_from_date || employee.inactive_from_date || null
@@ -3445,8 +3511,8 @@ export default function MonthlyAttendanceTable() {
         mongoId: employee.user_mongo_id || employee.employee_id, // MongoDB _id for history API calls
         name: resolvedName,
         employeeId: employee.employee_id || employee.employee_code || employee.employee_number || employee.empId || 'N/A',
-        department: employee.department_name || "Unknown Department",
-        role: employee.role_name || "",
+        department: resolvedDepartment,
+        role: resolvedRole,
         designation: resolvedDesignation,
         joining_date: resolvedJoiningDate,
         inactive_from_date: resolvedInactiveFrom,
@@ -3460,6 +3526,9 @@ export default function MonthlyAttendanceTable() {
         // Map each day's status to the expected format
         employee.days.forEach(day => {
           const dayKey = `day${day.day}`;
+          employeeRecord[`${dayKey}_leaveType`] = day.leave_type || null;
+          employeeRecord[`${dayKey}_leaveTypeDisplay`] = day.leave_type_display || null;
+          employeeRecord[`${dayKey}_leaveUnits`] = day.leave_units || 0;
           
           // Handle the status mapping properly
           if (day.status !== null && day.status !== undefined) {
@@ -3516,9 +3585,9 @@ export default function MonthlyAttendanceTable() {
           mongoId: emp._id || empId,
           name: empName,
           employeeId: emp.employee_id || emp.username || 'N/A',
-          department: emp.department_name || "Unknown Department",
-          role: emp.designation || "",
-          designation: emp.designation || "",
+          department: toDisplayText(emp.department_name || emp.department, "Unknown Department"),
+          role: toDisplayText(emp.role_name || emp.role || emp.designation, ""),
+          designation: toDisplayText(emp.designation || emp.position, ""),
           joining_date: emp.joining_date || emp.date_of_joining || "",
           inactive_from_date: emp.inactive_from_date || null,
           photo: emp.profile_photo,
@@ -3582,15 +3651,13 @@ export default function MonthlyAttendanceTable() {
             console.log('✅ Active employees:', Array.from(activeEmployeeIds).length / 3);
             console.log('📋 Status map entries:', Object.keys(employeeStatusMap).length / 2);
             
-            // Build salary map and target maps from same employee data (no extra API call)
-            // settled_target from employee document is used as the initial fallback.
-            // Per-month config (if saved) will override this below.
+            // Build salary map and target maps from same employee data (no extra API call).
+            // settled_target is month-specific, so do not fall back to the live employee document.
             employeesResponse.data.forEach(emp => {
               const eid = emp.employee_id || emp._id;
               const mongoId = emp._id || emp.employee_id;
               const sal = parseFloat(emp.salary) || 0;
               const monthlyTarget = parseFloat(emp.monthly_target) || 0;
-              const settledTarget = parseFloat(emp.settled_target) || 0;
               if (eid && sal > 0) {
                 salaryMap[eid] = sal;
                 salaryMap[String(eid)] = sal;
@@ -3598,20 +3665,18 @@ export default function MonthlyAttendanceTable() {
               if (eid) {
                 monthlyTargetMap[eid] = monthlyTarget;
                 monthlyTargetMap[String(eid)] = monthlyTarget;
-                // Use employee document value as fallback — per-month config will override below
-                settledTargetMap[eid] = settledTarget;
-                settledTargetMap[String(eid)] = settledTarget;
+                settledTargetMap[eid] = 0;
+                settledTargetMap[String(eid)] = 0;
               }
               if (mongoId && mongoId !== eid) {
                 if (sal > 0) { salaryMap[String(mongoId)] = sal; }
                 monthlyTargetMap[String(mongoId)] = monthlyTarget;
-                settledTargetMap[String(mongoId)] = settledTarget;
+                settledTargetMap[String(mongoId)] = 0;
               }
             });
 
-            // ── Fetch per-month settled_target overrides ──────────────────────
-            // settled_target is per-month (entered in Attendance page each month)
-            // Override the live employee value with the month-specific one if available
+            // ── Fetch per-month salary/target config ──────────────────────────
+            // salary/monthly_target may inherit from prior month; settled_target is exact-month only.
             try {
               const mongoIds = employeesResponse.data.map(e => String(e._id)).filter(Boolean);
               if (mongoIds.length > 0) {
@@ -3628,46 +3693,8 @@ export default function MonthlyAttendanceTable() {
                   }
                 )
                 const cfData = cfResp.data?.data || {}
-                const configuredIds = new Set(Object.keys(cfData))
 
-                // ── Auto-migrate: if per-month config doesn't exist for this month,
-                // seed it from the employee document's current settled_target.
-                // This handles the transition from old (single-value) to new (per-month) system.
-                const toMigrate = employeesResponse.data
-                  .filter(emp => {
-                    const mid = String(emp._id);
-                    const hasConfig = configuredIds.has(mid);
-                    const hasSettledTarget = parseFloat(emp.settled_target) > 0;
-                    return !hasConfig && hasSettledTarget;
-                  })
-                  .map(emp => ({
-                    employee_id: String(emp._id),
-                    settled_target: parseFloat(emp.settled_target),
-                    salary: parseFloat(emp.salary) || undefined,
-                    monthly_target: parseFloat(emp.monthly_target) || undefined,
-                  }));
-
-                if (toMigrate.length > 0) {
-                  // Fire-and-forget migration — don't await to avoid blocking
-                  axios.post(
-                    `${BASE_URL}/employee-monthly-config/migrate-from-employee-docs`,
-                    { year: selectedYear, month: selectedMonth - 1, employees: toMigrate },
-                    { params: { user_id: user.user_id }, headers: getAuthHeaders() }
-                  ).catch(() => {});
-                  // Use employee document values immediately (they'll be in DB next load)
-                  toMigrate.forEach(emp => {
-                    const mongoId = emp.employee_id;
-                    settledTargetMap[mongoId] = emp.settled_target;
-                    const hrmsEmp = employeesResponse.data.find(e => String(e._id) === mongoId);
-                    if (hrmsEmp) {
-                      const eid = hrmsEmp.employee_id || hrmsEmp._id;
-                      settledTargetMap[eid] = emp.settled_target;
-                      settledTargetMap[String(eid)] = emp.settled_target;
-                    }
-                  });
-                }
-
-                // Override settledTarget (and salary/monthlyTarget if set) with per-month values
+                // Override values from per-month config.
                 Object.entries(cfData).forEach(([mongoId, cfg]) => {
                   if (cfg.settled_target != null) {
                     settledTargetMap[mongoId] = cfg.settled_target;
@@ -3691,7 +3718,7 @@ export default function MonthlyAttendanceTable() {
                 });
               }
             } catch (cfErr) {
-              console.warn('Could not fetch per-month config, using live employee values:', cfErr);
+              console.warn('Could not fetch per-month config, using live salary/target values:', cfErr);
             }
           }
         } catch (empError) {
@@ -4833,16 +4860,7 @@ export default function MonthlyAttendanceTable() {
                 const monthlySalary = record.salary || 0
                 const perDaySalary = monthlySalary / daysInMonth
 
-                // Effective days: if employee joined mid-month, count only from joining day
-                let effectiveDays = daysInMonth
-                if (joiningDateKey) {
-                  const jYear  = parseInt(joiningDateKey.substring(0, 4), 10)
-                  const jMonth = parseInt(joiningDateKey.substring(5, 7), 10) // 1-based
-                  const jDay   = parseInt(joiningDateKey.substring(8, 10), 10)
-                  if (jYear === selectedYear && jMonth === selectedMonth) {
-                    effectiveDays = daysInMonth - jDay + 1
-                  }
-                }
+                const effectiveDays = Number.isFinite(Number(stats.effectiveDays)) ? stats.effectiveDays : daysInMonth
                 const effectiveSalary = Math.round(perDaySalary * effectiveDays)
                 // calculatedSalary = salary earned = finalScore × perDay
                 // finalScore already includes PL days (presentScore + plDays)
@@ -4934,11 +4952,11 @@ export default function MonthlyAttendanceTable() {
                         {editCounts[record.id] || 0}
                       </span>
                     </td>
-                    <td className="px-2 py-1 text-center text-sm" style={{border:'1px solid #1f1f27',color:'#ffffff',fontWeight:700}}>{Math.max(0, stats.actualPresent)}</td>
+                    <td className="px-2 py-1 text-center text-sm" style={{border:'1px solid #1f1f27',color:'#ffffff',fontWeight:700}}>{formatAttendanceDays(Math.max(0, stats.actualPresent))}</td>
                     <td className="px-2 py-1 text-center text-sm" style={{border:'1px solid #1f1f27',color:'#ffffff',fontWeight:700}}>{stats.graceRemaining}/{stats.graceTotal}</td>
-                    <td className="px-2 py-1 text-center text-sm" style={{border:'1px solid #1f1f27',color:'#ffffff',fontWeight:700}}>{stats.plDays}</td>
-                    <td className="px-2 py-1 text-center text-sm" style={{border:'1px solid #1f1f27',color:'#ffffff',fontWeight:700}}>{stats.elDays}</td>
-                    <td className="px-2 py-1 text-center text-sm" style={{border:'1px solid #1f1f27',color:'#ffffff',fontWeight:700}}>{stats.finalScore}</td>
+                    <td className="px-2 py-1 text-center text-sm" style={{border:'1px solid #1f1f27',color:'#ffffff',fontWeight:700}}>{formatAttendanceDays(stats.plDays)}</td>
+                    <td className="px-2 py-1 text-center text-sm" style={{border:'1px solid #1f1f27',color:'#ffffff',fontWeight:700}}>{formatAttendanceDays(stats.elDays)}</td>
+                    <td className="px-2 py-1 text-center text-sm" style={{border:'1px solid #1f1f27',color:'#ffffff',fontWeight:700}}>{formatAttendanceDays(stats.finalScore)}</td>
                     {/* Salary column (moved before target columns) */}
                     {canViewSalary && (
                       <td

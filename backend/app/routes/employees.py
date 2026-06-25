@@ -1,6 +1,6 @@
 from fastapi import APIRouter, HTTPException, Depends, status, Query, UploadFile, File, Form
 from fastapi.responses import JSONResponse
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Tuple
 from bson import ObjectId
 import json
 import os
@@ -11,6 +11,7 @@ from app.database.Users import UsersDB
 from app.database.Roles import RolesDB
 from app.database.Departments import DepartmentsDB
 from app.database.EmployeeActivity import EmployeeActivityDB
+from app.database.EmployeeMonthlyConfig import EmployeeMonthlyConfigDB
 from app.schemas.user_schemas import (
     UserBase, UserCreate, UserUpdate, UserInDB, UserLogin,
     EmployeeCreate, EmployeeUpdate, EmployeeInDB, ComprehensiveEmployeeInDB,
@@ -42,6 +43,91 @@ async def get_departments_db():
 async def get_employee_activity_db():
     db_instances = get_database_instances()
     return db_instances["employee_activity"]
+
+def _as_optional_float(value: Any) -> Optional[float]:
+    if value is None or value == "":
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+def _previous_month(year: int, month: int) -> Tuple[int, int]:
+    if month == 0:
+        return year - 1, 11
+    return year, month - 1
+
+def _history_seed_month(employee: Dict[str, Any], fallback_year: int, fallback_month: int) -> Tuple[int, int]:
+    raw = employee.get("joining_date") or employee.get("date_of_joining")
+    if raw:
+        try:
+            if hasattr(raw, "year") and hasattr(raw, "month"):
+                return int(raw.year), int(raw.month) - 1
+            raw_text = str(raw)[:10]
+            parsed = datetime.strptime(raw_text, "%Y-%m-%d")
+            return parsed.year, parsed.month - 1
+        except (TypeError, ValueError):
+            pass
+    return fallback_year, fallback_month
+
+async def _snapshot_salary_target_history(employee_id: str, original_employee: Dict[str, Any], update_data: Dict[str, Any]) -> None:
+    tracked_fields = ("salary", "monthly_target")
+    changed = {}
+    for field in tracked_fields:
+        if field not in update_data:
+            continue
+        old_value = _as_optional_float(original_employee.get(field))
+        new_value = _as_optional_float(update_data.get(field))
+        if new_value is not None and new_value != old_value:
+            changed[field] = new_value
+
+    if not changed:
+        return
+
+    try:
+        db_instances = get_database_instances()
+        async_db = db_instances.get("db")
+        if async_db is None:
+            return
+
+        config_db = EmployeeMonthlyConfigDB(async_db)
+        now = get_ist_now()
+        current_year = now.year
+        current_month = now.month - 1
+        prev_year, prev_month = _previous_month(current_year, current_month)
+        seed_year, seed_month = _history_seed_month(original_employee, prev_year, prev_month)
+
+        old_fields = {
+            field: _as_optional_float(original_employee.get(field))
+            for field in tracked_fields
+            if _as_optional_float(original_employee.get(field)) is not None
+        }
+        if old_fields:
+            previous_effective = await config_db.get_effective_for_month(employee_id, prev_year, prev_month)
+            previous_seed = {
+                field: value
+                for field, value in old_fields.items()
+                if not previous_effective or previous_effective.get(field) is None
+            }
+            if previous_seed:
+                await config_db.upsert(employee_id, seed_year, seed_month, previous_seed)
+
+        current_fields = {}
+        for field in tracked_fields:
+            value = update_data.get(field) if field in update_data else original_employee.get(field)
+            numeric_value = _as_optional_float(value)
+            if numeric_value is not None:
+                current_fields[field] = numeric_value
+
+        if current_fields:
+            await config_db.upsert(employee_id, current_year, current_month, current_fields)
+    except Exception as exc:
+        import logging
+        logging.getLogger(__name__).warning(
+            "Failed to snapshot employee salary/target history for %s: %s",
+            employee_id,
+            exc,
+        )
 
 # ----- Employee Management Routes -----
 
@@ -332,6 +418,8 @@ async def update_employee(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to update employee with ID {employee_id}"
         )
+
+    await _snapshot_salary_target_history(employee_id, original_employee, update_data)
     
     # Log activity with before/after tracking
     if update_data:
@@ -1228,6 +1316,7 @@ async def update_employee_dict(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail=f"Failed to update employee with ID {employee_id}"
             )
+        await _snapshot_salary_target_history(employee_id, original_employee, update_data)
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,

@@ -546,15 +546,20 @@ class LeadsDB:
         # Add updated timestamp
         update_data["updated_at"] = get_ist_now()
         
+        force_override_created_at = bool(update_data.pop("_force_override_created_at", False))
+
         # CRITICAL GUARD: Never allow created_at to be overwritten via update operations
-        # created_at must always reflect the original lead creation time
+        # unless the route explicitly approved a Super Admin date/time override.
         if "created_at" in update_data:
-            original_created_at = current_lead.get("created_at")
-            if original_created_at:
-                logger.warning(f"⚠️ Attempt to modify created_at blocked — preserving original: {original_created_at}")
-                update_data["created_at"] = original_created_at
+            if force_override_created_at:
+                logger.info(f"✅ Super Admin created_at override allowed: {update_data['created_at']}")
             else:
-                del update_data["created_at"]
+                original_created_at = current_lead.get("created_at")
+                if original_created_at:
+                    logger.warning(f"⚠️ Attempt to modify created_at blocked — preserving original: {original_created_at}")
+                    update_data["created_at"] = original_created_at
+                else:
+                    del update_data["created_at"]
 
         # Re-attribute creator (superadmin): lead must belong only to the new creator for
         # list visibility ($or uses created_by, assigned_to, assign_report_to). Purana
@@ -3436,6 +3441,16 @@ class LeadsDB:
                         "reason": update_data.get("reassignment_rejection_reason", ""),
                         "from_user": _normalize_user_id(current_lead.get("assigned_to")),
                         "rejected_by_system": rejected_by == "system",
+                    }
+                elif update_data.get("reassignment_status") == "direct":
+                    activity_data["action"] = "approved_direct"
+                    activity_data["created_by"] = update_data.get("reassignment_approved_by")
+                    activity_data["details"] = {
+                        "assigned_to": _normalize_user_id(update_data.get("assigned_to")),
+                        "from_user": _normalize_user_id(current_lead.get("assigned_to")),
+                        "reason": update_data.get("reassignment_reason", ""),
+                        "reassignment_status": "direct",
+                        "field_changes": field_changes
                     }
                 else:
                     # Approval

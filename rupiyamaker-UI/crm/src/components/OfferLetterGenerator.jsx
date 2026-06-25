@@ -86,6 +86,10 @@ const DEFAULT_TPL = {
   subject_line: 'Offer of Appointment',
   greeting_intro: 'We are absolutely delighted to extend this offer to you! Following our recent discussions, we have been highly impressed by your skills, drive, and potential. We are thrilled to invite you to partner with <strong>Fix Your Finance</strong>.',
   greeting_intro2: 'Below are the details of your compensation, operational guidelines, and the terms of this professional association, thoughtfully designed to foster mutual growth, success, and long-term professional development.',
+  acceptance_title: 'Acceptance of Offer',
+  acceptance_prompt: 'Reply to confirm your acceptance:',
+  acceptance_label: 'Copy & reply via email',
+  acceptance_statement: 'I, {{candidateName}}, accept the Offer of Appointment for the role of {{designation}} at Fix Your Finance (Insta Credit Solution Pvt Ltd), dated {{date}}. I have read and agree to all terms and conditions.',
   acceptance_note: 'Replying with the above statement constitutes your <strong>legally binding acceptance</strong> under the Indian Contract Act, 1872. Please respond within <strong>48 hours</strong>.',
   consultant_sections: [
     { title: 'Professional Role &amp; Compensation Structure', clauses: [
@@ -305,6 +309,7 @@ const OfferLetterGenerator = ({ user }) => {
   const [resizeState, setResizeState] = useState(null);
   const [previewZoom, setPreviewZoom] = useState(85);
   const [isEditMode, setIsEditMode] = useState(false);
+  const [editingAcceptance, setEditingAcceptance] = useState(false);
   const [headerEditorBlock, setHeaderEditorBlock] = useState('logo');
   const [employees, setEmployees] = useState([]);
   const [empSearch, setEmpSearch] = useState('');
@@ -477,6 +482,32 @@ const OfferLetterGenerator = ({ user }) => {
     .replace(/\{\{salary\}\}/g, '<span style="color:#1a5ba8;font-weight:700">' + formattedSalary + '</span>')
     .replace(/\{\{salaryWords\}\}/g, '<span style="color:#1a5ba8;font-weight:700">' + salaryWords + '</span>')
     .replace(/\{\{target\}\}/g, '<span style="color:#1a5ba8;font-weight:700">' + formattedTarget + '</span>');
+
+  const fillAcceptanceTemplate = (text, styled = true) => {
+    const source = text || DEFAULT_TPL.acceptance_statement;
+    const replacements = {
+      candidateName: displayName,
+      designation: currentDesignation,
+      date: formattedDate,
+    };
+    const styleFor = {
+      candidateName: 'color:#0099cc;font-weight:700',
+      designation: 'color:#cc1818;font-weight:700',
+      date: 'color:#0099cc;font-weight:700',
+    };
+    return source.replace(/\{\{(candidateName|designation|date)\}\}/g, (_, key) => (
+      styled
+        ? '<span style="' + styleFor[key] + '">' + replacements[key] + '</span>'
+        : replacements[key]
+    ));
+  };
+
+  const acceptancePlainText = () => {
+    const html = fillAcceptanceTemplate(tpl.acceptance_statement, false);
+    const div = document.createElement('div');
+    div.innerHTML = html;
+    return div.textContent || div.innerText || '';
+  };
 
   // Measure to find page breaks — supports N pages
   useEffect(() => {
@@ -1066,7 +1097,7 @@ const OfferLetterGenerator = ({ user }) => {
   };
 
   const copyAcceptanceText = () => {
-    const text = `I, ${displayName}, accept the Offer of Appointment for the role of ${currentDesignation} at Fix Your Finance (Insta Credit Solution Pvt Ltd), dated ${formattedDate}. I have read and agree to all terms and conditions.`;
+    const text = acceptancePlainText();
     const doSet = () => { setAcceptanceCopied(true); setTimeout(() => setAcceptanceCopied(false), 2500); };
     navigator.clipboard ? navigator.clipboard.writeText(text).then(doSet).catch(doSet) : (() => {
       const ta = Object.assign(document.createElement('textarea'), { value: text });
@@ -1076,39 +1107,114 @@ const OfferLetterGenerator = ({ user }) => {
     })();
   };
 
-  const acceptanceBlock = (
-    <div style={{ marginTop:20, paddingTop:14, borderTop:'2px solid #0a1c3e', position:'relative', zIndex:1 }}>
-      <div style={{ fontFamily:'Poppins,sans-serif', fontSize:'.88rem', fontWeight:700, color:'#0a1c3e', marginBottom:10, textAlign:'center' }}>Acceptance of Offer</div>
-      <div style={{ padding:'12px 15px', background:'#f0f5ff', border:'1.5px solid #b8cfe8', borderRadius:8 }}>
-        <div style={{ fontFamily:'Poppins,sans-serif', fontSize:'.8rem', fontWeight:700, color:'#0a1c3e', marginBottom:7, display:'flex', alignItems:'center', gap:5, borderBottom:'1px dashed #c5d5ea', paddingBottom:6 }}>
-           Reply to confirm your acceptance:
+  const AcceptanceBlock = () => {
+    const editing = isEditMode && editingAcceptance;
+    const titleRef = useRef(null);
+    const promptRef = useRef(null);
+    const labelRef = useRef(null);
+    const statementRef = useRef(null);
+    const noteRef = useRef(null);
+
+    useEffect(() => {
+      if (titleRef.current && document.activeElement !== titleRef.current)
+        titleRef.current.innerHTML = tpl.acceptance_title || DEFAULT_TPL.acceptance_title;
+    }, [tpl.acceptance_title]);
+    useEffect(() => {
+      if (promptRef.current && document.activeElement !== promptRef.current)
+        promptRef.current.innerHTML = tpl.acceptance_prompt || DEFAULT_TPL.acceptance_prompt;
+    }, [tpl.acceptance_prompt]);
+    useEffect(() => {
+      if (labelRef.current && document.activeElement !== labelRef.current)
+        labelRef.current.innerHTML = tpl.acceptance_label || DEFAULT_TPL.acceptance_label;
+    }, [tpl.acceptance_label]);
+    useEffect(() => {
+      if (statementRef.current && document.activeElement !== statementRef.current)
+        statementRef.current.innerHTML = editing
+          ? (tpl.acceptance_statement || DEFAULT_TPL.acceptance_statement)
+          : fillAcceptanceTemplate(tpl.acceptance_statement);
+    }, [tpl.acceptance_statement, displayName, currentDesignation, formattedDate, editing]);
+    useEffect(() => {
+      if (noteRef.current && document.activeElement !== noteRef.current)
+        noteRef.current.innerHTML = tpl.acceptance_note || '';
+    }, [tpl.acceptance_note]);
+
+    const commit = (key, ref) => {
+      if (!ref.current) return;
+      set(key, ref.current.innerHTML);
+    };
+
+    return (
+      <div style={{ marginTop:20, paddingTop:14, borderTop:'2px solid #0a1c3e', position:'relative', zIndex:1 }}>
+        <div style={{ display:'flex', alignItems:'center', justifyContent:'center', gap:8, marginBottom:10 }}>
+          <div
+            ref={titleRef}
+            contentEditable={editing}
+            suppressContentEditableWarning
+            data-olg-editable="1"
+            onBlur={() => commit('acceptance_title', titleRef)}
+            style={{ fontFamily:'Poppins,sans-serif', fontSize:'.88rem', fontWeight:700, color:'#0a1c3e', textAlign:'center', outline: editing ? '1.5px dashed #0099cc' : 'none', borderRadius:4, padding: editing ? '1px 6px' : 0, cursor: editing ? 'text' : 'default' }}
+          />
+          {isEditMode && (
+            <button onClick={() => setEditingAcceptance(v => !v)} data-pdf-hide="1" style={{
+              background: editing ? '#f0fdf4' : '#f0f9ff', border:'1px solid ' + (editing ? '#86efac' : '#bae6fd'),
+              borderRadius:5, padding:'2px 8px', fontSize:'.6rem', color: editing ? '#15803d' : '#0369a1',
+              cursor:'pointer', fontWeight:700, flexShrink:0,
+            }}>{editing ? 'Done ✓' : 'Edit'}</button>
+          )}
         </div>
-        <div style={{ fontSize:'.76rem', fontWeight:600, color:'#64748b', textTransform:'uppercase', letterSpacing:'.06em', marginBottom:5 }}>Copy &amp; reply via email</div>
-        <div style={{ fontSize:'.8rem', color:'#162240', background:'#fff', borderLeft:'3px solid #0099cc', padding:'9px 13px', borderRadius:'0 6px 6px 0', lineHeight:1.75, fontWeight:500, fontFamily:'Inter,sans-serif' }}>
-          I, <span style={{ color:'#0099cc', fontWeight:700 }}>{displayName}</span>, accept the Offer of Appointment for the role of{' '}
-          <span style={{ color:'#cc1818', fontWeight:700 }}>{currentDesignation}</span> at Fix Your Finance (Insta Credit Solution Pvt Ltd), dated{' '}
-          <span style={{ color:'#0099cc', fontWeight:700 }}>{formattedDate}</span>. I have read and agree to all terms and conditions.
+        <div style={{ padding:'12px 15px', background:'#f0f5ff', border:'1.5px solid #b8cfe8', borderRadius:8 }}>
+          <div
+            ref={promptRef}
+            contentEditable={editing}
+            suppressContentEditableWarning
+            data-olg-editable="1"
+            onBlur={() => commit('acceptance_prompt', promptRef)}
+            style={{ fontFamily:'Poppins,sans-serif', fontSize:'.8rem', fontWeight:700, color:'#0a1c3e', marginBottom:7, display:'flex', alignItems:'center', gap:5, borderBottom:'1px dashed #c5d5ea', paddingBottom:6, outline: editing ? '1px dashed #0099cc' : 'none', borderRadius:3, cursor: editing ? 'text' : 'default' }}
+          />
+          <div
+            ref={labelRef}
+            contentEditable={editing}
+            suppressContentEditableWarning
+            data-olg-editable="1"
+            onBlur={() => commit('acceptance_label', labelRef)}
+            style={{ fontSize:'.76rem', fontWeight:600, color:'#64748b', textTransform:'uppercase', letterSpacing:'.06em', marginBottom:5, outline: editing ? '1px dashed #e2e8f0' : 'none', borderRadius:3, cursor: editing ? 'text' : 'default' }}
+          />
+          <div
+            ref={statementRef}
+            contentEditable={editing}
+            suppressContentEditableWarning
+            data-olg-editable="1"
+            onBlur={() => commit('acceptance_statement', statementRef)}
+            style={{ fontSize:'.8rem', color:'#162240', background:'#fff', borderLeft:'3px solid #0099cc', padding:'9px 13px', borderRadius:'0 6px 6px 0', lineHeight:1.75, fontWeight:500, fontFamily:'Inter,sans-serif', outline: editing ? '1px dashed #0099cc' : 'none', cursor: editing ? 'text' : 'default' }}
+          />
+          {(tpl.acceptance_note || editing) && (
+            <p
+              ref={noteRef}
+              contentEditable={editing}
+              suppressContentEditableWarning
+              data-olg-editable="1"
+              onBlur={() => commit('acceptance_note', noteRef)}
+              style={{ fontSize:'.72rem', color:'#64748b', marginTop:8, lineHeight:1.55, textAlign:'right', outline: editing ? '1px dashed #0099cc' : 'none', borderRadius:3, cursor: editing ? 'text' : 'default' }}
+            />
+          )}
+          {/* One-click copy button - hidden in PDF via data-pdf-hide */}
+          <button
+            data-pdf-hide="1"
+            onClick={copyAcceptanceText}
+            style={{
+              marginTop:10, width:'100%', padding:'7px 0', border:'none', borderRadius:6,
+              background: acceptanceCopied ? '#059669' : '#0a1c3e',
+              color:'#fff', fontFamily:'Poppins,sans-serif', fontSize:'.74rem',
+              fontWeight:700, cursor:'pointer', display:'flex', alignItems:'center',
+              justifyContent:'center', gap:6, transition:'background .2s',
+            }}
+          >
+            {acceptanceCopied ? '✓ Copied to clipboard!' : '📋 Copy Acceptance Text'}
+          </button>
         </div>
-        {tpl.acceptance_note && (
-          <p style={{ fontSize:'.72rem', color:'#64748b', marginTop:8, lineHeight:1.55, textAlign:'right' }} dangerouslySetInnerHTML={{ __html: tpl.acceptance_note }} />
-        )}
-        {/* One-click copy button — hidden in PDF via data-pdf-hide */}
-        <button
-          data-pdf-hide="1"
-          onClick={copyAcceptanceText}
-          style={{
-            marginTop:10, width:'100%', padding:'7px 0', border:'none', borderRadius:6,
-            background: acceptanceCopied ? '#059669' : '#0a1c3e',
-            color:'#fff', fontFamily:'Poppins,sans-serif', fontSize:'.74rem',
-            fontWeight:700, cursor:'pointer', display:'flex', alignItems:'center',
-            justifyContent:'center', gap:6, transition:'background .2s',
-          }}
-        >
-          {acceptanceCopied ? '✓ Copied to clipboard!' : '📋 Copy Acceptance Text'}
-        </button>
       </div>
-    </div>
-  );
+    );
+  };
 
   const wm = renderWatermark();
 
@@ -1469,13 +1575,11 @@ const OfferLetterGenerator = ({ user }) => {
         {/* Acceptance block — measure its logical height */}
         <div className="m-accept" style={{ padding:'0 36px' }}>
           <div style={{ marginTop:20, paddingTop:14 }}>
-            <div style={{ fontFamily:'Poppins,sans-serif', fontSize:'.88rem', fontWeight:700, marginBottom:10, textAlign:'center' }}>Acceptance of Offer</div>
+            <div style={{ fontFamily:'Poppins,sans-serif', fontSize:'.88rem', fontWeight:700, marginBottom:10, textAlign:'center' }} dangerouslySetInnerHTML={{ __html: tpl.acceptance_title || DEFAULT_TPL.acceptance_title }} />
             <div style={{ padding:'12px 15px', border:'1.5px solid #b8cfe8', borderRadius:8 }}>
-              <div style={{ fontSize:'.8rem', marginBottom:7, paddingBottom:6 }}>Reply to confirm your acceptance:</div>
-              <div style={{ fontSize:'.76rem', marginBottom:5 }}>Copy &amp; reply via email</div>
-              <div style={{ fontSize:'.8rem', lineHeight:1.75, padding:'9px 13px' }}>
-                I, {displayName}, accept the Offer of Appointment for the role of {currentDesignation} at Fix Your Finance, dated {formattedDate}. I have read and agree to all terms and conditions.
-              </div>
+              <div style={{ fontSize:'.8rem', marginBottom:7, paddingBottom:6 }} dangerouslySetInnerHTML={{ __html: tpl.acceptance_prompt || DEFAULT_TPL.acceptance_prompt }} />
+              <div style={{ fontSize:'.76rem', marginBottom:5 }} dangerouslySetInnerHTML={{ __html: tpl.acceptance_label || DEFAULT_TPL.acceptance_label }} />
+              <div style={{ fontSize:'.8rem', lineHeight:1.75, padding:'9px 13px' }} dangerouslySetInnerHTML={{ __html: fillAcceptanceTemplate(tpl.acceptance_statement) }} />
               {tpl.acceptance_note && <p style={{ fontSize:'.72rem', marginTop:8, lineHeight:1.55 }} dangerouslySetInnerHTML={{ __html: tpl.acceptance_note }} />}
             </div>
           </div>
@@ -1657,6 +1761,13 @@ const OfferLetterGenerator = ({ user }) => {
                     <Field label="Subject Line"><input value={tpl.subject_line||''} onChange={e=>set('subject_line',e.target.value)} style={iStyle} /></Field>
                     <Field label="Opening Para"><textarea value={tpl.greeting_intro||''} onChange={e=>set('greeting_intro',e.target.value)} rows={4} style={{...iStyle,resize:'vertical',lineHeight:1.55}} /></Field>
                     <Field label="Second Para"><textarea value={tpl.greeting_intro2||''} onChange={e=>set('greeting_intro2',e.target.value)} rows={3} style={{...iStyle,resize:'vertical',lineHeight:1.55}} /></Field>
+                    <Field label="Acceptance Title"><input value={tpl.acceptance_title||''} onChange={e=>set('acceptance_title',e.target.value)} style={iStyle} /></Field>
+                    <Field label="Acceptance Prompt"><input value={tpl.acceptance_prompt||''} onChange={e=>set('acceptance_prompt',e.target.value)} style={iStyle} /></Field>
+                    <Field label="Acceptance Label"><input value={tpl.acceptance_label||''} onChange={e=>set('acceptance_label',e.target.value)} style={iStyle} /></Field>
+                    <Field label="Acceptance Text">
+                      <textarea value={tpl.acceptance_statement||''} onChange={e=>set('acceptance_statement',e.target.value)} rows={5} style={{...iStyle,resize:'vertical',lineHeight:1.55}} />
+                      <p style={{fontSize:'.62rem',color:'#94a3b8',marginTop:2,marginBottom:0}}>Use placeholders: {'{{candidateName}}'}, {'{{designation}}'}, {'{{date}}'}</p>
+                    </Field>
                     <Field label="Acceptance Note"><textarea value={tpl.acceptance_note||''} onChange={e=>set('acceptance_note',e.target.value)} rows={3} style={{...iStyle,resize:'vertical',lineHeight:1.55}} /></Field>
                   </>
                 )],
@@ -1711,11 +1822,11 @@ const OfferLetterGenerator = ({ user }) => {
               <div style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap' }}>
                 <span style={{ fontSize:'.72rem', color:'#0369a1', fontWeight:600, fontFamily:'Inter,sans-serif' }}>✏️ Edit mode — click a section's Edit button to modify</span>
                 <button
-                  onClick={() => { handleSaveTemplate(); setIsEditMode(false); setEditingSec(null); }}
+                  onClick={() => { handleSaveTemplate(); setIsEditMode(false); setEditingSec(null); setEditingAcceptance(false); }}
                   style={{ padding:'5px 14px', background:'linear-gradient(135deg,#059669,#10b981)', border:'none', borderRadius:6, color:'#fff', fontSize:'.72rem', fontWeight:700, cursor:'pointer', fontFamily:'Poppins,sans-serif', display:'flex', alignItems:'center', gap:5, boxShadow:'0 2px 8px rgba(5,150,105,.35)', whiteSpace:'nowrap' }}
                 >💾 Save &amp; Exit</button>
                 <button
-                  onClick={() => { setIsEditMode(false); setEditingSec(null); }}
+                  onClick={() => { setIsEditMode(false); setEditingSec(null); setEditingAcceptance(false); }}
                   style={{ padding:'5px 10px', background:'#fff', border:'1.5px solid #e2e8f0', borderRadius:6, color:'#64748b', fontSize:'.72rem', fontWeight:600, cursor:'pointer', whiteSpace:'nowrap' }}
                 >✕ Cancel</button>
               </div>
@@ -1764,7 +1875,7 @@ const OfferLetterGenerator = ({ user }) => {
                           <button onClick={addSection} style={{ width:'100%', padding:'7px 0', background:'#f0f9ff', border:'1.5px dashed #7dd3fc', borderRadius:6, color:'#0369a1', fontSize:'.72rem', fontWeight:700, cursor:'pointer', fontFamily:'Poppins,sans-serif' }}>➕ Add Section</button>
                         </div>
                       )}
-                      {isLast && acceptanceBlock}
+                      {isLast && <AcceptanceBlock />}
                     </div>
                     {showFooter && renderFooter()}
                   </div>

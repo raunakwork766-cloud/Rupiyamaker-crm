@@ -357,6 +357,7 @@ class LeadUpdate(BaseModel):
     transfer_notes: Optional[str] = None
     form_share: Optional[bool] = None  # Added form_share field for public form sharing
     created_at: Optional[datetime] = None  # Allow updating creation timestamp when changing from NOT A LEAD
+    override_created_at: Optional[str] = None  # Super admin: change lead date/time on existing lead
     question_responses: Optional[Dict[str, Any]] = None  # Added for important questions
     importantquestion: Optional[Dict[str, Any]] = None  # Added for backward compatibility
     important_questions_validated: Optional[bool] = None  # Added for validation status

@@ -18,6 +18,72 @@ const fmt  = n => n == null ? '' : Number(n).toLocaleString('en-IN');
 const inr  = n => n == null ? '—' : `₹${Number(n).toLocaleString('en-IN', { maximumFractionDigits: 0 })}`;
 const mkid = () => Math.random().toString(36).slice(2, 9);
 const now  = new Date();
+const isEarnedLeaveType = (leaveType) => {
+  const t = String(leaveType || '').toLowerCase();
+  return t.includes('earned') || t === 'el' || t.includes('earned_leave');
+};
+const formatAttendanceDays = (value) => {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return '0';
+  return Number.isInteger(n) ? String(n) : n.toFixed(2).replace(/\.?0+$/, '');
+};
+const getISTDateParts = () => {
+  const parts = new Intl.DateTimeFormat('en-IN', {
+    timeZone: 'Asia/Kolkata',
+    year: 'numeric',
+    month: 'numeric',
+    day: 'numeric'
+  }).formatToParts(new Date());
+  const get = type => Number(parts.find(p => p.type === type)?.value || 0);
+  return { year: get('year'), month: get('month'), day: get('day') };
+};
+const getEffectiveAttendanceWindow = (year, month, daysInMonth, joiningRaw, inactiveRaw) => {
+  const today = getISTDateParts();
+  let startDay = 1;
+  let endDay = daysInMonth;
+
+  if (year > today.year || (year === today.year && month > today.month)) {
+    endDay = 0;
+  } else if (year === today.year && month === today.month) {
+    endDay = Math.min(daysInMonth, today.day);
+  }
+
+  if (joiningRaw) {
+    const jStr = String(joiningRaw).substring(0, 10);
+    const jYear  = parseInt(jStr.substring(0, 4), 10);
+    const jMonth = parseInt(jStr.substring(5, 7), 10);
+    const jDay   = parseInt(jStr.substring(8, 10), 10);
+    if (jYear === year && jMonth === month && jDay > 1) startDay = Math.max(startDay, jDay);
+  }
+
+  if (inactiveRaw) {
+    const iStr = String(inactiveRaw).substring(0, 10);
+    const iYear  = parseInt(iStr.substring(0, 4), 10);
+    const iMonth = parseInt(iStr.substring(5, 7), 10);
+    const iDay   = parseInt(iStr.substring(8, 10), 10);
+    if (iYear === year && iMonth === month && iDay >= 1) endDay = Math.min(endDay, iDay);
+  }
+
+  return { startDay, endDay, effectiveDays: Math.max(0, endDay - startDay + 1) };
+};
+const displayText = (value, fallback = '') => {
+  if (value === null || value === undefined || value === '') return fallback;
+  if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') return String(value);
+  if (typeof value === 'object') {
+    return displayText(
+      value.name ?? value.role_name ?? value.department_name ?? value.designation_name ??
+      value.title ?? value.label ?? value.value ?? value.message ?? value.description,
+      fallback
+    );
+  }
+  return fallback;
+};
+const refId = value => {
+  if (value && typeof value === 'object') return value._id || value.id || value.value || '';
+  return value || '';
+};
+const teamName = (emp, deptMap = {}, fallback = '—') =>
+  displayText(deptMap[refId(emp?.department_id)] || emp?.department_name || emp?.department, fallback);
 
 const getUid = () =>
   localStorage.getItem('userId') ||
@@ -126,16 +192,21 @@ const fetchAttendancePresentDays = async (year, month) => {
           const apiId = String(e.user_mongo_id || e.employee_id || '');
           if (!apiId) return Promise.resolve(null);
           return fetch(`${API}/settings/leave-balance/${apiId}?user_id=${uid}&period=${period}`, { headers: hdrs })
-            .then(r2 => r2.ok ? r2.json().then(d => ({ empId: String(e.employee_id || ''), data: d })) : null);
+            .then(r2 => r2.ok ? r2.json().then(d => ({
+              empId: String(e.employee_id || ''),
+              mongoId: String(e.user_mongo_id || ''),
+              data: d
+            })) : null);
         })
       );
       leaveResults.forEach(result => {
         if (result.status === 'fulfilled' && result.value) {
-          const { empId, data } = result.value;
+          const { empId, mongoId, data } = result.value;
           const balData = data?.data || data;
           // Only store non-empty objects — empty {} = no DB record = null (same as AttendancePage)
           if (empId && balData && typeof balData === 'object' && Object.keys(balData).length > 0) {
             balanceMap[empId] = balData;
+            if (mongoId) balanceMap[mongoId] = balData;
           }
         }
       });
@@ -151,8 +222,12 @@ const fetchAttendancePresentDays = async (year, month) => {
 
       // ── Step A: convert numeric status → string, exactly as AttendancePage does ──
       const dayMap = {}; // { day1: 'P', day2: 'AB', ... }
+      const leaveTypeMap = {};
+      const leaveUnitsMap = {};
       (e.days || []).forEach(day => {
         const key = `day${day.day}`;
+        leaveTypeMap[key] = day.leave_type || null;
+        leaveUnitsMap[key] = Number(day.leave_units || 0);
         if (day.status !== null && day.status !== undefined) {
           const s = parseFloat(day.status);
           if      (s === 1.5)              dayMap[key] = 'H';
@@ -173,21 +248,16 @@ const fetchAttendancePresentDays = async (year, month) => {
         }
       });
 
-      // ── Step B: joining date → effectiveDays (same as calculateMonthlyStats) ──
-      let effectiveDays = totalDaysInMonth;
-      let joiningDay = 0;
-      const jd = e.joining_date ? String(e.joining_date).substring(0, 10) : null;
-      if (jd) {
-        const jYear  = parseInt(jd.substring(0, 4), 10);
-        const jMonth = parseInt(jd.substring(5, 7), 10);
-        const jDay   = parseInt(jd.substring(8, 10), 10);
-        if (jYear === year && jMonth === month && jDay > 1) {
-          joiningDay    = jDay;
-          effectiveDays = totalDaysInMonth - jDay + 1;
-        }
-      }
+      // ── Step B: effective window → current month counts only up to today ──
+      const { startDay, endDay, effectiveDays } = getEffectiveAttendanceWindow(
+        year,
+        month,
+        totalDaysInMonth,
+        e.joining_date || e.date_of_joining || null,
+        e.inactive_from_date || null
+      );
 
-      // ── Step C: presentScore using STRING statuses (exact match with calculateMonthlyStats) ──
+      // ── Step C: present score using STRING statuses (same business rules as AttendancePage) ──
       const getDayVal = (status) => {
         switch (status) {
           case 'P':  return 1;
@@ -202,56 +272,88 @@ const fetchAttendancePresentDays = async (year, month) => {
       };
 
       let presentScore = 0;
+      let actualPresent = 0;
       let abscondingDays = 0;
+      let absentDays = 0;
+      let sundayZeroDays = 0;
+      let plLeaveDaysTaken = 0;
+      let elLeaveDaysTaken = 0;
       for (let d = 1; d <= totalDaysInMonth; d++) {
-        const status = dayMap[`day${d}`] || '';
+        if (d < startDay || d > endDay) continue;
+        const key = `day${d}`;
+        const status = dayMap[key] || '';
+        const leaveUnits = leaveUnitsMap[key] || 0;
         if (status === 'H') {
-          // holiday — excluded from presentScore (same as calculateMonthlyStats)
+          // holiday — excluded from presentScore
         } else if (status === 'LV') {
-          // leave — 0 contribution
+          if (isEarnedLeaveType(leaveTypeMap[key])) elLeaveDaysTaken += leaveUnits || 1;
+          else plLeaveDaysTaken += leaveUnits || 1;
         } else if (status === 'AB') {
-          presentScore -= 2;   // absconding: not earned (-1) + penalty (-1)
           abscondingDays++;
         } else if (status === 'A') {
-          // absent — day simply not earned, no score change
+          absentDays++;
+        } else if (status === 'S0') {
+          sundayZeroDays++;
         } else {
           const val = getDayVal(status);
-          if (val !== null) presentScore += val;
+          if (val !== null) {
+            presentScore += val;
+            if (val > 0) actualPresent += val;
+            if (status === 'HD' && leaveUnits > 0) {
+              if (isEarnedLeaveType(leaveTypeMap[key])) elLeaveDaysTaken += leaveUnits;
+              else plLeaveDaysTaken += leaveUnits;
+            }
+          }
         }
       }
 
       // ── Step D: PL — exact mirror of enrichedData + calculateMonthlyStats ──
       // enrichedData sets:
       //   paidLeavesTotal     = bal!=null ? (bal.paid_leaves_total ?? defaultPl) : defaultPl
-      //   paidLeavesRemaining = bal!=null ? (bal.paid_leaves_remaining ?? 0) : 0
+      //   paidLeavesRemaining = bal!=null ? (bal.paid_leaves_remaining ?? 0) : null
       // calculateMonthlyStats:
       //   plAllotted  = record.paidLeavesTotal ?? record.plMonthly ?? 1
       //   plRemaining = record.paidLeavesRemaining ?? null  → 0 stays 0 (non-null)
       //   plDays = plRemaining != null ? plRemaining : plAllotted
-      const bal = balanceMap[employeeId] ?? null;
+      const bal = balanceMap[employeeId] ?? balanceMap[mongoId] ?? null;
       const paidLeavesTotal     = bal != null
         ? parseFloat(bal.paid_leaves_total ?? defaultPlMonthly)
         : defaultPlMonthly;
       const paidLeavesRemaining = bal != null
         ? (bal.paid_leaves_remaining != null ? parseFloat(bal.paid_leaves_remaining) : 0)
-        : 0;
+        : null;
       // plRemaining = paidLeavesRemaining ?? null  → 0 is non-null, so plDays = 0
       const plDays = paidLeavesRemaining !== null ? paidLeavesRemaining : paidLeavesTotal;
 
-      // ── Step E: finalScore (exact match with calculateMonthlyStats) ──────
-      const rawFinalScore = Math.max(0, presentScore) + plDays;
-      const finalScore = joiningDay > 0
-        ? Math.min(rawFinalScore, effectiveDays)
-        : Math.min(rawFinalScore, totalDaysInMonth);
+      const earnedLeavesTotal = bal != null
+        ? parseFloat(bal.earned_leaves_total ?? 0)
+        : 0;
+      const earnedLeavesRemaining = bal != null
+        ? (bal.earned_leaves_remaining != null ? parseFloat(bal.earned_leaves_remaining) : 0)
+        : 0;
+      const elDays = earnedLeavesRemaining !== null ? earnedLeavesRemaining : earnedLeavesTotal;
+
+      const plScore = Math.min(plLeaveDaysTaken, plDays);
+      const elScore = Math.min(elLeaveDaysTaken, elDays);
+      // Final = earned days (present + eligible leave) capped to eligible days,
+      // then one extra day penalty for every absconding day. The absconding day
+      // itself already contributes 0 in presentScore, so subtract only the extra penalty.
+      const earnedBeforeAbscondingPenalty = Math.min(
+        effectiveDays,
+        Math.max(0, presentScore) + plScore + elScore
+      );
+      const finalScore = Math.max(0, earnedBeforeAbscondingPenalty - abscondingDays);
 
       const entry = {
         presentScore,
+        actualPresent,
         finalScore,
         totalDays: totalDaysInMonth,
         effectiveDays,
-        plAdded: plDays,
-        elAdded: 0,
+        plAdded: plScore,
+        elAdded: elScore,
         abscondingDays,
+        absentDays,
       };
       // Store by BOTH keys so lookup always works
       if (mongoId)    map[mongoId]    = entry;
@@ -513,7 +615,7 @@ function AllocModal({ beneficiary, calcRows, allocs, onSave, onClose }) {
                   padding:'6px 0',borderBottom:'1px solid #bbf7d0'}}>
                   <span style={{fontSize:13,color:'#1f2937'}}>
                     <strong>{src ? `${src.emp.first_name} ${src.emp.last_name}` : 'Unknown'}</strong>
-                    {src?.emp?.designation && <span style={{color:'#6b7280',fontSize:11,marginLeft:6}}>{src.emp.designation}</span>}
+                    {displayText(src?.emp?.designation) && <span style={{color:'#6b7280',fontSize:11,marginLeft:6}}>{displayText(src.emp.designation)}</span>}
                   </span>
                   <div style={{display:'flex',alignItems:'center',gap:10}}>
                     <span style={{color:'#059669',fontWeight:'bold',fontSize:14}}>+₹{fmt(a.amount)}</span>
@@ -582,7 +684,7 @@ function AllocModal({ beneficiary, calcRows, allocs, onSave, onClose }) {
                         </div>
                         {r.emp.employee_id && <div style={{color:'#9ca3af',fontSize:10}}>{r.emp.employee_id}</div>}
                       </div>
-                      <div style={{color:'#6b7280',fontSize:12}}>{r.emp.designation||'—'}</div>
+                      <div style={{color:'#6b7280',fontSize:12}}>{displayText(r.emp.designation, '—')}</div>
                       <div style={{textAlign:'right',color:'#059669',fontWeight:'bold',fontSize:13}}>
                         ₹{fmt(r.indi)}
                       </div>
@@ -603,7 +705,7 @@ function AllocModal({ beneficiary, calcRows, allocs, onSave, onClose }) {
               <div>
                 <div style={{fontWeight:'bold',fontSize:14,color:'#1e40af'}}>
                   {selEmp.emp.first_name} {selEmp.emp.last_name}
-                  {selEmp.emp.designation && <span style={{fontSize:11,color:'#6b7280',marginLeft:8,fontWeight:'normal'}}>{selEmp.emp.designation}</span>}
+                  {displayText(selEmp.emp.designation) && <span style={{fontSize:11,color:'#6b7280',marginLeft:8,fontWeight:'normal'}}>{displayText(selEmp.emp.designation)}</span>}
                 </div>
                 <div style={{fontSize:12,color:'#3b82f6',marginTop:2}}>
                   Achieved: <strong>₹{fmt(selEmp.indi)}</strong>
@@ -775,8 +877,8 @@ function DedModal({ emp, calc, onSave, onClose }) {
                       {empDeds.map(d=>(
                         <tr key={d.id}>
                           <td>
-                            <strong style={{color:'#b91c1c'}}>{d.type}</strong>
-                            {d.desc && <span style={{color:'#6b7280',fontSize:11}}>– {d.desc}</span>}
+                            <strong style={{color:'#b91c1c'}}>{displayText(d.type, 'Deduction')}</strong>
+                            {displayText(d.desc) && <span style={{color:'#6b7280',fontSize:11}}>– {displayText(d.desc)}</span>}
                             {d.isAuto && <span style={{marginLeft:5,background:'#7c3aed',color:'white',borderRadius:3,padding:'1px 5px',fontSize:9,fontWeight:'bold',letterSpacing:.4}}>AUTO</span>}
                           </td>
                           <td style={{textAlign:'right',color:'#ef4444',fontWeight:'bold'}}>-₹{fmt(d.amount)}</td>
@@ -791,7 +893,7 @@ function DedModal({ emp, calc, onSave, onClose }) {
                       ))}
                       {calc.warnDeducts?.map((w,i)=>(
                         <tr key={i}>
-                          <td><strong style={{color:'#b91c1c'}}>Warning Penalty</strong> <span style={{color:'#6b7280',fontSize:11}}>– {w.warning_type||w.warning_message||'Warning'}</span></td>
+                          <td><strong style={{color:'#b91c1c'}}>Warning Penalty</strong> <span style={{color:'#6b7280',fontSize:11}}>– {displayText(w.warning_type || w.warning_message, 'Warning')}</span></td>
                           <td style={{textAlign:'right',color:'#ef4444',fontWeight:'bold'}}>-₹{fmt(w.penalty_amount)}</td>
                           <td style={{width:60,textAlign:'right',color:'#9ca3af',fontSize:11}}>auto</td>
                         </tr>
@@ -849,8 +951,8 @@ function DedModal({ emp, calc, onSave, onClose }) {
                       {empReimb.map(r=>(
                         <tr key={r.id}>
                           <td>
-                            <strong style={{color:'#166534'}}>{r.type}</strong>
-                            {r.desc && <span style={{color:'#6b7280',fontSize:11}}>– {r.desc}</span>}
+                            <strong style={{color:'#166534'}}>{displayText(r.type, 'Reimbursement')}</strong>
+                            {displayText(r.desc) && <span style={{color:'#6b7280',fontSize:11}}>– {displayText(r.desc)}</span>}
                             {r.isAuto && <span style={{marginLeft:5,background:'#059669',color:'white',borderRadius:3,padding:'1px 5px',fontSize:9,fontWeight:'bold',letterSpacing:.4}}>AUTO</span>}
                           </td>
                           <td style={{textAlign:'right',color:'#059669',fontWeight:'bold'}}>+₹{fmt(r.amount)}</td>
@@ -989,8 +1091,8 @@ function SalRow({ emp, calc, processed, deptMap, onTeam, onDeduct, onToggle }) {
         <div style={{fontSize:11,color:'#6b7280'}}>{emp.employee_id||''}</div>
       </td>
       <td>
-        <div style={{fontWeight:'bold',color:'#374151'}}>{deptMap[emp.department_id]||'—'}</div>
-        <div style={{fontSize:11,color:'#6b7280'}}>{emp.designation||'—'}</div>
+        <div style={{fontWeight:'bold',color:'#374151'}}>{teamName(emp, deptMap)}</div>
+        <div style={{fontSize:11,color:'#6b7280'}}>{displayText(emp.designation, '—')}</div>
       </td>
       <td>{inr(calc.monthlySalary)}</td>
       {/* DAYS PRESENT — shows finalScore (attendance page "Final" column) with breakdown */}
@@ -1000,7 +1102,7 @@ function SalRow({ emp, calc, processed, deptMap, onTeam, onDeduct, onToggle }) {
             <div>
               <span style={{fontWeight:'bold',fontSize:14,
                 color: calc.absentDays === 0 ? '#059669' : '#f97316'}}>
-                {finalScore != null && (Number.isInteger(finalScore) ? finalScore : finalScore.toFixed(1))}
+                {finalScore != null && formatAttendanceDays(finalScore)}
               </span>
               <div style={{fontSize:10,color:'#9ca3af',marginTop:1}}>
                 / {isMidMonthJoiner ? calc.effectiveDays : totalDaysInMonth} days
@@ -1111,8 +1213,8 @@ function PerfTab({ calcRows, history }) {
                 <tr key={id}>
                   <td>{emp.first_name} {emp.last_name}</td>
                   <td>
-                    <div style={{fontWeight:'bold',color:'#374151'}}>{emp.department||'—'}</div>
-                    <div style={{fontSize:11,color:'#6b7280'}}>{emp.designation||'—'}</div>
+                    <div style={{fontWeight:'bold',color:'#374151'}}>{teamName(emp, {}, '—')}</div>
+                    <div style={{fontSize:11,color:'#6b7280'}}>{displayText(emp.designation, '—')}</div>
                   </td>
                   {cols.map(c => {
                     const isCur = c.getMonth()===curM && c.getFullYear()===curY;
@@ -1166,7 +1268,7 @@ export default function SalaryManagement() {
 
   // Check role name from userData — allow superadmin OR any HR role
   const userData  = (() => { try { return JSON.parse(localStorage.getItem('userData') || '{}'); } catch { return {}; } })();
-  const roleName  = (userData.role?.name || userData.role_name || userData.designation?.name || userData.designation || '').toLowerCase();
+  const roleName  = displayText(userData.role || userData.role_name || userData.designation, '').toLowerCase();
   const isHrRole  = roleName.includes('hr');
   const canAccess = isSuperAdmin(perms) || userData.is_super_admin || isHrRole;
   const isAdmin   = canAccess;
@@ -1355,13 +1457,13 @@ export default function SalaryManagement() {
       const cf = pk(`${id}_${prevM}_${prevY}`);
 
       // ── Per-month salary/target override ────────────────────────────────────
-      // Use monthlyConfigMap (from DB) if available for this month; fall back to live emp value.
+      // Salary/monthly_target can inherit from employee/current config. settled_target is exact-month only.
       const monthCfg = monthlyConfigMap[id] || {};
       const empWithMonthlyValues = {
         ...emp,
         salary:         monthCfg.salary         != null ? monthCfg.salary         : emp.salary,
         monthly_target: monthCfg.monthly_target  != null ? monthCfg.monthly_target  : emp.monthly_target,
-        settled_target: monthCfg.settled_target  != null ? monthCfg.settled_target  : emp.settled_target,
+        settled_target: monthCfg.settled_target  != null ? monthCfg.settled_target  : 0,
       };
 
       // Advance balance: DB-sourced takes priority, falls back to localStorage
@@ -1373,8 +1475,8 @@ export default function SalaryManagement() {
         .filter(d => String(d.employee_id) === id)
         .map(d => ({
           id: d._id, empId: id,
-          type: d.deduction_type || 'Fine',
-          desc: (d.description || '') + ' [auto]',
+          type: displayText(d.deduction_type, 'Fine'),
+          desc: `${displayText(d.description, '')} [auto]`,
           amount: num(d.amount),
           isReimbursement: false,
           isAuto: true,
@@ -1385,8 +1487,8 @@ export default function SalaryManagement() {
         .filter(r => String(r.employee_id) === id)
         .map(r => ({
           id: r._id, empId: id,
-          type: r.category || 'Other',
-          desc: (r.description || '') + ' [auto]',
+          type: displayText(r.category, 'Other'),
+          desc: `${displayText(r.description, '')} [auto]`,
           amount: num(r.amount),
           isReimbursement: true,
           isAuto: true,
@@ -1417,15 +1519,15 @@ export default function SalaryManagement() {
       hrmsReimbs, hrmsAdvances, hrmsDeducts, dbAdvMap, presentDaysMap]);
 
   // ── filters ─────────────────────────────────────────────────────────────────
-  const teams  = useMemo(()=>[...new Set(activeEmps.map(e=>deptMap[e.department_id]||'').filter(Boolean))].sort(),[activeEmps,deptMap]);
-  const desigs = useMemo(()=>[...new Set(activeEmps.map(e=>e.designation||'').filter(Boolean))].sort(),[activeEmps]);
+  const teams  = useMemo(()=>[...new Set(activeEmps.map(e=>teamName(e, deptMap, '')).filter(Boolean))].sort(),[activeEmps,deptMap]);
+  const desigs = useMemo(()=>[...new Set(activeEmps.map(e=>displayText(e.designation)).filter(Boolean))].sort(),[activeEmps]);
 
   const filtered = useMemo(() => {
     return calcRows.filter(({emp}) => {
       const name = `${emp.first_name||''} ${emp.last_name||''}`.toLowerCase();
       if (search && !name.includes(search.toLowerCase())) return false;
-      if (teamF  !== 'All' && deptMap[emp.department_id] !== teamF)  return false;
-      if (desigF !== 'All' && emp.designation !== desigF) return false;
+      if (teamF  !== 'All' && teamName(emp, deptMap, '') !== teamF)  return false;
+      if (desigF !== 'All' && displayText(emp.designation) !== desigF) return false;
       return true;
     });
   }, [calcRows, search, teamF, desigF, deptMap]);
@@ -1600,7 +1702,6 @@ export default function SalaryManagement() {
                     const fields = {};
                     if (emp.salary) fields.salary = emp.salary;
                     if (emp.monthly_target) fields.monthly_target = emp.monthly_target;
-                    if (emp.settled_target) fields.settled_target = emp.settled_target;
                     if (Object.keys(fields).length === 0) return Promise.resolve();
                     return apiFetch(`/employee-monthly-config/upsert?user_id=${uid}`, {
                       method: 'POST',
@@ -1683,8 +1784,8 @@ export default function SalaryManagement() {
                           ) : null}
                           {i===0 ? (
                             <td rowSpan={hist.length} style={{verticalAlign:'top',textAlign:'left',borderRight:'2px solid #e5e7eb'}}>
-                              <div style={{fontWeight:'bold',color:'#374151'}}>{deptMap[emp.department_id]||'—'}</div>
-                              <div style={{fontSize:11,color:'#6b7280'}}>{emp.designation||'—'}</div>
+                              <div style={{fontWeight:'bold',color:'#374151'}}>{teamName(emp, deptMap)}</div>
+                              <div style={{fontSize:11,color:'#6b7280'}}>{displayText(emp.designation, '—')}</div>
                             </td>
                           ) : null}
                           <td style={{fontWeight:'bold'}}>{MONTHS_SHORT[h.month]} {h.year}</td>
@@ -1703,8 +1804,8 @@ export default function SalaryManagement() {
                             <div style={{fontSize:11,color:'#6b7280'}}>{emp.employee_id||''}</div>
                           </td>
                           <td style={{textAlign:'left'}}>
-                            <div style={{fontWeight:'bold',color:'#374151'}}>{deptMap[emp.department_id]||'—'}</div>
-                            <div style={{fontSize:11,color:'#6b7280'}}>{emp.designation||'—'}</div>
+                            <div style={{fontWeight:'bold',color:'#374151'}}>{teamName(emp, deptMap)}</div>
+                            <div style={{fontSize:11,color:'#6b7280'}}>{displayText(emp.designation, '—')}</div>
                           </td>
                           <td colSpan={5} style={{textAlign:'center',color:'#9ca3af',fontSize:12}}>No history yet</td>
                         </tr>
@@ -1744,7 +1845,7 @@ export default function SalaryManagement() {
                       return (
                         <tr key={id}>
                           <td><div style={{fontWeight:'bold'}}>{emp.first_name} {emp.last_name}</div><div style={{fontSize:11,color:'#6b7280'}}>{emp.employee_id||''}</div></td>
-                          <td><div style={{fontWeight:'bold',color:'#374151'}}>{deptMap[emp.department_id]||'—'}</div><div style={{fontSize:11,color:'#6b7280'}}>{emp.designation||'—'}</div></td>
+                          <td><div style={{fontWeight:'bold',color:'#374151'}}>{teamName(emp, deptMap)}</div><div style={{fontSize:11,color:'#6b7280'}}>{displayText(emp.designation, '—')}</div></td>
                           <td style={{color:'#ef4444',fontWeight:'bold'}}>{info?.date||'Unknown'}</td>
                           <td style={{fontWeight:'bold',color:'#059669'}}>₹{fmt(lifetime)}</td>
                           <td style={{textAlign:'center'}}>

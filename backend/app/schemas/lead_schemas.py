@@ -390,6 +390,7 @@ class LeadUpdate(BaseModel):
     created_by_name: Optional[str] = None  # Super admin: update displayed creator name
     department_name: Optional[str] = None  # Super admin: update department/team name
     override_created_by_id: Optional[str] = None  # Super admin: change created_by user ID on existing lead
+    override_created_at: Optional[str] = None  # Super admin: change lead date/time on existing lead
     status_change_remark: Optional[str] = None  # Mandatory remark when changing to a status that requires it
     
     class Config:

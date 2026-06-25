@@ -682,6 +682,7 @@ async def get_attendance_calendar(
                 leave_reason = None
                 leave_approved_by = None
                 leave_approved_by_name = None
+                leave_units = 0
                 
                 if is_holiday:
                     # ── Holiday takes TOP priority ──
@@ -692,8 +693,24 @@ async def get_attendance_calendar(
 
                 elif leave_info:
                     # Employee has approved leave
-                    status = 0
-                    status_text = f"Leave ({leave_info['leave_type_display']})"
+                    attendance_status_for_leave = None
+                    if attendance_record:
+                        raw_leave_att_status = attendance_record.get("status")
+                        try:
+                            attendance_status_for_leave = float(raw_leave_att_status)
+                        except (TypeError, ValueError):
+                            if str(raw_leave_att_status).strip().lower() in ["0.5", "hd", "half", "half day"]:
+                                attendance_status_for_leave = 0.5
+
+                    if attendance_status_for_leave == 0.5:
+                        status = 0.5
+                        status_text = f"Half Day + Leave ({leave_info['leave_type_display']})"
+                        leave_units = 0.5
+                    else:
+                        status = 0
+                        status_text = f"Leave ({leave_info['leave_type_display']})"
+                        leave_units = 1
+
                     comments = f"On {leave_info['leave_type_display']}: {leave_info['leave_reason']}"
                     if leave_info.get('approval_comments'):
                         comments += f" | Approval: {leave_info['approval_comments']}"
@@ -705,7 +722,11 @@ async def get_attendance_calendar(
                     leave_approved_by_name = leave_info["leave_approved_by_name"]
                     
                     total_days += 1
-                    leave_days += 1
+                    if status == 0.5:
+                        half_days += 1
+                        leave_days += 0.5
+                    else:
+                        leave_days += 1
                     
                 elif attendance_record:
                     # Use existing attendance record
@@ -715,13 +736,25 @@ async def get_attendance_calendar(
                     if isinstance(raw_status, str):
                         # Convert string status to numeric
                         status_mapping = {
+                            '1': 1.0,
+                            '1.0': 1.0,
                             'present': 1.0,
                             'full day': 1.0,
+                            '0.5': 0.5,
+                            'hd': 0.5,
                             'half day': 0.5,
                             'half': 0.5,
+                            '0': 0.0,
+                            '0.0': 0.0,
+                            'lv': 0.0,
                             'leave': 0.0,
+                            '-1': -1.0,
+                            '-1.0': -1.0,
                             'absent': -1.0,
+                            '-2': -2.0,
+                            '-2.0': -2.0,
                             'absconding': -2.0,
+                            '1.5': 1.5,
                             'holiday': 1.5
                         }
                         status = status_mapping.get(raw_status.lower(), 1.0)  # Default to full day
@@ -752,7 +785,7 @@ async def get_attendance_calendar(
                     # Override to ABSENT only when: has check-in, no check-out, not manually
                     # edited, and NOT already escalated to absconding by the age-based job.
                     # If auto_absconding=True the record is legitimately absconding — keep it.
-                    if chk_in and not chk_out and not was_manually_edited and not _auto_absconding:
+                    if chk_in and not chk_out and not was_manually_edited and not _auto_absconding and status not in [0.5, "0.5"]:
                         _day_date_obj = date.fromisoformat(date_str)
                         if _day_date_obj < get_ist_now().date():
                             status = -1.0  # Past date: missed checkout → ABSENT
@@ -826,6 +859,7 @@ async def get_attendance_calendar(
                     "photo_path": photo_path,
                     "leave_id": leave_id,
                     "leave_type": leave_type,
+                    "leave_units": leave_units,
                     "leave_reason": leave_reason,
                     "leave_approved_by": leave_approved_by,
                     "leave_approved_by_name": leave_approved_by_name

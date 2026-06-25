@@ -73,6 +73,11 @@ class LoginLeadUpdateRequest(BaseModel):
             )
         return values
 
+async def _is_requesting_user_super_admin(user_id: str, users_db: UsersDB, roles_db: RolesDB) -> bool:
+    """Return True when the requester has global super-admin permissions."""
+    permissions = await get_user_permissions(user_id, users_db, roles_db)
+    return any(is_super_admin_permission(perm) for perm in permissions)
+
 async def create_field_update_activity(
     login_leads_db,
     login_lead_id: str,
@@ -800,9 +805,19 @@ async def update_login_lead(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Login lead with ID {login_lead_id} not found"
         )
+    resolved_login_lead_id = str(login_lead["_id"])
 
     # Convert validated model to plain dict (extra fields preserved via Config.extra="allow")
     update_data = update_request.dict()
+
+    allow_login_date_update = False
+    if "login_date" in update_data:
+        allow_login_date_update = await _is_requesting_user_super_admin(user_id, users_db, roles_db)
+        if not allow_login_date_update:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Only super admin can update login date/time"
+            )
 
     # Server-controlled audit fields — always overwritten here, never from client
     update_data["updated_at"] = get_ist_now().isoformat()
@@ -812,7 +827,7 @@ async def update_login_lead(
     lead_name = f"{login_lead.get('first_name', '')} {login_lead.get('last_name', '')}".strip() or "Lead"
     await create_field_update_activity(
         login_leads_db=login_leads_db,
-        login_lead_id=login_lead_id,
+        login_lead_id=resolved_login_lead_id,
         user_id=user_id,
         field_changes=update_data,
         lead_name=lead_name,
@@ -820,7 +835,12 @@ async def update_login_lead(
     )
     
     # Update the login lead
-    success = await login_leads_db.update_login_lead(login_lead_id, update_data, user_id)
+    success = await login_leads_db.update_login_lead(
+        resolved_login_lead_id,
+        update_data,
+        user_id,
+        allow_login_date_update=allow_login_date_update
+    )
     if not success:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -830,12 +850,12 @@ async def update_login_lead(
     # ⚡ CACHE INVALIDATION: Clear cache after update
     try:
         await invalidate_cache_pattern("login-department-leads*")
-        logger.info(f"🔄 Cache invalidated after login lead update: {login_lead_id}")
+        logger.info(f"🔄 Cache invalidated after login lead update: {resolved_login_lead_id}")
     except Exception as cache_error:
         logger.warning(f"⚠️ Failed to invalidate cache: {cache_error}")
     
     # Return the updated lead
-    updated_lead = await login_leads_db.get_login_lead(login_lead_id)
+    updated_lead = await login_leads_db.get_login_lead(resolved_login_lead_id)
     from app.utils.common_utils import convert_object_id
     return convert_object_id(updated_lead)
 
@@ -1329,12 +1349,13 @@ async def upload_login_lead_documents(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Login lead with ID {login_lead_id} not found"
         )
+    resolved_login_lead_id = str(lead["_id"])
     
     # Check permission
     await check_permission(user_id, ["leads", "login"], "show", users_db, roles_db)
     
     # Create directory for this login lead's documents
-    lead_media_dir = await login_leads_db.create_media_path(login_lead_id)
+    lead_media_dir = await login_leads_db.create_media_path(resolved_login_lead_id)
     document_ids = []
     
     for file in files:
@@ -1379,7 +1400,7 @@ async def upload_login_lead_documents(
         
         # Create document record
         document_data = {
-            "login_lead_id": login_lead_id,
+            "login_lead_id": resolved_login_lead_id,
             "filename": file.filename,
             "file_path": relative_path,
             "absolute_file_path": file_data["file_path"],
@@ -1416,7 +1437,7 @@ async def upload_login_lead_documents(
     description += f" ({category})"
     
     await login_leads_db._log_activity(
-        login_lead_id=login_lead_id,
+        login_lead_id=resolved_login_lead_id,
         activity_type='document_upload',
         description=description,
         user_id=user_id,
@@ -1932,7 +1953,12 @@ async def assign_lead_to_multiple_users(
     except Exception as cache_error:
         print(f"⚠️ Warning: Failed to invalidate cache after assignment: {cache_error}")
     
-    return {"message": "Login lead assigned to multiple users successfully", "assigned_to": updated_assigned}
+    updated_lead = await login_leads_db.get_login_lead(lead_id)
+    return {
+        "message": "Login lead assigned to multiple users successfully",
+        "assigned_to": updated_assigned,
+        "lead": convert_object_id(updated_lead) if updated_lead else None,
+    }
 
 @router.patch("/update-operations/{lead_id}")
 async def update_lead_operations(

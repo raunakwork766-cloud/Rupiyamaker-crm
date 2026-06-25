@@ -47,6 +47,62 @@ async def get_settings_db():
     db_instances = get_database_instances()
     return db_instances["settings"]
 
+async def _get_user_display_context(user_id: str, users_db: UsersDB, departments_db: DepartmentsDB) -> Dict[str, Any]:
+    """Resolve user display/department data for assignment updates."""
+    user = await users_db.get_user(user_id)
+    if not user:
+        return {
+            "name": "Unknown User",
+            "department_id": None,
+            "department_name": "Unknown Department",
+        }
+
+    full_name = (
+        f"{user.get('first_name', '')} {user.get('last_name', '')}".strip()
+        or user.get("name")
+        or user.get("username")
+        or "Unknown User"
+    )
+    department_id = user.get("department_id")
+    department_name = "No Department"
+    if department_id:
+        department = await departments_db.get_department(department_id)
+        department_name = department.get("name", "Unknown Department") if department else "Unknown Department"
+
+    return {
+        "name": full_name,
+        "department_id": department_id,
+        "department_name": department_name,
+    }
+
+async def _status_changed_since_reassignment_request(lead: Dict[str, Any], leads_db: LeadsDB) -> bool:
+    """Return true when a pending request was created under a different status/sub-status."""
+    if not lead.get("pending_reassignment"):
+        return False
+    requested_status = lead.get("reassignment_request_status")
+    requested_sub_status = lead.get("reassignment_request_sub_status")
+    if requested_status is not None or requested_sub_status is not None:
+        return (
+            str(lead.get("status") or "") != str(requested_status or "")
+            or str(lead.get("sub_status") or "") != str(requested_sub_status or "")
+        )
+
+    requested_at = lead.get("reassignment_requested_at")
+    lead_id = str(lead.get("_id") or "")
+    if not requested_at or not lead_id:
+        return False
+
+    lead_id_values = [lead_id]
+    if ObjectId.is_valid(lead_id):
+        lead_id_values.append(ObjectId(lead_id))
+
+    status_activity = await leads_db.activity_collection.find_one({
+        "lead_id": {"$in": lead_id_values},
+        "activity_type": {"$in": ["status_change", "sub_status_change"]},
+        "created_at": {"$gt": requested_at}
+    })
+    return status_activity is not None
+
 @router.get("/list", response_model=Dict[str, Any])
 async def list_reassignment_requests(
     user_id: str = Query(..., description="ID of the user making the request"),
@@ -821,8 +877,10 @@ async def create_reassignment_request(
     # Create reassignment request or direct reassignment
     if is_direct_reassignment:
         # Process direct reassignment (immediate approval)
+        new_owner_id = target_user_id
+        new_owner_context = await _get_user_display_context(new_owner_id, users_db, departments_db)
         update_data = {
-            "assigned_to": user_id,  # Assign to requesting user, not target user
+            "assigned_to": new_owner_id,
             "pending_reassignment": False,
             "reassignment_status": "direct",
             "reassignment_approved_by": user_id,
@@ -833,97 +891,14 @@ async def create_reassignment_request(
             "reassignment_requested_at": get_ist_now(),
             # Record eligibility info for auditing purposes
             "reassignment_eligibility": eligibility,
-            # Update ownership to requesting user
-            "created_by": user_id,
-            "created_at": get_ist_now(),
-            # Set status directly without lookup
-            "status": "ACTIVE LEADS",
-            "sub_status": "NEW LEAD",
-            "file_sent_to_login": False,
+            "department_id": new_owner_context["department_id"],
+            "department_name": new_owner_context["department_name"],
             # Clear TL/supervisor assignment — new owner must set their own
             "assign_report_to": [],
 
         }
-        
-        # Get requesting user's name for created_by_name
-        logging.info(f"🔍 Looking up user {user_id} for created_by_name (type: {type(user_id)})")
-        requesting_user = await users_db.get_user(user_id)
-        logging.info(f"🔍 User lookup result: {requesting_user is not None}")
-        
-        # If primary lookup failed, try alternative lookups
-        if not requesting_user:
-            logging.info(f"🔍 Primary lookup failed, trying alternative methods...")
-            # Try looking up by employee_id if user_id might be employee_id
-            try:
-                requesting_user = await users_db.get_user_by_employee_id(str(user_id))
-                if requesting_user:
-                    logging.info(f"🔍 Found user by employee_id: {user_id}")
-            except:
-                pass
-                
-            # Try looking up by username if user_id might be username
-            if not requesting_user:
-                try:
-                    requesting_user = await users_db.get_user_by_username(str(user_id))
-                    if requesting_user:
-                        logging.info(f"🔍 Found user by username: {user_id}")
-                except:
-                    pass
-            
-            # Final fallback: direct database query
-            if not requesting_user:
-                try:
-                    from app.database import db
-                    users_collection = db["users"]
-                    # Try to find by string ID match in any relevant field
-                    requesting_user = await users_collection.find_one({
-                        "$or": [
-                            {"_id": ObjectId(user_id) if ObjectId.is_valid(user_id) else None},
-                            {"employee_id": str(user_id)},
-                            {"username": str(user_id)},
-                            {"email": str(user_id)}
-                        ]
-                    })
-                    if requesting_user:
-                        logging.info(f"🔍 Found user by direct database query: {user_id}")
-                except Exception as e:
-                    logging.error(f"🔍 Direct database query failed: {e}")
-                    pass
-        
-        if requesting_user:
-            logging.info(f"🔍 User data keys: {list(requesting_user.keys())}")
-            first_name = requesting_user.get("first_name", "")
-            last_name = requesting_user.get("last_name", "")
-            full_name = f"{first_name} {last_name}".strip()
-            logging.info(f"🔍 Found user: first_name='{first_name}', last_name='{last_name}', full_name='{full_name}'")
-            update_data["created_by_name"] = full_name if full_name else "Unknown User"
-            
-            # Get department information
-            user_department_id = requesting_user.get("department_id")
-            if user_department_id:
-                update_data["department_id"] = user_department_id
-                # Get department name
-                department = await departments_db.get_department(user_department_id)
-                if department:
-                    update_data["department_name"] = department.get("name", "Unknown Department")
-                else:
-                    update_data["department_name"] = "Unknown Department"
-                logging.info(f"🔄 Setting department: {update_data['department_name']} (ID: {user_department_id})")
-            else:
-                update_data["department_id"] = None
-                update_data["department_name"] = "No Department"
-                logging.info(f"🔄 User has no department assigned")
-        else:
-            logging.warning(f"⚠️ User {user_id} not found in database by any method!")
-            update_data["created_by_name"] = "Unknown User"
-            update_data["department_id"] = None
-            update_data["department_name"] = "Unknown Department"
-            
-        logging.info(f"🔄 Setting lead ownership to user: {user_id} ({update_data['created_by_name']})")
-        logging.info(f"🔄 Setting assigned_to to requesting user: {user_id}")
-        logging.info(f"🔄 Setting status to: {update_data['status']}")
-        logging.info(f"🔄 Setting sub_status to: {update_data['sub_status']}")
-        logging.info(f"🔄 Updating created_at to: {update_data['created_at']}")
+        logging.info(f"🔄 Reassigning lead {lead_id} to user: {new_owner_id} ({new_owner_context['name']})")
+        logging.info(f"🔄 Preserving original created_by/created_at/status during reassignment")
         
         # Add additional fields if provided
         if file_sent_to_login is not None:
@@ -983,7 +958,7 @@ async def create_reassignment_request(
             "message": "Direct reassignment completed successfully",
             "lead_id": lead_id,
             "status": "direct",
-            "assigned_to": target_user_id
+            "assigned_to": new_owner_id
         }
     
     else:
@@ -994,6 +969,8 @@ async def create_reassignment_request(
             "reassignment_target_user": target_user_id,
             "reassignment_reason": reason,
             "reassignment_requested_at": get_ist_now(),
+            "reassignment_request_status": lead.get("status"),
+            "reassignment_request_sub_status": lead.get("sub_status"),
             # Clear stale fields from any previous approval/rejection
             "reassignment_status": "pending",
             "reassignment_approved_by": None,
@@ -1094,6 +1071,15 @@ async def approve_reassignment(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Lead doesn't have a pending reassignment request"
         )
+
+    if await _status_changed_since_reassignment_request(lead, leads_db):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                "Lead status/sub-status changed after this reassignment request was created. "
+                "Please reject this request and create a fresh reassignment request for the current status."
+            )
+        )
     
     # Get requesting user from reassignment request
     requesting_user_id = lead.get("reassignment_requested_by")
@@ -1101,28 +1087,11 @@ async def approve_reassignment(
     # Get reassignment eligibility info for auditing purposes
     reassignment_eligibility = await leads_db.check_reassignment_eligibility(lead_id)
 
-    # Fetch the requesting user's details to update ownership fields
-    requesting_user = await users_db.get_user(requesting_user_id)
-    requesting_user_name = ""
-    requesting_department_id = None
-    requesting_department_name = "Unknown Department"
-
-    if requesting_user:
-        first_name = requesting_user.get("first_name", "")
-        last_name = requesting_user.get("last_name", "")
-        requesting_user_name = f"{first_name} {last_name}".strip() or requesting_user.get("name", "") or requesting_user.get("username", "") or "Unknown"
-        requesting_department_id = requesting_user.get("department_id")
-        if requesting_department_id:
-            dept = await departments_db.get_department(requesting_department_id)
-            requesting_department_name = dept.get("name", "Unknown Department") if dept else "Unknown Department"
-        else:
-            requesting_department_name = "No Department"
-    else:
-        logging.warning(f"⚠️ Requesting user {requesting_user_id} not found when approving reassignment for lead {lead_id}")
+    new_owner_context = await _get_user_display_context(requesting_user_id, users_db, departments_db)
 
     # Update lead with new assignment and clear reassignment request
-    # Also update ownership (created_by, created_by_name, created_at, department)
-    # so the lead appears under the new owner in lists with the reassignment date.
+    # Preserve created_by/created_by_name/created_at/status: reassignment changes the
+    # current assignee, not the original creator or current workflow status.
     update_data = {
         "assigned_to": requesting_user_id,  # Assign to requesting user
         "pending_reassignment": False,
@@ -1131,27 +1100,17 @@ async def approve_reassignment(
         "reassignment_approved_at": get_ist_now(),
         # Record eligibility info for auditing purposes
         "reassignment_eligibility": reassignment_eligibility,
-        # Transfer ownership to the requesting user with today's date
-        "created_by": requesting_user_id,
-        "created_by_name": requesting_user_name,
-        "created_at": get_ist_now(),
-        "department_id": requesting_department_id,
-        "department_name": requesting_department_name,
-        # Reset lead status
-        "status": "ACTIVE LEADS",
-        "sub_status": "NEW LEAD",
-        "file_sent_to_login": False,
+        "department_id": new_owner_context["department_id"],
+        "department_name": new_owner_context["department_name"],
         # Save manager's approval remark for history display
         "reassignment_approval_remark": remark or "",
         # Clear TL/supervisor assignment — new owner must set their own
         "assign_report_to": [],
     }
 
-    logging.info(f"🔄 Setting assigned_to + created_by to requesting user: {requesting_user_id} ({requesting_user_name})")
-    logging.info(f"🔄 Setting created_at to reassignment date: {update_data['created_at']}")
-    logging.info(f"🔄 Setting department: {requesting_department_name} ({requesting_department_id})")
-    logging.info(f"🔄 Setting status to: {update_data['status']}")
-    logging.info(f"🔄 Setting sub_status to: {update_data['sub_status']}")
+    logging.info(f"🔄 Setting assigned_to to requesting user: {requesting_user_id} ({new_owner_context['name']})")
+    logging.info(f"🔄 Preserving original created_by/created_at/status during approval")
+    logging.info(f"🔄 Setting department: {new_owner_context['department_name']} ({new_owner_context['department_id']})")
     
     # Apply data_code and campaign_name changes if they were requested
     if lead.get("reassignment_new_data_code") is not None:

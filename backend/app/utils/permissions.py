@@ -1444,6 +1444,10 @@ class PermissionManager:
             user_object_id = ObjectId(user_id)
         except:
             user_object_id = None
+
+        user_employee_id = None
+        if user_doc:
+            user_employee_id = user_doc.get("employee_id") or user_doc.get("employeeId")
         
         # Add filter for leads created by this user
         filter_conditions.append({"created_by": user_id})
@@ -1452,13 +1456,27 @@ class PermissionManager:
         
         # Add filter for leads assigned to this user
         filter_conditions.append({"assigned_to": user_id})
+        filter_conditions.append({"assigned_to": {"$in": [user_id]}})
         if user_object_id:
             filter_conditions.append({"assigned_to": user_object_id})
+            filter_conditions.append({"assigned_to": {"$in": [user_object_id]}})
+        if user_employee_id:
+            filter_conditions.append({"assigned_to": user_employee_id})
+            filter_conditions.append({"assigned_to": {"$in": [user_employee_id]}})
         
         # Add filter for leads where user is report_to
         filter_conditions.append({"assign_report_to": user_id})
+        filter_conditions.append({"assign_report_to": {"$in": [user_id]}})
         if user_object_id:
             filter_conditions.append({"assign_report_to": user_object_id})
+            filter_conditions.append({"assign_report_to": {"$in": [user_object_id]}})
+        if user_employee_id:
+            filter_conditions.append({"assign_report_to": user_employee_id})
+            filter_conditions.append({"assign_report_to": {"$in": [user_employee_id]}})
+            filter_conditions.append({"assign_report_to.employee_id": user_employee_id})
+            filter_conditions.append({"assign_report_to.employeeId": user_employee_id})
+            filter_conditions.append({"assign_report_to": {"$elemMatch": {"employee_id": user_employee_id}}})
+            filter_conditions.append({"assign_report_to": {"$elemMatch": {"employeeId": user_employee_id}}})
         
         # Check for LOGIN view_team permissions
         has_login_junior = any(
@@ -1875,5 +1893,4 @@ def has_super_admin_permissions(permissions):
         bool: True if user has super admin permissions
     """
     return any(is_super_admin_permission(perm) for perm in permissions)
-
 

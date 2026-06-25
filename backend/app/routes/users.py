@@ -1,6 +1,6 @@
 from fastapi import APIRouter, HTTPException, Depends, status, Query, UploadFile, File, Form
 from fastapi.responses import JSONResponse
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Tuple
 from bson import ObjectId
 from pydantic import ValidationError
 import json
@@ -11,6 +11,7 @@ from datetime import datetime, timedelta
 from app.database.Users import UsersDB
 from app.database.Roles import RolesDB
 from app.database.Departments import DepartmentsDB
+from app.database.EmployeeMonthlyConfig import EmployeeMonthlyConfigDB
 from app.database.Designations import DesignationService
 from app.database.Settings import SettingsDB
 from app.database import get_database_instances
@@ -50,6 +51,99 @@ async def get_otp_db():
 async def get_settings_db():
     db_instances = get_database_instances()
     return db_instances["settings"]
+
+def _as_optional_float(value: Any) -> Optional[float]:
+    if value is None or value == "":
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+def _previous_month(year: int, month: int) -> Tuple[int, int]:
+    if month == 0:
+        return year - 1, 11
+    return year, month - 1
+
+def _history_seed_month(employee: Dict[str, Any], fallback_year: int, fallback_month: int) -> Tuple[int, int]:
+    raw = employee.get("joining_date") or employee.get("date_of_joining")
+    if raw:
+        try:
+            if hasattr(raw, "year") and hasattr(raw, "month"):
+                return int(raw.year), int(raw.month) - 1
+            raw_text = str(raw)[:10]
+            parsed = datetime.strptime(raw_text, "%Y-%m-%d")
+            return parsed.year, parsed.month - 1
+        except (TypeError, ValueError):
+            pass
+    return fallback_year, fallback_month
+
+async def _snapshot_salary_target_history(user_id: str, existing_user: Dict[str, Any], update_data: Dict[str, Any]) -> None:
+    """
+    Employee document keeps the current salary/target, while salary generation
+    needs month-wise history. When either field changes from the employee page,
+    preserve the old value for previous months and store the new effective value
+    from the current IST month onward.
+    """
+    tracked_fields = ("salary", "monthly_target")
+    changed = {}
+    for field in tracked_fields:
+        if field not in update_data:
+            continue
+        old_value = _as_optional_float(existing_user.get(field))
+        new_value = _as_optional_float(update_data.get(field))
+        if new_value is not None and new_value != old_value:
+            changed[field] = new_value
+
+    if not changed:
+        return
+
+    try:
+        db_instances = get_database_instances()
+        async_db = db_instances.get("db")
+        if async_db is None:
+            return
+
+        config_db = EmployeeMonthlyConfigDB(async_db)
+        now = get_ist_now()
+        current_year = now.year
+        current_month = now.month - 1
+        prev_year, prev_month = _previous_month(current_year, current_month)
+        seed_year, seed_month = _history_seed_month(existing_user, prev_year, prev_month)
+
+        old_fields = {
+            field: _as_optional_float(existing_user.get(field))
+            for field in tracked_fields
+            if _as_optional_float(existing_user.get(field)) is not None
+        }
+        if old_fields:
+            previous_effective = await config_db.get_effective_for_month(user_id, prev_year, prev_month)
+            previous_seed = {
+                field: value
+                for field, value in old_fields.items()
+                if not previous_effective or previous_effective.get(field) is None
+            }
+            if previous_seed:
+                await config_db.upsert(user_id, seed_year, seed_month, previous_seed)
+
+        current_fields = {}
+        for field in tracked_fields:
+            value = update_data.get(field) if field in update_data else existing_user.get(field)
+            numeric_value = _as_optional_float(value)
+            if numeric_value is not None:
+                current_fields[field] = numeric_value
+
+        if current_fields:
+            await config_db.upsert(user_id, current_year, current_month, current_fields)
+    except Exception as exc:
+        # Do not block profile updates if the history snapshot fails; keep a log
+        # so production can diagnose any database issue.
+        import logging
+        logging.getLogger(__name__).warning(
+            "Failed to snapshot employee salary/target history for %s: %s",
+            user_id,
+            exc,
+        )
     
 @router.post("/", response_model=Dict[str, str], status_code=status.HTTP_201_CREATED)
 async def create_user(
@@ -404,6 +498,8 @@ async def update_user(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, 
             detail="Failed to update user"
         )
+
+    await _snapshot_salary_target_history(str(user_id), existing_user, update_data)
     
     return {"message": "User updated successfully"}
     
@@ -1069,7 +1165,13 @@ async def update_employee(
     
     # Update employee
     update_data = {k: v for k, v in employee_data.dict().items() if v is not None}
-    await users_db.update_user(employee_id, update_data)
+    success = await users_db.update_user(employee_id, update_data)
+    if not success:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to update employee with ID {employee_id}"
+        )
+    await _snapshot_salary_target_history(str(employee_id), current_employee, update_data)
     
     return {"message": "Employee updated successfully"}
 
@@ -1885,6 +1987,8 @@ async def update_user_with_photo(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to update user"
         )
+
+    await _snapshot_salary_target_history(str(user_id), existing_user, update_data)
     
     response_data = {
         "message": "User updated successfully",
