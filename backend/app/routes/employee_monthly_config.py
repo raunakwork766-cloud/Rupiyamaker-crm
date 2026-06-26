@@ -101,6 +101,7 @@ async def get_bulk_for_month(
             "salary": doc.get("salary"),
             "monthly_target": doc.get("monthly_target"),
             "settled_target": doc.get("settled_target"),
+            "carry_forward_shortfall": doc.get("carry_forward_shortfall", 0),
             "year": doc.get("year"),
             "month": doc.get("month"),
         }

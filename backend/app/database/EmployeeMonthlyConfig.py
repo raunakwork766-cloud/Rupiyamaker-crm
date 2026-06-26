@@ -10,6 +10,7 @@ Document shape:
     salary: float | None,
     monthly_target: float | None,
     settled_target: float | None,
+    carry_forward_shortfall: float | None,  # derived when reading, not stored
     updated_at: str
   }
 
@@ -103,6 +104,59 @@ class EmployeeMonthlyConfigDB:
 
     # ── Bulk fetch for multiple employees (for a given month) ─────────────────
 
+    @staticmethod
+    def _month_key(year: int, month: int) -> int:
+        return year * 100 + month
+
+    @staticmethod
+    def _previous_month(year: int, month: int) -> tuple[int, int]:
+        if month == 0:
+            return year - 1, 11
+        return year, month - 1
+
+    def _effective_field_at_key(self, docs: List[Dict[str, Any]], field: str, key: int) -> Optional[float]:
+        candidates = [
+            d for d in docs
+            if self._month_key(int(d.get("year", 0)), int(d.get("month", 0))) <= key
+            and d.get(field) is not None
+        ]
+        if not candidates:
+            return None
+        candidates.sort(key=lambda d: self._month_key(int(d["year"]), int(d["month"])), reverse=True)
+        try:
+            return float(candidates[0].get(field))
+        except (TypeError, ValueError):
+            return None
+
+    def _carry_forward_shortfall(self, docs: List[Dict[str, Any]], year: int, month: int) -> float:
+        """
+        Compute shortfall carried into year/month from closed previous months.
+        A month is considered closed only when it has an exact settled_target.
+        This avoids generating shortfall for months that were never filled in.
+        """
+        if not docs:
+            return 0.0
+
+        prev_year, prev_month = self._previous_month(year, month)
+        prev_key = self._month_key(prev_year, prev_month)
+        exact_by_key = {
+            self._month_key(int(d.get("year", 0)), int(d.get("month", 0))): d
+            for d in docs
+        }
+
+        carry = 0.0
+        for key in sorted(k for k in exact_by_key.keys() if k <= prev_key):
+            doc = exact_by_key[key]
+            if doc.get("settled_target") is None:
+                continue
+            base_target = self._effective_field_at_key(docs, "monthly_target", key) or 0.0
+            try:
+                achieved = float(doc.get("settled_target") or 0)
+            except (TypeError, ValueError):
+                achieved = 0.0
+            carry = max(0.0, base_target + carry - achieved)
+        return carry
+
     async def get_bulk_for_month(self, employee_ids: List[str], year: int, month: int) -> Dict[str, Dict]:
         """
         Returns { employee_id: config_doc } for all employees in one query.
@@ -115,14 +169,14 @@ class EmployeeMonthlyConfigDB:
                 {"employee_id": {"$in": employee_ids}}
             ).to_list(length=None)
 
-            target_key = year * 100 + month
+            target_key = self._month_key(year, month)
             # Group by employee_id, keeping history for salary/target inheritance
             # and exact-month entries for achieved target.
             by_emp: Dict[str, list] = {}
             exact_by_emp: Dict[str, Dict[str, Any]] = {}
             for doc in all_docs:
                 eid = doc["employee_id"]
-                doc_key = doc["year"] * 100 + doc["month"]
+                doc_key = self._month_key(doc["year"], doc["month"])
                 if doc.get("year") == year and doc.get("month") == month:
                     exact_by_emp[eid] = doc
                 if doc_key <= target_key:
@@ -131,7 +185,7 @@ class EmployeeMonthlyConfigDB:
             result = {}
             for eid in set(by_emp.keys()) | set(exact_by_emp.keys()):
                 docs = by_emp.get(eid, [])
-                docs.sort(key=lambda d: d["year"] * 100 + d["month"], reverse=True)
+                docs.sort(key=lambda d: self._month_key(d["year"], d["month"]), reverse=True)
                 inherited_values: Dict[str, Any] = {}
                 inherited_sources: Dict[str, Any] = {}
                 for doc in docs:
@@ -148,6 +202,11 @@ class EmployeeMonthlyConfigDB:
                     "salary": inherited_values.get("salary"),
                     "monthly_target": inherited_values.get("monthly_target"),
                     "settled_target": exact_doc.get("settled_target") if exact_doc else None,
+                    "carry_forward_shortfall": self._carry_forward_shortfall(
+                        by_emp.get(eid, []),
+                        year,
+                        month,
+                    ),
                     "salary_source_year": inherited_sources.get("salary_source_year"),
                     "salary_source_month": inherited_sources.get("salary_source_month"),
                     "monthly_target_source_year": inherited_sources.get("monthly_target_source_year"),

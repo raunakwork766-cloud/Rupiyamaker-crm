@@ -18,6 +18,17 @@ const fmt  = n => n == null ? '' : Number(n).toLocaleString('en-IN');
 const inr  = n => n == null ? '—' : `₹${Number(n).toLocaleString('en-IN', { maximumFractionDigits: 0 })}`;
 const mkid = () => Math.random().toString(36).slice(2, 9);
 const now  = new Date();
+const DEFAULT_SALARY_START_MONTH = { year: now.getFullYear(), month: 4 }; // May (0-based)
+const isValidStartMonth = (v) => (
+  !!v && Number.isInteger(v.year) && Number.isInteger(v.month) && v.month >= 0 && v.month <= 11
+);
+const periodSerial = (y, m) => (y * 12) + m;
+const isBeforeSalaryStart = (y, m, start) => (
+  isValidStartMonth(start) ? periodSerial(y, m) < periodSerial(start.year, start.month) : false
+);
+const isRecordOnOrAfterStart = (recYear, recMonth, start) => (
+  !isBeforeSalaryStart(recYear, recMonth, start)
+);
 const isEarnedLeaveType = (leaveType) => {
   const t = String(leaveType || '').toLowerCase();
   return t.includes('earned') || t === 'el' || t.includes('earned_leave');
@@ -143,11 +154,12 @@ const fetchHrmsFinanceSummary = async (year, month) => {
       reimbs:   Array.isArray(r.reimbursements) ? r.reimbursements : [],
       advances: Array.isArray(r.advances)        ? r.advances        : [],
       deducts:  Array.isArray(r.deductions)      ? r.deductions      : [],
+      holds:    Array.isArray(r.salary_holds)    ? r.salary_holds    : [],
     };
     console.log('[SalaryMgmt] Finance summary:', { year, month, deducts: result.deducts.length, reimbs: result.reimbs.length });
     return result;
   } catch {
-    return { reimbs: [], advances: [], deducts: [] };
+    return { reimbs: [], advances: [], deducts: [], holds: [] };
   }
 };
 
@@ -402,7 +414,7 @@ const buildRSM = roles => {
 // attendanceDeduction = (totalDays - presentDays) * perDaySalary
 // finalSalary     = monthlySalary + incentive - attendanceDeduction
 // accountTransfer = finalSalary - totalDeductions + totalReimbursements
-const calcRow = (emp, allocs, deducts, advanceBalance, carryForward, warnDeducts, presentDays, totalDaysInMonth, rawPresentScore, plAdded, effectiveDays, elAdded) => {
+const calcRow = (emp, allocs, deducts, advanceBalance, carryForward, warnDeducts, presentDays, totalDaysInMonth, rawPresentScore, plAdded, effectiveDays, elAdded, salaryHold = null) => {
   const id = String(emp._id || emp.id);
   const indi       = num(emp.settled_target || 0);
   const givenAway  = allocs.filter(a => a.fromId === id).reduce((s,a) => s + num(a.amount), 0);
@@ -459,7 +471,9 @@ const calcRow = (emp, allocs, deducts, advanceBalance, carryForward, warnDeducts
   const advRecovered  = empDeds.filter(d => d.type === 'Advance Recovery').reduce((s,d) => s + num(d.amount), 0);
   const remainingAdv  = Math.max(0, num(advanceBalance) - advRecovered);
 
-  const accountTransfer = finalSalary - totalDeds + totalReimb;
+  const grossAccountTransfer = finalSalary - totalDeds + totalReimb;
+  const isSalaryHeld = !!salaryHold;
+  const accountTransfer = isSalaryHeld ? 0 : grossAccountTransfer;
 
   return { id, indi, givenAway, teamRcvd, availIndi, baseTarget, cf, totalTarget,
            overallBiz, finalBiz, shortfall, excessBiz, incentive, iRate,
@@ -469,7 +483,8 @@ const calcRow = (emp, allocs, deducts, advanceBalance, carryForward, warnDeducts
            effectiveDays: effDays,
            finalScore: presentDays,  // finalScore = the attendance page "Final" value passed in
            finalSalary, totalDeds, totalReimb, advRecovered, remainingAdv,
-           accountTransfer, empDeds, empReimb, warnDeducts };
+           grossAccountTransfer, accountTransfer, isSalaryHeld, salaryHold,
+           empDeds, empReimb, warnDeducts };
 };
 
 // ─── CSS injected once ────────────────────────────────────────────────────────
@@ -1020,22 +1035,13 @@ function DedModal({ emp, calc, onSave, onClose }) {
   );
 }
 
-  const addDed = () => {
-    const amount = parseFloat(damt);
-    if (!amount || amount <= 0) { alert('Enter valid amount.'); return; }
-    if (dtype === 'Advance Recovery' && amount > calc.remainingAdv) {
-      alert(`Cannot recover more than pending advance (₹${fmt(calc.remainingAdv)}).`); return;
-    }
-    onSave({ __add: { id: mkid(), empId: calc.id, type: dtype, desc: ddesc, amount } });
-    setDdesc(''); setDamt('');
-  };
-
 // ─── History Modal ────────────────────────────────────────────────────────────
-function HistModal({ emp, inactiveInfo, onClose }) {
+function HistModal({ emp, inactiveInfo, startMonth, onClose }) {
   const hist = useMemo(() => {
     const store = loadJ(LS.HISTORY, {});
-    return (store[String(emp._id||emp.id)] || []).slice().reverse();
-  }, [emp]);
+    const raw = (store[String(emp._id||emp.id)] || []).slice().reverse();
+    return raw.filter(h => isRecordOnOrAfterStart(h.year, h.month, startMonth));
+  }, [emp, startMonth]);
 
   return (
     <div className="sm-overlay" onClick={onClose}>
@@ -1079,7 +1085,23 @@ function HistModal({ emp, inactiveInfo, onClose }) {
 }
 
 // ─── Salary Table Row ─────────────────────────────────────────────────────────
-function SalRow({ emp, calc, processed, deptMap, onTeam, onDeduct, onToggle }) {
+function SalRow({ emp, calc, processed, deptMap, isLockedMonth, onTeam, onDeduct, onToggle }) {
+  if (isLockedMonth) {
+    return (
+      <tr>
+        <td>
+          <div style={{fontWeight:'bold'}}>{emp.first_name} {emp.last_name}</div>
+          <div style={{fontSize:11,color:'#6b7280'}}>{emp.employee_id||''}</div>
+        </td>
+        <td>
+          <div style={{fontWeight:'bold',color:'#374151'}}>{teamName(emp, deptMap)}</div>
+          <div style={{fontSize:11,color:'#6b7280'}}>{displayText(emp.designation, '—')}</div>
+        </td>
+        <td colSpan={18} style={{color:'#d1d5db',textAlign:'center'}}>—</td>
+      </tr>
+    );
+  }
+
   // finalScore IS the "Final" from attendance page — use it directly as present days
   const finalScore       = calc.hasPresentData ? calc.finalScore : null;
   const totalDaysInMonth = calc.totalDaysInMonth || 0;
@@ -1125,6 +1147,11 @@ function SalRow({ emp, calc, processed, deptMap, onTeam, onDeduct, onToggle }) {
       <td>{fmt(Math.round(calc.incentive))||'0'}</td>
       <td>
         <div style={{fontWeight:'bold'}}>{fmt(Math.round(calc.finalSalary))}</div>
+        {calc.isSalaryHeld && (
+          <div style={{fontSize:10,color:'#fb923c',marginTop:1,fontWeight:'bold'}}>
+            salary held
+          </div>
+        )}
         {calc.hasPresentData && calc.attendanceDed > 0 && (
           <div style={{fontSize:10,color:'#ef4444',marginTop:1}}>
             -{fmt(calc.attendanceDed)} att.
@@ -1147,7 +1174,16 @@ function SalRow({ emp, calc, processed, deptMap, onTeam, onDeduct, onToggle }) {
           </div>
         )}
       </td>
-      <td style={{fontWeight:'bold',color:'#2563eb'}}>{fmt(Math.round(calc.accountTransfer))}</td>
+      <td style={{fontWeight:'bold',color: calc.isSalaryHeld ? '#fb923c' : '#2563eb'}}>
+        {calc.isSalaryHeld ? (
+          <div>
+            <div>HELD</div>
+            <div style={{fontSize:10,color:'#6b7280',fontWeight:'normal'}}>
+              gross {fmt(Math.round(calc.grossAccountTransfer || 0))}
+            </div>
+          </div>
+        ) : fmt(Math.round(calc.accountTransfer))}
+      </td>
       <td style={{fontFamily:'monospace',fontSize:11}}>{emp.salary_account_name||''}</td>
       <td style={{fontFamily:'monospace',fontSize:11}}>{emp.salary_account_number||''}</td>
       <td style={{fontSize:11}}>{emp.salary_bank_name||''}</td>
@@ -1174,7 +1210,7 @@ function SalRow({ emp, calc, processed, deptMap, onTeam, onDeduct, onToggle }) {
 }
 
 // ─── Performance Tab ──────────────────────────────────────────────────────────
-function PerfTab({ calcRows, history }) {
+function PerfTab({ calcRows, history, startMonth }) {
   const [perfDate, setPerfDate] = useState(() => new Date(now.getFullYear(), now.getMonth()));
 
   const changeMonth = d => setPerfDate(prev => new Date(prev.getFullYear(), prev.getMonth() + d));
@@ -1218,6 +1254,11 @@ function PerfTab({ calcRows, history }) {
                   </td>
                   {cols.map(c => {
                     const isCur = c.getMonth()===curM && c.getFullYear()===curY;
+                    const isBeforeStart = isBeforeSalaryStart(c.getFullYear(), c.getMonth(), startMonth);
+                    if (isBeforeStart) {
+                      return <td key={c}><div className="sm-perf-cell sm-perf-nodata"><span style={{fontSize:10,fontWeight:'bold',color:'#d1d5db',letterSpacing:1}}>NO DATA</span></div></td>;
+                    }
+
                     const hRec = empHist.find(h => h.month===c.getMonth() && h.year===c.getFullYear());
 
                     let achieved, target, indi, team;
@@ -1303,7 +1344,10 @@ export default function SalaryManagement() {
 
   // ── Salary system start month ──────────────────────────────────────────────
   // Months before this are not shown. Configurable by admin (stored in localStorage + DB).
-  const [startMonth, setStartMonth] = useState(() => loadJ(LS.SAL_START, null));
+  const [startMonth, setStartMonth] = useState(() => {
+    const saved = loadJ(LS.SAL_START, null);
+    return isValidStartMonth(saved) ? saved : DEFAULT_SALARY_START_MONTH;
+  });
   // { year, month } e.g. { year: 2026, month: 4 } = May 2026
 
   // Per-month salary/target override map: { empId: { salary, monthly_target, settled_target } }
@@ -1323,6 +1367,7 @@ export default function SalaryManagement() {
   const [hrmsReimbs,   setHrmsReimbs]   = useState([]); // approved/paid this month
   const [hrmsAdvances, setHrmsAdvances] = useState([]); // all approved advances
   const [hrmsDeducts,  setHrmsDeducts]  = useState([]); // approved deductions this month
+  const [hrmsHolds,    setHrmsHolds]    = useState([]); // held salaries this month
   const [hrmsLoad,     setHrmsLoad]     = useState(false);
 
   // ── Attendance present days ─────────────────────────────────────────────────
@@ -1392,10 +1437,11 @@ export default function SalaryManagement() {
   useEffect(() => {
     if (!isAdmin) return;
     setHrmsLoad(true);
-    fetchHrmsFinanceSummary(year, month).then(({ reimbs, advances, deducts }) => {
+    fetchHrmsFinanceSummary(year, month).then(({ reimbs, advances, deducts, holds }) => {
       setHrmsReimbs(reimbs);
       setHrmsAdvances(advances);
       setHrmsDeducts(deducts);
+      setHrmsHolds(holds);
     }).finally(() => setHrmsLoad(false));
   }, [isAdmin, month, year]);
 
@@ -1427,13 +1473,20 @@ export default function SalaryManagement() {
     // Also fetch global start month (once)
     apiFetch(`/employee-monthly-config/start-month?user_id=${uid}`)
       .then(res => {
-        if (res.data) {
+        if (isValidStartMonth(res.data)) {
           setStartMonth(res.data);
           saveJ(LS.SAL_START, res.data);
         }
       })
       .catch(() => {});
   }, [isAdmin, activeEmps, month, year]);
+
+  useEffect(() => {
+    // Keep a deterministic fallback so behavior is stable even before API responds.
+    if (!isValidStartMonth(loadJ(LS.SAL_START, null))) {
+      saveJ(LS.SAL_START, startMonth);
+    }
+  }, [startMonth]);
 
   // ── computed calc rows ──────────────────────────────────────────────────────
   // Build per-employee advance balance from DB (hrms_advance_salary)
@@ -1454,11 +1507,12 @@ export default function SalaryManagement() {
       const pk = periodKey => cfMap[periodKey] || 0;
       const prevM = month===0?11:month-1;
       const prevY = month===0?year-1:year;
-      const cf = pk(`${id}_${prevM}_${prevY}`);
-
       // ── Per-month salary/target override ────────────────────────────────────
       // Salary/monthly_target can inherit from employee/current config. settled_target is exact-month only.
       const monthCfg = monthlyConfigMap[id] || {};
+      const cf = monthCfg.carry_forward_shortfall != null
+        ? num(monthCfg.carry_forward_shortfall)
+        : pk(`${id}_${prevM}_${prevY}`);
       const empWithMonthlyValues = {
         ...emp,
         salary:         monthCfg.salary         != null ? monthCfg.salary         : emp.salary,
@@ -1504,19 +1558,21 @@ export default function SalaryManagement() {
 
       const empCode = String(emp.employee_id || '');
       const attData = presentDaysMap[id] || (empCode ? presentDaysMap[empCode] : null) || null;
+      const salaryHold = hrmsHolds.find(h => String(h.employee_id) === id && h.status === 'held') || null;
       const c = calcRow(empWithMonthlyValues, allocs, mergedDeds, adv, cf, ws,
         attData ? attData.finalScore : null,
         new Date(year, month + 1, 0).getDate(),
         attData ? attData.presentScore : null,
         attData ? attData.plAdded : 0,
         attData ? attData.effectiveDays : null,
-        attData ? attData.elAdded : 0
+        attData ? attData.elAdded : 0,
+        salaryHold
       );
       return { emp: empWithMonthlyValues, calc: { ...c, advanceBalance: adv }, id };
     });
   }, [activeEmps, allocs, deducts, advMap, cfMap, warnings, month, year,
       monthlyConfigMap,
-      hrmsReimbs, hrmsAdvances, hrmsDeducts, dbAdvMap, presentDaysMap]);
+      hrmsReimbs, hrmsAdvances, hrmsDeducts, hrmsHolds, dbAdvMap, presentDaysMap]);
 
   // ── filters ─────────────────────────────────────────────────────────────────
   const teams  = useMemo(()=>[...new Set(activeEmps.map(e=>teamName(e, deptMap, '')).filter(Boolean))].sort(),[activeEmps,deptMap]);
@@ -1532,12 +1588,18 @@ export default function SalaryManagement() {
     });
   }, [calcRows, search, teamF, desigF, deptMap]);
 
+  const selectedBeforeStart = useMemo(
+    () => isBeforeSalaryStart(year, month, startMonth),
+    [year, month, startMonth]
+  );
+
   const isPro  = id => processed.includes(periodK(id, month, year));
-  const pending   = filtered.filter(r => !isPro(r.id));
-  const completed = filtered.filter(r =>  isPro(r.id));
+  const pending   = selectedBeforeStart ? filtered : filtered.filter(r => !isPro(r.id));
+  const completed = selectedBeforeStart ? [] : filtered.filter(r =>  isPro(r.id));
 
   // ── actions ─────────────────────────────────────────────────────────────────
   const toggleProcessed = useCallback((id) => {
+    if (selectedBeforeStart) return;
     const key = periodK(id, month, year);
     const emp = activeEmps.find(e=>String(e._id||e.id)===id)||{};
     const row = calcRows.find(r=>r.id===id);
@@ -1592,7 +1654,7 @@ export default function SalaryManagement() {
     }
     setProcessed(newP);
     saveJ(LS.PROCESSED, newP);
-  }, [processed, month, year, activeEmps, calcRows]);
+  }, [processed, month, year, activeEmps, calcRows, selectedBeforeStart]);
 
   const deactivateEmp = useCallback((id) => {
     const emp = activeEmps.find(e=>String(e._id||e.id)===id)||{};
@@ -1665,7 +1727,7 @@ export default function SalaryManagement() {
         ) : null;
       })()}
       {histModal && (
-        <HistModal emp={histModal} inactiveInfo={inactMap[String(histModal._id||histModal.id)]}
+        <HistModal emp={histModal} inactiveInfo={inactMap[String(histModal._id||histModal.id)]} startMonth={startMonth}
           onClose={()=>setHistModal(null)}/>
       )}
 
@@ -1686,41 +1748,9 @@ export default function SalaryManagement() {
             {[year-1,year,year+1].map(y=><option key={y} value={y}>{y}</option>)}
           </select>
           {/* Start Month Config */}
-          {!startMonth && (
-            <button
-              onClick={async () => {
-                const uid = getUid();
-                // Set current selected month as the start month
-                // Also seed salary/target for all active employees for this month
-                const cfg = { year, month };
-                saveJ(LS.SAL_START, cfg);
-                setStartMonth(cfg);
-                // Seed per-month config for all active employees (current live values)
-                try {
-                  await Promise.all(activeEmps.map(emp => {
-                    const id = String(emp._id || emp.id);
-                    const fields = {};
-                    if (emp.salary) fields.salary = emp.salary;
-                    if (emp.monthly_target) fields.monthly_target = emp.monthly_target;
-                    if (Object.keys(fields).length === 0) return Promise.resolve();
-                    return apiFetch(`/employee-monthly-config/upsert?user_id=${uid}`, {
-                      method: 'POST',
-                      body: JSON.stringify({ employee_id: id, year, month, ...fields })
-                    }).catch(() => {});
-                  }));
-                } catch(e) {}
-                alert(`Salary system start month set to ${MONTHS_FULL[month]} ${year}. Data before this month will not be shown.`);
-              }}
-              style={{background:'#2563eb',color:'white',border:'none',padding:'6px 12px',borderRadius:4,fontSize:12,cursor:'pointer',fontWeight:'bold'}}
-            >
-              📅 Set Start Month ({MONTHS_FULL[month]} {year})
-            </button>
-          )}
           {startMonth && (
             <span style={{fontSize:11,color:'#6b7280',background:'#f3f4f6',padding:'4px 8px',borderRadius:4,border:'1px solid #e5e7eb'}}>
               📅 Start: {MONTHS_FULL[startMonth.month]} {startMonth.year}
-              <button onClick={() => { setStartMonth(null); saveJ(LS.SAL_START, null); }}
-                style={{background:'none',border:'none',cursor:'pointer',color:'#ef4444',marginLeft:4,fontSize:11}}>✕</button>
             </span>
           )}
           {warnLoad && <span style={{fontSize:12,color:'#f59e0b'}}>Loading warnings…</span>}
@@ -1731,15 +1761,9 @@ export default function SalaryManagement() {
         </div>
       </div>
 
-      {/* Block display if selected month is before start month */}
-      {startMonth && (year * 100 + month < startMonth.year * 100 + startMonth.month) && (
-        <div style={{textAlign:'center',padding:'60px 20px',color:'#6b7280'}}>
-          <div style={{fontSize:40,marginBottom:12}}>🔒</div>
-          <div style={{fontSize:18,fontWeight:700,color:'#374151',marginBottom:8}}>No Data Before Start Month</div>
-          <div style={{fontSize:14,color:'#9ca3af'}}>
-            Salary system started from <strong>{MONTHS_FULL[startMonth.month]} {startMonth.year}</strong>.
-            No records exist before this month.
-          </div>
+      {selectedBeforeStart && (
+        <div style={{margin:'10px 16px 0',padding:'10px 12px',background:'#fff7ed',border:'1px solid #fdba74',borderRadius:8,color:'#9a3412',fontSize:12}}>
+          Showing blank values because salary rules apply from {MONTHS_FULL[startMonth.month]} {startMonth.year}.
         </div>
       )}
 
@@ -1748,7 +1772,16 @@ export default function SalaryManagement() {
       ) : error ? (
         <div style={{textAlign:'center',padding:60,color:'#ef4444'}}>❌ {error}</div>
       ) : tab === 'performance' ? (
-        <PerfTab calcRows={calcRows} history={histMap}/>
+        <PerfTab
+          calcRows={calcRows}
+          history={Object.fromEntries(
+            Object.entries(histMap).map(([empId, list]) => [
+              empId,
+              Array.isArray(list) ? list.filter(h => isRecordOnOrAfterStart(h.year, h.month, startMonth)) : []
+            ])
+          )}
+          startMonth={startMonth}
+        />
       ) : tab === 'history' ? (
         <>
           <div className="sm-toolbar" style={{borderRadius:8,marginBottom:2}}>
@@ -1772,7 +1805,10 @@ export default function SalaryManagement() {
                   const rows = [];
                   activeEmps.forEach(emp => {
                     const id = String(emp._id||emp.id);
-                    const hist = (histMap[id]||[]).slice().reverse();
+                    const hist = (histMap[id]||[])
+                      .filter(h => isRecordOnOrAfterStart(h.year, h.month, startMonth))
+                      .slice()
+                      .reverse();
                     hist.forEach((h,i) => {
                       rows.push(
                         <tr key={`${id}_${i}`}>
@@ -1898,10 +1934,10 @@ export default function SalaryManagement() {
                 {displayRows.length === 0
                   ? <tr><td colSpan={TH_COLS.length} style={{textAlign:'center',padding:20,color:'#6b7280'}}>No employees found in this view.</td></tr>
                   : displayRows.map(({emp, calc, id}) => (
-                    <SalRow key={id} emp={emp} calc={calc} deptMap={deptMap}
+                    <SalRow key={id} emp={emp} calc={calc} deptMap={deptMap} isLockedMonth={selectedBeforeStart}
                       processed={isPro(id)}
-                      onTeam={()=>setAllocModal(emp)}
-                      onDeduct={()=>setDedModal(emp)}
+                      onTeam={()=>!selectedBeforeStart && setAllocModal(emp)}
+                      onDeduct={()=>!selectedBeforeStart && setDedModal(emp)}
                       onToggle={()=>toggleProcessed(id)}
                     />
                   ))

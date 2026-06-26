@@ -31,8 +31,10 @@ const STATUS_CONFIG = {
   approved: { label: 'Approved', color: '#34d399', bg: 'rgba(52,211,153,0.12)',  border: '#064e3b' },
   rejected: { label: 'Rejected', color: '#f87171', bg: 'rgba(248,113,113,0.12)', border: '#7f1d1d' },
   paid:     { label: 'Paid',     color: '#60a5fa', bg: 'rgba(96,165,250,0.12)',  border: '#1e3a5f' },
+  held:     { label: 'Held',     color: '#fb923c', bg: 'rgba(251,146,60,0.12)',  border: '#7c2d12' },
+  released: { label: 'Released', color: '#34d399', bg: 'rgba(52,211,153,0.12)',  border: '#064e3b' },
 };
-const TABS = ['Reimbursements', 'Advance Salary', 'Deductions'];
+const TABS = ['Reimbursements', 'Advance Salary', 'Deductions', 'Salary Holds'];
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
 const getUid  = () => localStorage.getItem('userId') || localStorage.getItem('user_id')
@@ -47,6 +49,7 @@ const LS = {
   REIMB:  'fin_reimbursements',
   ADV:    'fin_advances',
   DEDUCT: 'fin_deductions',
+  HOLD:   'fin_salary_holds',
 };
 const loadLS  = (k)    => { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : []; } catch { return []; } };
 const saveLS  = (k, v) => localStorage.setItem(k, JSON.stringify(v));
@@ -235,9 +238,10 @@ const DetailModal = ({ open, onClose, record, type, onAction, onDelete, canDelet
   if (!open || !record) return null;
   const isReimb = type === 'reimb';
   const isAdv   = type === 'adv';
-  const typeLabel   = isReimb ? 'Reimbursement' : isAdv ? 'Advance Salary' : 'Deduction';
-  const iconColor   = isReimb ? '#60a5fa' : isAdv ? '#fbbf24' : '#f87171';
-  const iconBg      = isReimb ? 'rgba(96,165,250,.12)' : isAdv ? 'rgba(251,191,36,.12)' : 'rgba(248,113,113,.12)';
+  const isHold  = type === 'hold';
+  const typeLabel   = isReimb ? 'Reimbursement' : isAdv ? 'Advance Salary' : isHold ? 'Salary Hold' : 'Deduction';
+  const iconColor   = isReimb ? '#60a5fa' : isAdv ? '#fbbf24' : isHold ? '#fb923c' : '#f87171';
+  const iconBg      = isReimb ? 'rgba(96,165,250,.12)' : isAdv ? 'rgba(251,191,36,.12)' : isHold ? 'rgba(251,146,60,.12)' : 'rgba(248,113,113,.12)';
   const DetailRow = ({ label, children }) => (
     <div className="fin-detail-grid" style={{ gridTemplateColumns: '120px 1fr', display:'grid', gap:'6px 10px', marginBottom:'8px' }}>
       <span className="fin-detail-label">{label}</span>
@@ -251,7 +255,7 @@ const DetailModal = ({ open, onClose, record, type, onAction, onDelete, canDelet
           <div className="fin-modal-header-left">
             <div className="fin-modal-icon" style={{ background: iconBg }}>
               <svg width="18" height="18" fill="none" stroke={iconColor} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24">
-                {isReimb ? <><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></> : isAdv ? <><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></> : <><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></>}
+                {isReimb ? <><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></> : isAdv ? <><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></> : isHold ? <><rect x="3" y="11" width="18" height="10" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></> : <><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></>}
               </svg>
             </div>
             <div>
@@ -266,7 +270,9 @@ const DetailModal = ({ open, onClose, record, type, onAction, onDelete, canDelet
         <div className="fin-modal-body">
           <p className="fin-section-title">Basic Information</p>
           <DetailRow label="Employee">{record.employee_name || '—'}</DetailRow>
-          <DetailRow label="Amount"><span style={{ color: isAdv ? '#fbbf24' : isReimb ? '#34d399' : '#f87171', fontWeight: 700 }}>{inr(record.amount)}</span></DetailRow>
+          {!isHold && <DetailRow label="Amount"><span style={{ color: isAdv ? '#fbbf24' : isReimb ? '#34d399' : '#f87171', fontWeight: 700 }}>{inr(record.amount)}</span></DetailRow>}
+          {isHold && <DetailRow label="Salary Month">{MONTHS_LIST[record.month] || '—'} {record.year || ''}</DetailRow>}
+          {isHold && record.salary_amount != null && <DetailRow label="Held Amount"><span style={{ color: '#fb923c', fontWeight: 700 }}>{inr(record.salary_amount)}</span></DetailRow>}
           {isReimb && <DetailRow label="Category">{record.category || '—'}</DetailRow>}
           {isAdv   && <DetailRow label="Reason">{record.reason || '—'}</DetailRow>}
           {isAdv   && <DetailRow label="Repayment">{record.repayment_months ? `${record.repayment_months} months · ${inr(record.monthly_deduction)}/mo` : '—'}</DetailRow>}
@@ -277,7 +283,7 @@ const DetailModal = ({ open, onClose, record, type, onAction, onDelete, canDelet
               <span style={{ color: '#f87171' }}>Due: {inr(record.amount - (record.paid_amount || 0))}</span>
             </DetailRow>
           )}
-          {!isReimb && !isAdv && <DetailRow label="Type">{record.deduction_type || '—'}</DetailRow>}
+          {!isReimb && !isAdv && !isHold && <DetailRow label="Type">{record.deduction_type || '—'}</DetailRow>}
           <DetailRow label="Date">{fmtDate(record.date || record.created_at)}</DetailRow>
           <DetailRow label="Status"><StatusBadge status={record.status} /></DetailRow>
           {record.description && <DetailRow label="Description"><span style={{ whiteSpace: 'normal', wordBreak: 'break-word' }}>{record.description}</span></DetailRow>}
@@ -313,6 +319,14 @@ const DetailModal = ({ open, onClose, record, type, onAction, onDelete, canDelet
               <button className="fin-action-btn fin-btn-paid" style={{ padding: '6px 14px', fontSize: 13 }} disabled={loading} onClick={() => onAction('paid', record, notes)}>
                 <svg width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
                 Mark as Paid
+              </button>
+            </div>
+          )}
+          {isAdmin && isHold && record.status === 'held' && (
+            <div style={{ marginTop: 16 }}>
+              <button className="fin-action-btn fin-btn-approve" style={{ padding: '6px 14px', fontSize: 13 }} disabled={loading} onClick={() => onAction('released', record, notes)}>
+                <svg width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
+                Release Salary
               </button>
             </div>
           )}
@@ -618,6 +632,79 @@ const CreateDeductModal = ({ open, onClose, onSubmit, loading, employees, approv
   );
 };
 
+// ─── Create Salary Hold Modal ────────────────────────────────────────────────
+const CreateHoldModal = ({ open, onClose, onSubmit, loading, employees, selectedMonth, selectedYear }) => {
+  const blank = { employee_id: '', employee_name: '', salary_amount: '', reason: '' };
+  const [form, setForm] = useState(blank);
+  const set = (k, v) => setForm(p => ({ ...p, [k]: v }));
+
+  React.useEffect(() => {
+    if (open) setForm(blank);
+  }, [open]);
+
+  const handleSubmit = () => {
+    if (!form.employee_id) return alert('Please select an employee.');
+    onSubmit(form);
+  };
+
+  if (!open) return null;
+  return (
+    <div className="fin-overlay" onClick={onClose}>
+      <div className="fin-modal" onClick={e => e.stopPropagation()}>
+        <div className="fin-modal-header">
+          <div className="fin-modal-header-left">
+            <div className="fin-modal-icon" style={{ background: 'rgba(251,146,60,.12)' }}>
+              <svg width="18" height="18" fill="none" stroke="#fb923c" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="10" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>
+            </div>
+            <div>
+              <p className="fin-modal-title">Hold Salary</p>
+              <p className="fin-modal-subtitle">Hold {MONTHS_LIST[selectedMonth]} {selectedYear} salary until released</p>
+            </div>
+          </div>
+          <button className="fin-close-btn" onClick={onClose}><svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
+        </div>
+        <div className="fin-modal-body">
+          <div className="fin-info-box" style={{ marginBottom: 14, fontSize: 12, background: 'rgba(251,146,60,0.08)', borderColor: '#7c2d12', color: '#fdba74' }}>
+            Salary calculation remains visible, but net payable becomes zero while the hold is active.
+          </div>
+          <div className="fin-form-row single">
+            <div className="fin-form-group">
+              <label className="fin-form-label">Employee *</label>
+              <select value={form.employee_id} onChange={e => {
+                const emp = employees.find(x => x._id === e.target.value);
+                set('employee_id', e.target.value);
+                set('employee_name', emp ? `${emp.first_name} ${emp.last_name}` : '');
+                set('salary_amount', emp?.salary || '');
+              }}>
+                <option value="">Select employee...</option>
+                {employees.map(emp => <option key={emp._id} value={emp._id}>{emp.first_name} {emp.last_name}</option>)}
+              </select>
+            </div>
+          </div>
+          <div className="fin-form-row single">
+            <div className="fin-form-group">
+              <label className="fin-form-label">Held Salary Amount</label>
+              <input type="number" min="0" value={form.salary_amount} onChange={e => set('salary_amount', e.target.value)} placeholder="Optional" />
+            </div>
+          </div>
+          <div className="fin-form-row single">
+            <div className="fin-form-group">
+              <label className="fin-form-label">Reason / Note</label>
+              <textarea value={form.reason} onChange={e => set('reason', e.target.value)} placeholder="Why is this salary being held?" />
+            </div>
+          </div>
+        </div>
+        <div className="fin-modal-footer">
+          <button className="fin-btn-ghost" onClick={onClose}>Cancel</button>
+          <button className="fin-btn-primary" style={{ background: '#ea580c' }} disabled={loading} onClick={handleSubmit}>
+            {loading ? 'Saving…' : 'Hold Salary'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 // ═══════════════════════════════════════════════════════════════════
 // ─── Edit Modal ───────────────────────────────────────────────────
 // ═══════════════════════════════════════════════════════════════════
@@ -820,12 +907,14 @@ export default function FinanceManagement() {
   const [reimbs,  setReimbs]  = useState([]);
   const [advs,    setAdvs]    = useState([]);
   const [deducts, setDeducts] = useState([]);
+  const [holds,   setHolds]   = useState([]);
   const [employees, setEmps]  = useState([]);
 
   // Modals
   const [showCreateReimb,  setShowCreateReimb]  = useState(false);
   const [showCreateAdv,    setShowCreateAdv]    = useState(false);
   const [showCreateDeduct, setShowCreateDeduct] = useState(false);
+  const [showCreateHold,   setShowCreateHold]   = useState(false);
   const [detailRecord,     setDetailRecord]     = useState(null);
   const [detailType,       setDetailType]       = useState('reimb');
   const [confirmAction,    setConfirmAction]    = useState(null); // {record, newStatus}
@@ -898,21 +987,36 @@ export default function FinanceManagement() {
     }
   }, []);
 
+  const fetchHolds = useCallback(async () => {
+    try {
+      const data = await apiFetch(`/hrms/salary-holds?user_id=${getUid()}`);
+      const list = Array.isArray(data) ? data : (data.items || []);
+      setHolds(list);
+      saveLS(LS.HOLD, list);
+    } catch {
+      setHolds(loadLS(LS.HOLD));
+    }
+  }, []);
+
   useEffect(() => {
     setLoading(true);
-    Promise.all([fetchReimbs(), fetchAdvs(), fetchDeducts()]).finally(() => setLoading(false));
-  }, [fetchReimbs, fetchAdvs, fetchDeducts]);
+    Promise.all([fetchReimbs(), fetchAdvs(), fetchDeducts(), fetchHolds()]).finally(() => setLoading(false));
+  }, [fetchReimbs, fetchAdvs, fetchDeducts, fetchHolds]);
 
   // ── filtered lists ───────────────────────────────────────────────
   const uid = getUid();
   const filterData = (list, kind) => list.filter(r => {
     if (!isAdmin && r.employee_id && r.employee_id !== uid) return false;
     if (statusFilter !== 'all' && r.status !== statusFilter) return false;
-    // Month filter: applies to Deductions tab
-    if (kind === 'deductions') {
-      const d = new Date(r.date || r.created_at || '');
-      if (!isNaN(d.getTime())) {
-        if (d.getFullYear() !== filterYear || d.getMonth() !== filterMonth) return false;
+    // Month filter: applies to Deductions and Salary Holds tabs
+    if (kind === 'deductions' || kind === 'salary-holds') {
+      if (r.month != null && r.year != null) {
+        if (Number(r.year) !== filterYear || Number(r.month) !== filterMonth) return false;
+      } else {
+        const d = new Date(r.date || r.created_at || '');
+        if (!isNaN(d.getTime())) {
+          if (d.getFullYear() !== filterYear || d.getMonth() !== filterMonth) return false;
+        }
       }
     }
     const q = search.toLowerCase();
@@ -925,10 +1029,11 @@ export default function FinanceManagement() {
   const filteredReimbs  = useMemo(() => filterData(reimbs, 'reimbursements'),  [reimbs,  search, statusFilter, isAdmin, uid, filterMonth, filterYear]);
   const filteredAdvs    = useMemo(() => filterData(advs, 'advance-salary'),    [advs,    search, statusFilter, isAdmin, uid, filterMonth, filterYear]);
   const filteredDeducts = useMemo(() => filterData(deducts, 'deductions'), [deducts, search, statusFilter, isAdmin, uid, filterMonth, filterYear]);
+  const filteredHolds   = useMemo(() => filterData(holds, 'salary-holds'), [holds, search, statusFilter, isAdmin, uid, filterMonth, filterYear]);
 
   // ── KPI counts ───────────────────────────────────────────────────
   const kpis = useMemo(() => {
-    const src = activeTab === 'Reimbursements' ? reimbs : activeTab === 'Advance Salary' ? advs : deducts;
+    const src = activeTab === 'Reimbursements' ? reimbs : activeTab === 'Advance Salary' ? advs : activeTab === 'Salary Holds' ? holds : deducts;
     const mine = isAdmin ? src : src.filter(r => !r.employee_id || r.employee_id === uid);
     return {
       total:    mine.length,
@@ -936,11 +1041,13 @@ export default function FinanceManagement() {
       approved: mine.filter(r => r.status === 'approved').length,
       rejected: mine.filter(r => r.status === 'rejected').length,
       paid:     mine.filter(r => r.status === 'paid').length,
+      held:     mine.filter(r => r.status === 'held').length,
+      released: mine.filter(r => r.status === 'released').length,
       totalAmt: mine.reduce((s, r) => s + Number(r.amount || 0), 0),
       pendAmt:  mine.filter(r => r.status === 'pending').reduce((s, r) => s + Number(r.amount || 0), 0),
       appAmt:   mine.filter(r => r.status === 'approved').reduce((s, r) => s + Number(r.amount || 0), 0),
     };
-  }, [activeTab, reimbs, advs, deducts, isAdmin, uid]);
+  }, [activeTab, reimbs, advs, deducts, holds, isAdmin, uid]);
 
   // ── create handlers ──────────────────────────────────────────────
   const handleCreateReimb = async (form) => {
@@ -998,8 +1105,8 @@ export default function FinanceManagement() {
     const approvers = financeApprovers.deduction || [];
     // Derive month/year from the actual date entered by user (not from filter month)
     // This ensures deduction is applied to the correct salary month
-    let dedMonth = selectedMonth;  // 0-indexed fallback
-    let dedYear  = selectedYear;
+    let dedMonth = filterMonth;  // 0-indexed fallback
+    let dedYear  = filterYear;
     if (form.date) {
       const d = new Date(form.date);
       if (!isNaN(d.getTime())) {
@@ -1032,19 +1139,49 @@ export default function FinanceManagement() {
     setShowCreateDeduct(false);
   };
 
+  const handleCreateHold = async (form) => {
+    setSaving(true);
+    const rec = {
+      _id: mkid(),
+      employee_id: form.employee_id,
+      employee_name: form.employee_name,
+      salary_amount: form.salary_amount ? Number(form.salary_amount) : undefined,
+      year: filterYear,
+      month: filterMonth,
+      date: `${filterYear}-${String(filterMonth + 1).padStart(2, '0')}-01`,
+      description: form.reason,
+      status: 'held',
+      created_at: new Date().toISOString(),
+      held_at: new Date().toISOString(),
+    };
+    try {
+      await apiFetch(`/hrms/salary-holds?user_id=${getUid()}`, { method: 'POST', body: JSON.stringify(rec) });
+      await fetchHolds();
+    } catch {
+      const updated = [...holds, rec];
+      setHolds(updated);
+      saveLS(LS.HOLD, updated);
+    }
+    setSaving(false);
+    setShowCreateHold(false);
+  };
+
   // ── action handler (approve/reject/paid) ─────────────────────────
-  const handleAction = async (newStatus, record, notes) => {
+  const handleAction = async (newStatus, record, notes, typeOverride = detailType) => {
     setSaving(true);
     const patch = { status: newStatus, notes, approved_by: 'Admin', actioned_at: new Date().toISOString() };
-    const isR = detailType === 'reimb';
-    const isA = detailType === 'adv';
-    const endMap = { reimb: 'reimbursements', adv: 'advance-salary', deduct: 'deductions' };
+    const activeDetailType = typeOverride || detailType;
+    const isR = activeDetailType === 'reimb';
+    const isA = activeDetailType === 'adv';
+    const isH = activeDetailType === 'hold';
+    const endMap = { reimb: 'reimbursements', adv: 'advance-salary', deduct: 'deductions', hold: 'salary-holds' };
     try {
-      await apiFetch(`/hrms/${endMap[detailType]}/${record._id}?user_id=${getUid()}`, {
+      await apiFetch(`/hrms/${endMap[activeDetailType]}/${record._id}?user_id=${getUid()}`, {
         method: 'PATCH', body: JSON.stringify(patch)
       });
       if (isR) await fetchReimbs();
       else if (isA) await fetchAdvs();
+      else if (isH) await fetchHolds();
       else await fetchDeducts();
     } catch {
       const updater = (list, setter, key) => {
@@ -1053,6 +1190,7 @@ export default function FinanceManagement() {
       };
       if (isR) updater(reimbs, setReimbs, LS.REIMB);
       else if (isA) updater(advs, setAdvs, LS.ADV);
+      else if (isH) updater(holds, setHolds, LS.HOLD);
       else updater(deducts, setDeducts, LS.DEDUCT);
     }
     setSaving(false);
@@ -1065,7 +1203,7 @@ export default function FinanceManagement() {
 
   const handleEditSave = async (updatedFields) => {
     setSaving(true);
-    const endMap = { reimb: 'reimbursements', adv: 'advance-salary', deduct: 'deductions' };
+    const endMap = { reimb: 'reimbursements', adv: 'advance-salary', deduct: 'deductions', hold: 'salary-holds' };
     const kind = endMap[editType];
     try {
       await apiFetch(`/hrms/${kind}/${editRecord._id}?user_id=${getUid()}`, {
@@ -1073,6 +1211,7 @@ export default function FinanceManagement() {
       });
       if (editType === 'reimb') await fetchReimbs();
       else if (editType === 'adv') await fetchAdvs();
+      else if (editType === 'hold') await fetchHolds();
       else await fetchDeducts();
     } catch {
       // Optimistic update fallback
@@ -1082,6 +1221,7 @@ export default function FinanceManagement() {
       };
       if (editType === 'reimb') updater(reimbs, setReimbs, LS.REIMB);
       else if (editType === 'adv') updater(advs, setAdvs, LS.ADV);
+      else if (editType === 'hold') updater(holds, setHolds, LS.HOLD);
       else updater(deducts, setDeducts, LS.DEDUCT);
     }
     setSaving(false);
@@ -1090,9 +1230,9 @@ export default function FinanceManagement() {
 
   // ── selection helpers ────────────────────────────────────────────
   const currentList = activeTab === 'Reimbursements' ? filteredReimbs
-    : activeTab === 'Advance Salary' ? filteredAdvs : filteredDeducts;
+    : activeTab === 'Advance Salary' ? filteredAdvs : activeTab === 'Salary Holds' ? filteredHolds : filteredDeducts;
   const currentKind = activeTab === 'Reimbursements' ? 'reimbursements'
-    : activeTab === 'Advance Salary' ? 'advance-salary' : 'deductions';
+    : activeTab === 'Advance Salary' ? 'advance-salary' : activeTab === 'Salary Holds' ? 'salary-holds' : 'deductions';
 
   const toggleSelect = (id, e) => {
     e.stopPropagation();
@@ -1134,6 +1274,7 @@ export default function FinanceManagement() {
     // Refresh the active tab
     if (activeTab === 'Reimbursements') await fetchReimbs();
     else if (activeTab === 'Advance Salary') await fetchAdvs();
+    else if (activeTab === 'Salary Holds') await fetchHolds();
     else await fetchDeducts();
     setDeleting(false);
   };
@@ -1141,7 +1282,7 @@ export default function FinanceManagement() {
   // ── single delete (from detail modal) ────────────────────────────
   const handleSingleDelete = async (record, type) => {
     if (!window.confirm('Delete this record? This cannot be undone.')) return;
-    const endMap = { reimb: 'reimbursements', adv: 'advance-salary', deduct: 'deductions' };
+    const endMap = { reimb: 'reimbursements', adv: 'advance-salary', deduct: 'deductions', hold: 'salary-holds' };
     setDeleting(true);
     try {
       await apiFetch(`/hrms/${endMap[type]}/${record._id}?user_id=${getUid()}`, { method: 'DELETE' });
@@ -1149,6 +1290,7 @@ export default function FinanceManagement() {
     setDetailRecord(null);
     if (type === 'reimb') await fetchReimbs();
     else if (type === 'adv') await fetchAdvs();
+    else if (type === 'hold') await fetchHolds();
     else await fetchDeducts();
     setDeleting(false);
   };
@@ -1358,6 +1500,62 @@ export default function FinanceManagement() {
     </div>
   );
 
+  const HoldTable = () => (
+    <div className="fin-table-wrap">
+      <table className="fin-table">
+        <thead>
+          <tr>
+            {canDelete && <th style={{ width: 36, padding: '5px 8px' }}>
+              <input type="checkbox" className="fin-checkbox"
+                checked={filteredHolds.length > 0 && filteredHolds.every(r => selectedIds.has(r._id))}
+                onChange={toggleSelectAll} title="Select all" />
+            </th>}
+            <th>Employee</th>
+            <th>Month</th>
+            <th>Held Amount</th>
+            <th>Reason</th>
+            <th>Status</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {filteredHolds.length === 0
+            ? <EmptyRow colSpan={canDelete ? 7 : 6}
+                icon={<><rect x="3" y="11" width="18" height="10" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></>}
+                title="No salary holds" sub="Hold an employee salary for the selected month" />
+            : filteredHolds.map(r => (
+            <tr key={r._id} className={selectedIds.has(r._id) ? 'selected' : ''} onClick={() => openDetail(r, 'hold')}>
+              {canDelete && <td style={{ padding: '5px 8px', width: 36 }} onClick={e => toggleSelect(r._id, e)}>
+                <input type="checkbox" className="fin-checkbox" checked={selectedIds.has(r._id)} onChange={() => {}} />
+              </td>}
+              <td className="fin-name-strong">{r.employee_name}</td>
+              <td className="fin-text-muted">{MONTHS_LIST[r.month] || '—'} {r.year || ''}</td>
+              <td className="fin-amount-yellow">{r.salary_amount != null ? inr(r.salary_amount) : '—'}</td>
+              <td style={{ maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis' }}>{r.description || r.reason || <span className="fin-text-muted">—</span>}</td>
+              <td><StatusBadge status={r.status} /></td>
+              <td onClick={e => e.stopPropagation()}>
+                <div className="fin-btn-actions">
+                  <button className="fin-action-btn fin-btn-view" onClick={() => openDetail(r, 'hold')}>View</button>
+                  {isAdmin && r.status === 'held' && (
+                    <button className="fin-action-btn fin-btn-approve" onClick={() => handleAction('released', r, '', 'hold')}>
+                      Release
+                    </button>
+                  )}
+                  {canDelete && (
+                    <button className="fin-action-btn fin-btn-delete" style={{ color: '#f87171', borderColor: 'rgba(248,113,113,.25)' }}
+                      onClick={() => handleSingleDelete(r, 'hold')} disabled={deleting}>
+                      <svg width="11" height="11" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4h6v2"/></svg>
+                    </button>
+                  )}
+                </div>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+
   // ── KPI config per tab ───────────────────────────────────────────
   const kpiConfig = activeTab === 'Reimbursements' ? [
     { icon: <><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></>, label: 'Total Claims',  value: kpis.total,    sub: `Total: ${inr(kpis.totalAmt)}`,            color: '#60a5fa', accentColor: '#2563eb' },
@@ -1369,6 +1567,11 @@ export default function FinanceManagement() {
     { icon: <><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></>,                    label: 'Pending',      value: kpis.pending,  sub: inr(kpis.pendAmt),                         color: '#fb923c', accentColor: '#ea580c' },
     { icon: <><polyline points="20 6 9 17 4 12"/></>,                                                       label: 'Approved',     value: kpis.approved, sub: inr(kpis.appAmt),                          color: '#34d399', accentColor: '#059669' },
     { icon: <><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></>, label: 'Rejected', value: kpis.rejected, sub: 'Declined',               color: '#f87171', accentColor: '#dc2626' },
+  ] : activeTab === 'Salary Holds' ? [
+    { icon: <><rect x="3" y="11" width="18" height="10" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></>, label: 'Total Holds', value: kpis.total, sub: 'All records', color: '#fb923c', accentColor: '#ea580c' },
+    { icon: <><circle cx="12" cy="12" r="10"/><path d="M12 8v4"/><path d="M12 16h.01"/></>, label: 'Currently Held', value: kpis.held, sub: `${MONTHS_LIST[filterMonth]} ${filterYear}`, color: '#f87171', accentColor: '#dc2626' },
+    { icon: <><polyline points="20 6 9 17 4 12"/></>, label: 'Released', value: kpis.released, sub: 'Unlocked salaries', color: '#34d399', accentColor: '#059669' },
+    { icon: <><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/></>, label: 'Affected Employees', value: new Set((isAdmin ? holds : holds.filter(h => h.employee_id === uid)).map(h => h.employee_id)).size, sub: 'Unique employees', color: '#a78bfa', accentColor: '#7c3aed' },
   ] : [
     { icon: <><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></>, label: 'Total Deductions', value: kpis.total, sub: 'All time',      color: '#f87171', accentColor: '#dc2626' },
     { icon: <><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/></>, label: 'Total Amount', value: inr(kpis.totalAmt), sub: 'Deducted',                  color: '#fb923c', accentColor: '#ea580c' },
@@ -1381,10 +1584,12 @@ export default function FinanceManagement() {
     ? ['all', 'pending', 'approved', 'rejected', 'paid']
     : activeTab === 'Advance Salary'
     ? ['all', 'pending', 'approved', 'rejected']
+    : activeTab === 'Salary Holds'
+    ? ['all', 'held', 'released']
     : ['all'];
 
   const currentCount = activeTab === 'Reimbursements' ? filteredReimbs.length
-    : activeTab === 'Advance Salary' ? filteredAdvs.length : filteredDeducts.length;
+    : activeTab === 'Advance Salary' ? filteredAdvs.length : activeTab === 'Salary Holds' ? filteredHolds.length : filteredDeducts.length;
 
   return (
     <div className="fin-page">
@@ -1423,7 +1628,13 @@ export default function FinanceManagement() {
                 Add Deduction
               </button>
             )}
-            <button className="fin-btn-ghost" onClick={() => { fetchReimbs(); fetchAdvs(); fetchDeducts(); }}>
+            {activeTab === 'Salary Holds' && isAdmin && (
+              <button className="fin-btn-primary" style={{ background: '#ea580c' }} onClick={() => setShowCreateHold(true)}>
+                <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                Hold Salary
+              </button>
+            )}
+            <button className="fin-btn-ghost" onClick={() => { fetchReimbs(); fetchAdvs(); fetchDeducts(); fetchHolds(); }}>
               <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
               Refresh
             </button>
@@ -1449,6 +1660,7 @@ export default function FinanceManagement() {
             { key: 'Reimbursements', icon: <><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></>, label: 'Reimbursements' },
             { key: 'Advance Salary', icon: <><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></>, label: 'Advance Salary' },
             { key: 'Deductions',     icon: <><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></>, label: 'Deductions' },
+            { key: 'Salary Holds',   icon: <><rect x="3" y="11" width="18" height="10" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></>, label: 'Salary Holds' },
           ].map(t => (
             <button key={t.key} className={`fin-tab${activeTab === t.key ? ' active' : ''}`}
               onClick={() => handleTabChange(t.key)}>
@@ -1473,8 +1685,8 @@ export default function FinanceManagement() {
             {statusOpts.map(s => <option key={s} value={s}>{s === 'all' ? 'All Status' : STATUS_CONFIG[s]?.label || s}</option>)}
           </select>
         )}
-        {/* Month / Year quick selectors — visible on Deductions tab */}
-        {activeTab === 'Deductions' && (
+        {/* Month / Year quick selectors — visible on Deductions and Salary Holds tabs */}
+        {(activeTab === 'Deductions' || activeTab === 'Salary Holds') && (
           <>
             <div style={{ width: '1px', background: '#1e1e2e', height: '20px', margin: '0 4px' }} />
             <svg width="13" height="13" fill="none" stroke="#9ca3af" strokeWidth="2" viewBox="0 0 24 24" style={{ flexShrink: 0 }}><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
@@ -1527,7 +1739,7 @@ export default function FinanceManagement() {
                 ))}
               </select>
               <span style={{ fontSize: '12px', color: '#6b7280' }}>
-                Deductions will be filtered &amp; created for this month
+                Deductions and salary holds will use this month
               </span>
               <button
                 className="fin-btn-ghost"
@@ -1579,11 +1791,11 @@ export default function FinanceManagement() {
         </div>
       )}
 
-      {/* Active month banner — shows when not current month, on Deductions tab */}
-      {activeTab === 'Deductions' && (filterMonth !== now.getMonth() || filterYear !== now.getFullYear()) && (
+      {/* Active month banner — shows when not current month, on month-bound tabs */}
+      {(activeTab === 'Deductions' || activeTab === 'Salary Holds') && (filterMonth !== now.getMonth() || filterYear !== now.getFullYear()) && (
         <div style={{ margin: '8px 24px 0', background: 'rgba(220,38,38,0.08)', border: '1px solid #7f1d1d', borderRadius: '6px', padding: '8px 14px', fontSize: '12px', color: '#fca5a5', display: 'flex', alignItems: 'center', gap: '8px' }}>
           <svg width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
-          Showing deductions for <strong style={{ marginLeft: 4 }}>{MONTHS_LIST[filterMonth]} {filterYear}</strong>
+          Showing {activeTab === 'Salary Holds' ? 'salary holds' : 'deductions'} for <strong style={{ marginLeft: 4 }}>{MONTHS_LIST[filterMonth]} {filterYear}</strong>
           <button onClick={() => setShowSettings(true)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#fca5a5', fontSize: '11px', textDecoration: 'underline', marginLeft: 4 }}>Change month</button>
         </div>
       )}
@@ -1615,6 +1827,7 @@ export default function FinanceManagement() {
             {activeTab === 'Reimbursements' && <ReimbTable />}
             {activeTab === 'Advance Salary'  && <AdvTable />}
             {activeTab === 'Deductions'       && <DeductTable />}
+            {activeTab === 'Salary Holds'     && <HoldTable />}
           </>
         )}
       </div>
@@ -1622,6 +1835,7 @@ export default function FinanceManagement() {
       <CreateReimbModal  open={showCreateReimb}  onClose={() => setShowCreateReimb(false)}  onSubmit={handleCreateReimb}  loading={saving} employees={employees} isAdmin={isAdmin} approvers={financeApprovers.reimbursement} />
       <CreateAdvModal    open={showCreateAdv}    onClose={() => setShowCreateAdv(false)}    onSubmit={handleCreateAdv}    loading={saving} employees={employees} isAdmin={isAdmin} approvers={financeApprovers.advance_salary} />
       <CreateDeductModal open={showCreateDeduct} onClose={() => setShowCreateDeduct(false)} onSubmit={handleCreateDeduct} loading={saving} employees={employees} approvers={financeApprovers.deduction} deductionTypes={deductionTypes} selectedMonth={filterMonth} selectedYear={filterYear} />
+      <CreateHoldModal   open={showCreateHold}   onClose={() => setShowCreateHold(false)}   onSubmit={handleCreateHold}   loading={saving} employees={employees} selectedMonth={filterMonth} selectedYear={filterYear} />
       <DetailModal
         open={!!detailRecord}
         onClose={() => setDetailRecord(null)}

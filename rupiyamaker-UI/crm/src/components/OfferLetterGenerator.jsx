@@ -4,6 +4,8 @@ import useTabWithHistory from '../hooks/useTabWithHistory';
 const API_BASE_URL = '/api';
 const A4_PX_W = 794;
 const A4_PX_H = 1123;
+const OFFER_ACCENT = '#ff4802';
+const OFFER_HEADER_TEXT = '#ffffff';
 
 function formatIndian(n) {
   const s = Math.round(n).toString();
@@ -50,7 +52,7 @@ const DEFAULT_TPL = {
   header_phone: '+91 98765 43210',
   header_email: 'info@fixyourfinance.ai',
   header_bg_color: '#000000',
-  header_text_color: '#ffffff',
+  header_text_color: OFFER_HEADER_TEXT,
   content_scale: 1,
   header_logo_width: 286,
   header_logo_x: 26,
@@ -170,6 +172,7 @@ function migrateOfferTemplate(data) {
   }
   if (!next.header_phone) next.header_phone = DEFAULT_TPL.header_phone;
   if (!next.header_email) next.header_email = DEFAULT_TPL.header_email;
+  next.header_text_color = OFFER_HEADER_TEXT;
   if (!next.header_company_name_size || next.header_company_name_size === 12) {
     next.header_company_name_size = DEFAULT_TPL.header_company_name_size;
   }
@@ -626,7 +629,7 @@ const OfferLetterGenerator = ({ user }) => {
   // Header letterhead styled to match the FYF black banner sample.
   const renderHeader = () => {
     const bg = tpl.header_bg_color || '#000';
-    const tc = tpl.header_text_color || '#fff';
+    const tc = OFFER_HEADER_TEXT;
     const logoW = Math.max(80, Math.min(430, tpl.header_logo_width || DEFAULT_TPL.header_logo_width));
     const logoHValue = tpl.header_logo_height > 0 ? tpl.header_logo_height : 0;
     const logoX = tpl.header_logo_x ?? DEFAULT_TPL.header_logo_x;
@@ -673,9 +676,8 @@ const OfferLetterGenerator = ({ user }) => {
       setResizeState({ type:'contact', startX:e.clientX, startY:e.clientY, origScale:contactScale, scale:previewZoom / 100 });
     };
 
-    const accent = '#d86c37';
-    const brandBlue = '#4f82e8';
-    const mutedWhite = 'rgba(255,255,255,.86)';
+    const accent = OFFER_ACCENT;
+    const mutedWhite = OFFER_HEADER_TEXT;
     const scaledText = Math.max(7, Math.min(18, addrSize * addrScale));
     const contactText = Math.max(7, Math.min(18, (addrSize + 0.5) * contactScale));
     const companyName = tpl.header_company_name || DEFAULT_TPL.header_company_name;
@@ -779,7 +781,7 @@ const OfferLetterGenerator = ({ user }) => {
         <div style={{ display:'flex', alignItems:'center', gap:10, whiteSpace:'nowrap', minWidth:0, transform:'scale(' + logoScaleX + ',' + logoScaleY + ')', transformOrigin:'left top', width:baseLogoWidth, height:baseLogoHeight }}>
           <span style={{ fontFamily:"'Arial Black',Arial,sans-serif", fontSize:40, fontWeight:900, color:tc, lineHeight:1, letterSpacing:0 }}>{logoFirst}</span>
           <span style={{ width:4, height:47, background:accent, borderRadius:3, flexShrink:0 }} />
-          <span style={{ fontFamily:"'Arial Black',Arial,sans-serif", fontSize:29, fontWeight:900, color:brandBlue, lineHeight:1, letterSpacing:0 }}>{logoRest}</span>
+          <span style={{ fontFamily:"'Arial Black',Arial,sans-serif", fontSize:29, fontWeight:900, color:tc, lineHeight:1, letterSpacing:0 }}>{logoRest}</span>
         </div>
       </div>
     );
@@ -817,7 +819,7 @@ const OfferLetterGenerator = ({ user }) => {
           resizeColor="#f59e0b"
           style={{ maxWidth:280 }}
         >
-          <div style={{ fontSize:cnSize + 1, lineHeight:1, fontWeight:800, color:accent, whiteSpace:'nowrap' }}>
+          <div style={{ fontSize:cnSize + 1, lineHeight:1, fontWeight:900, color:accent, whiteSpace:'nowrap' }}>
             {companyName}
           </div>
         </HeaderBlock>
@@ -832,7 +834,7 @@ const OfferLetterGenerator = ({ user }) => {
           resizeColor="#22c55e"
           style={{ minWidth:260, maxWidth:320 }}
         >
-          <div style={{ display:'flex', flexDirection:'column', gap:Math.max(4, 7 * addrScale), color:mutedWhite, fontSize:scaledText, lineHeight:1.55 }}>
+          <div style={{ display:'flex', flexDirection:'column', gap:Math.max(4, 7 * addrScale), color:mutedWhite, fontSize:scaledText, lineHeight:1.55, fontWeight:800 }}>
             {addressLines.length > 0 && (
               <div style={{ display:'flex', alignItems:'flex-start', gap:Math.max(6, 9 * addrScale) }}>
                 <Icon type="pin" size={Math.max(10, 12 * addrScale)} top={2} />
@@ -859,8 +861,8 @@ const OfferLetterGenerator = ({ user }) => {
           onResize={startContactResize}
           resizeColor="#a855f7"
         >
-          <div style={{ display:'flex', alignItems:'center', gap:Math.max(12, 20 * contactScale), color:mutedWhite, fontSize:contactText, lineHeight:1.25 }}>
-            <div style={{ width:1, height:66 * contactScale, background:'rgba(255,255,255,.58)', flexShrink:0 }} />
+          <div style={{ display:'flex', alignItems:'center', gap:Math.max(12, 20 * contactScale), color:mutedWhite, fontSize:contactText, lineHeight:1.25, fontWeight:800 }}>
+            <div style={{ width:1, height:66 * contactScale, background:accent, flexShrink:0 }} />
             <div style={{ width:156 * contactScale, display:'flex', flexDirection:'column', gap:Math.max(8, 13 * contactScale) }}>
               {phone && (
                 <div style={{ display:'flex', alignItems:'center', gap:Math.max(7, 11 * contactScale), whiteSpace:'nowrap' }}>
@@ -891,7 +893,7 @@ const OfferLetterGenerator = ({ user }) => {
     );
   };
 
-  const brandStrip = <div style={{ height:5, background:'linear-gradient(90deg,#d86c37 0%,#d86c37 58%,#5b7cff 100%)' }} />;
+  const brandStrip = <div style={{ height:5, background:OFFER_ACCENT }} />;
 
   const renderWatermark = () => {
     const op = tpl.watermark_opacity || 0.1;
@@ -945,9 +947,9 @@ const OfferLetterGenerator = ({ user }) => {
         )}
         {(tpl.footer_text || tpl.footer_sub_text) && (
           // Absolutely anchored to page bottom — always visible, never pushed off by body content
-          <div style={{ position:'absolute', bottom:0, left:0, right:0, borderTop:'1.5px solid #e2e8f0', padding:'8px 36px 14px', textAlign:'center', color:'#718096', lineHeight:1.65, fontFamily:'Inter,sans-serif', background:'#fff', zIndex:4 }}>
-            {tpl.footer_text && <strong style={{ color:'#4a5568', fontSize:ftSize, display:'block', lineHeight:1.6 }}>{tpl.footer_text}</strong>}
-            {tpl.footer_sub_text && <span style={{ fontSize:ftSize - 1, display:'block', lineHeight:1.6 }}>{tpl.footer_sub_text}</span>}
+          <div style={{ position:'absolute', bottom:0, left:0, right:0, borderTop:'1.5px solid ' + OFFER_ACCENT, padding:'8px 36px 14px', textAlign:'center', color:OFFER_HEADER_TEXT, lineHeight:1.65, fontFamily:'Inter,sans-serif', background:OFFER_ACCENT, zIndex:4, fontWeight:800 }}>
+            {tpl.footer_text && <strong style={{ color:OFFER_HEADER_TEXT, fontSize:ftSize, display:'block', lineHeight:1.6, fontWeight:900 }}>{tpl.footer_text}</strong>}
+            {tpl.footer_sub_text && <span style={{ color:OFFER_HEADER_TEXT, fontSize:ftSize - 1, display:'block', lineHeight:1.6, fontWeight:800 }}>{tpl.footer_sub_text}</span>}
           </div>
         )}
       </>
@@ -1398,6 +1400,7 @@ const OfferLetterGenerator = ({ user }) => {
       header_phone: DEFAULT_TPL.header_phone,
       header_email: DEFAULT_TPL.header_email,
       header_website: DEFAULT_TPL.header_website,
+      header_text_color: DEFAULT_TPL.header_text_color,
       header_min_height: DEFAULT_TPL.header_min_height,
       header_company_name_size: DEFAULT_TPL.header_company_name_size,
       header_addr_size: DEFAULT_TPL.header_addr_size,

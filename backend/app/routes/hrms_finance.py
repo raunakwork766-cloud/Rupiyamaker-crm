@@ -14,6 +14,10 @@ Endpoints for:
   POST /hrms/deductions
   PATCH /hrms/deductions/{record_id}
 
+  GET  /hrms/salary-holds
+  POST /hrms/salary-holds
+  PATCH /hrms/salary-holds/{record_id}
+
 Permission model (mirrors leaves / warnings):
   - Users with finance:all or super-admin see all records.
   - Regular employees see only their own.
@@ -382,19 +386,113 @@ async def bulk_delete(
 ):
     """
     Bulk delete records. Admins only.
-    Body: { "kind": "reimbursements"|"advance-salary"|"deductions", "ids": ["id1","id2",...] }
+    Body: { "kind": "reimbursements"|"advance-salary"|"deductions"|"salary-holds", "ids": ["id1","id2",...] }
     """
     is_admin = await _can_see_all(current_user_id, users_db, roles_db)
     if not is_admin:
         raise HTTPException(status_code=403, detail="Not authorised to delete records")
     kind = body.get("kind", "")
     ids  = body.get("ids", [])
-    if kind not in ("reimbursements", "advance-salary", "deductions"):
+    if kind not in ("reimbursements", "advance-salary", "deductions", "salary-holds"):
         raise HTTPException(status_code=422, detail="Invalid kind")
     if not ids:
         raise HTTPException(status_code=422, detail="No ids provided")
     deleted = await hrms_db.bulk_delete_records(kind, ids)
     return {"deleted": deleted}
+
+
+# ── Salary Holds ──────────────────────────────────────────────────────────────
+
+@router.get("/salary-holds")
+async def list_salary_holds(
+    user_id: str = Query(..., description="Current user ID"),
+    current_user_id: str = Depends(get_current_user_id),
+    hrms_db: HrmsFinanceDB = Depends(get_hrms_finance_db),
+    users_db: UsersDB = Depends(get_users_db),
+    roles_db: RolesDB = Depends(get_roles_db),
+):
+    """List salary holds (all for admins, own for employees)."""
+    try:
+        records = await _list("salary-holds", user_id, current_user_id, hrms_db, users_db, roles_db)
+        return records
+    except Exception as e:
+        logger.error(f"list_salary_holds: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/salary-holds")
+async def create_salary_hold(
+    body: Dict[str, Any],
+    user_id: str = Query(..., description="Current user ID"),
+    current_user_id: str = Depends(get_current_user_id),
+    hrms_db: HrmsFinanceDB = Depends(get_hrms_finance_db),
+    users_db: UsersDB = Depends(get_users_db),
+    roles_db: RolesDB = Depends(get_roles_db),
+):
+    """Hold an employee's salary for a specific month. Admins only."""
+    is_admin = await _can_see_all(current_user_id, users_db, roles_db)
+    if not is_admin:
+        raise HTTPException(status_code=403, detail="Not authorised to hold salaries")
+
+    employee_id = body.get("employee_id")
+    year = body.get("year")
+    month = body.get("month")
+    if not employee_id or year is None or month is None:
+        raise HTTPException(status_code=422, detail="employee_id, year, month required")
+    if not (0 <= int(month) <= 11):
+        raise HTTPException(status_code=422, detail="month must be 0–11")
+
+    body["year"] = int(year)
+    body["month"] = int(month)
+    body.setdefault("status", "held")
+    body.setdefault("held_by", current_user_id)
+    body.setdefault("held_at", body.get("created_at"))
+    record_id = await hrms_db.create_record("salary-holds", body)
+    record = await hrms_db.get_record("salary-holds", record_id)
+    return record or {"_id": record_id, **body}
+
+
+@router.patch("/salary-holds/{record_id}")
+async def patch_salary_hold(
+    record_id: str,
+    body: Dict[str, Any],
+    user_id: str = Query(..., description="Current user ID"),
+    current_user_id: str = Depends(get_current_user_id),
+    hrms_db: HrmsFinanceDB = Depends(get_hrms_finance_db),
+    users_db: UsersDB = Depends(get_users_db),
+    roles_db: RolesDB = Depends(get_roles_db),
+):
+    """Update/release a salary hold. Admins only."""
+    is_admin = await _can_see_all(current_user_id, users_db, roles_db)
+    if not is_admin:
+        raise HTTPException(status_code=403, detail="Not authorised to update salary holds")
+    if body.get("status") == "released":
+        body.setdefault("released_by", current_user_id)
+        body.setdefault("released_at", body.get("actioned_at"))
+    ok = await hrms_db.patch_record("salary-holds", record_id, body)
+    if not ok:
+        raise HTTPException(status_code=404, detail="Record not found")
+    record = await hrms_db.get_record("salary-holds", record_id)
+    return record or {"_id": record_id}
+
+
+@router.delete("/salary-holds/{record_id}")
+async def delete_salary_hold(
+    record_id: str,
+    user_id: str = Query(..., description="Current user ID"),
+    current_user_id: str = Depends(get_current_user_id),
+    hrms_db: HrmsFinanceDB = Depends(get_hrms_finance_db),
+    users_db: UsersDB = Depends(get_users_db),
+    roles_db: RolesDB = Depends(get_roles_db),
+):
+    """Delete a salary hold. Admins only."""
+    is_admin = await _can_see_all(current_user_id, users_db, roles_db)
+    if not is_admin:
+        raise HTTPException(status_code=403, detail="Not authorised to delete salary holds")
+    ok = await hrms_db.delete_record("salary-holds", record_id)
+    if not ok:
+        raise HTTPException(status_code=404, detail="Record not found")
+    return {"success": True}
 
 
 # ── Finance Summary (salary page + attendance page integration) ───────────────

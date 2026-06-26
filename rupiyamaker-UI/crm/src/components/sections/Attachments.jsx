@@ -348,6 +348,29 @@ export default function Attachments({ leadId, userId, lead }) {
     }
   };
 
+  const normalizeText = (value) => {
+    if (typeof value !== 'string') return '';
+    const trimmed = value.trim();
+    return trimmed;
+  };
+
+  const getLeadCustomerName = (leadSource = {}, formData = {}) => {
+    const firstName = normalizeText(leadSource.first_name);
+    const lastName = normalizeText(leadSource.last_name);
+    const combinedLeadName = [firstName, lastName].filter(Boolean).join(' ').trim();
+
+    const leadName = normalizeText(leadSource.customer_name || leadSource.customerName || leadSource.name);
+
+    const formName = normalizeText(formData?.customerName || formData?.customer_name);
+
+    if (combinedLeadName) {
+      if (combinedLeadName.includes(' ') || !leadName) {
+        return combinedLeadName;
+      }
+    }
+    return leadName || formName || 'Customer';
+  };
+
   // Function to generate PDF file for Applicant form - matching LoginFormSection UI structure
   const generateApplicantPDF = (formData, leadInfo) => {
     console.log('🔧 generateApplicantPDF called with:', { formData, leadInfo });
@@ -393,7 +416,7 @@ export default function Attachments({ leadId, userId, lead }) {
       doc.setFontSize(12);
       doc.setFont(undefined, 'normal');
       doc.setTextColor(0, 0, 0);
-      const customerName = leadInfo?.first_name || leadInfo?.customerName || leadInfo?.name || 'N/A';
+      const customerName = getLeadCustomerName(leadInfo, formData);
       const leadId = leadInfo?._id || 'N/A';
       const generatedDate = new Date().toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata' });
       const generatedTime = new Date().toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata' });
@@ -643,7 +666,7 @@ export default function Attachments({ leadId, userId, lead }) {
       doc.setFontSize(12);
       doc.setFont(undefined, 'normal');
       doc.setTextColor(0, 0, 0);
-      const customerName = leadInfo?.first_name || leadInfo?.customerName || leadInfo?.name || 'N/A';
+      const customerName = getLeadCustomerName(leadInfo, formData);
       const leadId = leadInfo?._id || 'N/A';
       const generatedDate = new Date().toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata' });
       const generatedTime = new Date().toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata' });
@@ -1369,7 +1392,7 @@ export default function Attachments({ leadId, userId, lead }) {
 
   // Build download folder name from lead data: CustomerName-CustomerNumber-Phone-AlternatePhone
   const getDownloadFolderName = (ld) => {
-    const custName = ld?.first_name || ld?.customer_name || '';
+    const custName = getLeadCustomerName(ld);
     const phone = ld?.phone || ld?.mobile || '';
     const altPhone = ld?.alternative_phone || ld?.alternate_phone || '';
     const parts = [custName, phone, altPhone].filter(Boolean);
@@ -1526,16 +1549,18 @@ export default function Attachments({ leadId, userId, lead }) {
               .filter(key => !['dynamic_fields', 'loginForm', '_id', '__v', 'created_at', 'updated_at'].includes(key))
               .reduce((acc, key) => { const v = currentLeadData[key]; if (v && typeof v !== 'object') acc[key] = v; return acc; }, {})
           };
+          const applicantCustomerName = getLeadCustomerName(currentLeadData, allAvailableApplicantData);
+          const normalizedApplicantData = { ...allAvailableApplicantData, customerName: applicantCustomerName };
 
           // Only generate if the applicant form has been meaningfully filled
           if (isFormDataFilled(currentLeadData.dynamic_fields?.applicant_form) || isFormDataFilled(currentLeadData.loginForm)) {
-            const custName = currentLeadData.first_name || 'Customer';
+            const custName = applicantCustomerName || 'Customer';
             const dateSuffix = getISTDateYMD();
-            const d = allAvailableApplicantData;
+            const d = normalizedApplicantData;
 
             // Generate PDF
             try {
-              const applicantBlob = generateApplicantPDF(allAvailableApplicantData, currentLeadData);
+              const applicantBlob = generateApplicantPDF(normalizedApplicantData, currentLeadData);
               if (applicantBlob) {
                 const pdfFn = `${custName}_Applicant_Form_${dateSuffix}.pdf`;
                 formsFolder.file(pdfFn, applicantBlob);
@@ -1599,16 +1624,18 @@ export default function Attachments({ leadId, userId, lead }) {
         try {
           const coApplicantFormData = currentLeadData.dynamic_fields?.co_applicant_form || currentLeadData.coApplicantForm || {};
           const allCoApplicantData = { ...currentLeadData.dynamic_fields?.co_applicant_form, ...currentLeadData.coApplicantForm, ...coApplicantFormData };
+          const coApplicantCustomerName = getLeadCustomerName(currentLeadData, allCoApplicantData);
+          const normalizedCoApplicantData = { ...allCoApplicantData, customerName: coApplicantCustomerName };
 
           // Only generate if the co-applicant form has been meaningfully filled
           if (isFormDataFilled(currentLeadData.dynamic_fields?.co_applicant_form) || isFormDataFilled(currentLeadData.coApplicantForm)) {
-            const custName = currentLeadData.first_name || 'Customer';
+            const custName = coApplicantCustomerName || 'Customer';
             const dateSuffix = getISTDateYMD();
-            const d = allCoApplicantData;
+            const d = normalizedCoApplicantData;
 
             // Generate PDF
             try {
-              const coApplicantBlob = generateCoApplicantPDF(allCoApplicantData, currentLeadData);
+              const coApplicantBlob = generateCoApplicantPDF(normalizedCoApplicantData, currentLeadData);
               if (coApplicantBlob) {
                 const pdfFn = `${custName}_Co-Applicant_Form_${dateSuffix}.pdf`;
                 formsFolder.file(pdfFn, coApplicantBlob);
@@ -1626,7 +1653,7 @@ export default function Attachments({ leadId, userId, lead }) {
                 ['Salary A/C Bank Name', d.salaryAccountBank || '-'],
                 ['Salary A/C Bank Number', d.salaryAccountBankNumber || '-'],
                 ['IFSC Code', d.ifscCode || '-'],
-                ['Customer Name', d.customerName || '-'],
+                ['Customer Name', d.customerName || custName || '-'],
                 ['Mobile Number', d.mobileNumber || '-'],
                 ['Alternate Number', d.alternateNumber || '-'],
                 ['Personal Email', d.personalEmail || '-'],

@@ -5,6 +5,7 @@ Handles three separate MongoDB collections:
   - hrms_reimbursements
   - hrms_advance_salary
   - hrms_deductions
+  - hrms_salary_holds
 
 Each document shape follows the frontend's FinanceManagement.jsx schema.
 """
@@ -40,6 +41,7 @@ class HrmsFinanceDB:
         self.reimbursements = self.db["hrms_reimbursements"]
         self.advance_salary = self.db["hrms_advance_salary"]
         self.deductions     = self.db["hrms_deductions"]
+        self.salary_holds   = self.db["hrms_salary_holds"]
 
     async def init_indexes(self):
         try:
@@ -54,6 +56,11 @@ class HrmsFinanceDB:
             await self.deductions.create_index("employee_id")
             await self.deductions.create_index([("created_at", -1)])
 
+            await self.salary_holds.create_index("employee_id")
+            await self.salary_holds.create_index("status")
+            await self.salary_holds.create_index([("year", 1), ("month", 1)])
+            await self.salary_holds.create_index([("created_at", -1)])
+
             logger.info("✓ HrmsFinance indexes created")
         except Exception as e:
             logger.warning(f"HrmsFinance index creation warning: {e}")
@@ -66,6 +73,8 @@ class HrmsFinanceDB:
             return self.advance_salary
         if kind == "deductions":
             return self.deductions
+        if kind == "salary-holds":
+            return self.salary_holds
         return self.reimbursements
 
     # ── List ──────────────────────────────────────────────────────────
@@ -212,8 +221,15 @@ class HrmsFinanceDB:
         ).to_list(length=None)
         advances = [_serialize(d) for d in adv_docs]
 
+        # ── Salary holds: active hold records for this salary month ───────────
+        hold_docs = await self.salary_holds.find(
+            {"status": "held", "year": year, "month": month}
+        ).to_list(length=None)
+        holds = [_serialize(d) for d in hold_docs]
+
         return {
             "reimbursements": reimbs,
             "deductions": deds,
             "advances": advances,
+            "salary_holds": holds,
         }

@@ -112,7 +112,11 @@ const PaidLeaveManagement = ({ selectedYear, selectedMonth, onLeaveUpdate }) => 
   const closePopup = () => { setPopup(null); };
 
   const showToast = (type, msg) => { setToast({ type, msg }); setTimeout(() => setToast(null), 3000); };
-  const gv = (b, lt, f) => parseFloat(b?.[`${lt.fp}_${f}`] ?? 0);
+  const gv = (b, lt, f) => {
+    const prefix = lt?.fp;
+    if (!prefix) return 0;
+    return parseFloat(b?.[`${prefix}_${f}`] ?? 0);
+  };
 
   const filtered = useMemo(() => {
     const s = q.trim().toLowerCase();
