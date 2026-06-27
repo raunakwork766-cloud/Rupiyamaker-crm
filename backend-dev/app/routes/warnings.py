@@ -1679,16 +1679,7 @@ async def get_warning_types(
     try:
         # Try to get from database first
         warning_types = await warnings_db.get_warning_types()
-        
-        # If no types in database, return default hardcoded types
-        if not warning_types:
-            warning_types = [
-                {"value": "Late Arrival", "label": "Late Arrival", "is_active": True},
-                {"value": "Late Lunch", "label": "Late Lunch", "is_active": True},
-                {"value": "Abuse", "label": "Abuse", "is_active": True},
-                {"value": "Early Leave", "label": "Early Leave", "is_active": True}
-            ]
-        
+
         # Filter only active types for dropdown
         active_types = [t for t in warning_types if t.get('is_active', True)]
         
@@ -1799,16 +1790,7 @@ async def get_mistake_types(
     try:
         # Try to get from database first
         mistake_types = await warnings_db.get_mistake_types()
-        
-        # If no types in database, return default hardcoded types
-        if not mistake_types:
-            mistake_types = [
-                {"value": "Late Arrival", "label": "Late Arrival", "is_active": True},
-                {"value": "Abuse", "label": "Abuse", "is_active": True},
-                {"value": "Early Leave", "label": "Early Leave", "is_active": True},
-                {"value": "Unauthorized Absence", "label": "Unauthorized Absence", "is_active": True}
-            ]
-        
+
         # Filter only active types for dropdown
         active_types = [t for t in mistake_types if t.get('is_active', True)]
         
@@ -1919,16 +1901,7 @@ async def get_warning_actions(
     try:
         # Try to get from database first
         warning_actions = await warnings_db.get_warning_actions()
-        
-        # If no actions in database, return default hardcoded actions
-        if not warning_actions:
-            warning_actions = [
-                {"value": "Verbal Warning", "label": "Verbal Warning", "is_active": True},
-                {"value": "Written Warning", "label": "Written Warning", "is_active": True},
-                {"value": "Final Warning", "label": "Final Warning", "is_active": True},
-                {"value": "Suspension", "label": "Suspension", "is_active": True}
-            ]
-        
+
         # Filter only active actions for dropdown
         active_actions = [a for a in warning_actions if a.get('is_active', True)]
         

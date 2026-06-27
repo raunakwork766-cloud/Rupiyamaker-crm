@@ -59,8 +59,6 @@ const getEffectiveAttendanceWindow = (year, month, daysInMonth, joiningRaw, inac
 
   if (year > today.year || (year === today.year && month > today.month)) {
     endDay = 0;
-  } else if (year === today.year && month === today.month) {
-    endDay = Math.min(daysInMonth, today.day);
   }
 
   if (joiningRaw) {
@@ -567,8 +565,9 @@ const buildRSM = roles => {
 // shortfall       = totalTarget - finalBusiness  (if > 0)
 // excessBusiness  = finalBusiness - totalTarget  (if > 0)
 // incentive       = (excessBusiness / 100000) * iRate
-// attendanceDeduction = (totalDays - presentDays) * perDaySalary
-// finalSalary     = monthlySalary + incentive - attendanceDeduction
+// attendanceDeduction = eligible unpaid days * perDaySalary
+// prorationDeduction  = non-eligible days from joining/inactive window
+// finalSalary     = monthlySalary + incentive - attendanceDeduction - prorationDeduction
 // accountTransfer = finalSalary - totalDeductions + totalReimbursements
 const calcRow = (emp, allocs, deducts, advanceBalance, carryForward, warnDeducts, presentDays, totalDaysInMonth, rawPresentScore, plAdded, effectiveDays, elAdded, salaryHold = null) => {
   const id = String(emp._id || emp.id);
@@ -601,22 +600,24 @@ const calcRow = (emp, allocs, deducts, advanceBalance, carryForward, warnDeducts
   //
   // earnedScore = presentDays (finalScore already includes PL benefit — no need to add again)
   //   capped at effectiveDays so mid-month joiners don't over-earn
-  // effectiveSalary = perDaySalary * effectiveDays (max entitled salary this month)
-  // earnedSalary  = perDaySalary * earnedScore
-  // attendanceDed = max(0, effectiveSalary - earnedSalary)
+  // eligibleSalary = perDaySalary * effectiveDays (max entitled salary this month)
+  // earnedSalary   = perDaySalary * earnedScore
+  // attendanceDed  = max(0, eligibleSalary - earnedSalary)
+  // prorationDed   = max(0, monthlySalary - eligibleSalary)
   const hasPresentData  = presentDays != null && totalDaysInMonth > 0;
   const effDays         = (effectiveDays != null && effectiveDays > 0) ? effectiveDays : totalDaysInMonth;
   const _plAdded        = plAdded || 0;
   const _elAdded        = elAdded || 0;
   const perDaySalary    = hasPresentData ? monthlySalary / totalDaysInMonth : 0;
-  const effectiveSal    = hasPresentData ? Math.round(perDaySalary * effDays) : monthlySalary;
+  const eligibleSal     = hasPresentData ? Math.round(perDaySalary * effDays) : monthlySalary;
   // earnedScore: presentDays already includes PL — just cap at effectiveDays
   const earnedScore     = hasPresentData ? Math.min(presentDays, effDays) : effDays;
   const earnedSal       = hasPresentData ? Math.round(perDaySalary * earnedScore) : monthlySalary;
   const absentDays      = hasPresentData ? Math.max(0, effDays - earnedScore) : 0;
-  const attendanceDed   = hasPresentData ? Math.max(0, effectiveSal - earnedSal) : 0;
+  const prorationDed    = hasPresentData ? Math.max(0, monthlySalary - eligibleSal) : 0;
+  const attendanceDed   = hasPresentData ? Math.max(0, eligibleSal - earnedSal) : 0;
 
-  const finalSalary   = monthlySalary + incentive - attendanceDed;
+  const finalSalary   = monthlySalary + incentive - attendanceDed - prorationDed;
 
   // deductions
   const empDeds       = deducts.filter(d => d.empId === id && !d.isReimbursement);
@@ -633,7 +634,7 @@ const calcRow = (emp, allocs, deducts, advanceBalance, carryForward, warnDeducts
 
   return { id, indi, givenAway, teamRcvd, availIndi, baseTarget, cf, totalTarget,
            overallBiz, finalBiz, shortfall, excessBiz, incentive, iRate,
-           monthlySalary, perDaySalary, absentDays, attendanceDed: attendanceDed, hasPresentData,
+           monthlySalary, perDaySalary, absentDays, attendanceDed: attendanceDed, prorationDed, hasPresentData,
            plAdded: _plAdded, elAdded: _elAdded, rawPresentScore: rawPresentScore ?? null,
            totalDaysInMonth: totalDaysInMonth || 0,
            effectiveDays: effDays,
@@ -1313,12 +1314,22 @@ function SalRow({ emp, calc, processed, deptMap, isLockedMonth, onTeam, onDeduct
             -{fmt(calc.attendanceDed)} att.
           </div>
         )}
+        {calc.hasPresentData && calc.prorationDed > 0 && (
+          <div style={{fontSize:10,color:'#8b5cf6',marginTop:1}}>
+            -{fmt(calc.prorationDed)} prorated
+          </div>
+        )}
       </td>
       {/* DEDUCTION & REIMBURSEMENT — clickable */}
       <td className="sm-ded-cell" onClick={onDeduct}>
         {calc.hasPresentData && calc.attendanceDed > 0 && (
           <div style={{fontWeight:'bold',fontSize:12,color:'#f97316'}}>
             -{fmt(calc.attendanceDed)} absent
+          </div>
+        )}
+        {calc.hasPresentData && calc.prorationDed > 0 && (
+          <div style={{fontWeight:'bold',fontSize:12,color:'#8b5cf6'}}>
+            -{fmt(calc.prorationDed)} prorated
           </div>
         )}
         <div style={{fontWeight:'bold',fontSize:13,color:'#ef4444'}}>{fmt(calc.totalDeds)||'0'}</div>

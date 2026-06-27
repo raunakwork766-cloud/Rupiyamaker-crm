@@ -723,7 +723,8 @@ const WarningPage = memo(() => {
 
       if (response.ok) {
         const data = await response.json();
-        setMistakeTypes(data.mistake_types || []);
+        const dynamicMistakeTypes = (data.mistake_types || []).filter(type => type?._id || type?.id);
+        setMistakeTypes(dynamicMistakeTypes);
       }
     } catch (error) {
       console.error('Error loading mistake types:', error);
