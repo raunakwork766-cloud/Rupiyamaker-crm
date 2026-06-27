@@ -64,7 +64,7 @@ def get_roles_db() -> RolesDB:
 
 # ── Permission helper ─────────────────────────────────────────────────────────
 _FINANCE_PAGES = {"finance", "hrms", "hrms_finance", "hr_finance", "employees"}
-_FINANCE_ACTIONS = {"*", "all", "view_all", "show", "edit", "manage", "finance_admin"}
+_FINANCE_ACTIONS = {"*", "all", "view_all", "show", "edit", "manage", "finance_admin", "junior", "view_team"}
 _ATTENDANCE_PAGES = {"attendance", "hrms_attendance"}
 _ATTENDANCE_SUMMARY_ACTIONS = {"*", "all", "view_all", "edit", "view_salary", "attendance_admin"}
 
@@ -83,6 +83,21 @@ def _actions_match(acts: Any, allowed) -> bool:
     if isinstance(acts, dict):
         return any(bool(v) and isinstance(k, str) and k.lower() in allowed for k, v in acts.items())
 
+    return False
+
+
+def _has_any_permission_payload(acts: Any) -> bool:
+    """Backward compatible fallback: treat any explicit permission payload as valid access."""
+    if acts is None:
+        return False
+    if acts == "*":
+        return True
+    if isinstance(acts, str):
+        return bool(acts.strip())
+    if isinstance(acts, list):
+        return any(isinstance(a, str) and bool(a.strip()) for a in acts)
+    if isinstance(acts, dict):
+        return any(bool(v) for v in acts.values())
     return False
 
 
@@ -115,7 +130,7 @@ async def _can_see_all(
 
             # finance page
             if isinstance(page, str) and page.lower() in _FINANCE_PAGES:
-                if _actions_match(acts, _FINANCE_ACTIONS):
+                if _actions_match(acts, _FINANCE_ACTIONS) or _has_any_permission_payload(acts):
                     return True
 
         return False
@@ -545,7 +560,7 @@ async def _can_view_finance_summary(
 
             # Finance page access
             if page_lower in _FINANCE_PAGES:
-                if _actions_match(acts, _FINANCE_ACTIONS):
+                if _actions_match(acts, _FINANCE_ACTIONS) or _has_any_permission_payload(acts):
                     return True
 
             # Attendance page — users who can see salary column can also see finance deductions
