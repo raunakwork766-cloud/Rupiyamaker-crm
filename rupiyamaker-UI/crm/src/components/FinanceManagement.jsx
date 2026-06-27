@@ -854,18 +854,16 @@ const EditRecordModal = ({ open, onClose, record, type, onSave, loading, employe
 // ═══════════════════════════════════════════════════════════════════
 export default function FinanceManagement() {
   const perms     = getUserPermissions();
-  const isAdmin   = isSuperAdmin(perms) ||
-                    hasPermission(perms, 'employees', 'show') ||
-                    hasPermission(perms, 'hr_finance', 'manage');
+  const hasFinancePermission = (actions = []) =>
+    ['finance', 'hrms', 'hrms_finance', 'hr_finance', 'employees'].some(page =>
+      actions.some(action => hasPermission(perms, page, action))
+    );
 
-  // canDelete: anyone who can see the finance page can select & delete records.
-  // This is intentionally broader than isAdmin (which gates approval/rejection actions).
-  const canDelete = isAdmin || isSuperAdmin(perms) ||
-                    hasPermission(perms, 'finance', 'show') ||
-                    hasPermission(perms, 'finance', 'manage') ||
-                    hasPermission(perms, 'hrms', 'show') ||
-                    hasPermission(perms, 'hrms', 'manage') ||
-                    perms.length > 0; // any authenticated user with any role can delete their visible records
+  // Treat "show"-level finance access as data-visible/editable on this page,
+  // because the page itself is only visible with these permissions.
+  const isAdmin = isSuperAdmin(perms) ||
+                 hasFinancePermission(['show', 'all', 'view_all', 'edit', 'finance_admin', 'manage']);
+  const canDelete = isAdmin;
 
   const [activeTab, setActiveTab]   = useState('Reimbursements');
   const [search, setSearch]         = useState('');
@@ -1006,7 +1004,6 @@ export default function FinanceManagement() {
   // ── filtered lists ───────────────────────────────────────────────
   const uid = getUid();
   const filterData = (list, kind) => list.filter(r => {
-    if (!isAdmin && r.employee_id && r.employee_id !== uid) return false;
     if (statusFilter !== 'all' && r.status !== statusFilter) return false;
     // Month filter: applies to Deductions and Salary Holds tabs
     if (kind === 'deductions' || kind === 'salary-holds') {
@@ -1026,28 +1023,27 @@ export default function FinanceManagement() {
            (r.description || '').toLowerCase().includes(q);
   });
 
-  const filteredReimbs  = useMemo(() => filterData(reimbs, 'reimbursements'),  [reimbs,  search, statusFilter, isAdmin, uid, filterMonth, filterYear]);
-  const filteredAdvs    = useMemo(() => filterData(advs, 'advance-salary'),    [advs,    search, statusFilter, isAdmin, uid, filterMonth, filterYear]);
-  const filteredDeducts = useMemo(() => filterData(deducts, 'deductions'), [deducts, search, statusFilter, isAdmin, uid, filterMonth, filterYear]);
-  const filteredHolds   = useMemo(() => filterData(holds, 'salary-holds'), [holds, search, statusFilter, isAdmin, uid, filterMonth, filterYear]);
+  const filteredReimbs  = useMemo(() => filterData(reimbs, 'reimbursements'),  [reimbs,  search, statusFilter, filterMonth, filterYear]);
+  const filteredAdvs    = useMemo(() => filterData(advs, 'advance-salary'),    [advs,    search, statusFilter, filterMonth, filterYear]);
+  const filteredDeducts = useMemo(() => filterData(deducts, 'deductions'), [deducts, search, statusFilter, filterMonth, filterYear]);
+  const filteredHolds   = useMemo(() => filterData(holds, 'salary-holds'), [holds, search, statusFilter, filterMonth, filterYear]);
 
   // ── KPI counts ───────────────────────────────────────────────────
   const kpis = useMemo(() => {
     const src = activeTab === 'Reimbursements' ? reimbs : activeTab === 'Advance Salary' ? advs : activeTab === 'Salary Holds' ? holds : deducts;
-    const mine = isAdmin ? src : src.filter(r => !r.employee_id || r.employee_id === uid);
     return {
-      total:    mine.length,
-      pending:  mine.filter(r => r.status === 'pending').length,
-      approved: mine.filter(r => r.status === 'approved').length,
-      rejected: mine.filter(r => r.status === 'rejected').length,
-      paid:     mine.filter(r => r.status === 'paid').length,
-      held:     mine.filter(r => r.status === 'held').length,
-      released: mine.filter(r => r.status === 'released').length,
-      totalAmt: mine.reduce((s, r) => s + Number(r.amount || 0), 0),
-      pendAmt:  mine.filter(r => r.status === 'pending').reduce((s, r) => s + Number(r.amount || 0), 0),
-      appAmt:   mine.filter(r => r.status === 'approved').reduce((s, r) => s + Number(r.amount || 0), 0),
+      total:    src.length,
+      pending:  src.filter(r => r.status === 'pending').length,
+      approved: src.filter(r => r.status === 'approved').length,
+      rejected: src.filter(r => r.status === 'rejected').length,
+      paid:     src.filter(r => r.status === 'paid').length,
+      held:     src.filter(r => r.status === 'held').length,
+      released: src.filter(r => r.status === 'released').length,
+      totalAmt: src.reduce((s, r) => s + Number(r.amount || 0), 0),
+      pendAmt:  src.filter(r => r.status === 'pending').reduce((s, r) => s + Number(r.amount || 0), 0),
+      appAmt:   src.filter(r => r.status === 'approved').reduce((s, r) => s + Number(r.amount || 0), 0),
     };
-  }, [activeTab, reimbs, advs, deducts, holds, isAdmin, uid]);
+  }, [activeTab, reimbs, advs, deducts, holds]);
 
   // ── create handlers ──────────────────────────────────────────────
   const handleCreateReimb = async (form) => {
@@ -1571,13 +1567,13 @@ export default function FinanceManagement() {
     { icon: <><rect x="3" y="11" width="18" height="10" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></>, label: 'Total Holds', value: kpis.total, sub: 'All records', color: '#fb923c', accentColor: '#ea580c' },
     { icon: <><circle cx="12" cy="12" r="10"/><path d="M12 8v4"/><path d="M12 16h.01"/></>, label: 'Currently Held', value: kpis.held, sub: `${MONTHS_LIST[filterMonth]} ${filterYear}`, color: '#f87171', accentColor: '#dc2626' },
     { icon: <><polyline points="20 6 9 17 4 12"/></>, label: 'Released', value: kpis.released, sub: 'Unlocked salaries', color: '#34d399', accentColor: '#059669' },
-    { icon: <><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/></>, label: 'Affected Employees', value: new Set((isAdmin ? holds : holds.filter(h => h.employee_id === uid)).map(h => h.employee_id)).size, sub: 'Unique employees', color: '#a78bfa', accentColor: '#7c3aed' },
+    { icon: <><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/></>, label: 'Affected Employees', value: new Set(holds.map(h => h.employee_id)).size, sub: 'Unique employees', color: '#a78bfa', accentColor: '#7c3aed' },
   ] : [
-    { icon: <><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></>, label: 'Total Deductions', value: kpis.total, sub: 'All time',      color: '#f87171', accentColor: '#dc2626' },
-    { icon: <><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/></>, label: 'Total Amount', value: inr(kpis.totalAmt), sub: 'Deducted',                  color: '#fb923c', accentColor: '#ea580c' },
-    { icon: <><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></>, label: 'Affected Employees', value: new Set((isAdmin ? deducts : deducts.filter(d => d.employee_id === uid)).map(d => d.employee_id)).size, sub: 'Unique employees', color: '#a78bfa', accentColor: '#7c3aed' },
-    { icon: <><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></>, label: 'This Month', value: (isAdmin ? deducts : deducts.filter(d => d.employee_id === uid)).filter(d => { const now = new Date(); const da = new Date(d.date || d.created_at || ''); return da.getFullYear() === now.getFullYear() && da.getMonth() === now.getMonth(); }).length, sub: 'Current month', color: '#60a5fa', accentColor: '#2563eb' },
-  ];
+      { icon: <><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></>, label: 'Total Deductions', value: kpis.total, sub: 'All time',      color: '#f87171', accentColor: '#dc2626' },
+      { icon: <><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/></>, label: 'Total Amount', value: inr(kpis.totalAmt), sub: 'Deducted',                  color: '#fb923c', accentColor: '#ea580c' },
+      { icon: <><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></>, label: 'Affected Employees', value: new Set(deducts.map(d => d.employee_id)).size, sub: 'Unique employees', color: '#a78bfa', accentColor: '#7c3aed' },
+      { icon: <><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></>, label: 'This Month', value: deducts.filter(d => { const now = new Date(); const da = new Date(d.date || d.created_at || ''); return da.getFullYear() === now.getFullYear() && da.getMonth() === now.getMonth(); }).length, sub: 'Current month', color: '#60a5fa', accentColor: '#2563eb' },
+    ];
 
   // ── Status filter options ─────────────────────────────────────────
   const statusOpts = activeTab === 'Reimbursements'

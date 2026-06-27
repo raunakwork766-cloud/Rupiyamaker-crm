@@ -63,6 +63,33 @@ def get_roles_db() -> RolesDB:
 
 
 # ── Permission helper ─────────────────────────────────────────────────────────
+_FINANCE_PAGES = {"finance", "hrms", "hrms_finance", "hr_finance", "employees"}
+_FINANCE_ACTIONS = {"*", "all", "view_all", "show", "edit", "manage", "finance_admin"}
+_ATTENDANCE_PAGES = {"attendance", "hrms_attendance"}
+_ATTENDANCE_SUMMARY_ACTIONS = {"*", "all", "view_all", "edit", "view_salary", "attendance_admin"}
+
+
+def _actions_match(acts: Any, allowed) -> bool:
+    """Check whether stored action payload matches any allowed action."""
+    if acts == "*":
+        return True
+
+    if isinstance(acts, str):
+        return acts.lower() in allowed
+
+    if isinstance(acts, list):
+        return any(isinstance(a, str) and a.lower() in allowed for a in acts)
+
+    if isinstance(acts, dict):
+        return any(bool(v) and isinstance(k, str) and k.lower() in allowed for k, v in acts.items())
+
+    return False
+
+
+def _is_global_admin(page: str, acts: Any) -> bool:
+    """Check for strict super-admin permission."""
+    return page in ("*", "any") and _actions_match(acts, frozenset({"*"}))
+
 
 async def _can_see_all(
     user_id: str,
@@ -83,23 +110,12 @@ async def _can_see_all(
             acts = perm.get("actions")
 
             # Super-admin wildcard
-            if page in ("*", "any"):
-                if acts == "*" or (isinstance(acts, list) and "*" in acts):
-                    return True
+            if _is_global_admin(page, acts):
+                return True
 
             # finance page
-            if isinstance(page, str) and page.lower() in ("finance", "hrms", "hrms_finance"):
-                if acts == "*":
-                    return True
-                if isinstance(acts, list) and any(
-                    a in ("*", "all", "view_all", "edit", "finance_admin")
-                    for a in acts
-                ):
-                    return True
-                if isinstance(acts, dict) and any(
-                    v and k in ("*", "all", "view_all", "edit", "finance_admin")
-                    for k, v in acts.items()
-                ):
+            if isinstance(page, str) and page.lower() in _FINANCE_PAGES:
+                if _actions_match(acts, _FINANCE_ACTIONS):
                     return True
 
         return False
@@ -522,40 +538,19 @@ async def _can_view_finance_summary(
             acts = perm.get("actions")
 
             # Super-admin wildcard
-            if page in ("*", "any"):
-                if acts == "*" or (isinstance(acts, list) and "*" in acts):
-                    return True
+            if _is_global_admin(page, acts):
+                return True
 
             page_lower = page.lower() if isinstance(page, str) else ""
 
             # Finance page access
-            if page_lower in ("finance", "hrms", "hrms_finance"):
-                if acts == "*":
-                    return True
-                if isinstance(acts, list) and any(
-                    a in ("*", "all", "view_all", "edit", "finance_admin")
-                    for a in acts
-                ):
-                    return True
-                if isinstance(acts, dict) and any(
-                    v and k in ("*", "all", "view_all", "edit", "finance_admin")
-                    for k, v in acts.items()
-                ):
+            if page_lower in _FINANCE_PAGES:
+                if _actions_match(acts, _FINANCE_ACTIONS):
                     return True
 
             # Attendance page — users who can see salary column can also see finance deductions
-            if page_lower in ("attendance", "hrms_attendance"):
-                if acts == "*":
-                    return True
-                if isinstance(acts, list) and any(
-                    a in ("*", "all", "view_all", "edit", "view_salary", "attendance_admin")
-                    for a in acts
-                ):
-                    return True
-                if isinstance(acts, dict) and any(
-                    v and k in ("*", "all", "view_all", "edit", "view_salary", "attendance_admin")
-                    for k, v in acts.items()
-                ):
+            if page_lower in _ATTENDANCE_PAGES:
+                if _actions_match(acts, _ATTENDANCE_SUMMARY_ACTIONS):
                     return True
 
         return False
