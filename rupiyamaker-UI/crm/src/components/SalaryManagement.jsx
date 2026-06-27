@@ -33,6 +33,10 @@ const isEarnedLeaveType = (leaveType) => {
   const t = String(leaveType || '').toLowerCase();
   return t.includes('earned') || t === 'el' || t.includes('earned_leave');
 };
+const toSafeNumber = (value, fallback) => {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : fallback;
+};
 const formatAttendanceDays = (value) => {
   const n = Number(value);
   if (!Number.isFinite(n)) return '0';
@@ -76,6 +80,199 @@ const getEffectiveAttendanceWindow = (year, month, daysInMonth, joiningRaw, inac
   }
 
   return { startDay, endDay, effectiveDays: Math.max(0, endDay - startDay + 1) };
+};
+const getAttendanceRuleSettings = (settings = {}) => ({
+  minHalfDayHours: toSafeNumber(
+    settings.half_day_minimum_working_hours ?? settings.minimum_working_hours_half_day,
+    4.5
+  ),
+  minFullDayHours: toSafeNumber(
+    settings.full_day_working_hours ?? settings.minimum_working_hours_full_day,
+    8
+  ),
+  freeAbscondingDays: toSafeNumber(
+    settings.free_absconding_days ?? settings.consecutive_absent_absconding_days,
+    2
+  )
+});
+const getDayNumericValue = (status) => {
+  switch (status) {
+    case 'P': return 1;
+    case 'L': return 1;
+    case 'HD': return 0.5;
+    case 'WK': return 1;
+    case 'LV': return 0;
+    case 'AB': return 0;
+    case 'A': return 0;
+    case 'SP': return 1;
+    case 'S0': return 0;
+    case 'H': return null;
+    case 'W': return null;
+    default: return null;
+  }
+};
+const applyAttendanceRules = (records, settings, year, month) => {
+  if (!settings) return records;
+  const MIN_DAYS_FOR_SUNDAY = settings.minimum_working_days_for_sunday ?? 4;
+  return records.map(record => {
+    const updated = { ...record };
+    const daysInM = new Date(year, month, 0).getDate();
+
+    for (let d = 1; d <= daysInM; d++) {
+      const dateObj = new Date(year, month - 1, d);
+      if (dateObj.getDay() !== 0) continue;
+
+      const currentSunValue = updated[`day${d}`];
+      if (currentSunValue && currentSunValue !== 'W') continue;
+      if (updated[`day${d}_manualOverride`]) continue;
+
+      const monDay = d + 1;
+      let presentDays = 0;
+      let hasAnyData = false;
+
+      for (let w = Math.max(1, d - 6); w <= Math.min(daysInM, d - 1); w++) {
+        const wDow = new Date(year, month - 1, w).getDay();
+        if (wDow === 0) continue;
+        const s = updated[`day${w}`];
+        if (s === 'P' || s === 'L' || s === 'HD' || s === 'AB' || s === 'LV' || s === 'WK' || s === 'A') hasAnyData = true;
+        if (s === 'P' || s === 'L' || s === 'HD' || s === 'H' || s === 'WK') presentDays++;
+      }
+      if (monDay <= daysInM) {
+        const ms = updated[`day${monDay}`];
+        if (ms === 'P' || ms === 'L' || ms === 'HD' || ms === 'AB' || ms === 'LV' || ms === 'WK' || ms === 'A') hasAnyData = true;
+      }
+      if (!hasAnyData) continue;
+      if (presentDays >= MIN_DAYS_FOR_SUNDAY) {
+        updated[`day${d}`] = 'SP';
+      }
+    }
+    return updated;
+  });
+};
+const calculateMonthlyStats = (record, selectedYear, selectedMonth, daysInMonth, holidays, attendanceSettings = {}) => {
+  let presentScore = 0;
+  let actualPresent = 0;
+  let plLeaveDaysTaken = 0;
+  let elLeaveDaysTaken = 0;
+  let absconding = 0;
+  let absentDays = 0;
+  let sundayZeroDays = 0;
+  let holidaysCount = 0;
+  let halfDaysCount = 0;
+
+  const { startDay, endDay, effectiveDays } = getEffectiveAttendanceWindow(
+    selectedYear,
+    selectedMonth,
+    daysInMonth,
+    record.joining_date || record.date_of_joining || null,
+    record.inactive_from_date || null
+  );
+  const { minHalfDayHours, freeAbscondingDays } = getAttendanceRuleSettings(attendanceSettings);
+
+  for (let day = 1; day <= daysInMonth; day++) {
+    if (day < startDay || day > endDay) continue;
+    const dayKey = `day${day}`;
+    const rawStatus = record[dayKey];
+    const leaveUnits = Number(record[`${dayKey}_leaveUnits`] || 0);
+    const workingHours = Number(record[`${dayKey}_workingHours`] || 0);
+    const isLeaveHalfDay = rawStatus === 'HD' && leaveUnits > 0;
+    const status = (rawStatus === 'HD' && !isLeaveHalfDay && Number.isFinite(workingHours) && workingHours >= 0 && workingHours < minHalfDayHours)
+      ? 'A'
+      : rawStatus;
+    const val = getDayNumericValue(status);
+
+    if (status === 'H') {
+      holidaysCount++;
+    } else if (status === 'LV') {
+      if (isEarnedLeaveType(record[`${dayKey}_leaveType`])) {
+        elLeaveDaysTaken += leaveUnits || 1;
+      } else {
+        plLeaveDaysTaken += leaveUnits || 1;
+      }
+    } else if (status === 'AB') {
+      absconding++;
+    } else if (status === 'A') {
+      absentDays++;
+    } else if (status === 'S0') {
+      sundayZeroDays++;
+    } else if (status === 'HD') {
+      halfDaysCount++;
+      presentScore += 0.5;
+      actualPresent += 0.5;
+      if (leaveUnits > 0) {
+        if (isEarnedLeaveType(record[`${dayKey}_leaveType`])) {
+          elLeaveDaysTaken += leaveUnits;
+        } else {
+          plLeaveDaysTaken += leaveUnits;
+        }
+      }
+    } else if (val !== null) {
+      presentScore += val;
+      if (val > 0) actualPresent += val;
+    }
+  }
+
+  presentScore = actualPresent;
+
+  const plAllotted = record.paidLeavesTotal ?? record.plMonthly ?? 1;
+  const plRemaining = record.paidLeavesRemaining ?? null;
+
+  const plDays = plRemaining != null ? plRemaining : plAllotted;
+  const elAllotted = record.earnedLeavesTotal ?? record.elMonthly ?? 0;
+  const elRemaining = record.earnedLeavesRemaining ?? null;
+  const elDays = elRemaining != null ? elRemaining : elAllotted;
+
+  const graceMonthly = record.graceMonthlyLimit != null ? record.graceMonthlyLimit : 0;
+  const graceRemainingMonthly = record.graceRemaining != null
+    ? Math.min(record.graceRemaining, graceMonthly)
+    : graceMonthly;
+
+  const plAutoRemaining = plRemaining != null
+    ? plRemaining
+    : Math.max(0, plDays - plLeaveDaysTaken);
+  const elAutoRemaining = elRemaining != null
+    ? elRemaining
+    : Math.max(0, elDays - elLeaveDaysTaken);
+
+  const baseScore = Math.max(0, presentScore) + plLeaveDaysTaken + elLeaveDaysTaken;
+  const shortfallBeforeAutoLeave = Math.max(0, effectiveDays - baseScore);
+  const plAutoScore = Math.min(shortfallBeforeAutoLeave, plAutoRemaining);
+  const remainingShortfall = shortfallBeforeAutoLeave - plAutoScore;
+  const elAutoScore = Math.min(Math.max(0, remainingShortfall), elAutoRemaining);
+
+  const earnedBeforeAbscondingPenalty = Math.min(
+    effectiveDays,
+    baseScore + plAutoScore + elAutoScore
+  );
+  const chargedAbsconding = Math.max(0, absconding - freeAbscondingDays);
+  const finalScore = Math.max(0, earnedBeforeAbscondingPenalty - chargedAbsconding);
+
+  const plScore = plLeaveDaysTaken + plAutoScore;
+  const elScore = elLeaveDaysTaken + elAutoScore;
+  const workingDays = effectiveDays - holidaysCount;
+  const attendancePercentage = workingDays > 0 ? ((Math.max(0, presentScore) / workingDays) * 100).toFixed(1) : '0';
+
+  return {
+    presentScore,
+    actualPresent,
+    plScore,
+    elScore,
+    plDays,
+    elDays,
+    graceRemaining: graceRemainingMonthly,
+    graceTotal: graceMonthly,
+    finalScore,
+    effectiveDays,
+    absconding,
+    absentDays,
+    holidays: holidaysCount,
+    workingDays,
+    attendancePercentage,
+    present: presentScore,
+    late: 0,
+    leave: plScore + elScore,
+    halfDay: halfDaysCount
+  };
 };
 const displayText = (value, fallback = '') => {
   if (value === null || value === undefined || value === '') return fallback;
@@ -175,14 +372,22 @@ const fetchAttendancePresentDays = async (year, month) => {
     const period = `${year}-${String(month).padStart(2, '0')}`; // month is 1-based
     const hdrs = { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' };
 
-    // ── 0. Fetch attendance settings (default_paid_leave_monthly) ─────────
-    let defaultPlMonthly = 1.0;
+    // ── 0. Fetch attendance settings + defaults used by Attendance page ─────
+    let attendanceSettings = {
+      default_earned_leave_monthly: 0,
+      default_paid_leave_monthly: 1.0,
+      minimum_working_days_for_sunday: 4,
+      free_absconding_days: 2,
+    };
     try {
       const sRes = await fetch(`${API}/settings/attendance-settings?user_id=${uid}`, { headers: hdrs });
       if (sRes.ok) {
         const sData = await sRes.json();
         const s = sData?.data || sData || {};
-        if (s.default_paid_leave_monthly != null) defaultPlMonthly = parseFloat(s.default_paid_leave_monthly);
+        attendanceSettings = {
+          ...attendanceSettings,
+          ...s
+        };
       }
     } catch (e) { /* use default 1.0 */ }
 
@@ -196,7 +401,7 @@ const fetchAttendancePresentDays = async (year, month) => {
     const totalDaysInMonth = new Date(year, month, 0).getDate(); // month 1-based
 
     // ── 2. Fetch leave balances — same as AttendancePage ─────────────────
-    // Key: employee_id (RM###), same as AttendancePage balanceMap
+    // Key: employee_id (RM###) + mongo _id, same as AttendancePage balanceMap
     const balanceMap = {};
     try {
       const leaveResults = await Promise.allSettled(
@@ -216,8 +421,8 @@ const fetchAttendancePresentDays = async (year, month) => {
           const { empId, mongoId, data } = result.value;
           const balData = data?.data || data;
           // Only store non-empty objects — empty {} = no DB record = null (same as AttendancePage)
-          if (empId && balData && typeof balData === 'object' && Object.keys(balData).length > 0) {
-            balanceMap[empId] = balData;
+          if ((empId || mongoId) && balData && typeof balData === 'object' && Object.keys(balData).length > 0) {
+            if (empId) balanceMap[empId] = balData;
             if (mongoId) balanceMap[mongoId] = balData;
           }
         }
@@ -226,150 +431,101 @@ const fetchAttendancePresentDays = async (year, month) => {
 
     // ── 3. Convert numeric day.status → string (same as AttendancePage convertToCalendarFormat)
     //       Then run calculateMonthlyStats logic exactly ────────────────────
-    const map = {};
-    employees.forEach(e => {
-      const mongoId    = String(e.user_mongo_id || '');
+    const calendarRecords = employees.map(e => {
+      const mongoId = String(e.user_mongo_id || '');
       const employeeId = String(e.employee_id || '');
-      if (!mongoId && !employeeId) return;
+      const recordId = employeeId || mongoId;
+      if (!recordId) return null;
 
-      // ── Step A: convert numeric status → string, exactly as AttendancePage does ──
-      const dayMap = {}; // { day1: 'P', day2: 'AB', ... }
-      const leaveTypeMap = {};
-      const leaveUnitsMap = {};
+      const record = {
+        id: recordId,
+        employeeId,
+        mongoId: mongoId || employeeId,
+        joining_date: e.joining_date || e.date_of_joining || '',
+        inactive_from_date: e.inactive_from_date || null,
+      };
+
+      // Map each day to attendance page format.
       (e.days || []).forEach(day => {
-        const key = `day${day.day}`;
-        leaveTypeMap[key] = day.leave_type || null;
-        leaveUnitsMap[key] = Number(day.leave_units || 0);
+        const dayKey = `day${day.day}`;
+        record[`${dayKey}_leaveType`] = day.leave_type || null;
+        record[`${dayKey}_leaveUnits`] = Number(day.leave_units || 0);
+        const workingHours = Number(day.total_working_hours ?? day.working_hours ?? 0);
+        record[`${dayKey}_workingHours`] = Number.isFinite(workingHours) ? workingHours : 0;
+
         if (day.status !== null && day.status !== undefined) {
           const s = parseFloat(day.status);
-          if      (s === 1.5)              dayMap[key] = 'H';
-          else if (s === 2.0 || s === 2)   dayMap[key] = 'WK';
-          else if (s === 1.0 || s === 1)   dayMap[key] = day.is_weekend ? 'SP' : 'P';
-          else if (s === 0.5)              dayMap[key] = 'HD';
-          else if (s === 0 || s === 0.0)   dayMap[key] = day.is_weekend ? 'S0' : 'LV';
-          else if (s === -1 || s === -1.0) dayMap[key] = 'A';
-          else if (s === -2 || s === -2.0) dayMap[key] = 'AB';
-          else if (day.status === 'L')     dayMap[key] = 'L';
-          else                             dayMap[key] = '';
+          if      (s === 1.5)              record[dayKey] = 'H';
+          else if (s === 2.0 || s === 2)   record[dayKey] = 'WK';
+          else if (s === 1.0 || s === 1)   record[dayKey] = day.is_weekend ? 'SP' : 'P';
+          else if (s === 0.5)              record[dayKey] = 'HD';
+          else if (s === 0 || s === 0.0)   record[dayKey] = day.is_weekend ? 'S0' : 'LV';
+          else if (s === -1 || s === -1.0) record[dayKey] = 'A';
+          else if (s === -2 || s === -2.0) record[dayKey] = 'AB';
+          else if (day.status === 'L')      record[dayKey] = 'L';
+          else                              record[dayKey] = '';
         } else if (day.is_holiday) {
-          dayMap[key] = 'H';
+          record[dayKey] = 'H';
         } else if (day.is_weekend) {
-          dayMap[key] = 'W';
+          record[dayKey] = 'W';
         } else {
-          dayMap[key] = '';
+          record[dayKey] = '';
         }
       });
 
-      // ── Step B: effective window → current month counts only up to today ──
-      const { startDay, endDay, effectiveDays } = getEffectiveAttendanceWindow(
+      return record;
+    }).filter(Boolean);
+
+    const enrichedData = calendarRecords.map(r => {
+      const bal = balanceMap[r.id] ?? balanceMap[r.mongoId] ?? null;
+      return {
+        ...r,
+        // Keep exact leave management behavior: DB values are source of truth.
+        earnedLeavesTotal: bal != null ? (bal.earned_leaves_total ?? 0) : 0,
+        earnedLeavesUsed: bal != null ? (bal.earned_leaves_used ?? 0) : 0,
+        earnedLeavesRemaining: bal != null ? (bal.earned_leaves_remaining ?? 0) : 0,
+        paidLeavesTotal: bal != null
+          ? (bal.paid_leaves_total ?? attendanceSettings.default_paid_leave_monthly ?? 1)
+          : (attendanceSettings.default_paid_leave_monthly ?? 1),
+        paidLeavesUsed: bal != null ? (bal.paid_leaves_used ?? 0) : 0,
+        paidLeavesRemaining: bal != null ? (bal.paid_leaves_remaining ?? 0) : null,
+        graceTotal: bal != null ? (bal.grace_leaves_total ?? 0) : 0,
+        graceUsed: bal != null ? (bal.grace_leaves_used ?? 0) : 0,
+        graceRemaining: bal != null ? (bal.grace_leaves_remaining ?? 0) : 0,
+        elMonthly: attendanceSettings.default_earned_leave_monthly ?? 0,
+        plMonthly: attendanceSettings.default_paid_leave_monthly ?? 1.0,
+        graceMonthlyLimit: bal != null ? (bal.grace_leaves_total ?? 0) : 0,
+      };
+    });
+
+    const ruledData = applyAttendanceRules(enrichedData, attendanceSettings, year, month);
+
+    const map = {};
+    ruledData.forEach(record => {
+      if (!record || !record.id) return;
+      const stats = calculateMonthlyStats(
+        record,
         year,
         month,
         totalDaysInMonth,
-        e.joining_date || e.date_of_joining || null,
-        e.inactive_from_date || null
+        [],
+        attendanceSettings
       );
-
-      // ── Step C: present score using STRING statuses (same business rules as AttendancePage) ──
-      const getDayVal = (status) => {
-        switch (status) {
-          case 'P':  return 1;
-          case 'L':  return 1;   // Late = full present
-          case 'SP': return 1;   // Sunday Paid
-          case 'WK': return 1;   // Checked-in
-          case 'HD': return 0.5; // Half day
-          case 'H':  return null; // Holiday — excluded
-          case 'W':  return null; // Weekend — excluded
-          default:   return null; // not marked — excluded
-        }
-      };
-
-      let presentScore = 0;
-      let actualPresent = 0;
-      let abscondingDays = 0;
-      let absentDays = 0;
-      let sundayZeroDays = 0;
-      let plLeaveDaysTaken = 0;
-      let elLeaveDaysTaken = 0;
-      for (let d = 1; d <= totalDaysInMonth; d++) {
-        if (d < startDay || d > endDay) continue;
-        const key = `day${d}`;
-        const status = dayMap[key] || '';
-        const leaveUnits = leaveUnitsMap[key] || 0;
-        if (status === 'H') {
-          // holiday — excluded from presentScore
-        } else if (status === 'LV') {
-          if (isEarnedLeaveType(leaveTypeMap[key])) elLeaveDaysTaken += leaveUnits || 1;
-          else plLeaveDaysTaken += leaveUnits || 1;
-        } else if (status === 'AB') {
-          abscondingDays++;
-        } else if (status === 'A') {
-          absentDays++;
-        } else if (status === 'S0') {
-          sundayZeroDays++;
-        } else {
-          const val = getDayVal(status);
-          if (val !== null) {
-            presentScore += val;
-            if (val > 0) actualPresent += val;
-            if (status === 'HD' && leaveUnits > 0) {
-              if (isEarnedLeaveType(leaveTypeMap[key])) elLeaveDaysTaken += leaveUnits;
-              else plLeaveDaysTaken += leaveUnits;
-            }
-          }
-        }
-      }
-
-      // ── Step D: PL — exact mirror of enrichedData + calculateMonthlyStats ──
-      // enrichedData sets:
-      //   paidLeavesTotal     = bal!=null ? (bal.paid_leaves_total ?? defaultPl) : defaultPl
-      //   paidLeavesRemaining = bal!=null ? (bal.paid_leaves_remaining ?? 0) : null
-      // calculateMonthlyStats:
-      //   plAllotted  = record.paidLeavesTotal ?? record.plMonthly ?? 1
-      //   plRemaining = record.paidLeavesRemaining ?? null  → 0 stays 0 (non-null)
-      //   plDays = plRemaining != null ? plRemaining : plAllotted
-      const bal = balanceMap[employeeId] ?? balanceMap[mongoId] ?? null;
-      const paidLeavesTotal     = bal != null
-        ? parseFloat(bal.paid_leaves_total ?? defaultPlMonthly)
-        : defaultPlMonthly;
-      const paidLeavesRemaining = bal != null
-        ? (bal.paid_leaves_remaining != null ? parseFloat(bal.paid_leaves_remaining) : 0)
-        : null;
-      // plRemaining = paidLeavesRemaining ?? null  → 0 is non-null, so plDays = 0
-      const plDays = paidLeavesRemaining !== null ? paidLeavesRemaining : paidLeavesTotal;
-
-      const earnedLeavesTotal = bal != null
-        ? parseFloat(bal.earned_leaves_total ?? 0)
-        : 0;
-      const earnedLeavesRemaining = bal != null
-        ? (bal.earned_leaves_remaining != null ? parseFloat(bal.earned_leaves_remaining) : 0)
-        : 0;
-      const elDays = earnedLeavesRemaining !== null ? earnedLeavesRemaining : earnedLeavesTotal;
-
-      const plScore = Math.min(plLeaveDaysTaken, plDays);
-      const elScore = Math.min(elLeaveDaysTaken, elDays);
-      // Final = earned days (present + eligible leave) capped to eligible days,
-      // then one extra day penalty for every absconding day. The absconding day
-      // itself already contributes 0 in presentScore, so subtract only the extra penalty.
-      const earnedBeforeAbscondingPenalty = Math.min(
-        effectiveDays,
-        Math.max(0, presentScore) + plScore + elScore
-      );
-      const finalScore = Math.max(0, earnedBeforeAbscondingPenalty - abscondingDays);
-
       const entry = {
-        presentScore,
-        actualPresent,
-        finalScore,
+        presentScore: stats.actualPresent ?? stats.presentScore ?? 0,
+        finalScore: stats.finalScore ?? 0,
         totalDays: totalDaysInMonth,
-        effectiveDays,
-        plAdded: plScore,
-        elAdded: elScore,
-        abscondingDays,
-        absentDays,
+        effectiveDays: stats.effectiveDays,
+        plAdded: stats.plScore || 0,
+        elAdded: stats.elScore || 0,
+        abscondingDays: stats.absconding || 0,
+        absentDays: stats.absentDays || 0,
       };
-      // Store by BOTH keys so lookup always works
-      if (mongoId)    map[mongoId]    = entry;
-      if (employeeId) map[employeeId] = entry;
+      if (record.mongoId) map[record.mongoId] = entry;
+      map[record.id] = entry;
+      if (record.employeeId && String(record.employeeId) !== String(record.id)) {
+        map[record.employeeId] = entry;
+      }
     });
 
     console.log('[SalaryMgmt] Present days map (entries):', Object.keys(map).length);
