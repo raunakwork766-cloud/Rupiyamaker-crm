@@ -1532,7 +1532,7 @@ async def reset_attendance_settings(
             "late_arrival_threshold": "10:30",
             "early_departure_threshold": "17:30",
             "minimum_working_hours_full_day": 8.0,
-            "minimum_working_hours_half_day": 4.0,
+            "minimum_working_hours_half_day": 4.5,
             "overtime_threshold": 9.0,
             "weekend_days": [5, 6],  # Saturday, Sunday
             "allow_early_check_in": True,

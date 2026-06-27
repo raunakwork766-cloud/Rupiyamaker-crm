@@ -727,7 +727,7 @@ const exportToPDF = async (attendanceData, selectedYear, selectedMonth, holidays
 
   // ── Data rows ──
   attendanceData.forEach((record, rowIdx) => {
-    const stats = calculateMonthlyStats(record, selectedYear, selectedMonth, daysInMonth, holidays)
+    const stats = calculateMonthlyStats(record, selectedYear, selectedMonth, daysInMonth, holidays, attendanceSettings)
     const joiningDateKey = normalizeDateKey(record.joining_date || record.date_of_joining)
     const inactiveDateKeyExport = record.isActive === false ? normalizeDateKey(record.inactive_from_date) : null
     const row = sheet.getRow(3 + rowIdx)
@@ -2954,6 +2954,28 @@ const toDisplayText = (value, fallback = '') => {
   return fallback
 }
 
+const toSafeNumber = (value, fallback) => {
+  const n = Number(value)
+  return Number.isFinite(n) ? n : fallback
+}
+
+const getAttendanceRuleSettings = (settings = {}) => {
+  return {
+    minHalfDayHours: toSafeNumber(
+      settings.half_day_minimum_working_hours ?? settings.minimum_working_hours_half_day,
+      4.5
+    ),
+    minFullDayHours: toSafeNumber(
+      settings.full_day_working_hours ?? settings.minimum_working_hours_full_day,
+      8
+    ),
+    freeAbscondingDays: toSafeNumber(
+      settings.free_absconding_days ?? settings.consecutive_absent_absconding_days,
+      2
+    )
+  }
+}
+
 const isEarnedLeaveType = (leaveType) => {
   const t = String(leaveType || '').toLowerCase()
   return t.includes('earned') || t === 'el' || t.includes('earned_leave')
@@ -2997,7 +3019,7 @@ const getEffectiveAttendanceWindow = (selectedYear, selectedMonth, daysInMonth, 
   }
 }
 
-const calculateMonthlyStats = (record, selectedYear, selectedMonth, daysInMonth, holidays) => {
+const calculateMonthlyStats = (record, selectedYear, selectedMonth, daysInMonth, holidays, attendanceSettings = {}) => {
   let presentScore = 0
   let actualPresent = 0  // Only positive-value days (P, L, SP, HD, WK) — for display
   let plLeaveDaysTaken = 0  // Paid leave days taken (LV status)
@@ -3015,16 +3037,23 @@ const calculateMonthlyStats = (record, selectedYear, selectedMonth, daysInMonth,
     record.joining_date || record.date_of_joining || null,
     record.inactive_from_date || null
   )
+  const { minHalfDayHours, freeAbscondingDays } = getAttendanceRuleSettings(attendanceSettings)
 
   for (let day = 1; day <= daysInMonth; day++) {
     if (day < startDay || day > endDay) continue
-    const status = record[`day${day}`]
+    const dayKey = `day${day}`
+    const rawStatus = record[dayKey]
+    const leaveUnits = Number(record[`${dayKey}_leaveUnits`] || 0)
+    const workingHours = Number(record[`${dayKey}_workingHours`] || 0)
+    const isLeaveHalfDay = rawStatus === 'HD' && leaveUnits > 0
+    const status = (rawStatus === 'HD' && !isLeaveHalfDay && Number.isFinite(workingHours) && workingHours >= 0 && workingHours < minHalfDayHours)
+      ? 'A'
+      : rawStatus
     const val = getDayNumericValue(status)
-    const leaveUnits = Number(record[`day${day}_leaveUnits`] || 0)
     if (status === 'H') {
       holidaysCount++
     } else if (status === 'LV') {
-      if (isEarnedLeaveType(record[`day${day}_leaveType`])) {
+      if (isEarnedLeaveType(record[`${dayKey}_leaveType`])) {
         elLeaveDaysTaken += leaveUnits || 1
       } else {
         plLeaveDaysTaken += leaveUnits || 1
@@ -3042,7 +3071,7 @@ const calculateMonthlyStats = (record, selectedYear, selectedMonth, daysInMonth,
       presentScore += 0.5
       actualPresent += 0.5
       if (leaveUnits > 0) {
-        if (isEarnedLeaveType(record[`day${day}_leaveType`])) {
+        if (isEarnedLeaveType(record[`${dayKey}_leaveType`])) {
           elLeaveDaysTaken += leaveUnits
         } else {
           plLeaveDaysTaken += leaveUnits
@@ -3085,16 +3114,30 @@ const calculateMonthlyStats = (record, selectedYear, selectedMonth, daysInMonth,
     ? Math.min(record.graceRemaining, graceMonthly)
     : graceMonthly
 
-  const plScore = Math.min(plLeaveDaysTaken, plDays)
-  const elScore = Math.min(elLeaveDaysTaken, elDays)
+  const plAutoRemaining = plRemaining != null
+    ? plRemaining
+    : Math.max(0, plDays - plLeaveDaysTaken)
+  const elAutoRemaining = elRemaining != null
+    ? elRemaining
+    : Math.max(0, elDays - elLeaveDaysTaken)
+
+  const baseScore = Math.max(0, presentScore) + plLeaveDaysTaken + elLeaveDaysTaken
+  const shortfallBeforeAutoLeave = Math.max(0, effectiveDays - baseScore)
+  const plAutoScore = Math.min(shortfallBeforeAutoLeave, plAutoRemaining)
+  const remainingShortfall = shortfallBeforeAutoLeave - plAutoScore
+  const elAutoScore = Math.min(Math.max(0, remainingShortfall), elAutoRemaining)
+
   // Final = earned days (present + eligible leave) capped to eligible days,
-  // then one extra day penalty for every absconding day. The absconding day
-  // itself already contributes 0 in presentScore, so subtract only the extra penalty.
+  // then one extra day penalty for every absconding day beyond default free absconding allowance.
   const earnedBeforeAbscondingPenalty = Math.min(
     effectiveDays,
-    Math.max(0, presentScore) + plScore + elScore
+    baseScore + plAutoScore + elAutoScore
   )
-  const finalScore = Math.max(0, earnedBeforeAbscondingPenalty - absconding)
+  const chargedAbsconding = Math.max(0, absconding - freeAbscondingDays)
+  const finalScore = Math.max(0, earnedBeforeAbscondingPenalty - chargedAbsconding)
+
+  const plScore = plLeaveDaysTaken + plAutoScore
+  const elScore = elLeaveDaysTaken + elAutoScore
 
   const workingDays = effectiveDays - holidaysCount
   const attendancePercentage = workingDays > 0 ? ((Math.max(0, presentScore) / workingDays) * 100).toFixed(1) : "0"
@@ -3116,7 +3159,7 @@ const calculateMonthlyStats = (record, selectedYear, selectedMonth, daysInMonth,
     // Legacy compat
     present: presentScore,
     late: 0,
-    leave: plLeaveDaysTaken + elLeaveDaysTaken,
+    leave: plScore + elScore,
     halfDay: halfDaysCount,
   }
 }
@@ -3550,6 +3593,8 @@ export default function MonthlyAttendanceTable() {
           employeeRecord[`${dayKey}_leaveType`] = day.leave_type || null;
           employeeRecord[`${dayKey}_leaveTypeDisplay`] = day.leave_type_display || null;
           employeeRecord[`${dayKey}_leaveUnits`] = day.leave_units || 0;
+          const workingHours = Number(day.total_working_hours ?? day.working_hours ?? 0);
+          employeeRecord[`${dayKey}_workingHours`] = Number.isFinite(workingHours) ? workingHours : 0;
           
           // Handle the status mapping properly
           if (day.status !== null && day.status !== undefined) {
@@ -4465,7 +4510,7 @@ export default function MonthlyAttendanceTable() {
         if (['P', 'L', 'SP', 'HD', 'WK'].includes(s)) presentToday++
         else if (['A', 'AB'].includes(s)) absentToday++
       }
-      const st = calculateMonthlyStats(r, selectedYear, selectedMonth, daysInMonth, holidays)
+      const st = calculateMonthlyStats(r, selectedYear, selectedMonth, daysInMonth, holidays, attendanceSettings)
       totalAbsconding += st.absconding
       totalLeave += (st.plDays || 0) + (st.elDays || 0)
       totalGraceUsed += Math.max(0, (st.graceTotal || 0) - (st.graceRemaining || 0))
@@ -4475,7 +4520,7 @@ export default function MonthlyAttendanceTable() {
       ? (totalAttendancePct / statsData.length).toFixed(1)
       : '0.0'
     return { presentToday, absentToday, totalAbsconding, totalLeave, totalGraceUsed, avgAttendancePct, statsCount: statsData.length }
-  }, [attendanceData, selectedYear, selectedMonth, daysInMonth, holidays, isCurrentMonth, todayDay, empStatusFilter])
+  }, [attendanceData, selectedYear, selectedMonth, daysInMonth, holidays, isCurrentMonth, todayDay, empStatusFilter, attendanceSettings])
 
   const { presentToday, absentToday, totalAbsconding, totalLeave, totalGraceUsed, avgAttendancePct, statsCount } = stripStats
 
@@ -4899,7 +4944,7 @@ export default function MonthlyAttendanceTable() {
             </thead>
             <tbody className="bg-black">
               {filteredData.map((record, index) => {
-                const stats = calculateMonthlyStats(record, selectedYear, selectedMonth, daysInMonth, holidays)
+                const stats = calculateMonthlyStats(record, selectedYear, selectedMonth, daysInMonth, holidays, attendanceSettings)
                 const isEvenRow = index % 2 === 0
                 const joiningDateKey = normalizeDateKey(record.joining_date || record.date_of_joining)
                 const inactiveDateKey = record.isActive === false ? normalizeDateKey(record.inactive_from_date) : null

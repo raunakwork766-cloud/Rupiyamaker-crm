@@ -77,7 +77,7 @@ class AttendanceSettings(BaseModel):
     
     # Working Hours Settings
     full_day_working_hours: float = Field(9.0, description="Full day working hours")
-    half_day_minimum_working_hours: float = Field(5.0, description="Minimum hours for half day")
+    half_day_minimum_working_hours: float = Field(4.5, description="Minimum hours for half day")
     
     # Grace Period Settings
     grace_period_minutes: int = Field(30, description="Grace period in minutes after deadline")
@@ -108,7 +108,7 @@ class AttendanceSettings(BaseModel):
     late_arrival_threshold: str = Field("10:30", description="Late arrival threshold (HH:MM) - legacy")
     early_departure_threshold: str = Field("17:30", description="Early departure threshold (HH:MM) - legacy")
     minimum_working_hours_full_day: float = Field(8.0, description="Minimum hours for full day - legacy")
-    minimum_working_hours_half_day: float = Field(4.0, description="Minimum hours for half day - legacy")
+    minimum_working_hours_half_day: float = Field(4.5, description="Minimum hours for half day - legacy")
     overtime_threshold: float = Field(9.0, description="Overtime threshold in hours")
     weekend_days: List[int] = Field([5, 6], description="Weekend days (0=Monday, 6=Sunday)")
     allow_early_check_in: bool = Field(True, description="Allow early check-in before scheduled time")
@@ -393,24 +393,41 @@ def determine_attendance_status(check_in_time: str, check_out_time: str, setting
         late_threshold_str = settings.get("reporting_deadline", settings.get("late_arrival_threshold", "10:15"))
         late_threshold = datetime.strptime(late_threshold_str, "%H:%M").time()
         
+        # Half-day threshold configuration (with robust fallback)
+        try:
+            min_half_day_hours = float(
+                settings.get("minimum_working_hours_half_day")
+                or settings.get("half_day_minimum_working_hours", 4.5)
+            )
+        except (TypeError, ValueError):
+            min_half_day_hours = 4.5
+
+        if min_half_day_hours < 0:
+            min_half_day_hours = 4.5
+
         total_working_hours = 0.0
         if check_out_time:
             total_working_hours = calculate_working_hours(check_in_time, check_out_time)
             early_departure_threshold = datetime.strptime(settings.get("early_departure_threshold", "17:30"), "%H:%M").time()
             check_out_dt = datetime.strptime(check_out_time, "%H:%M:%S").time()
             
-            # Check for early departure
+            # Early departure: half day only if minimum half-day hours are met
             if check_out_dt < early_departure_threshold:
-                return 0.5  # Half day for early departure
+                return 0.5 if total_working_hours >= min_half_day_hours else -1
         
         # Check for late arrival
         if check_in_dt > late_threshold:
-            return 0.5  # Half day for late arrival
+            return 0.5 if total_working_hours >= min_half_day_hours else -1  # Late arrival with insufficient time = absent
         
         # Check total working hours if check-out is done
         if check_out_time and total_working_hours > 0:
-            min_full_day_hours = settings.get("minimum_working_hours_full_day", 8.0)
-            min_half_day_hours = settings.get("minimum_working_hours_half_day", 4.0)
+            try:
+                min_full_day_hours = float(settings.get("minimum_working_hours_full_day", 8.0))
+            except (TypeError, ValueError):
+                min_full_day_hours = 8.0
+
+            if min_half_day_hours > min_full_day_hours and min_full_day_hours > 0:
+                min_half_day_hours = min_full_day_hours
             
             if total_working_hours >= min_full_day_hours:
                 return 1.0  # Full day

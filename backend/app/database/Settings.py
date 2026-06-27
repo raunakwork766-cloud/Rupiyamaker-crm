@@ -883,7 +883,7 @@ class SettingsDB:
                 "shift_end_time": "19:00",
                 "reporting_deadline": "10:15",
                 "full_day_working_hours": 9.0,
-                "half_day_minimum_working_hours": 5.0,
+                "half_day_minimum_working_hours": 4.5,
                 "grace_period_minutes": 30,
                 "grace_usage_limit": 2,
                 "auto_grace_enabled": True,
@@ -907,7 +907,7 @@ class SettingsDB:
                 "late_arrival_threshold": "10:30",
                 "early_departure_threshold": "17:30",
                 "minimum_working_hours_full_day": 8.0,
-                "minimum_working_hours_half_day": 4.0,
+                "minimum_working_hours_half_day": 4.5,
                 "overtime_threshold": 9.0,
                 "weekend_days": [5, 6],  # Saturday, Sunday
                 "allow_early_check_in": True,

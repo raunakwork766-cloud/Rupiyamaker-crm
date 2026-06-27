@@ -526,13 +526,36 @@ class AttendanceDB:
             check_out_time = current_time
             working_duration = check_out_time - check_in_time
             working_hours = working_duration.total_seconds() / 3600
+
+            # Get attendance thresholds from settings
+            from app.database.Settings import SettingsDB
+            settings_db = SettingsDB()
+            attendance_settings = await settings_db.get_attendance_settings()
+            try:
+                minimum_full_day_hours = float(
+                    attendance_settings.get("minimum_working_hours_full_day")
+                    or attendance_settings.get("full_day_working_hours")
+                    or attendance_settings.get("minimum_working_hours", 8.0)
+                )
+            except (TypeError, ValueError):
+                minimum_full_day_hours = 8.0
+
+            try:
+                minimum_half_day_hours = float(
+                    attendance_settings.get("minimum_working_hours_half_day")
+                    or attendance_settings.get("half_day_minimum_working_hours", 4.5)
+                )
+            except (TypeError, ValueError):
+                minimum_half_day_hours = 4.5
             
             # Determine final attendance status based on working hours and check times
             final_status = self._calculate_final_status(
                 check_in_time, 
                 check_out_time, 
                 working_hours,
-                attendance.get("is_late", False)
+                attendance.get("is_late", False),
+                minimum_full_day_hours,
+                minimum_half_day_hours
             )
             
             # Update attendance record with check-out data
@@ -563,27 +586,49 @@ class AttendanceDB:
             print(f"Error during check-out: {e}")
             raise
 
-    def _calculate_final_status(self, check_in_time: datetime, check_out_time: datetime, working_hours: float, is_late: bool) -> float:
+    def _calculate_final_status(
+        self,
+        check_in_time: datetime,
+        check_out_time: datetime,
+        working_hours: float,
+        is_late: bool,
+        minimum_full_day_hours: float = 8.0,
+        minimum_half_day_hours: float = 4.5
+    ) -> float:
         """Calculate final attendance status based on working hours and timings"""
         # Standard working hours configuration (can be moved to settings)
-        FULL_DAY_HOURS = 8.0
-        HALF_DAY_HOURS = 4.0
+        try:
+            minimum_full_day_hours = float(minimum_full_day_hours)
+            if minimum_full_day_hours < 0:
+                minimum_full_day_hours = 8.0
+        except (TypeError, ValueError):
+            minimum_full_day_hours = 8.0
+
+        try:
+            minimum_half_day_hours = float(minimum_half_day_hours)
+            if minimum_half_day_hours < 0:
+                minimum_half_day_hours = 4.5
+        except (TypeError, ValueError):
+            minimum_half_day_hours = 4.5
+
+        if minimum_half_day_hours > minimum_full_day_hours and minimum_full_day_hours > 0:
+            minimum_half_day_hours = minimum_full_day_hours
         
         # If already marked as late (checked in after 10:30 AM), maximum is half day
         if is_late:
-            return 0.5
+            return 0.5 if working_hours >= minimum_half_day_hours else -1
         
         # Check if user left early (before 5:30 PM)
         early_departure_threshold = datetime.combine(check_out_time.date(), datetime.strptime("17:30", "%H:%M").time())
         is_early_departure = check_out_time < early_departure_threshold
         
-        if is_early_departure and working_hours < FULL_DAY_HOURS:
-            return 0.5
+        if is_early_departure:
+            return 0.5 if working_hours >= minimum_half_day_hours else -1
         
         # Calculate based on working hours
-        if working_hours >= FULL_DAY_HOURS:
+        if working_hours >= minimum_full_day_hours:
             return 1.0  # Full day
-        elif working_hours >= HALF_DAY_HOURS:
+        elif working_hours >= minimum_half_day_hours:
             return 0.5  # Half day
         else:
             return -1   # Absent (insufficient hours)
@@ -687,10 +732,38 @@ class AttendanceDB:
                         check_out_time = datetime.fromisoformat(check_out_str)
                         working_duration = check_out_time - check_in_time
                         working_hours = working_duration.total_seconds() / 3600
+
+                        # Get attendance thresholds from settings
+                        from app.database.Settings import SettingsDB
+                        settings_db = SettingsDB()
+                        attendance_settings = await settings_db.get_attendance_settings()
+                        try:
+                            minimum_full_day_hours = float(
+                                attendance_settings.get("minimum_working_hours_full_day")
+                                or attendance_settings.get("full_day_working_hours")
+                                or attendance_settings.get("minimum_working_hours", 8.0)
+                            )
+                        except (TypeError, ValueError):
+                            minimum_full_day_hours = 8.0
+
+                        try:
+                            minimum_half_day_hours = float(
+                                attendance_settings.get("minimum_working_hours_half_day")
+                                or attendance_settings.get("half_day_minimum_working_hours", 4.5)
+                            )
+                        except (TypeError, ValueError):
+                            minimum_half_day_hours = 4.5
                         
                         # Recalculate status
                         is_late = check_in_time.time() > datetime.strptime("10:30", "%H:%M").time()
-                        final_status = self._calculate_final_status(check_in_time, check_out_time, working_hours, is_late)
+                        final_status = self._calculate_final_status(
+                            check_in_time,
+                            check_out_time,
+                            working_hours,
+                            is_late,
+                            minimum_full_day_hours,
+                            minimum_half_day_hours
+                        )
                         
                         update_data["working_hours"] = round(working_hours, 2)
                         update_data["status"] = final_status
@@ -723,7 +796,7 @@ class AttendanceDB:
                 "late_arrival_threshold": "10:30",
                 "early_departure_threshold": "17:30",
                 "minimum_working_hours_full_day": 8.0,
-                "minimum_working_hours_half_day": 4.0
+                "minimum_working_hours_half_day": 4.5
             }
         except Exception as e:
             print(f"Error getting attendance settings: {e}")
@@ -734,7 +807,7 @@ class AttendanceDB:
                 "late_arrival_threshold": "10:30",
                 "early_departure_threshold": "17:30",
                 "minimum_working_hours_full_day": 8.0,
-                "minimum_working_hours_half_day": 4.0
+                "minimum_working_hours_half_day": 4.5
             }
     
     async def update_attendance_settings(self, settings_data: Dict[str, Any]) -> bool:

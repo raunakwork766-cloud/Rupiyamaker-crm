@@ -2676,7 +2676,11 @@ async def check_out_attendance(
         check_out_start_time = settings.get("check_out_start_time", "17:00")  # Default 5:00 PM
         check_out_end_time = settings.get("check_out_end_time", "20:00")    # Default 8:00 PM
         minimum_hours = float(settings.get("minimum_working_hours") or settings.get("full_day_working_hours") or 8.0)
-        half_day_hours = float(settings.get("half_day_minimum_working_hours") or settings.get("minimum_working_hours_half_day") or minimum_hours / 2)
+        half_day_hours = float(
+            settings.get("half_day_minimum_working_hours")
+            or settings.get("minimum_working_hours_half_day")
+            or 4.5
+        )
         
         # Get current status from check-in (might be 1, 0.5, or -2)
         current_status = existing.get("status", 1)
@@ -4257,7 +4261,11 @@ async def check_out_attendance(
         settings_db_co = SettingsDB()
         settings_co = await settings_db_co.get_attendance_settings()
         min_full_day_hours = float(settings_co.get("full_day_working_hours") or settings_co.get("minimum_working_hours_full_day") or 8.0)
-        min_half_day_hours = float(settings_co.get("half_day_minimum_working_hours") or settings_co.get("minimum_working_hours_half_day") or 4.0)
+        min_half_day_hours = float(
+            settings_co.get("half_day_minimum_working_hours")
+            or settings_co.get("minimum_working_hours_half_day")
+            or 4.5
+        )
         check_out_start_str = settings_co.get("check_out_start_time", "17:00")
         
         # Calculate working hours
