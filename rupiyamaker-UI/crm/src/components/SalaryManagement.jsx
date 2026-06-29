@@ -19,6 +19,31 @@ const fmt  = n => n == null ? '' : Number(n).toLocaleString('en-IN');
 const inr  = n => n == null ? '—' : `₹${Number(n).toLocaleString('en-IN', { maximumFractionDigits: 0 })}`;
 const mkid = () => Math.random().toString(36).slice(2, 9);
 const now  = new Date();
+const cleanPercentText = v => {
+  const n = num(v);
+  return Number.isInteger(n) ? String(n) : n.toFixed(2).replace(/\.?0+$/, '');
+};
+const getSalaryHoldType = hold => hold?.hold_type || (hold?.hold_percentage != null ? 'percentage' : (hold?.hold_amount != null || hold?.salary_amount != null ? 'amount' : 'full'));
+const computeSalaryHoldAmount = (hold, grossAccountTransfer) => {
+  if (!hold) return 0;
+  const payableBase = Math.max(0, num(grossAccountTransfer));
+  const holdType = getSalaryHoldType(hold);
+  let requested = payableBase;
+  if (holdType === 'percentage') {
+    const pct = Math.min(100, Math.max(0, num(hold.hold_percentage)));
+    requested = (payableBase * pct) / 100;
+  } else if (holdType === 'amount') {
+    requested = num(hold.hold_amount ?? hold.salary_amount);
+  }
+  return Math.min(payableBase, Math.max(0, Math.round(requested)));
+};
+const getSalaryHoldRuleText = hold => {
+  if (!hold) return '';
+  const holdType = getSalaryHoldType(hold);
+  if (holdType === 'percentage') return `${cleanPercentText(hold.hold_percentage)}% hold`;
+  if (holdType === 'amount') return `${inr(hold.hold_amount ?? hold.salary_amount)} hold`;
+  return 'Full hold';
+};
 const DEFAULT_SALARY_START_MONTH = { year: now.getFullYear(), month: 4 }; // May (0-based)
 const isValidStartMonth = (v) => (
   !!v && Number.isInteger(v.year) && Number.isInteger(v.month) && v.month >= 0 && v.month <= 11
@@ -344,8 +369,9 @@ const SALARY_EXPORT_COLUMNS = [
   { header: 'Advance Recovered', key: 'advanceRecovered', width: 18, money: true },
   { header: 'Advance Due', key: 'advanceDue', width: 16, money: true },
   { header: 'Final Salary', key: 'finalSalary', width: 16, money: true },
+  { header: 'Salary Held Amount', key: 'salaryHeldAmount', width: 18, money: true },
   { header: 'Account Transfer', key: 'accountTransfer', width: 18, money: true },
-  { header: 'Salary Hold', key: 'salaryHold', width: 14 },
+  { header: 'Salary Hold Rule', key: 'salaryHold', width: 18 },
   { header: 'Account Name', key: 'accountName', width: 24 },
   { header: 'Account Number', key: 'accountNumber', width: 22 },
   { header: 'Bank Name', key: 'bankName', width: 22 },
@@ -355,7 +381,7 @@ const SALARY_EXPORT_COLUMNS = [
 const SALARY_PDF_COLUMNS = [
   'sno', 'employeeName', 'employeeId', 'team', 'status', 'monthlySalary', 'daysPresent',
   'monthlyTarget', 'finalBusiness', 'shortfall', 'incentiveAmount', 'totalDeductions',
-  'totalReimbursements', 'finalSalary', 'accountTransfer', 'salaryHold'
+  'totalReimbursements', 'finalSalary', 'salaryHeldAmount', 'accountTransfer', 'salaryHold'
 ];
 
 const HISTORY_EXPORT_COLUMNS = [
@@ -436,8 +462,9 @@ const buildSalaryExportRows = (rows, deptMap, processed, month, year) => rows.ma
     advanceRecovered: Math.round(num(calc.advRecovered)),
     advanceDue: Math.round(num(calc.remainingAdv)),
     finalSalary: Math.round(num(calc.finalSalary)),
+    salaryHeldAmount: Math.round(num(calc.salaryHoldAmount)),
     accountTransfer: Math.round(num(calc.accountTransfer)),
-    salaryHold: calc.isSalaryHeld ? 'Held' : '',
+    salaryHold: calc.isSalaryHeld ? (calc.salaryHoldRule || 'Held') : '',
     accountName: emp.salary_account_name || '',
     accountNumber: emp.salary_account_number || '',
     bankName: emp.salary_bank_name || '',
@@ -896,7 +923,7 @@ const buildRSM = roles => {
 // attendanceDeduction = eligible unpaid days * perDaySalary
 // prorationDeduction  = non-eligible days from joining/inactive window
 // finalSalary     = monthlySalary + incentive - attendanceDeduction - prorationDeduction
-// accountTransfer = finalSalary - totalDeductions + totalReimbursements
+// accountTransfer = finalSalary - totalDeductions + totalReimbursements - salaryHoldAmount
 const calcRow = (emp, allocs, deducts, advanceBalance, carryForward, warnDeducts, presentDays, totalDaysInMonth, rawPresentScore, plAdded, effectiveDays, elAdded, salaryHold = null) => {
   const id = String(emp._id || emp.id);
   const indi       = num(emp.settled_target || 0);
@@ -957,8 +984,10 @@ const calcRow = (emp, allocs, deducts, advanceBalance, carryForward, warnDeducts
   const remainingAdv  = Math.max(0, num(advanceBalance) - advRecovered);
 
   const grossAccountTransfer = finalSalary - totalDeds + totalReimb;
+  const salaryHoldAmount = computeSalaryHoldAmount(salaryHold, grossAccountTransfer);
   const isSalaryHeld = !!salaryHold;
-  const accountTransfer = isSalaryHeld ? 0 : grossAccountTransfer;
+  const salaryHoldRule = getSalaryHoldRuleText(salaryHold);
+  const accountTransfer = grossAccountTransfer - salaryHoldAmount;
 
   return { id, indi, givenAway, teamRcvd, availIndi, baseTarget, cf, totalTarget,
            overallBiz, finalBiz, shortfall, excessBiz, incentive, iRate,
@@ -968,7 +997,7 @@ const calcRow = (emp, allocs, deducts, advanceBalance, carryForward, warnDeducts
            effectiveDays: effDays,
            finalScore: presentDays,  // finalScore = the attendance page "Final" value passed in
            finalSalary, totalDeds, totalReimb, advRecovered, remainingAdv,
-           grossAccountTransfer, accountTransfer, isSalaryHeld, salaryHold,
+           grossAccountTransfer, salaryHoldAmount, accountTransfer, isSalaryHeld, salaryHold, salaryHoldRule,
            empDeds, empReimb, warnDeducts };
 };
 
@@ -1652,7 +1681,7 @@ function SalRow({ emp, calc, processed, deptMap, isLockedMonth, onTeam, onDeduct
         <div style={{fontWeight:'bold'}}>{fmt(Math.round(calc.finalSalary))}</div>
         {calc.isSalaryHeld && (
           <div style={{fontSize:10,color:'#fb923c',marginTop:1,fontWeight:'bold'}}>
-            salary held
+            {calc.salaryHoldRule || 'salary held'} · {fmt(calc.salaryHoldAmount)}
           </div>
         )}
         {calc.hasPresentData && calc.attendanceDed > 0 && (
@@ -1692,14 +1721,13 @@ function SalRow({ emp, calc, processed, deptMap, isLockedMonth, onTeam, onDeduct
         )}
       </td>
       <td style={{fontWeight:'bold',color: calc.isSalaryHeld ? '#fb923c' : '#2563eb'}}>
-        {calc.isSalaryHeld ? (
-          <div>
-            <div>HELD</div>
-            <div style={{fontSize:10,color:'#6b7280',fontWeight:'normal'}}>
-              gross {fmt(Math.round(calc.grossAccountTransfer || 0))}
-            </div>
+        <div>{fmt(Math.round(calc.accountTransfer))}</div>
+        {calc.isSalaryHeld && (
+          <div style={{fontSize:10,color:'#6b7280',fontWeight:'normal',lineHeight:1.2}}>
+            held {fmt(calc.salaryHoldAmount)}<br />
+            gross {fmt(Math.round(calc.grossAccountTransfer || 0))}
           </div>
-        ) : fmt(Math.round(calc.accountTransfer))}
+        )}
       </td>
       <td style={{fontFamily:'monospace',fontSize:11}}>{emp.salary_account_name||''}</td>
       <td style={{fontFamily:'monospace',fontSize:11}}>{emp.salary_account_number||''}</td>

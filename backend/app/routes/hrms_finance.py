@@ -125,6 +125,58 @@ def _is_global_admin(page: str, acts: Any) -> bool:
     return page in ("*", "any") and _actions_match(acts, frozenset({"*"}))
 
 
+def _to_float_or_none(value: Any) -> Optional[float]:
+    try:
+        if value is None or value == "":
+            return None
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _normalize_salary_hold_payload(body: Dict[str, Any], *, creating: bool) -> None:
+    """Normalize partial salary hold fields in-place."""
+    hold_type = str(body.get("hold_type") or "").strip().lower()
+    if not hold_type:
+        if body.get("hold_percentage") not in (None, ""):
+            hold_type = "percentage"
+        elif body.get("hold_amount") not in (None, "") or body.get("salary_amount") not in (None, ""):
+            hold_type = "amount"
+        elif creating:
+            hold_type = "full"
+        else:
+            return
+
+    if hold_type in {"percent", "percentage"}:
+        pct = _to_float_or_none(body.get("hold_percentage"))
+        if pct is None or pct <= 0 or pct > 100:
+            raise HTTPException(status_code=422, detail="hold_percentage must be between 0 and 100")
+        body["hold_type"] = "percentage"
+        body["hold_percentage"] = pct
+        body.pop("hold_amount", None)
+        body.pop("salary_amount", None)
+        return
+
+    if hold_type == "amount":
+        amount = _to_float_or_none(body.get("hold_amount"))
+        if amount is None:
+            amount = _to_float_or_none(body.get("salary_amount"))
+        if amount is None or amount <= 0:
+            raise HTTPException(status_code=422, detail="hold_amount must be greater than zero")
+        body["hold_type"] = "amount"
+        body["hold_amount"] = amount
+        body["salary_amount"] = amount
+        body.pop("hold_percentage", None)
+        return
+
+    if hold_type == "full":
+        body["hold_type"] = "full"
+        body.pop("hold_percentage", None)
+        return
+
+    raise HTTPException(status_code=422, detail="hold_type must be percentage, amount, or full")
+
+
 async def _can_see_all(
     user_id: str,
     users_db: UsersDB,
@@ -499,6 +551,7 @@ async def create_salary_hold(
 
     body["year"] = int(year)
     body["month"] = int(month)
+    _normalize_salary_hold_payload(body, creating=True)
     body.setdefault("status", "held")
     body.setdefault("held_by", current_user_id)
     body.setdefault("held_at", body.get("created_at"))
@@ -524,6 +577,8 @@ async def patch_salary_hold(
     if body.get("status") == "released":
         body.setdefault("released_by", current_user_id)
         body.setdefault("released_at", body.get("actioned_at"))
+    if any(k in body for k in ("hold_type", "hold_percentage", "hold_amount", "salary_amount")):
+        _normalize_salary_hold_payload(body, creating=False)
     ok = await hrms_db.patch_record("salary-holds", record_id, body)
     if not ok:
         raise HTTPException(status_code=404, detail="Record not found")

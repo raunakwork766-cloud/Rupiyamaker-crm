@@ -41,8 +41,26 @@ const getUid  = () => localStorage.getItem('userId') || localStorage.getItem('us
   || (() => { try { return JSON.parse(localStorage.getItem('userData') || '{}')._id; } catch { return null; } })();
 const tok     = () => localStorage.getItem('token') || '';
 const inr     = n  => n == null ? '—' : `₹${Number(n).toLocaleString('en-IN', { maximumFractionDigits: 0 })}`;
+const toNum   = v  => { const n = Number(v); return Number.isFinite(n) ? n : 0; };
 const fmtDate = d  => d ? new Date(d).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '—';
 const mkid    = () => Math.random().toString(36).slice(2, 9);
+const cleanPercent = v => {
+  const n = toNum(v);
+  return Number.isInteger(n) ? String(n) : n.toFixed(2).replace(/\.?0+$/, '');
+};
+const holdTypeOf = record => record?.hold_type || (record?.hold_percentage != null ? 'percentage' : 'amount');
+const holdRuleText = record => {
+  if (!record) return '—';
+  if (holdTypeOf(record) === 'percentage') return `${cleanPercent(record.hold_percentage)}% of payable salary`;
+  const amount = record.hold_amount ?? record.salary_amount;
+  return amount != null ? `${inr(amount)} fixed amount` : 'Full salary hold';
+};
+const holdValueText = record => {
+  if (!record) return '—';
+  if (holdTypeOf(record) === 'percentage') return `${cleanPercent(record.hold_percentage)}%`;
+  const amount = record.hold_amount ?? record.salary_amount;
+  return amount != null ? inr(amount) : 'Full';
+};
 
 // ─── LS fallback keys ─────────────────────────────────────────────────────────
 const LS = {
@@ -284,7 +302,7 @@ const DetailModal = ({ open, onClose, record, type, onAction, onDelete, canDelet
           <DetailRow label="Employee">{record.employee_name || '—'}</DetailRow>
           {!isHold && <DetailRow label="Amount"><span style={{ color: isAdv ? '#fbbf24' : isReimb ? '#34d399' : '#f87171', fontWeight: 700 }}>{inr(record.amount)}</span></DetailRow>}
           {isHold && <DetailRow label="Salary Month">{MONTHS_LIST[record.month] || '—'} {record.year || ''}</DetailRow>}
-          {isHold && record.salary_amount != null && <DetailRow label="Held Amount"><span style={{ color: '#fb923c', fontWeight: 700 }}>{inr(record.salary_amount)}</span></DetailRow>}
+          {isHold && <DetailRow label="Hold Rule"><span style={{ color: '#fb923c', fontWeight: 700 }}>{holdRuleText(record)}</span></DetailRow>}
           {isReimb && <DetailRow label="Category">{record.category || '—'}</DetailRow>}
           {isAdv   && <DetailRow label="Reason">{record.reason || '—'}</DetailRow>}
           {isAdv   && <DetailRow label="Repayment">{record.repayment_months ? `${record.repayment_months} months · ${inr(record.monthly_deduction)}/mo` : '—'}</DetailRow>}
@@ -646,7 +664,15 @@ const CreateDeductModal = ({ open, onClose, onSubmit, loading, employees, approv
 
 // ─── Create Salary Hold Modal ────────────────────────────────────────────────
 const CreateHoldModal = ({ open, onClose, onSubmit, loading, employees, selectedMonth, selectedYear }) => {
-  const blank = { employee_id: '', employee_name: '', salary_amount: '', reason: '' };
+  const blank = {
+    employee_id: '',
+    employee_name: '',
+    base_salary: '',
+    hold_type: 'percentage',
+    hold_percentage: '50',
+    hold_amount: '',
+    reason: ''
+  };
   const [form, setForm] = useState(blank);
   const set = (k, v) => setForm(p => ({ ...p, [k]: v }));
 
@@ -654,9 +680,29 @@ const CreateHoldModal = ({ open, onClose, onSubmit, loading, employees, selected
     if (open) setForm(blank);
   }, [open]);
 
+  const selectedEmployee = employees.find(x => x._id === form.employee_id);
+  const holdType = form.hold_type === 'amount' ? 'amount' : 'percentage';
+  const baseSalary = toNum(form.base_salary || selectedEmployee?.salary);
+  const pct = toNum(form.hold_percentage);
+  const amount = toNum(form.hold_amount);
+  const estimatedHold = holdType === 'percentage'
+    ? Math.round((baseSalary * pct) / 100)
+    : Math.round(amount);
+  const estimatedTransfer = Math.max(0, Math.round(baseSalary - estimatedHold));
+
   const handleSubmit = () => {
     if (!form.employee_id) return alert('Please select an employee.');
-    onSubmit(form);
+    if (holdType === 'percentage') {
+      if (!(pct > 0 && pct <= 100)) return alert('Please enter a hold percentage between 0 and 100.');
+    } else if (!(amount > 0)) {
+      return alert('Please enter a hold amount greater than zero.');
+    }
+    onSubmit({
+      ...form,
+      hold_type: holdType,
+      hold_percentage: holdType === 'percentage' ? pct : '',
+      hold_amount: holdType === 'amount' ? amount : '',
+    });
   };
 
   if (!open) return null;
@@ -670,14 +716,14 @@ const CreateHoldModal = ({ open, onClose, onSubmit, loading, employees, selected
             </div>
             <div>
               <p className="fin-modal-title">Hold Salary</p>
-              <p className="fin-modal-subtitle">Hold {MONTHS_LIST[selectedMonth]} {selectedYear} salary until released</p>
+              <p className="fin-modal-subtitle">Hold part of {MONTHS_LIST[selectedMonth]} {selectedYear} salary until released</p>
             </div>
           </div>
           <button className="fin-close-btn" onClick={onClose}><svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
         </div>
         <div className="fin-modal-body">
           <div className="fin-info-box" style={{ marginBottom: 14, fontSize: 12, background: 'rgba(251,146,60,0.08)', borderColor: '#7c2d12', color: '#fdba74' }}>
-            Salary calculation remains visible, but net payable becomes zero while the hold is active.
+            Only the configured percentage or amount will be held. The remaining payable salary stays transferable on the salary page.
           </div>
           <div className="fin-form-row single">
             <div className="fin-form-group">
@@ -686,19 +732,35 @@ const CreateHoldModal = ({ open, onClose, onSubmit, loading, employees, selected
                 const emp = employees.find(x => x._id === e.target.value);
                 set('employee_id', e.target.value);
                 set('employee_name', emp ? `${emp.first_name} ${emp.last_name}` : '');
-                set('salary_amount', emp?.salary || '');
+                set('base_salary', emp?.salary || '');
               }}>
                 <option value="">Select employee...</option>
                 {employees.map(emp => <option key={emp._id} value={emp._id}>{emp.first_name} {emp.last_name}</option>)}
               </select>
             </div>
           </div>
-          <div className="fin-form-row single">
+          <div className="fin-form-row">
             <div className="fin-form-group">
-              <label className="fin-form-label">Held Salary Amount</label>
-              <input type="number" min="0" value={form.salary_amount} onChange={e => set('salary_amount', e.target.value)} placeholder="Optional" />
+              <label className="fin-form-label">Hold By *</label>
+              <select value={holdType} onChange={e => set('hold_type', e.target.value)}>
+                <option value="percentage">Percentage</option>
+                <option value="amount">Fixed Amount</option>
+              </select>
+            </div>
+            <div className="fin-form-group">
+              <label className="fin-form-label">{holdType === 'percentage' ? 'Hold Percentage *' : 'Hold Amount *'}</label>
+              {holdType === 'percentage' ? (
+                <input type="number" min="0.01" max="100" step="0.01" value={form.hold_percentage} onChange={e => set('hold_percentage', e.target.value)} placeholder="e.g. 50" />
+              ) : (
+                <input type="number" min="1" step="1" value={form.hold_amount} onChange={e => set('hold_amount', e.target.value)} placeholder="0" />
+              )}
             </div>
           </div>
+          {baseSalary > 0 && estimatedHold > 0 && (
+            <div className="fin-info-box" style={{ marginBottom: 14, fontSize: 12 }}>
+              Estimated from base salary: hold <strong>{inr(Math.min(estimatedHold, baseSalary))}</strong>, transfer <strong>{inr(estimatedTransfer)}</strong>. Final salary page recalculates this from payable salary.
+            </div>
+          )}
           <div className="fin-form-row single">
             <div className="fin-form-group">
               <label className="fin-form-label">Reason / Note</label>
@@ -1174,15 +1236,23 @@ export default function FinanceManagement() {
   const handleCreateHold = async (form) => {
     setSaving(true);
     setApiError('');
+    const holdType = form.hold_type === 'amount' ? 'amount' : 'percentage';
+    const holdPercentage = holdType === 'percentage' ? Number(form.hold_percentage) : undefined;
+    const holdAmount = holdType === 'amount' ? Number(form.hold_amount) : undefined;
     const rec = {
       _id: mkid(),
       employee_id: form.employee_id,
       employee_name: form.employee_name,
-      salary_amount: form.salary_amount ? Number(form.salary_amount) : undefined,
+      hold_type: holdType,
+      hold_percentage: holdPercentage,
+      hold_amount: holdAmount,
+      salary_amount: holdAmount,
+      base_salary: form.base_salary ? Number(form.base_salary) : undefined,
       year: filterYear,
       month: filterMonth,
       date: `${filterYear}-${String(filterMonth + 1).padStart(2, '0')}-01`,
       description: form.reason,
+      reason: form.reason,
       status: 'held',
       created_at: new Date().toISOString(),
       held_at: new Date().toISOString(),
@@ -1546,7 +1616,7 @@ export default function FinanceManagement() {
             </th>}
             <th>Employee</th>
             <th>Month</th>
-            <th>Held Amount</th>
+            <th>Hold Rule</th>
             <th>Reason</th>
             <th>Status</th>
             <th>Actions</th>
@@ -1564,7 +1634,7 @@ export default function FinanceManagement() {
               </td>}
               <td className="fin-name-strong">{r.employee_name}</td>
               <td className="fin-text-muted">{MONTHS_LIST[r.month] || '—'} {r.year || ''}</td>
-              <td className="fin-amount-yellow">{r.salary_amount != null ? inr(r.salary_amount) : '—'}</td>
+              <td className="fin-amount-yellow">{holdValueText(r)}</td>
               <td style={{ maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis' }}>{r.description || r.reason || <span className="fin-text-muted">—</span>}</td>
               <td><StatusBadge status={r.status} /></td>
               <td onClick={e => e.stopPropagation()}>
