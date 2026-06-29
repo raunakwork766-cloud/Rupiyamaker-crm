@@ -51,8 +51,7 @@ const LS = {
   DEDUCT: 'fin_deductions',
   HOLD:   'fin_salary_holds',
 };
-const loadLS  = (k)    => { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : []; } catch { return []; } };
-const saveLS  = (k, v) => localStorage.setItem(k, JSON.stringify(v));
+const clearLS = (k) => { try { localStorage.removeItem(k); } catch {} };
 
 // ─── API helpers ─────────────────────────────────────────────────────────────
 const apiFetch = async (path, opts = {}) => {
@@ -60,9 +59,22 @@ const apiFetch = async (path, opts = {}) => {
     ...opts,
     headers: { Authorization: `Bearer ${tok()}`, 'Content-Type': 'application/json', ...(opts.headers || {}) }
   });
-  if (!res.ok) throw new Error(res.status);
+  if (!res.ok) {
+    let message = `${res.status} ${res.statusText || 'Request failed'}`;
+    try {
+      const body = await res.json();
+      message = body?.detail || body?.message || message;
+    } catch {
+      try {
+        const text = await res.text();
+        if (text) message = text;
+      } catch {}
+    }
+    throw new Error(message);
+  }
   return res.json();
 };
+const errText = (err) => err?.message || 'Unknown error';
 
 // ─── Inline styles ─────────────────────────────────────────────────────────
 const styles = `
@@ -862,7 +874,7 @@ export default function FinanceManagement() {
   // Treat "show"-level finance access as data-visible/editable on this page,
   // because the page itself is only visible with these permissions.
   const isAdmin = isSuperAdmin(perms) ||
-                 hasFinancePermission(['show', 'all', 'view_all', 'edit', 'finance_admin', 'manage']);
+                 hasFinancePermission(['show', 'all', 'view_all', 'edit', 'finance_admin', 'manage', 'view_team', 'junior']);
   const canDelete = isAdmin;
 
   const [activeTab, setActiveTab]   = useState('Reimbursements');
@@ -870,6 +882,7 @@ export default function FinanceManagement() {
   const [statusFilter, setStatus]   = useState('all');
   const [loading, setLoading]       = useState(false);
   const [saving, setSaving]         = useState(false);
+  const [apiError, setApiError]     = useState('');
 
   // ── Finance Settings ──────────────────────────────────────────────
   const now = new Date();
@@ -921,6 +934,16 @@ export default function FinanceManagement() {
   const [selectedIds, setSelectedIds] = useState(new Set());
   const [deleting,    setDeleting]    = useState(false);
 
+  const markApiError = useCallback((message, err) => {
+    console.error(`[Finance] ${message}`, err);
+    setApiError(prev => prev || `${message}: ${errText(err)}`);
+  }, []);
+
+  const notifyApiFailure = useCallback((message, err) => {
+    markApiError(message, err);
+    alert(`${message}. Data was not saved in shared finance records. ${errText(err)}`);
+  }, [markApiError]);
+
   // ── fetch employees ──────────────────────────────────────────────
   useEffect(() => {
     (async () => {
@@ -957,49 +980,59 @@ export default function FinanceManagement() {
       const data = await apiFetch(`/hrms/reimbursements?user_id=${getUid()}`);
       const list = Array.isArray(data) ? data : (data.items || []);
       setReimbs(list);
-      saveLS(LS.REIMB, list);
-    } catch {
-      setReimbs(loadLS(LS.REIMB));
+      clearLS(LS.REIMB);
+    } catch (err) {
+      setReimbs([]);
+      markApiError('Could not load reimbursements', err);
     }
-  }, []);
+  }, [markApiError]);
 
   const fetchAdvs = useCallback(async () => {
     try {
       const data = await apiFetch(`/hrms/advance-salary?user_id=${getUid()}`);
       const list = Array.isArray(data) ? data : (data.items || []);
       setAdvs(list);
-      saveLS(LS.ADV, list);
-    } catch {
-      setAdvs(loadLS(LS.ADV));
+      clearLS(LS.ADV);
+    } catch (err) {
+      setAdvs([]);
+      markApiError('Could not load advance salary records', err);
     }
-  }, []);
+  }, [markApiError]);
 
   const fetchDeducts = useCallback(async () => {
     try {
       const data = await apiFetch(`/hrms/deductions?user_id=${getUid()}`);
       const list = Array.isArray(data) ? data : (data.items || []);
       setDeducts(list);
-      saveLS(LS.DEDUCT, list);
-    } catch {
-      setDeducts(loadLS(LS.DEDUCT));
+      clearLS(LS.DEDUCT);
+    } catch (err) {
+      setDeducts([]);
+      markApiError('Could not load deductions', err);
     }
-  }, []);
+  }, [markApiError]);
 
   const fetchHolds = useCallback(async () => {
     try {
       const data = await apiFetch(`/hrms/salary-holds?user_id=${getUid()}`);
       const list = Array.isArray(data) ? data : (data.items || []);
       setHolds(list);
-      saveLS(LS.HOLD, list);
-    } catch {
-      setHolds(loadLS(LS.HOLD));
+      clearLS(LS.HOLD);
+    } catch (err) {
+      setHolds([]);
+      markApiError('Could not load salary holds', err);
     }
-  }, []);
+  }, [markApiError]);
+
+  const refreshAllFinanceData = useCallback(async () => {
+    setLoading(true);
+    setApiError('');
+    await Promise.all([fetchReimbs(), fetchAdvs(), fetchDeducts(), fetchHolds()]);
+    setLoading(false);
+  }, [fetchReimbs, fetchAdvs, fetchDeducts, fetchHolds]);
 
   useEffect(() => {
-    setLoading(true);
-    Promise.all([fetchReimbs(), fetchAdvs(), fetchDeducts(), fetchHolds()]).finally(() => setLoading(false));
-  }, [fetchReimbs, fetchAdvs, fetchDeducts, fetchHolds]);
+    refreshAllFinanceData();
+  }, [refreshAllFinanceData]);
 
   // ── filtered lists ───────────────────────────────────────────────
   const uid = getUid();
@@ -1048,6 +1081,7 @@ export default function FinanceManagement() {
   // ── create handlers ──────────────────────────────────────────────
   const handleCreateReimb = async (form) => {
     setSaving(true);
+    setApiError('');
     const approvers = financeApprovers.reimbursement || [];
     const rec = {
       _id: mkid(), employee_id: form.employee_id || uid,
@@ -1061,10 +1095,10 @@ export default function FinanceManagement() {
     try {
       await apiFetch(`/hrms/reimbursements?user_id=${getUid()}`, { method: 'POST', body: JSON.stringify(rec) });
       await fetchReimbs();
-    } catch {
-      const updated = [...reimbs, rec];
-      setReimbs(updated);
-      saveLS(LS.REIMB, updated);
+    } catch (err) {
+      notifyApiFailure('Could not submit reimbursement', err);
+      setSaving(false);
+      return;
     }
     setSaving(false);
     setShowCreateReimb(false);
@@ -1072,6 +1106,7 @@ export default function FinanceManagement() {
 
   const handleCreateAdv = async (form) => {
     setSaving(true);
+    setApiError('');
     const approvers = financeApprovers.advance_salary || [];
     const rec = {
       _id: mkid(), employee_id: form.employee_id || uid,
@@ -1087,10 +1122,10 @@ export default function FinanceManagement() {
     try {
       await apiFetch(`/hrms/advance-salary?user_id=${getUid()}`, { method: 'POST', body: JSON.stringify(rec) });
       await fetchAdvs();
-    } catch {
-      const updated = [...advs, rec];
-      setAdvs(updated);
-      saveLS(LS.ADV, updated);
+    } catch (err) {
+      notifyApiFailure('Could not request advance salary', err);
+      setSaving(false);
+      return;
     }
     setSaving(false);
     setShowCreateAdv(false);
@@ -1098,6 +1133,7 @@ export default function FinanceManagement() {
 
   const handleCreateDeduct = async (form) => {
     setSaving(true);
+    setApiError('');
     const approvers = financeApprovers.deduction || [];
     // Derive month/year from the actual date entered by user (not from filter month)
     // This ensures deduction is applied to the correct salary month
@@ -1126,10 +1162,10 @@ export default function FinanceManagement() {
     try {
       await apiFetch(`/hrms/deductions?user_id=${getUid()}`, { method: 'POST', body: JSON.stringify(rec) });
       await fetchDeducts();
-    } catch {
-      const updated = [...deducts, rec];
-      setDeducts(updated);
-      saveLS(LS.DEDUCT, updated);
+    } catch (err) {
+      notifyApiFailure('Could not add deduction', err);
+      setSaving(false);
+      return;
     }
     setSaving(false);
     setShowCreateDeduct(false);
@@ -1137,6 +1173,7 @@ export default function FinanceManagement() {
 
   const handleCreateHold = async (form) => {
     setSaving(true);
+    setApiError('');
     const rec = {
       _id: mkid(),
       employee_id: form.employee_id,
@@ -1153,10 +1190,10 @@ export default function FinanceManagement() {
     try {
       await apiFetch(`/hrms/salary-holds?user_id=${getUid()}`, { method: 'POST', body: JSON.stringify(rec) });
       await fetchHolds();
-    } catch {
-      const updated = [...holds, rec];
-      setHolds(updated);
-      saveLS(LS.HOLD, updated);
+    } catch (err) {
+      notifyApiFailure('Could not hold salary', err);
+      setSaving(false);
+      return;
     }
     setSaving(false);
     setShowCreateHold(false);
@@ -1165,6 +1202,7 @@ export default function FinanceManagement() {
   // ── action handler (approve/reject/paid) ─────────────────────────
   const handleAction = async (newStatus, record, notes, typeOverride = detailType) => {
     setSaving(true);
+    setApiError('');
     const patch = { status: newStatus, notes, approved_by: 'Admin', actioned_at: new Date().toISOString() };
     const activeDetailType = typeOverride || detailType;
     const isR = activeDetailType === 'reimb';
@@ -1179,15 +1217,10 @@ export default function FinanceManagement() {
       else if (isA) await fetchAdvs();
       else if (isH) await fetchHolds();
       else await fetchDeducts();
-    } catch {
-      const updater = (list, setter, key) => {
-        const updated = list.map(r => r._id === record._id ? { ...r, ...patch } : r);
-        setter(updated); saveLS(key, updated);
-      };
-      if (isR) updater(reimbs, setReimbs, LS.REIMB);
-      else if (isA) updater(advs, setAdvs, LS.ADV);
-      else if (isH) updater(holds, setHolds, LS.HOLD);
-      else updater(deducts, setDeducts, LS.DEDUCT);
+    } catch (err) {
+      notifyApiFailure('Could not update finance record', err);
+      setSaving(false);
+      return;
     }
     setSaving(false);
     setDetailRecord(null);
@@ -1199,6 +1232,7 @@ export default function FinanceManagement() {
 
   const handleEditSave = async (updatedFields) => {
     setSaving(true);
+    setApiError('');
     const endMap = { reimb: 'reimbursements', adv: 'advance-salary', deduct: 'deductions', hold: 'salary-holds' };
     const kind = endMap[editType];
     try {
@@ -1209,16 +1243,10 @@ export default function FinanceManagement() {
       else if (editType === 'adv') await fetchAdvs();
       else if (editType === 'hold') await fetchHolds();
       else await fetchDeducts();
-    } catch {
-      // Optimistic update fallback
-      const updater = (list, setter, key) => {
-        const updated = list.map(r => r._id === editRecord._id ? { ...r, ...updatedFields } : r);
-        setter(updated); saveLS(key, updated);
-      };
-      if (editType === 'reimb') updater(reimbs, setReimbs, LS.REIMB);
-      else if (editType === 'adv') updater(advs, setAdvs, LS.ADV);
-      else if (editType === 'hold') updater(holds, setHolds, LS.HOLD);
-      else updater(deducts, setDeducts, LS.DEDUCT);
+    } catch (err) {
+      notifyApiFailure('Could not save finance record changes', err);
+      setSaving(false);
+      return;
     }
     setSaving(false);
     setEditRecord(null);
@@ -1260,12 +1288,17 @@ export default function FinanceManagement() {
     if (selectedIds.size === 0) return;
     if (!window.confirm(`Delete ${selectedIds.size} selected record${selectedIds.size > 1 ? 's' : ''}? This cannot be undone.`)) return;
     setDeleting(true);
+    setApiError('');
     try {
       await apiFetch(`/hrms/bulk-delete?user_id=${getUid()}`, {
         method: 'POST',
         body: JSON.stringify({ kind: currentKind, ids: [...selectedIds] }),
       });
-    } catch { /* best-effort — still refresh */ }
+    } catch (err) {
+      notifyApiFailure('Could not delete selected finance records', err);
+      setDeleting(false);
+      return;
+    }
     setSelectedIds(new Set());
     // Refresh the active tab
     if (activeTab === 'Reimbursements') await fetchReimbs();
@@ -1280,9 +1313,14 @@ export default function FinanceManagement() {
     if (!window.confirm('Delete this record? This cannot be undone.')) return;
     const endMap = { reimb: 'reimbursements', adv: 'advance-salary', deduct: 'deductions', hold: 'salary-holds' };
     setDeleting(true);
+    setApiError('');
     try {
       await apiFetch(`/hrms/${endMap[type]}/${record._id}?user_id=${getUid()}`, { method: 'DELETE' });
-    } catch { /* best-effort */ }
+    } catch (err) {
+      notifyApiFailure('Could not delete finance record', err);
+      setDeleting(false);
+      return;
+    }
     setDetailRecord(null);
     if (type === 'reimb') await fetchReimbs();
     else if (type === 'adv') await fetchAdvs();
@@ -1630,7 +1668,7 @@ export default function FinanceManagement() {
                 Hold Salary
               </button>
             )}
-            <button className="fin-btn-ghost" onClick={() => { fetchReimbs(); fetchAdvs(); fetchDeducts(); fetchHolds(); }}>
+            <button className="fin-btn-ghost" onClick={refreshAllFinanceData}>
               <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
               Refresh
             </button>
@@ -1696,6 +1734,15 @@ export default function FinanceManagement() {
         )}
         <span className="fin-toolbar-count">{currentCount} record{currentCount !== 1 ? 's' : ''}</span>
       </div>
+
+      {apiError && (
+        <div style={{ margin: '10px 24px 0', background: 'rgba(248,113,113,0.10)', border: '1px solid rgba(248,113,113,0.35)', borderRadius: '6px', padding: '9px 12px', color: '#fecaca', fontSize: 12, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+          <span>{apiError}</span>
+          <button className="fin-btn-ghost" style={{ padding: '4px 10px', fontSize: 12, borderColor: 'rgba(248,113,113,0.35)', color: '#fecaca' }} onClick={refreshAllFinanceData}>
+            Retry
+          </button>
+        </div>
+      )}
 
       {/* ── Settings Panel ────────────────────────────────────────────── */}
       {showSettings && isAdmin && (

@@ -19,8 +19,7 @@ Endpoints for:
   PATCH /hrms/salary-holds/{record_id}
 
 Permission model (mirrors leaves / warnings):
-  - Users with finance:all or super-admin see all records.
-  - Regular employees see only their own.
+  - Finance page users see all records created in the finance module.
   - Only admins can PATCH (approve/reject/paid).
 """
 
@@ -67,6 +66,26 @@ _FINANCE_PAGES = {"finance", "hrms", "hrms_finance", "hr_finance", "employees"}
 _FINANCE_ACTIONS = {"*", "all", "view_all", "show", "edit", "manage", "finance_admin", "junior", "view_team"}
 _ATTENDANCE_PAGES = {"attendance", "hrms_attendance"}
 _ATTENDANCE_SUMMARY_ACTIONS = {"*", "all", "view_all", "edit", "view_salary", "attendance_admin"}
+
+
+def _normalize_page_name(page: Any) -> str:
+    """Normalize permission page keys for stable matching."""
+    if not isinstance(page, str):
+        return ""
+    page = page.strip().lower().replace("-", "_").replace(" ", "_")
+    return "_".join(part for part in page.split("_") if part)
+
+
+def _is_finance_page(page: Any) -> bool:
+    """Check if permission page corresponds to finance module."""
+    if not isinstance(page, str):
+        return False
+    normalized = _normalize_page_name(page)
+    if normalized in _FINANCE_PAGES:
+        return True
+
+    base = normalized.split(".")[0]
+    return base in _FINANCE_PAGES
 
 
 def _actions_match(acts: Any, allowed) -> bool:
@@ -129,7 +148,7 @@ async def _can_see_all(
                 return True
 
             # finance page
-            if isinstance(page, str) and page.lower() in _FINANCE_PAGES:
+            if _is_finance_page(page):
                 if _actions_match(acts, _FINANCE_ACTIONS) or _has_any_permission_payload(acts):
                     return True
 
@@ -149,11 +168,16 @@ async def _list(
     users_db: UsersDB,
     roles_db: RolesDB,
 ) -> List[Dict[str, Any]]:
-    is_admin = await _can_see_all(current_user_id, users_db, roles_db)
+    if not await _can_see_all(current_user_id, users_db, roles_db):
+        raise HTTPException(status_code=403, detail="Finance access required")
+
+    # Finance page requirement: records created by any user must be visible
+    # to every user who can access this module. Keep create/update/delete
+    # permission checks separate, but do not scope list results by creator.
     records = await hrms_db.list_records(
         kind=kind,
-        employee_id=current_user_id,
-        can_see_all=is_admin,
+        employee_id=None,
+        can_see_all=True,
     )
     return records
 
@@ -168,7 +192,7 @@ async def list_reimbursements(
     users_db: UsersDB = Depends(get_users_db),
     roles_db: RolesDB = Depends(get_roles_db),
 ):
-    """List reimbursement claims (all for admins, own for employees)."""
+    """List reimbursement claims for all finance users."""
     try:
         records = await _list("reimbursements", user_id, current_user_id, hrms_db, users_db, roles_db)
         return records
@@ -354,7 +378,7 @@ async def create_deduction(
     users_db: UsersDB = Depends(get_users_db),
     roles_db: RolesDB = Depends(get_roles_db),
 ):
-    """Create a new deduction. Admins only."""
+    """Create a new deduction."""
     is_admin = await _can_see_all(current_user_id, users_db, roles_db)
     if not is_admin:
         raise HTTPException(status_code=403, detail="Not authorised to create deductions")
@@ -373,7 +397,7 @@ async def delete_deduction(
     users_db: UsersDB = Depends(get_users_db),
     roles_db: RolesDB = Depends(get_roles_db),
 ):
-    """Delete a deduction. Admins only."""
+    """Delete a deduction."""
     is_admin = await _can_see_all(current_user_id, users_db, roles_db)
     if not is_admin:
         raise HTTPException(status_code=403, detail="Not authorised to delete deductions")
@@ -393,7 +417,7 @@ async def patch_deduction(
     users_db: UsersDB = Depends(get_users_db),
     roles_db: RolesDB = Depends(get_roles_db),
 ):
-    """Update a deduction. Admins only."""
+    """Update a deduction."""
     is_admin = await _can_see_all(current_user_id, users_db, roles_db)
     if not is_admin:
         raise HTTPException(status_code=403, detail="Not authorised to update deductions")
@@ -416,7 +440,7 @@ async def bulk_delete(
     roles_db: RolesDB = Depends(get_roles_db),
 ):
     """
-    Bulk delete records. Admins only.
+    Bulk delete records.
     Body: { "kind": "reimbursements"|"advance-salary"|"deductions"|"salary-holds", "ids": ["id1","id2",...] }
     """
     is_admin = await _can_see_all(current_user_id, users_db, roles_db)
@@ -442,7 +466,7 @@ async def list_salary_holds(
     users_db: UsersDB = Depends(get_users_db),
     roles_db: RolesDB = Depends(get_roles_db),
 ):
-    """List salary holds (all for admins, own for employees)."""
+    """List salary holds for all finance users."""
     try:
         records = await _list("salary-holds", user_id, current_user_id, hrms_db, users_db, roles_db)
         return records
@@ -460,7 +484,7 @@ async def create_salary_hold(
     users_db: UsersDB = Depends(get_users_db),
     roles_db: RolesDB = Depends(get_roles_db),
 ):
-    """Hold an employee's salary for a specific month. Admins only."""
+    """Hold an employee's salary for a specific month."""
     is_admin = await _can_see_all(current_user_id, users_db, roles_db)
     if not is_admin:
         raise HTTPException(status_code=403, detail="Not authorised to hold salaries")
@@ -493,7 +517,7 @@ async def patch_salary_hold(
     users_db: UsersDB = Depends(get_users_db),
     roles_db: RolesDB = Depends(get_roles_db),
 ):
-    """Update/release a salary hold. Admins only."""
+    """Update/release a salary hold."""
     is_admin = await _can_see_all(current_user_id, users_db, roles_db)
     if not is_admin:
         raise HTTPException(status_code=403, detail="Not authorised to update salary holds")
@@ -516,7 +540,7 @@ async def delete_salary_hold(
     users_db: UsersDB = Depends(get_users_db),
     roles_db: RolesDB = Depends(get_roles_db),
 ):
-    """Delete a salary hold. Admins only."""
+    """Delete a salary hold."""
     is_admin = await _can_see_all(current_user_id, users_db, roles_db)
     if not is_admin:
         raise HTTPException(status_code=403, detail="Not authorised to delete salary holds")
@@ -556,15 +580,14 @@ async def _can_view_finance_summary(
             if _is_global_admin(page, acts):
                 return True
 
-            page_lower = page.lower() if isinstance(page, str) else ""
-
             # Finance page access
-            if page_lower in _FINANCE_PAGES:
+            if _is_finance_page(page):
                 if _actions_match(acts, _FINANCE_ACTIONS) or _has_any_permission_payload(acts):
                     return True
 
             # Attendance page — users who can see salary column can also see finance deductions
-            if page_lower in _ATTENDANCE_PAGES:
+            page_norm = _normalize_page_name(page).split(".")[0]
+            if page_norm in _ATTENDANCE_PAGES:
                 if _actions_match(acts, _ATTENDANCE_SUMMARY_ACTIONS):
                     return True
 

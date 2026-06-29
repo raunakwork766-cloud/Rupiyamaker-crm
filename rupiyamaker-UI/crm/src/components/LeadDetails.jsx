@@ -901,11 +901,12 @@ export default function LeadDetails({ lead, user, onBack, onLeadUpdate, readOnly
                         )}
 
                         {activeTab === 'activities' && (
-                            <div className="p-4 bg-white rounded-xl shadow text-[1rem] text-[#03b0f5] border-l-4 border-cyan-400/40">
-                                <div className="font-bold text-cyan-400 mb-2">
+                            <div className="w-full overflow-hidden rounded-lg bg-slate-100">
+                                <div>
                                     <Activities
                                         leadId={lead._id}
                                         userId={userId}
+                                        leadData={leadData || lead}
                                         formatDate={formatDate}
                                     />
                                 </div>

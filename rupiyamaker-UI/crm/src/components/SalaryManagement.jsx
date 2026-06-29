@@ -4,6 +4,7 @@
  * Light theme · Super Admin only · Standalone page (/hr-salary)
  */
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { ChevronDown, Download, FileSpreadsheet, FileText } from 'lucide-react';
 import { isSuperAdmin, getUserPermissions } from '../utils/permissions';
 import { formatIndianCurrency } from './common/CurrencyInput';
 
@@ -59,6 +60,8 @@ const getEffectiveAttendanceWindow = (year, month, daysInMonth, joiningRaw, inac
 
   if (year > today.year || (year === today.year && month > today.month)) {
     endDay = 0;
+  } else if (year === today.year && month === today.month) {
+    endDay = Math.min(daysInMonth, today.day);
   }
 
   if (joiningRaw) {
@@ -311,6 +314,330 @@ const LS = {
 };
 
 const periodK = (id, m, y) => `${id}_${m}_${y}`;
+const slugPart = value => String(value || '')
+  .replace(/[^a-z0-9]+/gi, '_')
+  .replace(/^_+|_+$/g, '');
+const exportFileBase = (month, year, suffix = '') =>
+  ['Salary', MONTHS_FULL[month], year, suffix].filter(Boolean).map(slugPart).join('_');
+
+const SALARY_EXPORT_COLUMNS = [
+  { header: 'S.No', key: 'sno', width: 8 },
+  { header: 'Employee Name', key: 'employeeName', width: 24 },
+  { header: 'Employee ID', key: 'employeeId', width: 16 },
+  { header: 'Team', key: 'team', width: 22 },
+  { header: 'Designation', key: 'designation', width: 22 },
+  { header: 'Status', key: 'status', width: 14 },
+  { header: 'Salary', key: 'monthlySalary', width: 14, money: true },
+  { header: 'Days Present', key: 'daysPresent', width: 12 },
+  { header: 'Monthly Target', key: 'monthlyTarget', width: 16, money: true },
+  { header: 'Carry Forward', key: 'carryForward', width: 16, money: true },
+  { header: 'Individual Achievement', key: 'individualAchievement', width: 20, money: true },
+  { header: 'Team Achievement', key: 'teamAchievement', width: 18, money: true },
+  { header: 'Overall Business', key: 'overallBusiness', width: 18, money: true },
+  { header: 'Final Business', key: 'finalBusiness', width: 16, money: true },
+  { header: 'Shortfall', key: 'shortfall', width: 14, money: true },
+  { header: 'Incentive Amount', key: 'incentiveAmount', width: 16, money: true },
+  { header: 'Attendance Deduction', key: 'attendanceDeduction', width: 18, money: true },
+  { header: 'Proration Deduction', key: 'prorationDeduction', width: 18, money: true },
+  { header: 'Total Deductions', key: 'totalDeductions', width: 16, money: true },
+  { header: 'Total Reimbursements', key: 'totalReimbursements', width: 18, money: true },
+  { header: 'Advance Recovered', key: 'advanceRecovered', width: 18, money: true },
+  { header: 'Advance Due', key: 'advanceDue', width: 16, money: true },
+  { header: 'Final Salary', key: 'finalSalary', width: 16, money: true },
+  { header: 'Account Transfer', key: 'accountTransfer', width: 18, money: true },
+  { header: 'Salary Hold', key: 'salaryHold', width: 14 },
+  { header: 'Account Name', key: 'accountName', width: 24 },
+  { header: 'Account Number', key: 'accountNumber', width: 22 },
+  { header: 'Bank Name', key: 'bankName', width: 22 },
+  { header: 'IFSC', key: 'ifsc', width: 16 },
+];
+
+const SALARY_PDF_COLUMNS = [
+  'sno', 'employeeName', 'employeeId', 'team', 'status', 'monthlySalary', 'daysPresent',
+  'monthlyTarget', 'finalBusiness', 'shortfall', 'incentiveAmount', 'totalDeductions',
+  'totalReimbursements', 'finalSalary', 'accountTransfer', 'salaryHold'
+];
+
+const HISTORY_EXPORT_COLUMNS = [
+  { header: 'S.No', key: 'sno', width: 8 },
+  { header: 'Employee Name', key: 'employeeName', width: 24 },
+  { header: 'Employee ID', key: 'employeeId', width: 16 },
+  { header: 'Team', key: 'team', width: 22 },
+  { header: 'Designation', key: 'designation', width: 22 },
+  { header: 'Month', key: 'monthLabel', width: 14 },
+  { header: 'Target', key: 'target', width: 16, money: true },
+  { header: 'Achieved', key: 'achieved', width: 16, money: true },
+  { header: 'Individual Achievement', key: 'individualAchievement', width: 20, money: true },
+  { header: 'Team Achievement', key: 'teamAchievement', width: 18, money: true },
+  { header: 'Shortfall', key: 'shortfall', width: 14, money: true },
+  { header: 'Final Salary', key: 'finalSalary', width: 16, money: true },
+  { header: 'Paid On', key: 'paidOn', width: 16 },
+];
+
+const INACTIVE_EXPORT_COLUMNS = [
+  { header: 'S.No', key: 'sno', width: 8 },
+  { header: 'Employee Name', key: 'employeeName', width: 24 },
+  { header: 'Employee ID', key: 'employeeId', width: 16 },
+  { header: 'Team', key: 'team', width: 22 },
+  { header: 'Designation', key: 'designation', width: 22 },
+  { header: 'Inactive Date', key: 'inactiveDate', width: 16 },
+  { header: 'Lifetime Salary Paid', key: 'lifetimeSalaryPaid', width: 20, money: true },
+];
+
+const PERFORMANCE_BASE_COLUMNS = [
+  { header: 'S.No', key: 'sno', width: 8 },
+  { header: 'Employee Name', key: 'employeeName', width: 24 },
+  { header: 'Employee ID', key: 'employeeId', width: 16 },
+  { header: 'Team', key: 'team', width: 22 },
+  { header: 'Designation', key: 'designation', width: 22 },
+];
+
+const buildPerformanceMonths = perfDate =>
+  Array.from({ length: 4 }, (_, i) => new Date(perfDate.getFullYear(), perfDate.getMonth() + i));
+
+const buildPerformanceExportColumns = perfMonths => [
+  ...PERFORMANCE_BASE_COLUMNS,
+  ...perfMonths.flatMap((date, index) => {
+    const key = `m${index}`;
+    const label = `${MONTHS_SHORT[date.getMonth()]} ${date.getFullYear()}`;
+    return [
+      { header: `${label} Target`, key: `${key}Target`, width: 16, money: true },
+      { header: `${label} Achieved`, key: `${key}Achieved`, width: 16, money: true },
+      { header: `${label} Individual`, key: `${key}Individual`, width: 16, money: true },
+      { header: `${label} Team`, key: `${key}Team`, width: 16, money: true },
+      { header: `${label} Status`, key: `${key}Status`, width: 14 },
+    ];
+  })
+];
+
+const buildSalaryExportRows = (rows, deptMap, processed, month, year) => rows.map(({ emp, calc, id }, index) => {
+  const completed = processed.includes(periodK(id, month, year));
+  return {
+    sno: index + 1,
+    employeeName: `${emp.first_name || ''} ${emp.last_name || ''}`.trim(),
+    employeeId: emp.employee_id || '',
+    team: teamName(emp, deptMap, ''),
+    designation: displayText(emp.designation, ''),
+    status: completed ? 'Completed' : 'Pending',
+    monthlySalary: Math.round(num(calc.monthlySalary)),
+    daysPresent: calc.hasPresentData ? formatAttendanceDays(calc.finalScore) : '',
+    monthlyTarget: Math.round(num(calc.totalTarget)),
+    carryForward: Math.round(num(calc.cf)),
+    individualAchievement: Math.round(num(calc.indi)),
+    teamAchievement: Math.round(num(calc.teamRcvd)),
+    overallBusiness: Math.round(num(calc.overallBiz)),
+    finalBusiness: Math.round(num(calc.finalBiz)),
+    shortfall: Math.round(num(calc.shortfall)),
+    incentiveAmount: Math.round(num(calc.incentive)),
+    attendanceDeduction: Math.round(num(calc.attendanceDed)),
+    prorationDeduction: Math.round(num(calc.prorationDed)),
+    totalDeductions: Math.round(num(calc.totalDeds)),
+    totalReimbursements: Math.round(num(calc.totalReimb)),
+    advanceRecovered: Math.round(num(calc.advRecovered)),
+    advanceDue: Math.round(num(calc.remainingAdv)),
+    finalSalary: Math.round(num(calc.finalSalary)),
+    accountTransfer: Math.round(num(calc.accountTransfer)),
+    salaryHold: calc.isSalaryHeld ? 'Held' : '',
+    accountName: emp.salary_account_name || '',
+    accountNumber: emp.salary_account_number || '',
+    bankName: emp.salary_bank_name || '',
+    ifsc: emp.salary_ifsc_code || '',
+  };
+});
+
+const buildHistoryExportRows = (employees, histMap, deptMap, startMonth) => {
+  const rows = [];
+  employees.forEach(emp => {
+    const id = String(emp._id || emp.id);
+    const hist = (histMap[id] || [])
+      .filter(h => isRecordOnOrAfterStart(h.year, h.month, startMonth))
+      .slice()
+      .reverse();
+    hist.forEach(h => {
+      rows.push({
+        sno: rows.length + 1,
+        employeeName: `${emp.first_name || ''} ${emp.last_name || ''}`.trim(),
+        employeeId: emp.employee_id || '',
+        team: teamName(emp, deptMap, ''),
+        designation: displayText(emp.designation, ''),
+        monthLabel: `${MONTHS_SHORT[h.month]} ${h.year}`,
+        target: Math.round(num(h.target)),
+        achieved: Math.round(num(h.achieved)),
+        individualAchievement: Math.round(num(h.indi || h.achieved)),
+        teamAchievement: Math.round(num(h.team)),
+        shortfall: Math.round(num(h.shortfall)),
+        finalSalary: Math.round(num(h.finalSalary)),
+        paidOn: h.paidOn || '',
+      });
+    });
+  });
+  return rows;
+};
+
+const buildInactiveExportRows = (inactiveEmps, activeEmps, inactMap, histMap, deptMap) => {
+  const seen = new Set();
+  return [...inactiveEmps, ...activeEmps.filter(e => inactMap[String(e._id || e.id)])]
+    .filter(emp => {
+      const id = String(emp._id || emp.id);
+      if (seen.has(id)) return false;
+      seen.add(id);
+      return true;
+    })
+    .map((emp, index) => {
+      const id = String(emp._id || emp.id);
+      const hist = histMap[id] || [];
+      return {
+        sno: index + 1,
+        employeeName: `${emp.first_name || ''} ${emp.last_name || ''}`.trim(),
+        employeeId: emp.employee_id || '',
+        team: teamName(emp, deptMap, ''),
+        designation: displayText(emp.designation, ''),
+        inactiveDate: inactMap[id]?.date || 'Unknown',
+        lifetimeSalaryPaid: Math.round(hist.reduce((s, h) => s + num(h.finalSalary), 0)),
+      };
+    });
+};
+
+const buildPerformanceExportRows = (calcRows, histMap, deptMap, startMonth, perfDate) => {
+  const perfMonths = buildPerformanceMonths(perfDate);
+  return calcRows.map(({ emp, calc, id }, index) => {
+    const row = {
+      sno: index + 1,
+      employeeName: `${emp.first_name || ''} ${emp.last_name || ''}`.trim(),
+      employeeId: emp.employee_id || '',
+      team: teamName(emp, deptMap, ''),
+      designation: displayText(emp.designation, ''),
+    };
+    const empHist = histMap[id] || [];
+    perfMonths.forEach((date, monthIndex) => {
+      const key = `m${monthIndex}`;
+      const isCur = date.getMonth() === now.getMonth() && date.getFullYear() === now.getFullYear();
+      const isBeforeStart = isBeforeSalaryStart(date.getFullYear(), date.getMonth(), startMonth);
+      const hRec = empHist.find(h => h.month === date.getMonth() && h.year === date.getFullYear());
+      let target = null;
+      let achieved = null;
+      let individual = null;
+      let team = null;
+
+      if (!isBeforeStart && isCur) {
+        target = calc.totalTarget;
+        achieved = calc.overallBiz;
+        individual = calc.indi;
+        team = calc.teamRcvd;
+      } else if (!isBeforeStart && hRec) {
+        target = hRec.target;
+        achieved = hRec.achieved;
+        individual = hRec.indi || hRec.achieved;
+        team = hRec.team || 0;
+      }
+
+      row[`${key}Target`] = target == null ? '' : Math.round(num(target));
+      row[`${key}Achieved`] = achieved == null ? '' : Math.round(num(achieved));
+      row[`${key}Individual`] = individual == null ? '' : Math.round(num(individual));
+      row[`${key}Team`] = team == null ? '' : Math.round(num(team));
+      row[`${key}Status`] = target == null || achieved == null
+        ? 'No Data'
+        : achieved >= target ? 'Achieved' : 'Missed';
+    });
+    return row;
+  });
+};
+
+const downloadBlob = (blob, filename) => {
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+};
+
+const exportRowsExcel = async (rows, columns, title, fileBase) => {
+  const ExcelJS = (await import('exceljs')).default;
+  const workbook = new ExcelJS.Workbook();
+  workbook.creator = 'RupiyaMe CRM';
+  workbook.created = new Date();
+
+  const sheet = workbook.addWorksheet('Salary');
+  columns.forEach((col, index) => {
+    sheet.getColumn(index + 1).width = col.width;
+  });
+  sheet.mergeCells(1, 1, 1, columns.length);
+  sheet.getCell(1, 1).value = title;
+  sheet.getCell(1, 1).font = { bold: true, size: 16, color: { argb: 'FFFFFFFF' } };
+  sheet.getCell(1, 1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1D4ED8' } };
+  sheet.getCell(1, 1).alignment = { horizontal: 'center' };
+
+  sheet.addRow([]);
+  const headerRow = sheet.addRow(columns.map(col => col.header));
+  headerRow.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+  headerRow.alignment = { vertical: 'middle', horizontal: 'center', wrapText: true };
+  headerRow.eachCell(cell => {
+    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF2563EB' } };
+    cell.border = {
+      top: { style: 'thin', color: { argb: 'FFBFDBFE' } },
+      left: { style: 'thin', color: { argb: 'FFBFDBFE' } },
+      bottom: { style: 'thin', color: { argb: 'FFBFDBFE' } },
+      right: { style: 'thin', color: { argb: 'FFBFDBFE' } },
+    };
+  });
+
+  rows.forEach(row => {
+    const excelRow = sheet.addRow(columns.map(col => row[col.key]));
+    excelRow.eachCell((cell, colNumber) => {
+      const col = columns[colNumber - 1];
+      cell.alignment = { vertical: 'middle', horizontal: col.money ? 'right' : 'left', wrapText: true };
+      cell.border = {
+        top: { style: 'thin', color: { argb: 'FFE5E7EB' } },
+        left: { style: 'thin', color: { argb: 'FFE5E7EB' } },
+        bottom: { style: 'thin', color: { argb: 'FFE5E7EB' } },
+        right: { style: 'thin', color: { argb: 'FFE5E7EB' } },
+      };
+      if (col.money) cell.numFmt = '#,##0';
+    });
+  });
+
+  sheet.views = [{ state: 'frozen', ySplit: 3 }];
+  sheet.autoFilter = {
+    from: { row: 3, column: 1 },
+    to: { row: 3, column: columns.length },
+  };
+
+  const buffer = await workbook.xlsx.writeBuffer();
+  downloadBlob(new Blob([buffer], {
+    type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+  }), `${fileBase}.xlsx`);
+};
+
+const exportRowsPdf = async (rows, columns, pdfColumnKeys, title, fileBase) => {
+  const { default: jsPDF } = await import('jspdf');
+  const autoTableModule = await import('jspdf-autotable');
+  const autoTable = autoTableModule.default || autoTableModule.autoTable;
+  const pdfColumns = columns.filter(col => pdfColumnKeys.includes(col.key));
+  const moneyKeys = new Set(pdfColumns.filter(col => col.money).map(col => col.key));
+  const pdfMoney = value => `Rs. ${fmt(Math.round(num(value)))}`;
+
+  const doc = new jsPDF({ orientation: 'landscape', unit: 'pt', format: 'a3' });
+  doc.setFontSize(16);
+  doc.text(title, 30, 32);
+  doc.setFontSize(9);
+  doc.text(`Generated: ${new Date().toLocaleString('en-IN')}`, 30, 48);
+
+  autoTable(doc, {
+    startY: 64,
+    head: [pdfColumns.map(col => col.header)],
+    body: rows.map(row => pdfColumns.map(col => moneyKeys.has(col.key) ? pdfMoney(row[col.key]) : (row[col.key] ?? ''))),
+    theme: 'grid',
+    styles: { fontSize: 7, cellPadding: 3, overflow: 'linebreak', valign: 'middle' },
+    headStyles: { fillColor: [37, 99, 235], textColor: 255, fontStyle: 'bold' },
+    alternateRowStyles: { fillColor: [248, 250, 252] },
+    margin: { left: 24, right: 24 },
+  });
+
+  doc.save(`${fileBase}.pdf`);
+};
 
 // ─── API ──────────────────────────────────────────────────────────────────────
 const apiFetch = async path => {
@@ -511,11 +838,12 @@ const fetchAttendancePresentDays = async (year, month) => {
       );
       const entry = {
         presentScore: stats.actualPresent ?? stats.presentScore ?? 0,
+        attendanceFinalDays: stats.finalScore ?? 0,
         finalScore: stats.finalScore ?? 0,
         totalDays: totalDaysInMonth,
         effectiveDays: stats.effectiveDays,
-        plAdded: stats.plScore || 0,
-        elAdded: stats.elScore || 0,
+        plAdded: stats.plScore ?? stats.plDays ?? 0,
+        elAdded: stats.elScore ?? stats.elDays ?? 0,
         abscondingDays: stats.absconding || 0,
         absentDays: stats.absentDays || 0,
       };
@@ -674,8 +1002,15 @@ const CSS = `
 .sm-table tbody tr.processed { background: #ecfdf5 !important; }
 .sm-team-cell { cursor: pointer; color: #2563eb; font-weight: bold; background: #eff6ff !important; transition: background .2s; }
 .sm-team-cell:hover { background: #dbeafe !important; }
+.sm-team-cell.locked { cursor: not-allowed; color: #9ca3af; background: #f3f4f6 !important; }
+.sm-team-cell.locked:hover { background: #e5e7eb !important; }
 .sm-ded-cell { cursor: pointer; background: #fef2f2 !important; transition: background .2s; }
 .sm-ded-cell:hover { background: #fee2e2 !important; }
+.sm-ded-cell.locked { cursor: not-allowed; background: #f3f4f6 !important; color: #9ca3af; }
+.sm-ded-cell.locked:hover { background: #e5e7eb !important; }
+.sm-lock-alert { margin: 10px 16px 0; padding: 10px 12px; background: #fef2f2; border: 1px solid #fca5a5; border-radius: 8px; color: #991b1b; font-size: 12px; display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.sm-lock-alert strong { color: #7f1d1d; }
+.sm-lock-alert-actions { display: flex; align-items: center; gap: 8px; }
 .sm-overlay { display: flex; position: fixed; inset: 0; background: rgba(0,0,0,.6); z-index: 1000; justify-content: center; align-items: center; }
 .sm-modal { background: white; padding: 24px; border-radius: 8px; width: 90%; max-width: 680px; box-shadow: 0 20px 25px -5px rgba(0,0,0,.1); max-height: 90vh; overflow-y: visible; }
 .sm-modal h2 { margin-top: 0; font-size: 18px; margin-bottom: 8px; }
@@ -696,6 +1031,11 @@ const CSS = `
 .sm-btn-outline.active { background: #eff6ff; border-color: #2563eb; color: #2563eb; }
 .sm-btn-danger { background: white; border: 1px solid #ef4444; color: #ef4444; width: 100%; }
 .sm-btn-danger:hover { background: #fef2f2; }
+.sm-export-wrap { position: relative; display: inline-flex; }
+.sm-export-btn { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+.sm-export-menu { position: absolute; top: calc(100% + 6px); right: 0; background: white; border: 1px solid #d1d5db; border-radius: 6px; box-shadow: 0 12px 28px rgba(0,0,0,.16); min-width: 160px; z-index: 20; overflow: hidden; }
+.sm-export-menu button { width: 100%; border: none; background: white; color: #1f2937; padding: 10px 12px; text-align: left; cursor: pointer; font-size: 13px; font-weight: bold; display: flex; align-items: center; gap: 8px; }
+.sm-export-menu button:hover { background: #eff6ff; color: #1d4ed8; }
 .sm-flex-right { display: flex; justify-content: flex-end; gap: 8px; }
 .sm-list-table { width: 100%; font-size: 13px; text-align: left; border-collapse: collapse; }
 .sm-list-table td { padding: 5px 4px; border-bottom: 1px solid #e5e7eb; white-space: nowrap; }
@@ -1285,7 +1625,7 @@ function SalRow({ emp, calc, processed, deptMap, isLockedMonth, onTeam, onDeduct
               </span>
               <div style={{fontSize:10,color:'#9ca3af',marginTop:1}}>
                 / {isMidMonthJoiner ? calc.effectiveDays : totalDaysInMonth} days
-                {isMidMonthJoiner && <span style={{color:'#8b5cf6'}}> (joined mid)</span>}
+                {isMidMonthJoiner && <span style={{color:'#8b5cf6'}}> (eligible)</span>}
               </div>
             </div>
           )
@@ -1297,7 +1637,13 @@ function SalRow({ emp, calc, processed, deptMap, isLockedMonth, onTeam, onDeduct
       {/* INDI */}
       <td>{fmt(calc.indi)}</td>
       {/* TEAM — clickable */}
-      <td className="sm-team-cell" onClick={onTeam}>{fmt(calc.teamRcvd)||'0'}</td>
+      <td
+        className={`sm-team-cell${processed ? ' locked' : ''}`}
+        onClick={onTeam}
+        title={processed ? 'Salary is completed. Undo first to edit team achievement.' : 'Click to manage team achievements'}
+      >
+        {fmt(calc.teamRcvd)||'0'}
+      </td>
       <td>{fmt(calc.overallBiz)}</td>
       <td>{fmt(calc.finalBiz)}</td>
       <td style={{fontWeight:'bold',color:calc.shortfall>0?'#ef4444':'inherit'}}>{fmt(calc.shortfall)}</td>
@@ -1321,7 +1667,11 @@ function SalRow({ emp, calc, processed, deptMap, isLockedMonth, onTeam, onDeduct
         )}
       </td>
       {/* DEDUCTION & REIMBURSEMENT — clickable */}
-      <td className="sm-ded-cell" onClick={onDeduct}>
+      <td
+        className={`sm-ded-cell${processed ? ' locked' : ''}`}
+        onClick={onDeduct}
+        title={processed ? 'Salary is completed. Undo first to edit deductions or reimbursements.' : 'Click to manage deductions and reimbursements'}
+      >
         {calc.hasPresentData && calc.attendanceDed > 0 && (
           <div style={{fontWeight:'bold',fontSize:12,color:'#f97316'}}>
             -{fmt(calc.attendanceDed)} absent
@@ -1377,9 +1727,7 @@ function SalRow({ emp, calc, processed, deptMap, isLockedMonth, onTeam, onDeduct
 }
 
 // ─── Performance Tab ──────────────────────────────────────────────────────────
-function PerfTab({ calcRows, history, startMonth }) {
-  const [perfDate, setPerfDate] = useState(() => new Date(now.getFullYear(), now.getMonth()));
-
+function PerfTab({ calcRows, history, startMonth, perfDate, setPerfDate }) {
   const changeMonth = d => setPerfDate(prev => new Date(prev.getFullYear(), prev.getMonth() + d));
 
   const numCols = 4;
@@ -1508,6 +1856,7 @@ export default function SalaryManagement() {
   // current salary month
   const [month, setMonth] = useState(now.getMonth());
   const [year,  setYear]  = useState(now.getFullYear());
+  const [perfDate, setPerfDate] = useState(() => new Date(now.getFullYear(), now.getMonth()));
 
   // ── Salary system start month ──────────────────────────────────────────────
   // Months before this are not shown. Configurable by admin (stored in localStorage + DB).
@@ -1558,6 +1907,14 @@ export default function SalaryManagement() {
   const [allocModal,  setAllocModal]  = useState(null); // emp
   const [dedModal,    setDedModal]    = useState(null); // emp
   const [histModal,   setHistModal]   = useState(null); // emp
+  const [lockNotice,  setLockNotice]  = useState(null); // { id, name }
+  const [exportOpen,  setExportOpen]  = useState(false);
+  const [exporting,   setExporting]   = useState('');
+
+  useEffect(() => {
+    setLockNotice(null);
+    setExportOpen(false);
+  }, [month, year, tab]);
 
   // ── sync allocs/deducts to localStorage whenever month changes ──────────────
   const allAllocs  = useMemo(() => loadJ(LS.ALLOCS,  []), []);
@@ -1726,8 +2083,9 @@ export default function SalaryManagement() {
       const empCode = String(emp.employee_id || '');
       const attData = presentDaysMap[id] || (empCode ? presentDaysMap[empCode] : null) || null;
       const salaryHold = hrmsHolds.find(h => String(h.employee_id) === id && h.status === 'held') || null;
+      const attendanceFinalDays = attData ? (attData.attendanceFinalDays ?? attData.finalScore) : null;
       const c = calcRow(empWithMonthlyValues, allocs, mergedDeds, adv, cf, ws,
-        attData ? attData.finalScore : null,
+        attendanceFinalDays,
         new Date(year, month + 1, 0).getDate(),
         attData ? attData.presentScore : null,
         attData ? attData.plAdded : 0,
@@ -1761,12 +2119,28 @@ export default function SalaryManagement() {
   );
 
   const isPro  = id => processed.includes(periodK(id, month, year));
+  const isCompletedSalary = useCallback(
+    (id) => !selectedBeforeStart && processed.includes(periodK(String(id), month, year)),
+    [processed, month, year, selectedBeforeStart]
+  );
   const pending   = selectedBeforeStart ? filtered : filtered.filter(r => !isPro(r.id));
   const completed = selectedBeforeStart ? [] : filtered.filter(r =>  isPro(r.id));
 
   // ── actions ─────────────────────────────────────────────────────────────────
+  const showCompletedSalaryLock = useCallback((emp, options = {}) => {
+    const id = String(emp?._id || emp?.id || '');
+    const name = `${emp?.first_name || ''} ${emp?.last_name || ''}`.trim() || 'this employee';
+    setLockNotice({
+      id,
+      name,
+      area: options.area || 'salary details',
+      editType: options.editType || null,
+    });
+  }, []);
+
   const toggleProcessed = useCallback((id) => {
     if (selectedBeforeStart) return;
+    setLockNotice(null);
     const key = periodK(id, month, year);
     const emp = activeEmps.find(e=>String(e._id||e.id)===id)||{};
     const row = calcRows.find(r=>r.id===id);
@@ -1836,37 +2210,165 @@ export default function SalaryManagement() {
 
   // allocs
   const handleAllocSave = useCallback((data) => {
+    const allExistingAllocs = loadJ(LS.ALLOCS, []);
+    const removing = data.__remove ? allExistingAllocs.find(a => a.id === data.__remove) : null;
+    const affectedIds = [data.fromId, data.toId, removing?.fromId, removing?.toId]
+      .filter(Boolean)
+      .map(id => String(id));
+    const lockedId = affectedIds.find(id => isCompletedSalary(id));
+    if (lockedId) {
+      const emp = activeEmps.find(e => String(e._id || e.id) === lockedId);
+      showCompletedSalaryLock(emp || { id: lockedId }, { area: 'team achievements', editType: 'team' });
+      alert('This salary is already completed. Use Undo first, then edit team achievements.');
+      return;
+    }
+
     let newAllocs;
     if (data.__remove) {
-      newAllocs = [...loadJ(LS.ALLOCS,[]).filter(a=>a.id!==data.__remove)];
+      newAllocs = allExistingAllocs.filter(a=>a.id!==data.__remove);
     } else {
       const full = {...data, month, year};
-      newAllocs = [...loadJ(LS.ALLOCS,[]).filter(a=>!(a.fromId===full.fromId&&a.toId===full.toId&&a.month===month&&a.year===year)), full];
+      newAllocs = [...allExistingAllocs.filter(a=>!(a.fromId===full.fromId&&a.toId===full.toId&&a.month===month&&a.year===year)), full];
     }
     saveJ(LS.ALLOCS, newAllocs);
     setAllocs(newAllocs.filter(a=>a.month===month&&a.year===year));
-  }, [month, year]);
+  }, [month, year, isCompletedSalary, activeEmps, showCompletedSalaryLock]);
 
   // deductions
   const handleDedSave = useCallback((data) => {
+    const allExistingDeds = loadJ(LS.DEDUCTS, []);
+    const removing = data.__remove ? allExistingDeds.find(d => d.id === data.__remove) : null;
+    const affectedEmpId = data.__add?.empId || removing?.empId;
+    if (affectedEmpId && isCompletedSalary(affectedEmpId)) {
+      const emp = activeEmps.find(e => String(e._id || e.id) === String(affectedEmpId));
+      showCompletedSalaryLock(emp || { id: affectedEmpId }, { area: 'deductions/reimbursements', editType: 'deduction' });
+      alert('This salary is already completed. Use Undo first, then edit deductions or reimbursements.');
+      return;
+    }
+
     let newDeds;
     if (data.__remove) {
-      newDeds = loadJ(LS.DEDUCTS,[]).filter(d=>d.id!==data.__remove);
+      newDeds = allExistingDeds.filter(d=>d.id!==data.__remove);
     } else {
-      newDeds = [...loadJ(LS.DEDUCTS,[]), {...data.__add, month, year}];
+      newDeds = [...allExistingDeds, {...data.__add, month, year}];
     }
     saveJ(LS.DEDUCTS, newDeds);
     setDeducts(newDeds.filter(d=>d.month===month&&d.year===year));
-  }, [month, year]);
+  }, [month, year, isCompletedSalary, activeEmps, showCompletedSalaryLock]);
+
+  const undoCompletedAndOpenLockedEdit = useCallback(() => {
+    if (!lockNotice?.id) return;
+    const emp = activeEmps.find(e => String(e._id || e.id) === String(lockNotice.id));
+    toggleProcessed(lockNotice.id);
+    setTab('pending');
+    setLockNotice(null);
+    if (!emp) return;
+    if (lockNotice.editType === 'team') {
+      setAllocModal(emp);
+    } else if (lockNotice.editType === 'deduction') {
+      setDedModal(emp);
+    }
+  }, [lockNotice, activeEmps, toggleProcessed]);
 
   // guard removed — route is open to all authenticated users
 
   const showSalaryView = tab === 'pending' || tab === 'completed';
   const displayRows    = tab === 'pending' ? pending : completed;
+  const activeTabExportPayload = useMemo(() => {
+    const monthLabel = `${MONTHS_FULL[month]} ${year}`;
+    if (tab === 'pending' || tab === 'completed') {
+      const label = tab === 'pending' ? 'Pending' : 'Completed';
+      const sourceRows = tab === 'pending' ? pending : completed;
+      return {
+        rows: buildSalaryExportRows(sourceRows, deptMap, processed, month, year),
+        columns: SALARY_EXPORT_COLUMNS,
+        pdfColumnKeys: SALARY_PDF_COLUMNS,
+        title: `Salary ${label} - ${monthLabel}`,
+        fileBase: exportFileBase(month, year, label),
+        emptyMessage: `No ${label.toLowerCase()} salary data found for this month/filter.`,
+        isMonthlySalaryTab: true,
+      };
+    }
+
+    if (tab === 'history') {
+      return {
+        rows: buildHistoryExportRows(activeEmps, histMap, deptMap, startMonth),
+        columns: HISTORY_EXPORT_COLUMNS,
+        pdfColumnKeys: HISTORY_EXPORT_COLUMNS.map(col => col.key),
+        title: 'Salary History - All Employees',
+        fileBase: 'Salary_History_All_Employees',
+        emptyMessage: 'No salary history found.',
+      };
+    }
+
+    if (tab === 'performance') {
+      const perfMonths = buildPerformanceMonths(perfDate);
+      const endDate = perfMonths[perfMonths.length - 1];
+      const rangeLabel = `${MONTHS_SHORT[perfDate.getMonth()]} ${perfDate.getFullYear()} - ${MONTHS_SHORT[endDate.getMonth()]} ${endDate.getFullYear()}`;
+      const columns = buildPerformanceExportColumns(perfMonths);
+      return {
+        rows: buildPerformanceExportRows(calcRows, histMap, deptMap, startMonth, perfDate),
+        columns,
+        pdfColumnKeys: columns.map(col => col.key),
+        title: `Salary Performance - ${rangeLabel}`,
+        fileBase: `Salary_Performance_${slugPart(rangeLabel)}`,
+        emptyMessage: 'No performance data found.',
+      };
+    }
+
+    if (tab === 'inactive') {
+      return {
+        rows: buildInactiveExportRows(inactiveEmps, activeEmps, inactMap, histMap, deptMap),
+        columns: INACTIVE_EXPORT_COLUMNS,
+        pdfColumnKeys: INACTIVE_EXPORT_COLUMNS.map(col => col.key),
+        title: 'Inactive Employees Record',
+        fileBase: 'Salary_Inactive_Employees',
+        emptyMessage: 'No inactive employees found.',
+      };
+    }
+
+    return null;
+  }, [
+    tab, month, year, pending, completed, deptMap, processed,
+    activeEmps, inactiveEmps, histMap, startMonth, calcRows, inactMap, perfDate
+  ]);
+
+  const handleSalaryExport = useCallback(async (type) => {
+    setExportOpen(false);
+    if (activeTabExportPayload?.isMonthlySalaryTab && selectedBeforeStart) {
+      alert(`Salary data starts from ${MONTHS_FULL[startMonth.month]} ${startMonth.year}.`);
+      return;
+    }
+
+    if (!activeTabExportPayload) {
+      alert('No export available for this tab.');
+      return;
+    }
+
+    const { rows, columns, pdfColumnKeys, title, fileBase, emptyMessage } = activeTabExportPayload;
+    if (rows.length === 0) {
+      alert(emptyMessage || 'No data found for this tab.');
+      return;
+    }
+
+    setExporting(type);
+    try {
+      if (type === 'excel') {
+        await exportRowsExcel(rows, columns, title, fileBase);
+      } else {
+        await exportRowsPdf(rows, columns, pdfColumnKeys, title, fileBase);
+      }
+    } catch (err) {
+      console.error('[SalaryMgmt] export failed:', err);
+      alert(`Export failed: ${err?.message || err}`);
+    } finally {
+      setExporting('');
+    }
+  }, [activeTabExportPayload, selectedBeforeStart, startMonth]);
 
   const TH_COLS = [
     {label:'NAME'}, {label:'TEAM & DESIGNATION'}, {label:'SALARY'},
-    {label:'DAYS PRESENT', title:'Present days in this month (full + half×0.5)', center:true},
+    {label:'DAYS PRESENT', title:'Attendance page Final days used for salary calculation', center:true},
     {label:'MONTHLY TARGET',title:'Current Month Base Target'},
     {label:'CARRYFORWARD',title:'Shortfall from previous month'},{label:'INDIVIDUAL ACHIEVEMENT',cls:'hl-yellow'},
     {label:'TEAM ACHIEVEMENT',cls:'hl-yellow',title:'Click a cell to manage team achievements'},
@@ -1925,12 +2427,46 @@ export default function SalaryManagement() {
           <span style={{fontSize:11,color:'#9ca3af',background:'#f3f4f6',padding:'2px 6px',borderRadius:3}}>
             Att: {Object.keys(presentDaysMap).length} emp
           </span>
+          <div className="sm-export-wrap">
+            <button
+              className="sm-btn sm-btn-primary sm-export-btn"
+              onClick={() => !exporting && setExportOpen(v => !v)}
+              disabled={!!exporting}
+              title="Export current tab data"
+            >
+              <Download size={14} strokeWidth={2} />
+              {exporting ? 'Exporting...' : 'Export'}
+              {!exporting && <ChevronDown size={12} strokeWidth={2.2} />}
+            </button>
+            {exportOpen && !exporting && (
+              <div className="sm-export-menu">
+                <button onClick={() => handleSalaryExport('excel')}><FileSpreadsheet size={15} strokeWidth={2} /> Excel (.xlsx)</button>
+                <button onClick={() => handleSalaryExport('pdf')}><FileText size={15} strokeWidth={2} /> PDF (.pdf)</button>
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
       {selectedBeforeStart && (
         <div style={{margin:'10px 16px 0',padding:'10px 12px',background:'#fff7ed',border:'1px solid #fdba74',borderRadius:8,color:'#9a3412',fontSize:12}}>
           Showing blank values because salary rules apply from {MONTHS_FULL[startMonth.month]} {startMonth.year}.
+        </div>
+      )}
+
+      {lockNotice && (
+        <div className="sm-lock-alert">
+          <span>
+            Salary for <strong>{lockNotice.name}</strong> is already completed. Undo it first to edit {lockNotice.area || 'salary details'}.
+          </span>
+          <div className="sm-lock-alert-actions">
+            <button className="sm-btn sm-btn-danger" style={{width:'auto',padding:'6px 12px'}} onClick={undoCompletedAndOpenLockedEdit}>
+              Undo & Edit
+            </button>
+            <button className="sm-btn sm-btn-secondary" style={{padding:'6px 12px'}} onClick={() => setLockNotice(null)}>
+              Dismiss
+            </button>
+          </div>
         </div>
       )}
 
@@ -1948,6 +2484,8 @@ export default function SalaryManagement() {
             ])
           )}
           startMonth={startMonth}
+          perfDate={perfDate}
+          setPerfDate={setPerfDate}
         />
       ) : tab === 'history' ? (
         <>
@@ -2103,8 +2641,22 @@ export default function SalaryManagement() {
                   : displayRows.map(({emp, calc, id}) => (
                     <SalRow key={id} emp={emp} calc={calc} deptMap={deptMap} isLockedMonth={selectedBeforeStart}
                       processed={isPro(id)}
-                      onTeam={()=>!selectedBeforeStart && setAllocModal(emp)}
-                      onDeduct={()=>!selectedBeforeStart && setDedModal(emp)}
+                      onTeam={()=>{
+                        if (selectedBeforeStart) return;
+                        if (isCompletedSalary(id)) {
+                          showCompletedSalaryLock(emp, { area: 'team achievements', editType: 'team' });
+                          return;
+                        }
+                        setAllocModal(emp);
+                      }}
+                      onDeduct={()=>{
+                        if (selectedBeforeStart) return;
+                        if (isCompletedSalary(id)) {
+                          showCompletedSalaryLock(emp, { area: 'deductions/reimbursements', editType: 'deduction' });
+                          return;
+                        }
+                        setDedModal(emp);
+                      }}
                       onToggle={()=>toggleProcessed(id)}
                     />
                   ))

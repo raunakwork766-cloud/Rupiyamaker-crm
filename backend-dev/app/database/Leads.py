@@ -1114,6 +1114,22 @@ class LeadsDB:
                             old_obligations = old_val if isinstance(old_val, list) else []
                             new_obligations = new_val
                             
+                            def _obligation_display_value(field_key, raw_value, empty_value="Not Set"):
+                                if raw_value in [None, '', 0, '0', 'N/A']:
+                                    return empty_value
+                                if field_key in ['emi', 'outstanding', 'totalLoan']:
+                                    return f"₹{raw_value}"
+                                if field_key == 'tenure':
+                                    raw_text = str(raw_value)
+                                    return raw_text if 'month' in raw_text.lower() else f"{raw_value} months"
+                                if field_key == 'roi':
+                                    raw_text = str(raw_value)
+                                    return raw_text if '%' in raw_text else f"{raw_value}%"
+                                return str(raw_value)
+
+                            def _obligation_normalized_value(raw_value):
+                                return str(raw_value).strip() if raw_value not in [None, '', 0, '0', 'N/A'] else None
+
                             # Compare each row
                             max_rows = max(len(old_obligations), len(new_obligations))
                             
@@ -1133,54 +1149,69 @@ class LeadsDB:
                                     'action': 'Action'
                                 }
                                 
-                                # Collect all changes in this row
+                                # Collect all changes in this row and keep full row data for display
                                 row_changes = []
+                                row_data = []
+                                row_has_old_data = bool(isinstance(old_row, dict) and any(_obligation_normalized_value(v) for v in old_row.values()))
+                                row_has_new_data = bool(isinstance(new_row, dict) and any(_obligation_normalized_value(v) for v in new_row.values()))
+                                operation = "created" if row_has_new_data and not row_has_old_data else "removed" if row_has_old_data and not row_has_new_data else "updated"
+                                display_row = new_row if operation != "removed" else old_row
                                 
                                 # Check each field in this row
                                 for field_key, field_label in field_labels.items():
                                     old_field_val = old_row.get(field_key) if isinstance(old_row, dict) else None
                                     new_field_val = new_row.get(field_key) if isinstance(new_row, dict) else None
+                                    display_field_val = display_row.get(field_key) if isinstance(display_row, dict) else None
+                                    row_data.append({
+                                        "field_key": field_key,
+                                        "label": field_label,
+                                        "value": display_field_val,
+                                        "display_value": _obligation_display_value(field_key, display_field_val, empty_value="-")
+                                    })
                                     
                                     # Normalize values for comparison (handle empty strings, zeros, None)
-                                    old_normalized = str(old_field_val).strip() if old_field_val not in [None, '', 0, '0', 'N/A'] else None
-                                    new_normalized = str(new_field_val).strip() if new_field_val not in [None, '', 0, '0', 'N/A'] else None
+                                    old_normalized = _obligation_normalized_value(old_field_val)
+                                    new_normalized = _obligation_normalized_value(new_field_val)
                                     
                                     # If the field changed, add to row changes
                                     if old_normalized != new_normalized:
-                                        # Format display values
-                                        old_display = old_field_val if old_normalized else "Not Set"
-                                        new_display = new_field_val if new_normalized else "Removed"
-                                        
-                                        # Add currency/percentage formatting
-                                        if field_key in ['emi', 'outstanding', 'totalLoan'] and new_normalized:
-                                            new_display = f"₹{new_field_val}"
-                                        if field_key in ['emi', 'outstanding', 'totalLoan'] and old_normalized:
-                                            old_display = f"₹{old_field_val}"
-                                        if field_key == 'tenure' and new_normalized:
-                                            new_display = f"{new_field_val} months"
-                                        if field_key == 'tenure' and old_normalized:
-                                            old_display = f"{old_field_val} months"
-                                        if field_key == 'roi' and new_normalized:
-                                            new_display = f"{new_field_val}%"
-                                        if field_key == 'roi' and old_normalized:
-                                            old_display = f"{old_field_val}%"
+                                        old_display = _obligation_display_value(field_key, old_field_val)
+                                        new_display = _obligation_display_value(field_key, new_field_val, empty_value="Removed")
                                         
                                         # Add this field change to the row changes list
-                                        row_changes.append(f"{field_label}: {old_display} → {new_display}")
+                                        row_changes.append({
+                                            "field_key": field_key,
+                                            "label": field_label,
+                                            "old_value": old_field_val,
+                                            "new_value": new_field_val,
+                                            "old_display": old_display,
+                                            "new_display": new_display
+                                        })
                                 
                                 # If there are changes in this row, create ONE activity for the entire row
                                 if row_changes:
                                     # Join all changes with line breaks for readability
-                                    changes_text = "\n".join(row_changes)
+                                    changes_text = "\n".join([
+                                        f"{change['label']}: {change['old_display']} → {change['new_display']}"
+                                        for change in row_changes
+                                    ])
+                                    operation_label = operation.capitalize()
                                     
                                     activity_data = {
                                         "lead_id": lead_id,
                                         "user_id": user_id,
                                         "user_name": updated_by_name,
                                         "activity_type": "field_update",
-                                        "description": f"Obligation Row {row_idx + 1}",
+                                        "description": f"Obligation Row {row_idx + 1} {operation_label}",
                                         "details": {
+                                            "activity_subtype": "obligation_row",
                                             "field_display_name": f"Obligation Row {row_idx + 1}",
+                                            "operation": operation,
+                                            "row_index": row_idx + 1,
+                                            "row_data": row_data,
+                                            "changed_fields": row_changes,
+                                            "old_row": old_row,
+                                            "new_row": new_row,
                                             "old_value": "Updated",
                                             "new_value": changes_text
                                         },
@@ -1191,6 +1222,7 @@ class LeadsDB:
                             
                             # Skip the default activity creation since we created row-based activities
                             processed_obligation_fields.add("obligations")
+                            fields_with_activity_created.add("obligations")
                             continue
                         
                         # Special handling for check_eligibility (object with eligibility data)
@@ -1251,6 +1283,288 @@ class LeadsDB:
                             else:
                                 old_val = "Not Set"
                         
+                        # Special handling for full obligation form object.
+                        # Store readable changed fields instead of "[Object with N fields]".
+                        elif nested_field == "obligation_data" and isinstance(new_val, dict):
+                            obligation_field_labels = {
+                                "salary": "Salary",
+                                "partnerSalary": "Partner Salary",
+                                "yearlyBonus": "Yearly Bonus",
+                                "bonusDivision": "Bonus Division",
+                                "loanRequired": "Loan Required",
+                                "loan_required": "Loan Required",
+                                "loan_amount": "Loan Amount",
+                                "companyName": "Company Name",
+                                "company_name": "Company Name",
+                                "companyType": "Company Type",
+                                "companyCategory": "Company Category",
+                                "cibilScore": "CIBIL Score",
+                                "cibil_score": "CIBIL Score",
+                                "foirPercent": "FOIR %",
+                                "customFoirPercent": "Custom FOIR %",
+                                "totalBtPos": "Total BT POS",
+                                "total_bt_pos": "Total BT POS",
+                                "totalObligation": "Total Obligation",
+                                "total_obligation": "Total Obligation",
+                                "ceCompanyCategory": "Company Category",
+                                "ceFoirPercent": "FOIR %",
+                                "ceCustomFoirPercent": "Custom FOIR %",
+                                "ceMonthlyEmiCanPay": "Monthly EMI Can Pay",
+                                "ceTenureMonths": "Tenure Months",
+                                "ceTenureYears": "Tenure Years",
+                                "ceRoi": "ROI",
+                                "ceMultiplier": "Multiplier",
+                                "loanEligibilityStatus": "Eligibility Status",
+                                "processingBanks": "Processing Banks",
+                                "processing_banks": "Processing Banks",
+                                "processing_bank": "Processing Bank",
+                                "bank_name": "Bank Name",
+                                "bankName": "Bank Name",
+                                "selectedBanks": "Selected Banks",
+                            }
+
+                            currency_keys = {
+                                "salary", "partnerSalary", "yearlyBonus", "loanRequired",
+                                "loan_required", "loan_amount", "totalBtPos", "total_bt_pos",
+                                "totalObligation", "total_obligation", "ceMonthlyEmiCanPay"
+                            }
+                            ignored_obligation_keys = {"dynamic_fields", "dynamic_details", "obligations"}
+
+                            def _format_obligation_data_value(field_key, raw_value, empty_value="Not Set"):
+                                if raw_value in [None, '', 'N/A']:
+                                    return empty_value
+                                if isinstance(raw_value, list):
+                                    if not raw_value:
+                                        return empty_value
+                                    if field_key == "obligations":
+                                        return f"{len(raw_value)} row(s)"
+                                    values = []
+                                    for item in raw_value:
+                                        if isinstance(item, dict):
+                                            display = item.get("display") or item.get("category_name") or item.get("bank_name") or item.get("company_name")
+                                            values.append(str(display) if display else f"{len(item)} fields")
+                                        else:
+                                            values.append(str(item))
+                                    return ", ".join([v for v in values if v]) or empty_value
+                                if isinstance(raw_value, dict):
+                                    compact_values = []
+                                    for key, value in raw_value.items():
+                                        if value in [None, '', 'N/A', [], {}]:
+                                            continue
+                                        if isinstance(value, (dict, list)):
+                                            continue
+                                        compact_values.append(f"{key.replace('_', ' ').title()}: {value}")
+                                        if len(compact_values) >= 4:
+                                            break
+                                    return ", ".join(compact_values) if compact_values else f"{len(raw_value)} fields"
+                                if field_key in currency_keys:
+                                    try:
+                                        return f"₹{int(float(str(raw_value).replace(',', ''))):,}"
+                                    except (ValueError, TypeError):
+                                        pass
+                                if field_key in ["ceFoirPercent", "ceCustomFoirPercent", "foirPercent", "customFoirPercent", "ceRoi"]:
+                                    text = str(raw_value)
+                                    return text if "%" in text else f"{text}%"
+                                return str(raw_value)
+
+                            def _normalize_obligation_data_value(raw_value):
+                                if raw_value in [None, '', 'N/A', [], {}]:
+                                    return None
+                                if isinstance(raw_value, (dict, list)):
+                                    try:
+                                        return json.dumps(raw_value, sort_keys=True, default=str)
+                                    except Exception:
+                                        return str(raw_value)
+                                return str(raw_value).strip()
+
+                            old_object = old_val if isinstance(old_val, dict) else {}
+                            new_object = new_val
+                            changed_fields = []
+
+                            # obligation_data stores the table rows inside "obligations".
+                            # Record those as row-level activities too, not as a collapsed object.
+                            old_obligation_rows = old_object.get("obligations") if isinstance(old_object.get("obligations"), list) else []
+                            new_obligation_rows = new_object.get("obligations") if isinstance(new_object.get("obligations"), list) else []
+                            if (old_obligation_rows or new_obligation_rows) and "obligations" not in fields_with_activity_created:
+                                row_field_labels = {
+                                    "bankName": "Bank Name",
+                                    "bank_name": "Bank Name",
+                                    "bank": "Bank Name",
+                                    "product": "Product",
+                                    "emi": "EMI",
+                                    "outstanding": "Outstanding",
+                                    "totalLoan": "Total Loan",
+                                    "total_loan": "Total Loan",
+                                    "tenure": "Tenure",
+                                    "roi": "ROI",
+                                    "action": "Action",
+                                }
+                                row_currency_keys = {"emi", "outstanding", "totalLoan", "total_loan"}
+                                ignored_row_keys = {"id", "_id", "row_id"}
+
+                                def _format_obligation_row_value(field_key, raw_value, empty_value="Not Set"):
+                                    if raw_value in [None, '', 0, '0', 'N/A', [], {}]:
+                                        return empty_value
+                                    if isinstance(raw_value, (dict, list)):
+                                        try:
+                                            return json.dumps(raw_value, sort_keys=True, default=str)
+                                        except Exception:
+                                            return str(raw_value)
+                                    if field_key in row_currency_keys:
+                                        try:
+                                            return f"₹{int(float(str(raw_value).replace(',', '').replace('₹', ''))):,}"
+                                        except (ValueError, TypeError):
+                                            return f"₹{raw_value}"
+                                    if field_key == "tenure":
+                                        raw_text = str(raw_value)
+                                        return raw_text if "month" in raw_text.lower() else f"{raw_value} months"
+                                    if field_key == "roi":
+                                        raw_text = str(raw_value)
+                                        return raw_text if "%" in raw_text else f"{raw_value}%"
+                                    return str(raw_value)
+
+                                def _normalize_obligation_row_value(raw_value):
+                                    if raw_value in [None, '', 0, '0', 'N/A', [], {}]:
+                                        return None
+                                    if isinstance(raw_value, (dict, list)):
+                                        try:
+                                            return json.dumps(raw_value, sort_keys=True, default=str)
+                                        except Exception:
+                                            return str(raw_value)
+                                    return str(raw_value).strip()
+
+                                row_activity_count = 0
+                                max_rows = max(len(old_obligation_rows), len(new_obligation_rows))
+                                for row_idx in range(max_rows):
+                                    old_row = old_obligation_rows[row_idx] if row_idx < len(old_obligation_rows) and isinstance(old_obligation_rows[row_idx], dict) else {}
+                                    new_row = new_obligation_rows[row_idx] if row_idx < len(new_obligation_rows) and isinstance(new_obligation_rows[row_idx], dict) else {}
+                                    row_has_old_data = bool(any(_normalize_obligation_row_value(v) for v in old_row.values()))
+                                    row_has_new_data = bool(any(_normalize_obligation_row_value(v) for v in new_row.values()))
+                                    operation = "created" if row_has_new_data and not row_has_old_data else "removed" if row_has_old_data and not row_has_new_data else "updated"
+                                    display_row = new_row if operation != "removed" else old_row
+
+                                    known_row_keys = [key for key in row_field_labels.keys() if key in old_row or key in new_row]
+                                    extra_row_keys = sorted(
+                                        (set(old_row.keys()) | set(new_row.keys()))
+                                        - set(row_field_labels.keys())
+                                        - ignored_row_keys
+                                    )
+                                    all_row_keys = known_row_keys + extra_row_keys
+                                    row_data = []
+                                    row_changes = []
+
+                                    for field_key in all_row_keys:
+                                        field_label = row_field_labels.get(field_key, field_key.replace('_', ' ').title())
+                                        old_field_val = old_row.get(field_key)
+                                        new_field_val = new_row.get(field_key)
+                                        display_field_val = display_row.get(field_key)
+                                        row_data.append({
+                                            "field_key": field_key,
+                                            "label": field_label,
+                                            "value": display_field_val,
+                                            "display_value": _format_obligation_row_value(field_key, display_field_val, empty_value="-")
+                                        })
+
+                                        if _normalize_obligation_row_value(old_field_val) == _normalize_obligation_row_value(new_field_val):
+                                            continue
+                                        row_changes.append({
+                                            "field_key": field_key,
+                                            "label": field_label,
+                                            "old_value": old_field_val,
+                                            "new_value": new_field_val,
+                                            "old_display": _format_obligation_row_value(field_key, old_field_val),
+                                            "new_display": _format_obligation_row_value(field_key, new_field_val, empty_value="Removed")
+                                        })
+
+                                    if not row_changes:
+                                        continue
+
+                                    changes_text = "\n".join([
+                                        f"{change['label']}: {change['old_display']} → {change['new_display']}"
+                                        for change in row_changes
+                                    ])
+                                    operation_label = operation.capitalize()
+                                    activity_data = {
+                                        "lead_id": lead_id,
+                                        "user_id": user_id,
+                                        "user_name": updated_by_name,
+                                        "activity_type": "field_update",
+                                        "description": f"Obligation Row {row_idx + 1} {operation_label}",
+                                        "details": {
+                                            "activity_subtype": "obligation_row",
+                                            "source_field": "obligation_data.obligations",
+                                            "field_display_name": f"Obligation Row {row_idx + 1}",
+                                            "operation": operation,
+                                            "row_index": row_idx + 1,
+                                            "row_data": row_data,
+                                            "changed_fields": row_changes,
+                                            "old_row": old_row,
+                                            "new_row": new_row,
+                                            "old_value": "Updated",
+                                            "new_value": changes_text
+                                        },
+                                        "created_at": update_data["updated_at"]
+                                    }
+                                    await self.activity_collection.insert_one(activity_data)
+                                    row_activity_count += 1
+
+                                if row_activity_count:
+                                    fields_with_activity_created.add("obligations")
+                                    processed_obligation_fields.add("obligations")
+
+                            known_keys = [key for key in obligation_field_labels.keys() if key in old_object or key in new_object]
+                            extra_keys = sorted(
+                                (set(old_object.keys()) | set(new_object.keys()))
+                                - set(obligation_field_labels.keys())
+                                - ignored_obligation_keys
+                            )
+                            all_keys = known_keys + extra_keys
+
+                            for object_key in all_keys:
+                                if object_key in ignored_obligation_keys:
+                                    continue
+                                old_field = old_object.get(object_key)
+                                new_field = new_object.get(object_key)
+                                if _normalize_obligation_data_value(old_field) == _normalize_obligation_data_value(new_field):
+                                    continue
+                                changed_fields.append({
+                                    "field_key": object_key,
+                                    "label": obligation_field_labels.get(object_key, object_key.replace('_', ' ').title()),
+                                    "old_value": old_field,
+                                    "new_value": new_field,
+                                    "old_display": _format_obligation_data_value(object_key, old_field),
+                                    "new_display": _format_obligation_data_value(object_key, new_field, empty_value="Removed")
+                                })
+
+                            if not changed_fields:
+                                continue
+
+                            changes_text = "\n".join([
+                                f"{change['label']}: {change['old_display']} → {change['new_display']}"
+                                for change in changed_fields
+                            ])
+
+                            activity_data = {
+                                "lead_id": lead_id,
+                                "user_id": user_id,
+                                "user_name": updated_by_name,
+                                "activity_type": "field_update",
+                                "description": "Obligation Data Updated",
+                                "details": {
+                                    "activity_subtype": "obligation_data",
+                                    "field_display_name": "Obligation Data",
+                                    "changed_fields": changed_fields,
+                                    "old_object": old_object,
+                                    "new_object": new_object,
+                                    "old_value": "Updated",
+                                    "new_value": changes_text
+                                },
+                                "created_at": update_data["updated_at"]
+                            }
+                            await self.activity_collection.insert_one(activity_data)
+                            fields_with_activity_created.add("obligation_data")
+                            continue
+
                         # Special handling for applicant/co-applicant section objects
                         elif nested_field in ["personal_details", "employment_details", "residence_details", 
                                              "business_details", "coapplicant_personal_details", 

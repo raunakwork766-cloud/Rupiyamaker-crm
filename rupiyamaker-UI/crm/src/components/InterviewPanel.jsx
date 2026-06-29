@@ -3259,45 +3259,45 @@ const SettingsModal = ({ onCompanySettingsChange, onDeclineReasonsChange, onCool
                 <div>
                   <label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase tracking-wide">Company Name</label>
                   <input value={cs.companyName} onChange={e => setCs({...cs, companyName: e.target.value})}
-                    className="w-full border border-slate-200 bg-slate-50 focus:bg-white focus:border-blue-500 rounded-xl px-3 py-2.5 text-sm text-slate-900 outline-none transition-all" />
+                    className="w-full border border-slate-200 bg-slate-50 focus:bg-white focus:border-blue-500 rounded-lg px-3 py-2.5 text-sm text-slate-900 outline-none transition-all" />
                 </div>
                 <div>
                   <label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase tracking-wide">Office Timing</label>
                   <input placeholder="e.g. 10:00 AM – 7:00 PM" value={cs.officeTiming} onChange={e => setCs({...cs, officeTiming: e.target.value})}
-                    className="w-full border border-slate-200 bg-slate-50 focus:bg-white focus:border-blue-500 rounded-xl px-3 py-2.5 text-sm text-slate-900 outline-none transition-all" />
+                    className="w-full border border-slate-200 bg-slate-50 focus:bg-white focus:border-blue-500 rounded-lg px-3 py-2.5 text-sm text-slate-900 outline-none transition-all" />
                 </div>
                 <div>
                   <label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase tracking-wide">Working Days</label>
                   <input placeholder="e.g. Monday to Saturday" value={cs.workingDays} onChange={e => setCs({...cs, workingDays: e.target.value})}
-                    className="w-full border border-slate-200 bg-slate-50 focus:bg-white focus:border-blue-500 rounded-xl px-3 py-2.5 text-sm text-slate-900 outline-none transition-all" />
+                    className="w-full border border-slate-200 bg-slate-50 focus:bg-white focus:border-blue-500 rounded-lg px-3 py-2.5 text-sm text-slate-900 outline-none transition-all" />
                 </div>
                 <div>
                   <label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase tracking-wide">Interview Timing</label>
                   <input placeholder="e.g. 10:00 AM to 6:00 PM" value={cs.interviewTiming} onChange={e => setCs({...cs, interviewTiming: e.target.value})}
-                    className="w-full border border-slate-200 bg-slate-50 focus:bg-white focus:border-blue-500 rounded-xl px-3 py-2.5 text-sm text-slate-900 outline-none transition-all" />
+                    className="w-full border border-slate-200 bg-slate-50 focus:bg-white focus:border-blue-500 rounded-lg px-3 py-2.5 text-sm text-slate-900 outline-none transition-all" />
                 </div>
               </div>
               <div>
                 <label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase tracking-wide">Job Description (JD) — shown in WhatsApp invite</label>
                 <textarea value={cs.jobDescription} onChange={e => setCs({...cs, jobDescription: e.target.value})} rows={3}
                   placeholder="Describe the job role, responsibilities, and requirements..."
-                  className="w-full border border-slate-200 bg-slate-50 focus:bg-white focus:border-blue-500 rounded-xl px-3 py-2.5 text-sm text-slate-900 outline-none resize-none transition-all" />
+                  className="w-full border border-slate-200 bg-slate-50 focus:bg-white focus:border-blue-500 rounded-lg px-3 py-2.5 text-sm text-slate-900 outline-none resize-none transition-all" />
               </div>
               <div>
                 <label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase tracking-wide">Office Address</label>
                 <input value={cs.officeAddress} onChange={e => setCs({...cs, officeAddress: e.target.value})} placeholder="Full office address"
-                  className="w-full border border-slate-200 bg-slate-50 focus:bg-white focus:border-blue-500 rounded-xl px-3 py-2.5 text-sm text-slate-900 outline-none transition-all" />
+                  className="w-full border border-slate-200 bg-slate-50 focus:bg-white focus:border-blue-500 rounded-lg px-3 py-2.5 text-sm text-slate-900 outline-none transition-all" />
               </div>
               <div>
                 <label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase tracking-wide">Nearby Landmark</label>
                 <input value={cs.officeNearby} onChange={e => setCs({...cs, officeNearby: e.target.value})} placeholder="e.g. Electronic City Metro Station"
-                  className="w-full border border-slate-200 bg-slate-50 focus:bg-white focus:border-blue-500 rounded-xl px-3 py-2.5 text-sm text-slate-900 outline-none transition-all" />
+                  className="w-full border border-slate-200 bg-slate-50 focus:bg-white focus:border-blue-500 rounded-lg px-3 py-2.5 text-sm text-slate-900 outline-none transition-all" />
               </div>
 
               <div>
                 <label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase tracking-wide">Interview Form Base URL</label>
                 <input value={cs.interviewFormBaseUrl} onChange={e => setCs({...cs, interviewFormBaseUrl: e.target.value})} placeholder="https://yourcrm.app/interview-form"
-                  className="w-full border border-slate-200 bg-slate-50 focus:bg-white focus:border-blue-500 rounded-xl px-3 py-2.5 text-sm text-slate-900 outline-none font-mono transition-all" />
+                  className="w-full border border-slate-200 bg-slate-50 focus:bg-white focus:border-blue-500 rounded-lg px-3 py-2.5 text-sm text-slate-900 outline-none font-mono transition-all" />
                 <p className="text-xs text-slate-400 mt-1">This link is inserted in WhatsApp messages and shared with candidates.</p>
               </div>
             </div>
@@ -3306,7 +3306,7 @@ const SettingsModal = ({ onCompanySettingsChange, onDeclineReasonsChange, onCool
           {!loading && tab === 'pipeline' && (
             <div>
               <h3 className="text-sm font-bold text-blue-500 uppercase tracking-wider mb-3">Lead Hoarding Protection</h3>
-              <div className="bg-slate-50 border border-slate-200 rounded-xl p-4">
+              <div className="bg-slate-50 border border-slate-200 rounded-lg p-4">
                 <label className="block text-sm font-medium text-slate-700 mb-1">Cooldown Period (Days)</label>
                 <p className="text-xs text-slate-500 mb-3 leading-relaxed">
                   <strong className="text-slate-700">Lock-in period:</strong> If a lead is active and was updated within this many days, other HRs cannot steal or reassign it.
@@ -3320,7 +3320,7 @@ const SettingsModal = ({ onCompanySettingsChange, onDeclineReasonsChange, onCool
           {!loading && tab === 'reasons' && (
             <div>
               <h3 className="text-sm font-bold text-blue-500 uppercase tracking-wider mb-3">Decline &amp; Drop Reasons</h3>
-              <div className="bg-slate-50 border border-slate-200 rounded-xl p-4">
+              <div className="bg-slate-50 border border-slate-200 rounded-lg p-4">
                 <p className="text-xs text-slate-500 mb-4">Manage reasons HRs can select when declining a candidate.</p>
                 <div className="flex gap-2 mb-4">
                   <input value={newReason} onChange={e => setNewReason(e.target.value)}
@@ -3348,7 +3348,7 @@ const SettingsModal = ({ onCompanySettingsChange, onDeclineReasonsChange, onCool
           {!loading && tab === 'roles' && (
             <div>
               <h3 className="text-sm font-bold text-blue-500 uppercase tracking-wider mb-3">Job Roles / Openings</h3>
-              <div className="bg-slate-50 border border-slate-200 rounded-xl p-4">
+              <div className="bg-slate-50 border border-slate-200 rounded-lg p-4">
                 <p className="text-xs text-slate-500 mb-4">Manage roles that appear in the Role dropdown when creating or editing interviews.</p>
                 <div className="flex gap-2 mb-4">
                   <input value={newRole} onChange={e => setNewRole(e.target.value)}
@@ -3380,7 +3380,7 @@ const SettingsModal = ({ onCompanySettingsChange, onDeclineReasonsChange, onCool
           {!loading && tab === 'sources' && (
             <div>
               <h3 className="text-sm font-bold text-blue-500 uppercase tracking-wider mb-3">Source / Portals</h3>
-              <div className="bg-slate-50 border border-slate-200 rounded-xl p-4">
+              <div className="bg-slate-50 border border-slate-200 rounded-lg p-4">
                 <p className="text-xs text-slate-500 mb-4">Manage sources that appear in the Source dropdown when creating or editing interviews.</p>
                 <div className="flex gap-2 mb-4">
                   <input value={newSource} onChange={e => setNewSource(e.target.value)}
@@ -3511,7 +3511,7 @@ function onFormSubmit(e) {
                 <p className="text-xs text-slate-500">Connect a Google Form so candidates can self-register — data auto-appears in Today/Upcoming tabs.</p>
 
                 {/* Google Form URL */}
-                <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 space-y-3">
+                <div className="bg-slate-50 border border-slate-200 rounded-lg p-4 space-y-3">
                   <label className="block text-xs font-bold text-slate-600 uppercase tracking-wide">Google Form URL</label>
                   <p className="text-xs text-slate-500">Once saved, a "Share Form" button appears in the Interview Panel top bar.</p>
                   <div className="flex gap-2">
@@ -3574,7 +3574,7 @@ function onFormSubmit(e) {
                 </div>
 
                 {/* Webhook API Key */}
-                <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 space-y-3">
+                <div className="bg-slate-50 border border-slate-200 rounded-lg p-4 space-y-3">
                   <label className="block text-xs font-bold text-slate-600 uppercase tracking-wide">Webhook API Key</label>
                   <p className="text-xs text-slate-500">Generate a secret key. Paste it in the Apps Script below as <code className="bg-slate-200 px-1 rounded text-slate-700">API_KEY</code>.</p>
                   <div className="flex items-center gap-2">
@@ -3617,7 +3617,7 @@ function onFormSubmit(e) {
                 </div>
 
                 {/* Webhook URL */}
-                <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 flex items-center gap-3">
+                <div className="bg-slate-50 border border-slate-200 rounded-lg p-3 flex items-center gap-3">
                   <div className="flex-1 min-w-0">
                     <p className="text-xs font-bold text-slate-600 uppercase tracking-wide mb-1">Webhook Endpoint (pre-filled in script)</p>
                     <code className="text-xs text-blue-600 font-mono break-all">POST {webhookUrl}</code>
@@ -3625,7 +3625,7 @@ function onFormSubmit(e) {
                 </div>
 
                 {/* Apps Script Template */}
-                <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 space-y-3">
+                <div className="bg-slate-50 border border-slate-200 rounded-lg p-4 space-y-3">
                   <div className="flex items-center justify-between">
                     <label className="text-xs font-bold text-slate-600 uppercase tracking-wide">Apps Script Template</label>
                     <button
@@ -3640,7 +3640,7 @@ function onFormSubmit(e) {
                 </div>
 
                 {/* Setup Steps */}
-                <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
                   <p className="text-xs font-bold text-blue-700 uppercase tracking-wide mb-2">Quick Setup</p>
                   <ol className="text-xs text-blue-700 space-y-1.5 list-none">
                     {['Create a Google Form with the fields listed in the script comments.',
@@ -3666,7 +3666,7 @@ function onFormSubmit(e) {
         {/* Footer */}
         <div className="p-5 border-t border-slate-200 bg-slate-50/80 flex justify-end gap-3">
           <button onClick={onClose} disabled={saving} className="px-5 py-2 text-sm text-slate-500 hover:text-slate-900 font-medium disabled:opacity-50">Cancel</button>
-          <button onClick={handleSave} disabled={saving || loading} className="px-6 py-2.5 bg-blue-600 hover:bg-blue-500 disabled:bg-blue-400 text-white text-sm font-black rounded-xl shadow-md shadow-blue-600/25 flex items-center gap-2">
+          <button onClick={handleSave} disabled={saving || loading} className="px-6 py-2.5 bg-blue-600 hover:bg-blue-500 disabled:bg-blue-400 text-white text-sm font-black rounded-lg shadow-md shadow-blue-600/25 flex items-center gap-2">
             {saving ? (
               <><svg className="animate-spin w-4 h-4" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/></svg> Saving...</>
             ) : (
@@ -4198,16 +4198,16 @@ const ForwardRemarkModal = ({ target, onClose, onConfirmForward, onConfirmJobOff
             Remark / Note <span className="text-red-500">*</span>
             <span className="text-slate-400 font-normal ml-1 text-xs">(mandatory — reason for forwarding)</span>
           </label>
-          <textarea value={remark} onChange={e => setRemark(e.target.value)} placeholder="e.g. Candidate performed well in Round 1. Communication is strong." className="w-full h-28 bg-slate-50 border-2 border-slate-200 focus:border-blue-500 rounded-xl p-3 text-sm text-slate-900 outline-none resize-none transition-colors placeholder:text-slate-400" />
+          <textarea value={remark} onChange={e => setRemark(e.target.value)} placeholder="e.g. Candidate performed well in Round 1. Communication is strong." className="w-full h-28 bg-slate-50 border-2 border-slate-200 focus:border-blue-500 rounded-lg p-3 text-sm text-slate-900 outline-none resize-none transition-colors placeholder:text-slate-400" />
           <div className="flex justify-end mt-1 mb-4">
             <span className={`text-xs ${remark.trim().length < 10 ? 'text-red-400' : 'text-emerald-600'}`}>{remark.trim().length} chars {remark.trim().length < 10 ? '(min 10)' : '✓'}</span>
           </div>
           <div className="flex flex-col gap-2">
-            <button disabled={remark.trim().length < 10} onClick={() => { onConfirmForward(target.candidateId, target.currentStage, remark.trim()); onClose(); }} className={`w-full py-3 rounded-xl text-sm font-black flex items-center justify-center gap-2 transition-all ${remark.trim().length >= 10 ? 'bg-blue-600 hover:bg-blue-500 text-white shadow-md shadow-blue-600/25' : 'bg-slate-100 text-slate-400 cursor-not-allowed'}`}>
+            <button disabled={remark.trim().length < 10} onClick={() => { onConfirmForward(target.candidateId, target.currentStage, remark.trim()); onClose(); }} className={`w-full py-3 rounded-lg text-sm font-black flex items-center justify-center gap-2 transition-all ${remark.trim().length >= 10 ? 'bg-blue-600 hover:bg-blue-500 text-white shadow-md shadow-blue-600/25' : 'bg-slate-100 text-slate-400 cursor-not-allowed'}`}>
               <ChevronRight size={16} /> Move to {nextLabel}
             </button>
             {canJobOffer && (
-              <button disabled={remark.trim().length < 10} onClick={() => { onConfirmJobOffer(target.candidateId, target.currentStage, remark.trim()); onClose(); }} className={`w-full py-3 rounded-xl text-sm font-black flex items-center justify-center gap-2 transition-all ${remark.trim().length >= 10 ? 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-md shadow-emerald-600/25' : 'bg-slate-100 text-slate-400 cursor-not-allowed'}`}>
+              <button disabled={remark.trim().length < 10} onClick={() => { onConfirmJobOffer(target.candidateId, target.currentStage, remark.trim()); onClose(); }} className={`w-full py-3 rounded-lg text-sm font-black flex items-center justify-center gap-2 transition-all ${remark.trim().length >= 10 ? 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-md shadow-emerald-600/25' : 'bg-slate-100 text-slate-400 cursor-not-allowed'}`}>
                 <CheckCircle size={16} /> Direct Job Offer (Skip Round 2)
               </button>
             )}
@@ -4248,7 +4248,7 @@ const RollbackStageModal = ({ target, onClose, onConfirmRollback }) => {
             <select
               value={targetStage}
               onChange={(e) => setTargetStage(e.target.value)}
-              className="w-full bg-slate-50 border-2 border-slate-200 focus:border-orange-500 rounded-xl px-3 py-2.5 text-sm text-slate-900 outline-none transition-colors"
+              className="w-full bg-slate-50 border-2 border-slate-200 focus:border-orange-500 rounded-lg px-3 py-2.5 text-sm text-slate-900 outline-none transition-colors"
             >
               {target.targets.map(stage => (
                 <option key={stage} value={stage}>{stage}</option>
@@ -4263,7 +4263,7 @@ const RollbackStageModal = ({ target, onClose, onConfirmRollback }) => {
             value={remark}
             onChange={e => setRemark(e.target.value)}
             placeholder="e.g. Candidate needs to repeat the previous stage due to documentation or review changes."
-            className="w-full h-28 bg-slate-50 border-2 border-slate-200 focus:border-orange-500 rounded-xl p-3 text-sm text-slate-900 outline-none resize-none transition-colors placeholder:text-slate-400"
+            className="w-full h-28 bg-slate-50 border-2 border-slate-200 focus:border-orange-500 rounded-lg p-3 text-sm text-slate-900 outline-none resize-none transition-colors placeholder:text-slate-400"
           />
           <div className="flex justify-end mt-1 mb-4">
             <span className={`text-xs ${remark.trim().length < 10 ? 'text-red-400' : 'text-emerald-600'}`}>{remark.trim().length} chars {remark.trim().length < 10 ? '(min 10)' : 'OK'}</span>
@@ -4275,7 +4275,7 @@ const RollbackStageModal = ({ target, onClose, onConfirmRollback }) => {
                 onConfirmRollback(target.candidateId, target.currentStage, targetStage, remark.trim());
                 onClose();
               }}
-              className={`w-full py-3 rounded-xl text-sm font-black flex items-center justify-center gap-2 transition-all ${canSubmit ? 'bg-orange-600 hover:bg-orange-500 text-white shadow-md shadow-orange-600/25' : 'bg-slate-100 text-slate-400 cursor-not-allowed'}`}
+              className={`w-full py-3 rounded-lg text-sm font-black flex items-center justify-center gap-2 transition-all ${canSubmit ? 'bg-orange-600 hover:bg-orange-500 text-white shadow-md shadow-orange-600/25' : 'bg-slate-100 text-slate-400 cursor-not-allowed'}`}
             >
               <ArrowRightLeft size={16} /> Rollback to {targetStage}
             </button>
@@ -4294,7 +4294,7 @@ const DeclineModal = ({ candidate, options, onClose, onSubmit }) => {
   if (!candidate) return null;
   return (
     <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-[9999] p-4">
-      <div className="bg-white border border-slate-200 rounded-xl w-full max-w-md p-6 shadow-2xl">
+      <div className="bg-white border border-slate-200 rounded-lg w-full max-w-md p-6 shadow-2xl">
         <h2 className="text-lg font-bold text-red-600 mb-5">Decline Candidate</h2>
         <p className="text-xs text-slate-600 mb-4">Declining: <span className="font-bold">{candidate.candidate_name}</span></p>
         <select value={reason} onChange={(e) => setReason(e.target.value)} className="w-full bg-white border border-slate-300 rounded-md px-4 py-3 text-slate-900 mb-4 outline-none focus:border-red-500">
@@ -4318,7 +4318,7 @@ const RescheduleModal = ({ candidate, onClose, onSubmit }) => {
   if (!candidate) return null;
   return (
     <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-[9999] p-4">
-      <div className="bg-white border border-slate-200 rounded-xl w-full max-w-sm p-6 shadow-2xl">
+      <div className="bg-white border border-slate-200 rounded-lg w-full max-w-sm p-6 shadow-2xl">
         <h2 className="text-lg font-bold text-slate-900 mb-1">Reschedule Date</h2>
         <p className="text-xs text-slate-600 mb-5">For {candidate.candidate_name}</p>
         <label className="block text-sm text-slate-700 mb-1">New Date</label>
@@ -4648,7 +4648,7 @@ const CandidateDetailModal = ({ candidate, onClose, onSaved, jobOpeningOptions =
     return (bytes / 1048576).toFixed(1) + ' MB';
   };
 
-  const inputCls = "w-full bg-white border border-slate-200 focus:bg-white focus:border-[#03B0F5] rounded-xl px-3 py-2.5 text-sm text-slate-900 outline-none transition-all placeholder-slate-400 shadow-sm";
+  const inputCls = "w-full !bg-white !text-slate-900 !border !border-[#03B0F5] focus:!bg-white focus:!border-[#03B0F5] rounded-lg px-3 py-2.5 text-sm font-semibold outline-none transition-all placeholder-slate-400 shadow-sm";
   const reassigns = (data || candidate)?.reassign_history || (data || candidate)?.reassignHistory || [];
   const reschedules = (data || candidate)?.reschedule_history || (data || candidate)?.rescheduleHistory || [];
   // Combine all remarks from reassign + reschedule into single timeline for right panel
@@ -4663,24 +4663,151 @@ const CandidateDetailModal = ({ candidate, onClose, onSaved, jobOpeningOptions =
   ].sort((a, b) => new Date(b.dateRaw || 0) - new Date(a.dateRaw || 0));
 
   return (
-    <div className="fixed inset-0 z-[9999] flex flex-col bg-black text-white">
+    <div className="interview-detail-lead-shell fixed inset-0 lg:left-[72px] lg:top-[70px] lg:right-0 lg:bottom-0 z-[9999] h-[100dvh] lg:h-[calc(100dvh-70px)] overflow-hidden bg-black text-white text-base flex flex-col">
+      <style>{`
+        .interview-detail-lead-shell .lead-like-card {
+          background: #ffffff !important;
+          color: #0f172a !important;
+          border: 1px solid #9ee8ff !important;
+          border-radius: 14px !important;
+          overflow: hidden !important;
+          color-scheme: light !important;
+        }
+        .interview-detail-lead-shell .lead-like-card-body {
+          background: #ffffff !important;
+          color: #0f172a !important;
+        }
+        .interview-detail-lead-shell input,
+        .interview-detail-lead-shell select,
+        .interview-detail-lead-shell textarea {
+          background-color: #ffffff !important;
+          color: #0f172a !important;
+          border-color: #03B0F5 !important;
+          -webkit-text-fill-color: #0f172a !important;
+          color-scheme: light !important;
+        }
+        .interview-detail-lead-shell select option,
+        .interview-detail-lead-shell select optgroup {
+          background-color: #ffffff !important;
+          color: #0f172a !important;
+          -webkit-text-fill-color: #0f172a !important;
+        }
+        .interview-detail-lead-shell .lead-like-card [role="listbox"],
+        .interview-detail-lead-shell .lead-like-card [role="menu"],
+        .interview-detail-lead-shell .lead-like-card [class*="dropdown"],
+        .interview-detail-lead-shell .lead-like-card [class*="Dropdown"],
+        .interview-detail-lead-shell .lead-like-card [class*="menu"],
+        .interview-detail-lead-shell .lead-like-card [class*="Menu"] {
+          background-color: #ffffff !important;
+          color: #0f172a !important;
+          border-color: #cbd5e1 !important;
+          color-scheme: light !important;
+        }
+        .interview-detail-lead-shell .lead-like-card [role="option"],
+        .interview-detail-lead-shell .lead-like-card [role="menuitem"] {
+          background-color: #ffffff !important;
+          color: #0f172a !important;
+          -webkit-text-fill-color: #0f172a !important;
+        }
+        .interview-detail-lead-shell .lead-like-card [role="option"]:hover,
+        .interview-detail-lead-shell .lead-like-card [role="menuitem"]:hover {
+          background-color: #e0f7ff !important;
+          color: #0369a1 !important;
+        }
+        .interview-detail-lead-shell input::placeholder,
+        .interview-detail-lead-shell textarea::placeholder {
+          color: #94a3b8 !important;
+          -webkit-text-fill-color: #94a3b8 !important;
+        }
+        .interview-detail-lead-shell label {
+          color: #374151 !important;
+        }
+        .interview-detail-lead-shell .right-conversation-panel {
+          background: #ffffff !important;
+          color: #0f172a !important;
+        }
+        .interview-detail-lead-shell .lead-like-card button,
+        .interview-detail-lead-shell .lead-like-card label[class*="cursor-pointer"] {
+          background-color: #ffffff !important;
+          color: #334155 !important;
+          border-color: #03B0F5 !important;
+        }
+        .interview-detail-lead-shell .lead-like-card button[class*="bg-slate-900"],
+        .interview-detail-lead-shell .lead-like-card button[class*="bg-slate-800"],
+        .interview-detail-lead-shell .lead-like-card label[class*="bg-slate-900"],
+        .interview-detail-lead-shell .lead-like-card label[class*="bg-slate-800"],
+        .interview-detail-lead-shell .lead-like-card label[class*="bg-blue-600"],
+        .interview-detail-lead-shell .lead-like-card label[class*="bg-[#5236F5]"] {
+          background-color: #03B0F5 !important;
+          color: #ffffff !important;
+          border-color: #03B0F5 !important;
+          -webkit-text-fill-color: #ffffff !important;
+        }
+        .interview-detail-lead-shell .lead-like-card .bg-slate-100,
+        .interview-detail-lead-shell .lead-like-card .bg-blue-50\\/50 {
+          background-color: #f8fafc !important;
+        }
+        .interview-detail-lead-shell .lead-like-card .bg-slate-800,
+        .interview-detail-lead-shell .lead-like-card .bg-slate-900,
+        .interview-detail-lead-shell .lead-like-card .bg-gray-900,
+        .interview-detail-lead-shell .lead-like-card .bg-black {
+          background-color: #03B0F5 !important;
+          color: #ffffff !important;
+        }
+        .interview-detail-lead-shell .lead-like-card [class*="border"][class*="cursor-pointer"],
+        .interview-detail-lead-shell .lead-like-card [class*="border"][class*="rounded"][class*="relative"],
+        .interview-detail-lead-shell .lead-like-card .relative > [class*="border"],
+        .interview-detail-lead-shell .lead-like-card .relative > button,
+        .interview-detail-lead-shell .lead-like-card .relative > div:not([class*="grid"]) {
+          background-color: #ffffff !important;
+          color: #0f172a !important;
+          border-color: #03B0F5 !important;
+          -webkit-text-fill-color: #0f172a !important;
+          color-scheme: light !important;
+        }
+        .interview-detail-lead-shell .lead-like-card .absolute[class*="top-full"],
+        .interview-detail-lead-shell .lead-like-card .absolute[class*="z-"],
+        .interview-detail-lead-shell .lead-like-card [class*="max-h-"][class*="overflow-y-auto"] {
+          background-color: #ffffff !important;
+          color: #0f172a !important;
+          border-color: #cbd5e1 !important;
+          color-scheme: light !important;
+        }
+        .interview-detail-lead-shell .lead-like-card .absolute[class*="top-full"] *,
+        .interview-detail-lead-shell .lead-like-card .absolute[class*="z-"] *,
+        .interview-detail-lead-shell .lead-like-card [class*="max-h-"][class*="overflow-y-auto"] * {
+          background-color: #ffffff !important;
+          color: #0f172a !important;
+          -webkit-text-fill-color: #0f172a !important;
+        }
+        .interview-detail-lead-shell .lead-like-card .absolute[class*="top-full"] button:hover,
+        .interview-detail-lead-shell .lead-like-card .absolute[class*="z-"] button:hover,
+        .interview-detail-lead-shell .lead-like-card [class*="max-h-"][class*="overflow-y-auto"] button:hover {
+          background-color: #e0f7ff !important;
+          color: #0369a1 !important;
+        }
+        .interview-detail-lead-shell .right-conversation-panel [class*="border"][class*="rounded"] {
+          background-color: #ffffff !important;
+          color: #0f172a !important;
+          border-color: #cbd5e1 !important;
+        }
+      `}</style>
       {/* ── Header ── */}
-      <div className="flex-shrink-0 px-4 sm:px-6 py-4">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center">
-            <button onClick={onClose} className="mr-4 p-2 text-gray-400 hover:text-white rounded-lg hover:bg-gray-800 transition-colors">
+      <div className="hidden items-center gap-2 px-2 sm:px-3 lg:px-4 py-1 bg-black shadow-lg w-full shrink-0">
+        <div className="flex items-center gap-2 min-w-0">
+            <button onClick={onClose} className="p-2 text-gray-400 hover:text-white rounded-lg hover:bg-gray-800 transition-colors shrink-0" aria-label="Back to interviews">
               <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M19 12H5"/><path d="M12 19l-7-7 7-7"/></svg>
             </button>
-            <div>
-              <h1 className="text-2xl font-bold text-white">{d.candidate_name || 'Candidate Details'}</h1>
-              <p className="text-gray-400">
-                📱 {d.mobile_number} | {d.city || ''} | <span className={`text-[11px] font-black px-2 py-0.5 rounded-full ${
+            <div className="min-w-0">
+              <div className="text-sm text-gray-400 truncate">
+                {d.mobile_number || 'No phone'} {d.city ? `| ${d.city}` : ''} | <span className={`text-[11px] font-black px-2 py-0.5 rounded-full ${
                   { Interview:'bg-blue-600', 'Round 2':'bg-indigo-600', 'Job Offered':'bg-orange-500', Training:'bg-yellow-500', Hired:'bg-emerald-600', Rejected:'bg-red-600' }[getStageFromStatus(d.status)] || 'bg-slate-600'
                 } text-white`}>{getStageFromStatus(d.status)}</span>
-              </p>
+              </div>
             </div>
-          </div>
-          <div className="flex items-center space-x-4">
+        </div>
+        <div className="flex-1"></div>
+          <div className="flex items-center gap-4 shrink-0">
             {saving && <span className="text-xs text-amber-300 animate-pulse">💾 Saving...</span>}
             {!saving && lastSaved && <span className="text-xs text-emerald-300">✓ Saved {lastSaved.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}</span>}
             <div className="text-right">
@@ -4688,24 +4815,35 @@ const CandidateDetailModal = ({ candidate, onClose, onSaved, jobOpeningOptions =
               <div className="text-white font-semibold">{getStageFromStatus(d.status)}</div>
             </div>
           </div>
+      </div>
+
+      <div className="px-4 sm:px-6 lg:px-8 md:pr-[472px] py-3 bg-[#071526] border-b border-[#1a2332] w-full shrink-0">
+        <div className="flex items-center gap-3 min-w-0">
+          <button onClick={onClose} className="p-1.5 -ml-1 text-slate-300 hover:text-white rounded-lg hover:bg-white/10 transition-colors shrink-0" aria-label="Back to interviews">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M19 12H5"/><path d="M12 19l-7-7 7-7"/></svg>
+          </button>
+          <h2 className="text-base sm:text-lg font-bold text-white tracking-wide truncate">
+            {d.candidate_name || 'Candidate Details'}
+          </h2>
+          <span className="text-xs font-black px-2.5 py-1 rounded-full bg-blue-600 text-white shrink-0">Interview</span>
         </div>
       </div>
 
       {/* ── Two‑column body ── */}
       <div className="flex flex-1 overflow-hidden">
         {/* LEFT column */}
-        <div className="flex-1 flex flex-col min-h-0">
+        <div className="flex-1 flex flex-col min-h-0 md:pr-[448px]">
           {/* Pill tab bar — Details | Reassignment | Reschedule */}
-          <div className="flex flex-wrap items-center gap-2 px-4 sm:px-6 py-3 bg-black border-b border-[#232c3a] w-full overflow-x-auto shrink-0">
+          <div className="flex flex-wrap items-center gap-2 px-4 sm:px-6 lg:px-8 py-2 bg-black border-b border-[#232c3a] w-full overflow-x-auto shrink-0">
             {[
-              { id: 'details', label: '📋 INTERVIEW DETAILS' },
-              { id: 'reassign', label: '🔄 REASSIGNMENT', count: reassigns.length },
-              { id: 'reschedule', label: '📅 RESCHEDULE', count: reschedules.length }
+              { id: 'details', label: 'INTERVIEW DETAILS' },
+              { id: 'reassign', label: 'REASSIGNMENT', count: reassigns.length },
+              { id: 'reschedule', label: 'RESCHEDULE', count: reschedules.length }
             ].map(tab => (
               <button
                 key={tab.id}
                 onClick={() => setHistTab(tab.id)}
-                className={`flex items-center gap-1.5 px-4 sm:px-6 py-2 sm:py-3 rounded-3xl font-extrabold text-sm sm:text-base transition border shadow-md whitespace-nowrap focus:outline-none ${histTab===tab.id ? 'bg-[#03B0F5] text-white border-cyan-400 shadow-lg scale-105' : 'bg-white text-[#03B0F5] border-slate-200 hover:bg-cyan-50 hover:text-cyan-500'}`}
+                className={`flex items-center gap-1.5 px-3 sm:px-4 lg:px-5 py-1 sm:py-1.5 rounded-3xl font-extrabold border shadow-md text-xs sm:text-sm lg:text-[0.9rem] transition whitespace-nowrap focus:outline-none ${histTab===tab.id ? 'bg-[#03B0F5] text-white border-cyan-400 shadow-lg scale-105' : 'bg-white text-[#03B0F5] border-[#2D3C56] hover:bg-cyan-400/10 hover:text-cyan-400'}`}
                 style={{ boxShadow: histTab===tab.id ? '0 4px 16px 0 #1cb5e080' : undefined, letterSpacing: '0.01em' }}
               >
                 {tab.label}
@@ -4715,7 +4853,7 @@ const CandidateDetailModal = ({ candidate, onClose, onSaved, jobOpeningOptions =
           </div>
 
           {/* Tab content area (scrollable) */}
-          <div className="flex-1 overflow-y-auto px-4 sm:px-6 py-5">
+          <div className="flex-1 overflow-y-auto overflow-x-hidden scrollbar-hide px-4 sm:px-5 lg:px-6 py-4 bg-black">
 
           {/* DETAILS tab — form fields */}
           {histTab === 'details' && (
@@ -4728,12 +4866,11 @@ const CandidateDetailModal = ({ candidate, onClose, onSaved, jobOpeningOptions =
           ) : (
             <>
               {/* ── Basic Info ── */}
-              <div className="bg-white rounded-2xl overflow-hidden shadow-sm border border-slate-200">
-                <div className="px-4 py-3 border-b border-slate-100 bg-gradient-to-r from-indigo-50 to-slate-50 flex items-center gap-2">
-                  <span className="text-base">👤</span>
-                  <span className="text-xs font-black text-indigo-700 uppercase tracking-wider">Basic Info</span>
+              <div className="lead-like-card bg-white rounded-lg overflow-hidden shadow-sm border border-slate-300">
+                <div className="px-5 py-2 bg-gray-200 border-b border-gray-400 flex items-center justify-between">
+                  <span className="text-sm font-extrabold text-[#03B0F5]">Basic Info</span>
                 </div>
-                <div className="p-4 grid grid-cols-2 gap-3">
+                <div className="lead-like-card-body bg-white p-5 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 text-slate-900">
                   <div>
                     <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5">Candidate Name</label>
                     <input value={d.candidate_name || ''} onChange={e => handleFieldChange('candidate_name', e.target.value.toUpperCase())} className={inputCls} />
@@ -4787,7 +4924,7 @@ const CandidateDetailModal = ({ candidate, onClose, onSaved, jobOpeningOptions =
                     <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5">Gender</label>
                     <div className="flex gap-2">
                       {['Male', 'Female'].map(g => (
-                        <label key={g} className={`flex-1 flex items-center justify-center gap-1 py-2 rounded-xl border-2 cursor-pointer transition-all font-bold text-xs ${d.gender === g ? 'bg-indigo-600 border-indigo-600 text-white' : 'bg-white border-slate-200 text-slate-500 hover:border-indigo-300'}`}>
+                        <label key={g} className={`flex-1 flex items-center justify-center gap-1 py-2 rounded-lg border-2 cursor-pointer transition-all font-bold text-xs ${d.gender === g ? 'bg-indigo-600 border-indigo-600 text-white' : 'bg-white border-slate-200 text-slate-500 hover:border-indigo-300'}`}>
                           <input type="radio" checked={d.gender === g} onChange={() => handleFieldChange('gender', g)} className="hidden" />
                           {g === 'Male' ? '👨' : '👩'} {g}
                         </label>
@@ -4798,12 +4935,11 @@ const CandidateDetailModal = ({ candidate, onClose, onSaved, jobOpeningOptions =
               </div>
 
               {/* ── Education & Background ── */}
-              <div className="bg-white border border-slate-200 rounded-2xl shadow-sm">
-                <div className="px-4 py-3 border-b border-slate-100 bg-gradient-to-r from-purple-50 to-slate-50 flex items-center gap-2">
-                  <span className="text-base">🎓</span>
-                  <span className="text-xs font-black text-purple-700 uppercase tracking-wider">Education & Background</span>
+              <div className="lead-like-card bg-white border border-slate-300 rounded-lg shadow-sm">
+                <div className="px-5 py-2 bg-gray-200 border-b border-gray-400 flex items-center justify-between">
+                  <span className="text-sm font-extrabold text-[#03B0F5]">Education & Background</span>
                 </div>
-                <div className="p-4 grid grid-cols-2 gap-3">
+                <div className="lead-like-card-body bg-white p-5 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 text-slate-900">
                   <div>
                     <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5">Marital Status</label>
                     <select value={d.marital_status || ''} onChange={e => handleFieldChange('marital_status', e.target.value)} className={inputCls}>
@@ -4816,13 +4952,13 @@ const CandidateDetailModal = ({ candidate, onClose, onSaved, jobOpeningOptions =
                       <option value="">Select...</option><option>With Family</option><option>PG/Hostel</option><option>Rented Alone</option><option>Shared Apartment</option><option>Own House</option>
                     </select>
                   </div>
-                  <div className="col-span-2 grid grid-cols-[1fr_auto] gap-3 items-start">
+                  <div className="md:col-span-2 xl:col-span-3 grid grid-cols-1 md:grid-cols-[1fr_auto] gap-3 items-start">
                     <div>
                       <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5">Highest Qualification</label>
                       <div className="relative" ref={qualRef}>
                         <input value={qualOpen ? qualSearch : (d.qualification || '')} onChange={e => { setQualSearch(e.target.value); setQualOpen(true); }} onFocus={() => { setQualSearch(''); setQualOpen(true); }} placeholder="Type to search..." className={inputCls} />
                         {qualOpen && filteredQualGroups.length > 0 && (
-                          <div className="absolute left-0 right-0 top-full mt-1 bg-white border border-slate-200 rounded-xl shadow-xl z-30 max-h-56 overflow-y-auto">
+                          <div className="absolute left-0 right-0 top-full mt-1 bg-white border border-slate-200 rounded-lg shadow-xl z-30 max-h-56 overflow-y-auto">
                             {filteredQualGroups.map(g => (
                               <div key={g.level}>
                                 <div className="px-3 py-1.5 text-[10px] font-black text-slate-400 uppercase tracking-wider bg-slate-50 border-b border-slate-100 sticky top-0">{g.level}</div>
@@ -4844,11 +4980,11 @@ const CandidateDetailModal = ({ candidate, onClose, onSaved, jobOpeningOptions =
                       </select>
                     </div>
                   </div>
-                  <div className="col-span-2">
+                  <div className="md:col-span-2 xl:col-span-3">
                     <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5">Banking Experience</label>
                     <div className="flex gap-2">
                       {['Yes', 'No'].map(opt => (
-                        <label key={opt} className={`flex-1 flex items-center justify-center py-2 rounded-xl border-2 cursor-pointer transition-all font-bold text-xs ${d.banking_experience === opt ? 'bg-slate-800 border-slate-800 text-white' : 'bg-white border-slate-200 text-slate-500 hover:border-slate-400'}`}>
+                        <label key={opt} className={`flex-1 flex items-center justify-center py-2 rounded-lg border-2 cursor-pointer transition-all font-bold text-xs ${d.banking_experience === opt ? 'bg-[#03B0F5] border-[#03B0F5] text-white' : 'bg-white border-slate-200 text-slate-500 hover:border-slate-400'}`}>
                           <input type="radio" checked={d.banking_experience === opt} onChange={() => handleFieldChange('banking_experience', opt)} className="hidden" />
                           {opt}
                         </label>
@@ -4859,12 +4995,11 @@ const CandidateDetailModal = ({ candidate, onClose, onSaved, jobOpeningOptions =
               </div>
 
               {/* ── Professional Details ── */}
-              <div className="bg-white rounded-2xl overflow-hidden shadow-sm border border-slate-200">
-                <div className="px-4 py-3 border-b border-slate-100 bg-gradient-to-r from-blue-50 to-slate-50 flex items-center gap-2">
-                  <span className="text-base">💼</span>
-                  <span className="text-xs font-black text-blue-700 uppercase tracking-wider">Professional Details</span>
+              <div className="lead-like-card bg-white rounded-lg overflow-hidden shadow-sm border border-slate-300">
+                <div className="px-5 py-2 bg-gray-200 border-b border-gray-400 flex items-center justify-between">
+                  <span className="text-sm font-extrabold text-[#03B0F5]">Professional Details</span>
                 </div>
-                <div className="p-4 space-y-3">
+                <div className="lead-like-card-body bg-white p-5 space-y-4 text-slate-900">
                   <div>
                     <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5">Role</label>
                     <SearchableSelect
@@ -4877,14 +5012,14 @@ const CandidateDetailModal = ({ candidate, onClose, onSaved, jobOpeningOptions =
                   </div>
                   <div>
                     <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5">Work Experience</label>
-                    <div className="flex gap-2 p-1 bg-slate-100 border border-slate-200 rounded-xl">
+                    <div className="flex gap-2 p-1 bg-slate-100 border border-slate-200 rounded-lg">
                       {['fresher', 'experienced'].map(type => (
-                        <button type="button" key={type} onClick={() => handleFieldChange('experience_type', type)} className={`flex-1 py-2 text-xs font-black rounded-lg transition-all capitalize ${d.experience_type === type ? 'bg-slate-900 text-white shadow' : 'text-slate-500 hover:text-slate-800'}`}>{type}</button>
+                        <button type="button" key={type} onClick={() => handleFieldChange('experience_type', type)} className={`flex-1 py-2 text-xs font-black rounded-lg transition-all capitalize ${d.experience_type === type ? 'bg-[#03B0F5] text-white shadow' : 'text-slate-500 hover:text-slate-800'}`}>{type}</button>
                       ))}
                     </div>
                   </div>
                   {d.experience_type === 'experienced' && (
-                    <div className="bg-blue-50/50 border border-blue-100 rounded-xl p-3 space-y-3">
+                    <div className="bg-blue-50/50 border border-blue-100 rounded-lg p-3 space-y-3">
                       <div>
                         <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5">Total Experience</label>
                         <input value={d.total_experience || ''} onChange={e => handleFieldChange('total_experience', e.target.value)} className={inputCls} placeholder="e.g. 2 years 3 months" />
@@ -4893,7 +5028,7 @@ const CandidateDetailModal = ({ candidate, onClose, onSaved, jobOpeningOptions =
                         <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5">Proof of Experience</label>
                         <div className="flex gap-2 flex-wrap">
                           {[['has_salary_slip', '💰 Salary Slip'], ['has_bank_statement', '🏦 Bank Statement'], ['has_experience_letter', '📄 Exp. Letter']].map(([doc, lbl]) => (
-                            <label key={doc} className={`flex items-center gap-1.5 px-3 py-2 rounded-xl border-2 cursor-pointer transition-all text-xs font-bold ${d[doc] ? 'bg-blue-600 border-blue-600 text-white' : 'bg-white border-slate-200 text-slate-600 hover:border-blue-300'}`}>
+                            <label key={doc} className={`flex items-center gap-1.5 px-3 py-2 rounded-lg border-2 cursor-pointer transition-all text-xs font-bold ${d[doc] ? 'bg-blue-600 border-blue-600 text-white' : 'bg-white border-slate-200 text-slate-600 hover:border-blue-300'}`}>
                               <input type="checkbox" checked={!!d[doc]} onChange={() => handleFieldChange(doc, !d[doc])} className="hidden" />
                               {lbl}
                             </label>
@@ -4906,12 +5041,11 @@ const CandidateDetailModal = ({ candidate, onClose, onSaved, jobOpeningOptions =
               </div>
 
               {/* ── Salary Information ── */}
-              <div className="bg-white rounded-2xl overflow-hidden shadow-sm border border-slate-200">
-                <div className="px-4 py-3 border-b border-slate-100 bg-gradient-to-r from-emerald-50 to-slate-50 flex items-center gap-2">
-                  <span className="text-base">💵</span>
-                  <span className="text-xs font-black text-emerald-700 uppercase tracking-wider">Salary Information</span>
+              <div className="lead-like-card bg-white rounded-lg overflow-hidden shadow-sm border border-slate-300">
+                <div className="px-5 py-2 bg-gray-200 border-b border-gray-400 flex items-center justify-between">
+                  <span className="text-sm font-extrabold text-[#03B0F5]">Salary Information</span>
                 </div>
-                <div className="p-4 grid grid-cols-1 gap-3">
+                <div className="lead-like-card-body bg-white p-5 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 text-slate-900">
                   {[
                     { label: 'Last Salary (Monthly CTC)', field: 'old_salary' },
                     { label: 'Salary Expectation (Monthly CTC)', field: 'offer_salary' },
@@ -4929,12 +5063,11 @@ const CandidateDetailModal = ({ candidate, onClose, onSaved, jobOpeningOptions =
               </div>
 
               {/* ── Attachments ── */}
-              <div className="bg-white rounded-2xl overflow-hidden shadow-sm border border-slate-200">
-                <div className="px-4 py-3 border-b border-slate-100 bg-gradient-to-r from-amber-50 to-slate-50 flex items-center justify-between">
+              <div className="lead-like-card bg-white rounded-lg overflow-hidden shadow-sm border border-slate-300">
+                <div className="px-5 py-2 bg-gray-200 border-b border-gray-400 flex items-center justify-between">
                   <div className="flex items-center gap-2">
-                    <span className="text-base">📎</span>
-                    <span className="text-xs font-black text-amber-700 uppercase tracking-wider">Attachments</span>
-                    <span className="text-[10px] bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full font-bold">{attachments.length}</span>
+                    <span className="text-sm font-extrabold text-[#03B0F5]">Attachments</span>
+                    <span className="text-[10px] bg-white text-[#03B0F5] px-2 py-0.5 rounded-full font-bold border border-cyan-200">{attachments.length}</span>
                   </div>
                   <label htmlFor={`attach-upload-${interviewId}`} className={`cursor-pointer text-xs font-bold text-blue-600 hover:text-blue-800 flex items-center gap-1 px-3 py-1.5 rounded-lg hover:bg-blue-50 transition-colors ${uploading ? 'opacity-50 pointer-events-none' : ''}`}>
                     <Plus size={14}/> {uploading ? 'Uploading...' : 'Add Files'}
@@ -4962,7 +5095,7 @@ const CandidateDetailModal = ({ candidate, onClose, onSaved, jobOpeningOptions =
                   ) : (
                     <div className="space-y-2">
                       {attachments.map((att, idx) => (
-                        <div key={att.id || idx} className="flex items-center gap-3 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 group">
+                        <div key={att.id || idx} className="flex items-center gap-3 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2.5 group">
                           <div className="w-8 h-8 rounded-lg bg-blue-100 text-blue-600 flex items-center justify-center shrink-0">
                             <FileText size={14}/>
                           </div>
@@ -5027,11 +5160,10 @@ const CandidateDetailModal = ({ candidate, onClose, onSaved, jobOpeningOptions =
           {/* REASSIGNMENT tab */}
           {histTab === 'reassign' && (
             <div className="space-y-4">
-              <div className="bg-white rounded-2xl overflow-hidden shadow-sm border border-slate-200">
-                <div className="px-4 py-3 border-b border-slate-100 bg-gradient-to-r from-orange-50 to-slate-50 flex items-center gap-2">
-                  <span className="text-base">🔄</span>
-                  <span className="text-xs font-black text-orange-700 uppercase tracking-wider">Reassignment History</span>
-                  <span className="text-[10px] bg-orange-100 text-orange-700 px-2 py-0.5 rounded-full font-bold">{reassigns.length}</span>
+              <div className="lead-like-card bg-white rounded-lg overflow-hidden shadow-sm border border-slate-300">
+                <div className="px-5 py-2 bg-gray-200 border-b border-gray-400 flex items-center gap-2">
+                  <span className="text-sm font-extrabold text-[#03B0F5]">Reassignment History</span>
+                  <span className="text-[10px] bg-white text-[#03B0F5] px-2 py-0.5 rounded-full font-bold border border-cyan-200">{reassigns.length}</span>
                 </div>
                 <div className="p-4">
                   {reassigns.length > 0 ? (
@@ -5047,7 +5179,7 @@ const CandidateDetailModal = ({ candidate, onClose, onSaved, jobOpeningOptions =
                                 <span className="text-[9px] font-black px-1.5 py-0.5 rounded-full bg-orange-100 text-orange-600">🔄 Reassigned</span>
                               </div>
                               <div className="text-[11px] text-slate-500 mb-1">{r.reassigned_at ? new Date(r.reassigned_at).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Asia/Kolkata' }) : ''}</div>
-                              {r.reason && <p className="text-xs text-slate-600 bg-orange-50 border border-orange-100 rounded-xl px-3 py-2 leading-relaxed">{r.reason}</p>}
+                              {r.reason && <p className="text-xs text-slate-600 bg-orange-50 border border-orange-100 rounded-lg px-3 py-2 leading-relaxed">{r.reason}</p>}
                               {(r.from_hr_name || r.to_hr_name) && (
                                 <div className="text-[10px] text-slate-500 mt-1">
                                   {r.from_hr_name && <span>{r.from_hr_name}</span>}
@@ -5074,11 +5206,10 @@ const CandidateDetailModal = ({ candidate, onClose, onSaved, jobOpeningOptions =
           {/* RESCHEDULE tab */}
           {histTab === 'reschedule' && (
             <div className="space-y-4">
-              <div className="bg-white rounded-2xl overflow-hidden shadow-sm border border-slate-200">
-                <div className="px-4 py-3 border-b border-slate-100 bg-gradient-to-r from-sky-50 to-slate-50 flex items-center gap-2">
-                  <span className="text-base">📅</span>
-                  <span className="text-xs font-black text-sky-700 uppercase tracking-wider">Reschedule History</span>
-                  <span className="text-[10px] bg-sky-100 text-sky-700 px-2 py-0.5 rounded-full font-bold">{reschedules.length}</span>
+              <div className="lead-like-card bg-white rounded-lg overflow-hidden shadow-sm border border-slate-300">
+                <div className="px-5 py-2 bg-gray-200 border-b border-gray-400 flex items-center gap-2">
+                  <span className="text-sm font-extrabold text-[#03B0F5]">Reschedule History</span>
+                  <span className="text-[10px] bg-white text-[#03B0F5] px-2 py-0.5 rounded-full font-bold border border-cyan-200">{reschedules.length}</span>
                 </div>
                 <div className="p-4">
                   {reschedules.length > 0 ? (
@@ -5094,7 +5225,7 @@ const CandidateDetailModal = ({ candidate, onClose, onSaved, jobOpeningOptions =
                                 <span className="text-[9px] font-black px-1.5 py-0.5 rounded-full bg-sky-100 text-sky-600">📅 Rescheduled</span>
                               </div>
                               <div className="text-[11px] text-slate-500 mb-1">{r.rescheduled_at ? new Date(r.rescheduled_at).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Asia/Kolkata' }) : ''}</div>
-                              {r.reason && <p className="text-xs text-slate-600 bg-sky-50 border border-sky-100 rounded-xl px-3 py-2 leading-relaxed">{r.reason}</p>}
+                              {r.reason && <p className="text-xs text-slate-600 bg-sky-50 border border-sky-100 rounded-lg px-3 py-2 leading-relaxed">{r.reason}</p>}
                               {(r.from_date || r.to_date) && (
                                 <div className="text-[10px] text-slate-500 mt-1">
                                   {r.from_date && <span>From: <strong className="text-slate-700">{new Date(r.from_date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'Asia/Kolkata' })}</strong></span>}
@@ -5122,7 +5253,16 @@ const CandidateDetailModal = ({ candidate, onClose, onSaved, jobOpeningOptions =
         </div>{/* end LEFT column */}
 
         {/* RIGHT: Remarks panel */}
-        <div className="w-[360px] flex flex-col bg-white border-l border-slate-200 shrink-0">
+        <div className="right-conversation-panel hidden md:flex fixed top-0 lg:top-[70px] right-0 bottom-0 z-[10000] w-[448px] h-[100dvh] lg:h-[calc(100dvh-70px)] min-h-0 flex-col !bg-white !text-slate-900 border-l border-slate-200 shadow-2xl">
+          <div className="flex items-center gap-3 px-5 py-4 bg-white border-b border-slate-200 shrink-0">
+            <div className="w-12 h-12 rounded-full bg-[#0788F5] text-white flex items-center justify-center font-black">
+              {(d.candidate_name || 'I').charAt(0).toUpperCase()}
+            </div>
+            <div className="min-w-0">
+              <div className="text-base font-black text-black truncate">{d.mobile_number || d.candidate_name || 'Interview'}</div>
+              <div className="text-sm text-slate-600 truncate">Interview conversation</div>
+            </div>
+          </div>
           <div className="flex items-center gap-2 px-4 py-3 bg-slate-50 border-b border-slate-200 shrink-0">
             <button
               onClick={() => setRightTab('interview_remark')}
@@ -5142,13 +5282,13 @@ const CandidateDetailModal = ({ candidate, onClose, onSaved, jobOpeningOptions =
 
           <div className="flex-1 overflow-y-auto p-4 bg-white">
             {rightTab === 'interview_remark' && (
-              <div className="mb-4 border border-slate-200 rounded-xl p-3 bg-slate-50">
+              <div className="mb-4 border border-slate-200 rounded-lg p-3 bg-slate-50">
                 <label className="block text-[11px] font-black text-slate-600 uppercase tracking-wide mb-2">Add Interview Remark</label>
                 <textarea
                   value={quickRemark}
                   onChange={(e) => setQuickRemark(e.target.value)}
                   placeholder="Type interview remark here..."
-                  className="w-full h-24 bg-white border border-slate-300 rounded-lg px-3 py-2 text-sm text-slate-900 resize-none outline-none focus:border-[#03B0F5]"
+                  className="w-full h-24 !bg-white !text-slate-900 !border !border-[#03B0F5] rounded-lg px-3 py-2 text-sm resize-none outline-none focus:!border-[#03B0F5] placeholder-slate-400"
                 />
                 <div className="mt-2 flex justify-end">
                   <button
@@ -5177,7 +5317,7 @@ const CandidateDetailModal = ({ candidate, onClose, onSaved, jobOpeningOptions =
                           </span>
                         </div>
                         <div className="text-[11px] text-slate-500 mb-1">{r.dateLabel || r.date || ''}</div>
-                        {r.reason && <p className="text-xs text-slate-600 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 leading-relaxed">{r.reason}</p>}
+                        {r.reason && <p className="text-xs text-slate-600 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 leading-relaxed">{r.reason}</p>}
                         {r.type === 'reassign' && (r.fromHr || r.toHr) && (
                           <div className="text-[10px] text-slate-500 mt-1">
                             {r.fromHr && <span>{r.fromHr}</span>}
@@ -5210,7 +5350,7 @@ const CandidateDetailModal = ({ candidate, onClose, onSaved, jobOpeningOptions =
                           <span className="text-[9px] font-black px-1.5 py-0.5 rounded-full bg-indigo-100 text-indigo-700">Status Change</span>
                         </div>
                         <div className="text-[11px] text-slate-500 mb-1">{item.dateLabel}</div>
-                        <p className="text-xs text-slate-700 bg-indigo-50 border border-indigo-100 rounded-xl px-3 py-2 leading-relaxed">{item.remark}</p>
+                        <p className="text-xs text-slate-700 bg-indigo-50 border border-indigo-100 rounded-lg px-3 py-2 leading-relaxed">{item.remark}</p>
                         <div className="text-[10px] text-slate-500 mt-1">
                           <span>{item.oldStatus || 'Unknown'}</span>
                           <span className="mx-1 text-slate-400">→</span>
@@ -5309,7 +5449,7 @@ const Round1InfoModal = ({ candidate, onClose }) => {
   if (!fb) return null;
   return (
     <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-[9999] p-4">
-      <div className="bg-white border border-slate-200 rounded-xl w-full max-w-md shadow-2xl overflow-hidden">
+      <div className="bg-white border border-slate-200 rounded-lg w-full max-w-md shadow-2xl overflow-hidden">
         <div className="p-5 border-b border-slate-200 flex justify-between bg-slate-50">
           <div>
             <h2 className="text-lg font-bold text-indigo-700 flex items-center gap-2"><Info size={18}/> Round 1 Context</h2>
@@ -5373,7 +5513,7 @@ const AuditHistoryModal = ({ candidate, initialTab = 'full', onClose }) => {
     if (item.type === 'activity') return (
       <div className="relative pl-7">
         <div className="absolute left-0 top-1.5 w-3.5 h-3.5 rounded-full border-2 border-white bg-blue-500 shadow-sm"></div>
-        <div className="bg-blue-50 border border-blue-200 rounded-xl p-3.5">
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-3.5">
           <div className="flex items-center justify-between mb-1">
             <span className="text-[11px] font-black text-blue-700 uppercase tracking-wider flex items-center gap-1"><History size={10}/>{item.action}</span>
             <span className="text-[11px] text-slate-500">{item.date}</span>
@@ -5385,7 +5525,7 @@ const AuditHistoryModal = ({ candidate, initialTab = 'full', onClose }) => {
     if (item.type === 'reassign') return (
       <div className="relative pl-7">
         <div className="absolute left-0 top-1.5 w-3.5 h-3.5 rounded-full border-2 border-white bg-orange-500 shadow-sm"></div>
-        <div className="bg-orange-50 border border-orange-200 rounded-xl p-3.5">
+        <div className="bg-orange-50 border border-orange-200 rounded-lg p-3.5">
           <div className="flex items-center justify-between mb-2">
             <span className="text-[11px] font-black text-orange-700 uppercase tracking-wider flex items-center gap-1"><RefreshCw size={10}/> Reassigned</span>
             <span className="text-[11px] text-slate-500">{item.date}</span>
@@ -5402,7 +5542,7 @@ const AuditHistoryModal = ({ candidate, initialTab = 'full', onClose }) => {
     if (item.type === 'reschedule') return (
       <div className="relative pl-7">
         <div className="absolute left-0 top-1.5 w-3.5 h-3.5 rounded-full border-2 border-white bg-indigo-500 shadow-sm"></div>
-        <div className="bg-indigo-50 border border-indigo-200 rounded-xl p-3.5">
+        <div className="bg-indigo-50 border border-indigo-200 rounded-lg p-3.5">
           <div className="flex items-center justify-between mb-2">
             <span className="text-[11px] font-black text-indigo-700 uppercase tracking-wider flex items-center gap-1"><Calendar size={10}/> Rescheduled</span>
             <span className="text-[11px] text-slate-500">{item.date}</span>
@@ -5426,7 +5566,7 @@ const AuditHistoryModal = ({ candidate, initialTab = 'full', onClose }) => {
         {/* Header */}
         <div className="px-6 py-5 border-b border-slate-200 bg-gradient-to-r from-slate-50 to-white flex items-start justify-between">
           <div className="flex items-center gap-4">
-            <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-blue-500 to-indigo-600 text-white flex items-center justify-center text-lg font-black shadow-md">
+            <div className="w-12 h-12 rounded-lg bg-gradient-to-br from-blue-500 to-indigo-600 text-white flex items-center justify-center text-lg font-black shadow-md">
               {(candidate.candidate_name || '?').charAt(0)}
             </div>
             <div>
@@ -5474,7 +5614,7 @@ const AuditHistoryModal = ({ candidate, initialTab = 'full', onClose }) => {
                   <p className="font-medium">No reassignments recorded</p>
                 </div>
               ) : reassigns.map((log, i) => (
-                <div key={i} className="bg-white border border-orange-200 rounded-xl overflow-hidden shadow-sm">
+                <div key={i} className="bg-white border border-orange-200 rounded-lg overflow-hidden shadow-sm">
                   <div className="bg-orange-50 px-4 py-2.5 flex items-center justify-between border-b border-orange-100">
                     <div className="flex items-center gap-2">
                       <RefreshCw size={14} className="text-orange-600"/>
@@ -5483,7 +5623,7 @@ const AuditHistoryModal = ({ candidate, initialTab = 'full', onClose }) => {
                     <span className="text-xs text-slate-500 font-medium">{log.date}</span>
                   </div>
                   <div className="p-4">
-                    <div className="flex items-center gap-3 bg-slate-50 rounded-xl p-3 mb-3 border border-slate-200">
+                    <div className="flex items-center gap-3 bg-slate-50 rounded-lg p-3 mb-3 border border-slate-200">
                       <div className="text-center flex-1">
                         <div className="text-[10px] text-slate-500 uppercase tracking-wider mb-1">Previous Owner</div>
                         <div className="text-sm font-bold text-slate-700">{log.fromHr || log.from_hr}</div>
@@ -5516,7 +5656,7 @@ const AuditHistoryModal = ({ candidate, initialTab = 'full', onClose }) => {
                   <p className="font-medium">No reschedules recorded</p>
                 </div>
               ) : reschedules.map((log, i) => (
-                <div key={i} className="bg-white border border-indigo-200 rounded-xl overflow-hidden shadow-sm">
+                <div key={i} className="bg-white border border-indigo-200 rounded-lg overflow-hidden shadow-sm">
                   <div className="bg-indigo-50 px-4 py-2.5 flex items-center justify-between border-b border-indigo-100">
                     <div className="flex items-center gap-2">
                       <Calendar size={14} className="text-indigo-600"/>
@@ -5525,7 +5665,7 @@ const AuditHistoryModal = ({ candidate, initialTab = 'full', onClose }) => {
                     <span className="text-xs text-slate-500 font-medium">Changed on: {log.date}</span>
                   </div>
                   <div className="p-4">
-                    <div className="flex items-center justify-center gap-4 bg-slate-50 rounded-xl p-4 mb-3 border border-slate-200">
+                    <div className="flex items-center justify-center gap-4 bg-slate-50 rounded-lg p-4 mb-3 border border-slate-200">
                       <div className="text-center">
                         <div className="text-[10px] text-slate-500 uppercase tracking-wider mb-1.5">Original Date</div>
                         <div className="bg-white border border-slate-300 px-4 py-2 rounded-lg text-sm font-bold text-slate-700">{log.from}</div>

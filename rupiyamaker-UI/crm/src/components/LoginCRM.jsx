@@ -5145,10 +5145,10 @@ const LoginCRM = ({ user, selectedLoanType: initialLoanType, department = "login
             getContent: (lead) => [
               {
                 content: (
-                  <div className="bg-white rounded-xl shadow w-full">
+                  <div className="w-full overflow-hidden rounded-lg bg-slate-100">
                     <LazySection height="400px">
                       <LeadActivity
-                        leadId={String(lead._id || lead.id)}
+                        leadId={lead._id || lead.id}
                         userId={localStorage.getItem('userId') || localStorage.getItem('user_id') || ''}
                         leadData={lead}
                       />
