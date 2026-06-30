@@ -1,20 +1,11 @@
 import React, { lazy, Suspense } from 'react';
 import { Spin } from 'antd';
+import { lazyWithReload, isChunkLoadError, reloadForFreshChunks } from '../utils/chunkReload.js';
 
 // Lazy load all heavy sections to improve initial load time
-// Using React.lazy with error boundaries and retry mechanisms
+// Chunk failures (stale build) retry once then reload once — no infinite retry loop.
 const createLazyComponent = (importFn, componentName) => {
-    return lazy(() => 
-        importFn().catch((error) => {
-            console.error(`Failed to load ${componentName}:`, error);
-            // Retry mechanism - try loading again after a short delay
-            return new Promise((resolve) => {
-                setTimeout(() => {
-                    resolve(importFn());
-                }, 1000);
-            });
-        })
-    );
+    return lazy(lazyWithReload(importFn));
 };
 
 const AboutSection = createLazyComponent(() => import('./sections/AboutSection'), 'AboutSection');
@@ -98,6 +89,11 @@ class LazySection extends React.Component {
 
     componentDidCatch(error, errorInfo) {
         console.error('LazySection error:', error, errorInfo);
+        // If a section's chunk is stale (after a new build), reload once to
+        // fetch fresh chunks instead of showing an endless "Retry" button.
+        if (isChunkLoadError(error)) {
+            reloadForFreshChunks();
+        }
     }
 
     retry = () => {

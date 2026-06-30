@@ -65,7 +65,7 @@ const formatActivityDescription = (activity) => {
             if (userData.name) {
                 return userData.name;
             }
-        } catch (e) {
+        } catch {
             console.warn('Could not get user data from localStorage');
         }
         return 'Unknown User';
@@ -132,10 +132,11 @@ const formatActivityDescription = (activity) => {
             return `${performer} updated employee profile`;
         
         case 'status_changed':
-        case 'status_change':
+        case 'status_change': {
             const fromStatus = details.status_change?.from || details.old_status || 'N/A';
             const toStatus = details.status_change?.to || details.new_status || 'N/A';
             return `${performer} changed status: "${fromStatus}" → "${toStatus}"`;
+        }
         
         case 'employee_created':
         case 'created':
@@ -150,7 +151,7 @@ const formatActivityDescription = (activity) => {
             return `${performer} added a note`;
         
         case 'attachment_uploaded':
-        case 'document':
+        case 'document': {
             let documentName = 'document';
             if (details.file_info?.file_name) {
                 documentName = details.file_info.file_name;
@@ -160,6 +161,7 @@ const formatActivityDescription = (activity) => {
                 documentName = activity.description.replace('Document uploaded:', '').trim() || 'document';
             }
             return `${performer} uploaded: "${documentName}"`;
+        }
         
         case 'attachment_deleted':
             return `${performer} deleted a document`;
@@ -189,11 +191,23 @@ const formatActivityDescription = (activity) => {
     }
 };
 
-const EmployeeActivity = ({ employeeId, employeeData, refreshTrigger }) => {
+const formatDetailValue = (value) => {
+    if (value === null || value === undefined || value === '') return 'Not set';
+    if (typeof value === 'boolean') return value ? 'Yes' : 'No';
+    if (typeof value === 'object') {
+        try {
+            return JSON.stringify(value);
+        } catch {
+            return String(value);
+        }
+    }
+    return String(value);
+};
+
+const EmployeeActivity = ({ employeeId, refreshTrigger }) => {
     const [activities, setActivities] = useState([]);
     const [loading, setLoading] = useState(false);
     const [filter, setFilter] = useState('all'); // all, profile, status, remarks, attachments
-    const [localEmployeeData, setLocalEmployeeData] = useState(null);
 
     // Helper function to get proper user name
     const getUserName = (activity) => {
@@ -225,7 +239,7 @@ const EmployeeActivity = ({ employeeId, employeeData, refreshTrigger }) => {
             if (userData.name) {
                 return userData.name;
             }
-        } catch (e) {
+        } catch {
             console.warn('Could not get user data from localStorage');
         }
         return 'Unknown User';
@@ -261,7 +275,7 @@ const EmployeeActivity = ({ employeeId, employeeData, refreshTrigger }) => {
             if (userData.name) {
                 return userData.name;
             }
-        } catch (e) {
+        } catch {
             console.warn('Could not get user data from localStorage');
         }
         return 'Unknown User';
@@ -273,13 +287,6 @@ const EmployeeActivity = ({ employeeId, employeeData, refreshTrigger }) => {
         }
     }, [employeeId, refreshTrigger]);
 
-    // Update local employee data when prop changes
-    useEffect(() => {
-        if (employeeData) {
-            setLocalEmployeeData(employeeData);
-        }
-    }, [employeeData]);
-
     const fetchEmployeeDataAndActivities = async () => {
         try {
             setLoading(true);
@@ -290,18 +297,11 @@ const EmployeeActivity = ({ employeeId, employeeData, refreshTrigger }) => {
                 hrmsService.getEmployeeActivities(employeeId)
             ]);
             
-            // Set employee data - prefer prop data if available, otherwise use fetched data
-            if (employeeData) {
-                setLocalEmployeeData(employeeData);
-            } else if (employeeResponse && employeeResponse.success && employeeResponse.data) {
-                setLocalEmployeeData(employeeResponse.data);
-            }
-            
             // Process activities
             if (activitiesResponse.success && activitiesResponse.data && Array.isArray(activitiesResponse.data)) {
                 // Ensure we have valid activity data with proper default values
                 const activitiesData = activitiesResponse.data.map(activity => ({
-                    _id: activity._id || `temp-${Date.now()}-${Math.random()}`,
+                    _id: activity._id || activity.id || `temp-${Date.now()}-${Math.random()}`,
                     action: activity.action || activity.activity_type || 'unknown_action',
                     description: activity.description || 'No description available',
                     performed_by: activity.performed_by || activity.created_by || 'unknown',
@@ -359,146 +359,15 @@ const EmployeeActivity = ({ employeeId, employeeData, refreshTrigger }) => {
                     };
                     setActivities([creationActivity]);
                 } else {
-                    setActivities(generateSampleActivities());
+                    setActivities([]);
                 }
             }
         } catch (error) {
             console.error('Error fetching employee data and activities:', error);
-            setActivities(generateSampleActivities());
+            setActivities([]);
         } finally {
             setLoading(false);
         }
-    };
-
-    const fetchActivities = async () => {
-        try {
-            setLoading(true);
-            const response = await hrmsService.getEmployeeActivities(employeeId);
-            
-            // Check if API call was successful and has data
-            if (response.success && response.data && Array.isArray(response.data)) {
-                // Ensure we have valid activity data with proper default values
-                const activitiesData = response.data.map(activity => ({
-                    _id: activity._id || `temp-${Date.now()}-${Math.random()}`,
-                    action: activity.action || activity.activity_type || 'unknown_action',
-                    description: activity.description || 'No description available',
-                    performed_by: activity.performed_by || activity.created_by || 'unknown',
-                    performed_by_name: activity.performed_by_name || 'Unknown User',
-                    timestamp: activity.timestamp || activity.created_at || new Date().toISOString(),
-                    details: activity.details || null,
-                    activity_type: activity.activity_type || activity.action || 'unknown'
-                }));
-                setActivities(activitiesData);
-            } else {
-                // Only use sample activities if there's actually no data from API
-                if (response.success && Array.isArray(response.data) && response.data.length === 0) {
-                    setActivities([]);
-                } else {
-                    setActivities(generateSampleActivities());
-                }
-            }
-        } catch (error) {
-            console.error('Error fetching activities:', error);
-            setActivities(generateSampleActivities());
-        } finally {
-            setLoading(false);
-        }
-    };
-
-    const generateSampleActivities = () => {
-        const userData = JSON.parse(localStorage.getItem('userData') || '{}');
-        const userName = `${userData.first_name || ''} ${userData.last_name || ''}`.trim() || 'System';
-        
-        return [
-            {
-                _id: '1',
-                action: 'profile_updated',
-                activity_type: 'profile_updated',
-                description: 'Updated contact information',
-                performed_by: userData._id || userData.id,
-                performed_by_name: userName,
-                timestamp: new Date(Date.now() - 1000 * 60 * 30).toISOString(),
-                details: {
-                    field_changes: {
-                        phone: {
-                            label: 'Phone Number',
-                            from: '+91-9876543210',
-                            to: '+91-9876543211'
-                        },
-                        emergency_contact_phone: {
-                            label: 'Emergency Contact Phone',
-                            from: '+91-9876543212',
-                            to: '+91-9876543213'
-                        }
-                    },
-                    total_fields_changed: 2
-                }
-            },
-            {
-                _id: '2',
-                action: 'status_changed',
-                activity_type: 'status_changed',
-                description: 'Status changed from Inactive to Active',
-                performed_by: userData._id || userData.id,
-                performed_by_name: userName,
-                timestamp: new Date(Date.now() - 1000 * 60 * 60 * 2).toISOString(),
-                details: {
-                    status_change: {
-                        from: 'Inactive',
-                        to: 'Active',
-                        remark: 'Employee completed onboarding process'
-                    }
-                }
-            },
-            {
-                _id: '3',
-                action: 'employee_created',
-                activity_type: 'employee_created',
-                description: 'Employee record created',
-                performed_by: userData._id || userData.id,
-                performed_by_name: userName,
-                timestamp: new Date(Date.now() - 1000 * 60 * 60 * 24).toISOString(),
-                details: {
-                    employee_info: {
-                        name: 'John Doe',
-                        employee_id: 'EMP001',
-                        email: 'john.doe@company.com',
-                        department: 'Engineering',
-                        designation: 'Software Developer'
-                    },
-                    created_fields: ['first_name', 'last_name', 'email', 'phone', 'department_id', 'designation']
-                }
-            },
-            {
-                _id: '4',
-                action: 'attachment_uploaded',
-                activity_type: 'attachment_uploaded',
-                description: 'Uploaded resume.pdf',
-                performed_by: userData._id || userData.id,
-                performed_by_name: userName,
-                timestamp: new Date(Date.now() - 1000 * 60 * 60 * 48).toISOString(),
-                details: {
-                    file_info: {
-                        file_name: 'resume.pdf',
-                        file_type: 'application/pdf',
-                        attachment_type: 'Resume',
-                        file_size: '2.5 MB'
-                    }
-                }
-            },
-            {
-                _id: '5',
-                action: 'password_changed',
-                activity_type: 'password_changed',
-                description: 'Password changed',
-                performed_by: userData._id || userData.id,
-                performed_by_name: userName,
-                timestamp: new Date(Date.now() - 1000 * 60 * 60 * 72).toISOString(),
-                details: {
-                    security_action: 'password_update'
-                }
-            }
-        ];
     };
 
     const getActivityIcon = (action) => {
@@ -580,16 +449,6 @@ const EmployeeActivity = ({ employeeId, employeeData, refreshTrigger }) => {
                 return 'border-orange-500 bg-orange-900/20';
             default:
                 return 'border-gray-500 bg-gray-900/20';
-        }
-    };
-
-    const formatTimeAgo = (timestamp) => {
-        try {
-            if (!timestamp) return 'Unknown time';
-            return getRelativeTime(timestamp);
-        } catch (error) {
-            console.error('Error formatting time:', error);
-            return 'Unknown time';
         }
     };
 
@@ -1099,6 +958,36 @@ const EmployeeActivity = ({ employeeId, employeeData, refreshTrigger }) => {
                                                             </div>
                                                         )}
 
+                                                        {activity.details.created_field_values && Object.keys(activity.details.created_field_values).length > 0 && (
+                                                            <div className="mt-3 border-l-4 border-green-500 bg-green-50 p-3 rounded-r-md">
+                                                                <div className="flex items-center gap-2 mb-2">
+                                                                    <User className="w-4 h-4 text-green-600" />
+                                                                    <strong className="text-green-800">Employee Created With Filled Fields</strong>
+                                                                </div>
+                                                                <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                                                                    {Object.entries(activity.details.created_field_values).map(([field, info]) => (
+                                                                        <div key={field} className="bg-white p-3 rounded border border-green-200">
+                                                                            <div className="text-xs font-semibold uppercase text-green-700">
+                                                                                {info?.label || field.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
+                                                                            </div>
+                                                                            <div className="mt-1 text-sm font-medium text-gray-900 break-words">
+                                                                                {formatDetailValue(info?.value)}
+                                                                            </div>
+                                                                        </div>
+                                                                    ))}
+                                                                </div>
+                                                                {Array.isArray(activity.details.sensitive_fields_set) && activity.details.sensitive_fields_set.length > 0 && (
+                                                                    <div className="mt-3 rounded border border-amber-200 bg-amber-50 p-2 text-xs text-amber-800">
+                                                                        Security fields were set, but values are hidden.
+                                                                    </div>
+                                                                )}
+                                                                <div className="mt-2 text-xs text-green-600 flex items-center gap-1">
+                                                                    <User className="w-3 h-3" />
+                                                                    <span>Created by: <strong>{getProperUserName(activity)}</strong></span>
+                                                                </div>
+                                                            </div>
+                                                        )}
+
                                                         {/* Raw Changes Display */}
                                                         {(activity.action === 'profile_updated' || activity.action === 'updated') && 
                                                          !activity.details.field_changes && !activity.details.updated_fields && 
@@ -1137,7 +1026,7 @@ const EmployeeActivity = ({ employeeId, employeeData, refreshTrigger }) => {
                                                         {/* Generic details fallback */}
                                                         {!activity.details.field_changes && !activity.details.updated_fields && !activity.details.status_change && 
                                                          !activity.details.file_info && !activity.details.comment && !activity.details.remark && 
-                                                         !activity.details.creation_info && !activity.details.raw_changes && Object.keys(activity.details).length > 0 && (
+                                                         !activity.details.creation_info && !activity.details.created_field_values && !activity.details.raw_changes && Object.keys(activity.details).length > 0 && (
                                                             <div className="mt-3 border-l-4 border-gray-500 bg-gray-50 p-3 rounded-r-md">
                                                                 <div className="flex items-center gap-2 mb-2">
                                                                     <Activity className="w-4 h-4 text-gray-600" />

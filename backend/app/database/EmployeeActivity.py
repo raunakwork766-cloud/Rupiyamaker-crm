@@ -10,6 +10,62 @@ from app.config import Config
 import pymongo
 
 class EmployeeActivityDB:
+    FIELD_LABELS = {
+        'first_name': 'First Name',
+        'last_name': 'Last Name',
+        'email': 'Email Address',
+        'phone': 'Phone Number',
+        'alternate_phone': 'Alternate Phone',
+        'work_email': 'Work Email',
+        'dob': 'Date of Birth',
+        'date_of_birth': 'Date of Birth',
+        'personal_email': 'Personal Email',
+        'gender': 'Gender',
+        'marital_status': 'Marital Status',
+        'nationality': 'Nationality',
+        'blood_group': 'Blood Group',
+        'emergency_contact_name': 'Emergency Contact Name',
+        'emergency_contact_phone': 'Emergency Contact Phone',
+        'emergency_contact_relationship': 'Emergency Contact Relationship',
+        'designation': 'Designation',
+        'department_id': 'Department',
+        'role_id': 'Role',
+        'manager_id': 'Reporting Manager',
+        'reporting_manager': 'Reporting Manager',
+        'joining_date': 'Joining Date',
+        'date_of_joining': 'Date of Joining',
+        'employment_type': 'Employment Type',
+        'employee_id': 'Employee ID',
+        'employee_status': 'Employee Status',
+        'status': 'Employee Status',
+        'salary': 'Salary',
+        'monthly_target': 'Monthly Target',
+        'work_location': 'Work Location',
+        'mac_address': 'MAC Address',
+        'bank_account_number': 'Bank Account Number',
+        'bank_name': 'Bank Name',
+        'ifsc_code': 'IFSC Code',
+        'pan_number': 'PAN Number',
+        'aadhar_number': 'Aadhar Number',
+        'onboarding_status': 'Onboarding Status',
+        'crm_access': 'CRM Access',
+        'has_crm_access': 'CRM Access',
+        'login_enabled': 'Login Access',
+        'is_active': 'Login Status',
+        'otp_required': 'OTP Required',
+        'username': 'Username',
+        'profile_photo': 'Profile Photo',
+    }
+    SENSITIVE_FIELDS = {
+        'password',
+        'confirm_password',
+        'old_password',
+        'current_password',
+        'new_password',
+        'hashed_password',
+    }
+    META_FIELDS = {'created_at', 'updated_at', '_id'}
+
     def __init__(self, db=None):
         if db is None:
             # Create connection if not provided
@@ -116,8 +172,59 @@ class EmployeeActivityDB:
         except Exception:
             return False
 
-    def log_employee_creation(self, employee_id: str, created_by: str, employee_data: Dict[str, Any]):
+    def _field_label(self, field: str) -> str:
+        return self.FIELD_LABELS.get(field, field.replace('_', ' ').title())
+
+    def _is_sensitive_field(self, field: str) -> bool:
+        field_key = field.lower()
+        return field_key in self.SENSITIVE_FIELDS or 'password' in field_key
+
+    def _is_filled(self, value: Any) -> bool:
+        if value is None:
+            return False
+        if isinstance(value, str):
+            return value.strip() != ""
+        if isinstance(value, (list, tuple, set, dict)):
+            return len(value) > 0
+        return True
+
+    def _safe_value(self, value: Any) -> Any:
+        if isinstance(value, ObjectId):
+            return str(value)
+        if isinstance(value, dict):
+            return {
+                key: self._safe_value(item)
+                for key, item in value.items()
+                if not self._is_sensitive_field(str(key))
+            }
+        if isinstance(value, (list, tuple, set)):
+            return [self._safe_value(item) for item in value]
+        if hasattr(value, "isoformat"):
+            try:
+                return value.isoformat()
+            except Exception:
+                return str(value)
+        return value
+
+    def _creation_field_details(self, employee_data: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
+        field_details = {}
+        for field, value in employee_data.items():
+            if field in self.META_FIELDS or self._is_sensitive_field(field) or not self._is_filled(value):
+                continue
+            field_details[field] = {
+                "label": self._field_label(field),
+                "value": self._safe_value(value)
+            }
+        return field_details
+
+    async def log_employee_creation(self, employee_id: str, created_by: str, employee_data: Dict[str, Any]):
         """Log employee creation activity with comprehensive details"""
+        created_field_values = self._creation_field_details(employee_data)
+        sensitive_fields_set = [
+            self._field_label(field)
+            for field, value in employee_data.items()
+            if self._is_sensitive_field(field) and self._is_filled(value)
+        ]
         activity_data = {
             "employee_id": employee_id,
             "activity_type": "employee_created",
@@ -126,80 +233,66 @@ class EmployeeActivityDB:
             "details": {
                 "employee_info": {
                     "name": f"{employee_data.get('first_name', '')} {employee_data.get('last_name', '')}".strip(),
-                    "employee_id": employee_data.get('employee_id'),
-                    "email": employee_data.get('email'),
-                    "phone": employee_data.get('phone'),
-                    "department": employee_data.get('department_id'),
-                    "role": employee_data.get('role_id'),
-                    "designation": employee_data.get('designation'),
-                    "joining_date": employee_data.get('joining_date'),
-                    "employment_type": employee_data.get('employment_type'),
-                    "status": employee_data.get('status', 'active')
+                    "employee_id": self._safe_value(employee_data.get('employee_id')),
+                    "email": self._safe_value(employee_data.get('email')),
+                    "phone": self._safe_value(employee_data.get('phone')),
+                    "department": self._safe_value(employee_data.get('department_id')),
+                    "role": self._safe_value(employee_data.get('role_id')),
+                    "designation": self._safe_value(employee_data.get('designation')),
+                    "joining_date": self._safe_value(employee_data.get('joining_date') or employee_data.get('date_of_joining')),
+                    "employment_type": self._safe_value(employee_data.get('employment_type')),
+                    "status": self._safe_value(employee_data.get('employee_status') or employee_data.get('status', 'active'))
                 },
-                "created_fields": list(employee_data.keys())
+                "created_fields": list(created_field_values.keys()),
+                "created_field_values": created_field_values,
+                "filled_field_count": len(created_field_values),
+                "sensitive_fields_set": sensitive_fields_set
             },
             "created_by": created_by,
             "performed_by": created_by,
             "timestamp": get_ist_now().isoformat()
         }
-        return self.log_activity(activity_data)
+        return await self.log_activity(activity_data)
 
-    def log_employee_update(self, employee_id: str, updated_by: str, changes: Dict[str, Any], original_data: Dict[str, Any] = None):
+    async def log_employee_update(self, employee_id: str, updated_by: str, changes: Dict[str, Any], original_data: Dict[str, Any] = None):
         """Log employee update activity with detailed field changes"""
-        from app.database.Users import UsersDB
-        
-        # Get original employee data if not provided
         if original_data is None:
-            from app.database import get_database_instances
-            db_instances = get_database_instances()
-            users_db = db_instances['users']
-            # Since this is sync context, we'll skip getting original data
-            # and let the caller provide it
             original_data = {}
         
         # Track field changes with before/after values
         field_changes = {}
-        field_labels = {
-            'first_name': 'First Name',
-            'last_name': 'Last Name',
-            'email': 'Email Address',
-            'phone': 'Phone Number',
-            'dob': 'Date of Birth',
-            'personal_email': 'Personal Email',
-            'emergency_contact_name': 'Emergency Contact Name',
-            'emergency_contact_phone': 'Emergency Contact Phone',
-            'emergency_contact_relationship': 'Emergency Contact Relationship',
-            'designation': 'Designation',
-            'department_id': 'Department',
-            'role_id': 'Role',
-            'reporting_manager': 'Reporting Manager',
-            'joining_date': 'Joining Date',
-            'employment_type': 'Employment Type',
-            'salary': 'Salary',
-            'bank_account_number': 'Bank Account Number',
-            'bank_name': 'Bank Name',
-            'ifsc_code': 'IFSC Code',
-            'pan_number': 'PAN Number',
-            'aadhar_number': 'Aadhar Number',
-            'status': 'Employee Status',
-            'is_active': 'Login Status',
-            'username': 'Username',
-            'profile_photo': 'Profile Photo'
-        }
+        security_updated = False
+        raw_changes = {}
         
         for field, new_value in changes.items():
-            if field in ['updated_at', 'password', 'hashed_password']:
-                continue  # Skip meta fields and sensitive data
+            if field in self.META_FIELDS:
+                continue
+            if self._is_sensitive_field(field):
+                if self._is_filled(new_value):
+                    security_updated = True
+                continue
                 
             old_value = original_data.get(field)
             
             # Handle value changes
             if old_value != new_value:
                 field_changes[field] = {
-                    'label': field_labels.get(field, field.replace('_', ' ').title()),
-                    'from': old_value,
-                    'to': new_value
+                    'label': self._field_label(field),
+                    'from': self._safe_value(old_value),
+                    'to': self._safe_value(new_value)
                 }
+                raw_changes[field] = self._safe_value(new_value)
+
+        if security_updated:
+            field_changes["security_fields"] = {
+                "label": "Security Fields",
+                "from": "Previous values",
+                "to": "Updated (hidden for security)"
+            }
+            raw_changes["security_fields"] = "Updated (hidden for security)"
+
+        if not field_changes:
+            return ""
         
         # Generate human-readable description
         if len(field_changes) == 1:
@@ -220,15 +313,15 @@ class EmployeeActivityDB:
             "details": {
                 "field_changes": field_changes,
                 "total_fields_changed": len(field_changes),
-                "raw_changes": changes
+                "raw_changes": raw_changes
             },
             "created_by": updated_by,
             "performed_by": updated_by,
             "timestamp": get_ist_now().isoformat()
         }
-        return self.log_activity(activity_data)
+        return await self.log_activity(activity_data)
 
-    def log_status_change(self, employee_id: str, updated_by: str, old_status: str, new_status: str, remark: Optional[str] = None):
+    async def log_status_change(self, employee_id: str, updated_by: str, old_status: str, new_status: str, remark: Optional[str] = None):
         """Log employee status change activity"""
         activity_data = {
             "employee_id": employee_id,
@@ -246,9 +339,9 @@ class EmployeeActivityDB:
             "performed_by": updated_by,
             "timestamp": get_ist_now().isoformat()
         }
-        return self.log_activity(activity_data)
+        return await self.log_activity(activity_data)
 
-    def log_attachment_upload(self, employee_id: str, uploaded_by: str, attachment_data: Dict[str, Any]):
+    async def log_attachment_upload(self, employee_id: str, uploaded_by: str, attachment_data: Dict[str, Any]):
         """Log attachment upload activity"""
         activity_data = {
             "employee_id": employee_id,
@@ -268,9 +361,9 @@ class EmployeeActivityDB:
             "performed_by": uploaded_by,
             "timestamp": get_ist_now().isoformat()
         }
-        return self.log_activity(activity_data)
+        return await self.log_activity(activity_data)
 
-    def log_attachment_delete(self, employee_id: str, deleted_by: str, attachment_data: Dict[str, Any]):
+    async def log_attachment_delete(self, employee_id: str, deleted_by: str, attachment_data: Dict[str, Any]):
         """Log attachment deletion activity"""
         activity_data = {
             "employee_id": employee_id,
@@ -288,9 +381,9 @@ class EmployeeActivityDB:
             "performed_by": deleted_by,
             "timestamp": get_ist_now().isoformat()
         }
-        return self.log_activity(activity_data)
+        return await self.log_activity(activity_data)
 
-    def log_remark_added(self, employee_id: str, added_by: str, remark_text: str):
+    async def log_remark_added(self, employee_id: str, added_by: str, remark_text: str):
         """Log remark addition activity"""
         activity_data = {
             "employee_id": employee_id,
@@ -307,9 +400,9 @@ class EmployeeActivityDB:
             "performed_by": added_by,
             "timestamp": get_ist_now().isoformat()
         }
-        return self.log_activity(activity_data)
+        return await self.log_activity(activity_data)
 
-    def log_password_change(self, employee_id: str, changed_by: str):
+    async def log_password_change(self, employee_id: str, changed_by: str):
         """Log password change activity"""
         activity_data = {
             "employee_id": employee_id,
@@ -323,9 +416,9 @@ class EmployeeActivityDB:
             "performed_by": changed_by,
             "timestamp": get_ist_now().isoformat()
         }
-        return self.log_activity(activity_data)
+        return await self.log_activity(activity_data)
 
-    def log_login_status_change(self, employee_id: str, changed_by: str, enabled: bool):
+    async def log_login_status_change(self, employee_id: str, changed_by: str, enabled: bool):
         """Log login status change activity"""
         activity_data = {
             "employee_id": employee_id,
@@ -342,9 +435,9 @@ class EmployeeActivityDB:
             "performed_by": changed_by,
             "timestamp": get_ist_now().isoformat()
         }
-        return self.log_activity(activity_data)
+        return await self.log_activity(activity_data)
 
-    def log_photo_upload(self, employee_id: str, uploaded_by: str, photo_path: str):
+    async def log_photo_upload(self, employee_id: str, uploaded_by: str, photo_path: str):
         """Log profile photo upload activity"""
         activity_data = {
             "employee_id": employee_id,
@@ -361,4 +454,4 @@ class EmployeeActivityDB:
             "performed_by": uploaded_by,
             "timestamp": get_ist_now().isoformat()
         }
-        return self.log_activity(activity_data)
+        return await self.log_activity(activity_data)

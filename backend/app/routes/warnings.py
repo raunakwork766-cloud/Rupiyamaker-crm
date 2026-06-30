@@ -43,6 +43,10 @@ async def get_notifications_db():
     db_instances = get_database_instances()
     return db_instances["notifications"]
 
+def is_warning_creator(warning: Dict[str, Any], user_id: str) -> bool:
+    """Only the user who issued a warning can edit penalty-related fields."""
+    return str(warning.get("issued_by") or "") == str(user_id or "")
+
 # Database instances are obtained using centralized get_database_instances()
 # within each function to avoid dependency injection issues
 
@@ -905,14 +909,13 @@ async def update_warning(
 ):
     """Update a warning"""
     try:
-        permissions = await get_user_warning_permissions(user_id)
-        if not permissions.can_edit:
-            raise HTTPException(status_code=403, detail="Not authorized to edit warnings")
-        
         # Get existing warning
         existing_warning = await warnings_db.get_warning_by_id(warning_id)
         if not existing_warning:
             raise HTTPException(status_code=404, detail="Warning not found")
+
+        if not is_warning_creator(existing_warning, user_id):
+            raise HTTPException(status_code=403, detail="Only the warning creator can edit this warning")
         
         # Prepare update data
         update_data = {}
@@ -979,15 +982,14 @@ async def waive_penalty(
     user_id: str = Query(..., description="User _id making the request"),
     warnings_db: WarningDB = Depends(get_warnings_db)
 ):
-    """Waive the penalty for a specific warning (admin action)"""
+    """Waive the penalty for a specific warning (creator action)"""
     try:
-        permissions = await get_user_warning_permissions(user_id)
-        if not permissions.can_edit:
-            raise HTTPException(status_code=403, detail="Not authorized to waive penalties")
-
         warning = await warnings_db.get_warning_by_id(warning_id)
         if not warning:
             raise HTTPException(status_code=404, detail="Warning not found")
+
+        if not is_warning_creator(warning, user_id):
+            raise HTTPException(status_code=403, detail="Only the warning creator can waive this penalty")
 
         update_data = {
             "is_waived": True,
@@ -1011,15 +1013,14 @@ async def reinstate_penalty(
     user_id: str = Query(..., description="User _id making the request"),
     warnings_db: WarningDB = Depends(get_warnings_db)
 ):
-    """Reinstate the penalty for a previously waived warning (admin action)"""
+    """Reinstate the penalty for a previously waived warning (creator action)"""
     try:
-        permissions = await get_user_warning_permissions(user_id)
-        if not permissions.can_edit:
-            raise HTTPException(status_code=403, detail="Not authorized to reinstate penalties")
-
         warning = await warnings_db.get_warning_by_id(warning_id)
         if not warning:
             raise HTTPException(status_code=404, detail="Warning not found")
+
+        if not is_warning_creator(warning, user_id):
+            raise HTTPException(status_code=403, detail="Only the warning creator can reinstate this penalty")
 
         update_data = {
             "is_waived": False,

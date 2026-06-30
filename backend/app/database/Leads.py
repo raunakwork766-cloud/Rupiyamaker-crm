@@ -18,6 +18,140 @@ import logging
 logger = logging.getLogger(__name__)
 
 class LeadsDB:
+    CREATE_ACTIVITY_EXCLUDED_FIELDS = {
+        "_id",
+        "id",
+        "updated_at",
+        "activity",
+        "activities",
+        "activity_history",
+        "override_created_by_id",
+        "override_created_at",
+        "_force_override_created_at",
+        "status_name",
+        "status_color",
+        "sub_status_name",
+        "assigned_to_name",
+        "assigned_to_email",
+        "assigned_user_name",
+        "assigned_user_email",
+        "created_by_name",
+        "creator_name",
+        "department_name",
+        "reporting_user_names",
+        "reporters",
+        "loan_type_id",
+        "previous_assigned_to",
+        "pending_reassignment",
+        "reassignment_status",
+        "reassignment_requested_by",
+        "reassignment_requested_at",
+        "reassignment_target_user",
+        "reassignment_reason",
+        "reassignment_approved_by",
+        "reassignment_approved_at",
+        "reassignment_rejected_at",
+        "reassignment_rejected_by",
+        "reassignment_rejection_reason",
+    }
+
+    CREATE_ACTIVITY_SENSITIVE_TOKENS = ("password", "token", "secret", "otp")
+
+    CREATE_ACTIVITY_FIELD_LABELS = {
+        "custom_lead_id": "Lead ID",
+        "first_name": "First Name",
+        "last_name": "Last Name",
+        "customer_name": "Customer Name",
+        "email": "Email",
+        "phone": "Phone",
+        "mobile_number": "Mobile Number",
+        "alternative_phone": "Alternative Phone",
+        "loan_type": "Loan Type",
+        "loan_type_name": "Loan Type",
+        "processing_bank": "Processing Bank",
+        "loan_amount": "Loan Amount",
+        "status": "Status",
+        "sub_status": "Sub-status",
+        "priority": "Priority",
+        "source": "Source",
+        "campaign_name": "Source Name",
+        "data_code": "Data Code",
+        "product_name": "Product Name",
+        "xyz": "XYZ",
+        "pincode_city": "Pincode & City",
+        "department_id": "Department",
+        "assigned_to": "Assigned To",
+        "assign_report_to": "Reporting Users",
+        "created_by": "Created By",
+        "created_by_role": "Created By Role",
+        "created_at": "Created On",
+        "created_date": "Created Date",
+        "form_share": "Form Share",
+        "notes": "Remarks",
+        "note": "Remarks",
+        "remarks": "Remarks",
+        "dynamic_fields": "Dynamic Fields",
+        "financial_details": "Financial Details",
+        "personal_details": "Personal Details",
+        "identity_details": "Identity Details",
+        "emergency_contact": "Emergency Contact",
+        "references": "References",
+        "obligations": "Obligations",
+        "eligibility": "Eligibility",
+        "check_eligibility": "Check Eligibility",
+        "eligibility_details": "Eligibility Details",
+        "applicant_form": "Applicant Form",
+        "co_applicant_form": "Co-applicant Form",
+        "obligation_data": "Obligation Data",
+        "process_data": "Process Data",
+        "process": "Process",
+        "cibil_score": "CIBIL Score",
+        "loan_eligibility": "Loan Eligibility",
+        "company_name": "Company Name",
+        "company_type": "Decide Bank For Case",
+        "company_category": "Company Category",
+        "salary": "Salary",
+        "partnerSalary": "Partner's Salary",
+        "partner_salary": "Partner's Salary",
+        "yearlyBonus": "Bonus",
+        "yearly_bonus": "Bonus",
+        "bonusDivision": "Bonus Duration",
+        "bonus_division": "Bonus Duration",
+        "totalIncome": "Total Income",
+        "total_income": "Total Income",
+        "foir_percent": "FOIR %",
+        "custom_foir_percent": "Custom FOIR %",
+        "foirAmount": "FOIR Amount",
+        "foir_amount": "FOIR Amount",
+        "monthly_emi_can_pay": "EMI Can Pay",
+        "tenure_months": "Tenure",
+        "tenure_years": "Tenure (Years)",
+        "roi": "ROI %",
+        "multiplier": "Multiplier",
+        "totalObligation": "Total Obligation",
+        "totalObligations": "Total Obligation",
+        "total_obligation": "Total Obligation",
+        "total_obligations": "Total Obligation",
+        "totalBtPos": "Total BT POS",
+        "total_bt_pos": "Total BT POS",
+        "finalEligibility": "FOIR Eligibility",
+        "final_eligibility": "FOIR Eligibility",
+        "foirEligibility": "FOIR Eligibility",
+        "foir_eligibility": "FOIR Eligibility",
+        "multiplierEligibility": "Multiplier Eligibility",
+        "multiplier_eligibility": "Multiplier Eligibility",
+        "loanEligibilityStatus": "Eligibility Status",
+        "loan_eligibility_status": "Eligibility Status",
+        "ceCompanyCategory": "Company Category",
+        "ceFoirPercent": "FOIR %",
+        "ceCustomFoirPercent": "Custom FOIR %",
+        "ceMonthlyEmiCanPay": "EMI Can Pay",
+        "ceTenureMonths": "Tenure",
+        "ceTenureYears": "Tenure (Years)",
+        "ceRoi": "ROI %",
+        "ceMultiplier": "Multiplier",
+    }
+
     def __init__(self, database=None):
         if database is None:
             # Create connection if not provided (for backwards compatibility)
@@ -186,6 +320,225 @@ class LeadsDB:
             name = await self._get_user_name(user_id)
             names.append(name)
         return names
+
+    def _is_empty_activity_value(self, value: Any) -> bool:
+        if value is None:
+            return True
+        if isinstance(value, bool):
+            return False
+        if isinstance(value, str):
+            text = value.strip()
+            return not text or text.lower() in {"none", "null", "undefined", "nan", "n/a"}
+        if isinstance(value, (list, tuple, set)):
+            return len(value) == 0 or all(self._is_empty_activity_value(item) for item in value)
+        if isinstance(value, dict):
+            return len(value) == 0 or all(self._is_empty_activity_value(item) for item in value.values())
+        return False
+
+    def _activity_safe_value(self, value: Any) -> Any:
+        if isinstance(value, ObjectId):
+            return str(value)
+        if isinstance(value, datetime):
+            return value.isoformat()
+        if hasattr(value, "value") and not isinstance(value, (str, int, float, bool)):
+            return value.value
+        if isinstance(value, dict):
+            return {str(key): self._activity_safe_value(item) for key, item in value.items()}
+        if isinstance(value, (list, tuple, set)):
+            return [self._activity_safe_value(item) for item in value]
+        return value
+
+    def _format_activity_display_value(self, value: Any) -> str:
+        if isinstance(value, bool):
+            return "Yes" if value else "No"
+        safe_value = self._activity_safe_value(value)
+        if isinstance(safe_value, list):
+            parts = [self._format_activity_display_value(item) for item in safe_value if not self._is_empty_activity_value(item)]
+            return ", ".join(part for part in parts if part and part != "Not set") or "Not set"
+        if isinstance(safe_value, dict):
+            try:
+                return json.dumps(safe_value, ensure_ascii=False, default=str)
+            except Exception:
+                return str(safe_value)
+        text = str(safe_value).strip()
+        return text if text else "Not set"
+
+    def _titleize_activity_field(self, value: str) -> str:
+        text = str(value or "").replace("_", " ").replace("-", " ").strip()
+        if not text:
+            return "Field"
+        overrides = {
+            "id": "ID",
+            "pan": "PAN",
+            "ifsc": "IFSC",
+            "cibil": "CIBIL",
+            "foir": "FOIR",
+            "roi": "ROI",
+            "emi": "EMI",
+            "bt": "BT",
+            "pos": "POS",
+            "xyz": "XYZ",
+            "aadhar": "Aadhaar",
+        }
+        return " ".join(overrides.get(part.lower(), part[:1].upper() + part[1:]) for part in text.split())
+
+    def _label_for_activity_path(self, path: List[str]) -> str:
+        field_key = ".".join(path)
+        if field_key in self.CREATE_ACTIVITY_FIELD_LABELS:
+            return self.CREATE_ACTIVITY_FIELD_LABELS[field_key]
+
+        labels = []
+        for segment in path:
+            if segment in {"dynamic_fields"}:
+                continue
+            if str(segment).isdigit():
+                if labels:
+                    labels[-1] = f"{labels[-1]} {segment}"
+                else:
+                    labels.append(f"Item {segment}")
+                continue
+            labels.append(self.CREATE_ACTIVITY_FIELD_LABELS.get(segment, self._titleize_activity_field(segment)))
+        return " - ".join(labels) if labels else "Field"
+
+    def _should_skip_creation_activity_field(self, field_key: str, field_name: str) -> bool:
+        normalized_key = str(field_key or "").lower()
+        normalized_name = str(field_name or "").lower()
+        if normalized_key in self.CREATE_ACTIVITY_EXCLUDED_FIELDS or normalized_name in self.CREATE_ACTIVITY_EXCLUDED_FIELDS:
+            return True
+        return any(token in normalized_name for token in self.CREATE_ACTIVITY_SENSITIVE_TOKENS)
+
+    def _collect_created_field_values(self, lead_data: dict, display_overrides: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
+        display_overrides = display_overrides or {}
+        rows: List[Dict[str, Any]] = []
+        seen: Set[Tuple[str, str]] = set()
+
+        def add_row(path: List[str], raw_value: Any):
+            field_key = ".".join(path)
+            if field_key in display_overrides:
+                raw_value = display_overrides[field_key]
+            if self._is_empty_activity_value(raw_value):
+                return
+            display_value = self._format_activity_display_value(raw_value)
+            if display_value == "Not set":
+                return
+            label = self._label_for_activity_path(path)
+            signature = (field_key, display_value)
+            if signature in seen:
+                return
+            seen.add(signature)
+            rows.append({
+                "field_key": field_key,
+                "label": label,
+                "value": self._activity_safe_value(raw_value),
+                "display_value": display_value,
+            })
+
+        def walk(value: Any, path: List[str]):
+            field_key = ".".join(path)
+            if field_key in display_overrides:
+                add_row(path, display_overrides[field_key])
+                return
+            if self._is_empty_activity_value(value):
+                return
+            if isinstance(value, dict):
+                for child_key, child_value in value.items():
+                    child_path = path + [str(child_key)]
+                    child_field_key = ".".join(child_path)
+                    if self._should_skip_creation_activity_field(child_field_key, str(child_key)):
+                        continue
+                    walk(child_value, child_path)
+                return
+            if isinstance(value, (list, tuple, set)):
+                values = list(value)
+                if all(not isinstance(item, (dict, list, tuple, set)) for item in values):
+                    add_row(path, values)
+                    return
+                for index, item in enumerate(values, start=1):
+                    walk(item, path + [str(index)])
+                return
+            add_row(path, value)
+
+        for key, value in (lead_data or {}).items():
+            field_name = str(key)
+            field_key = field_name
+            if self._should_skip_creation_activity_field(field_key, field_name):
+                continue
+            if field_name == "phone" and lead_data.get("mobile_number") and lead_data.get("phone") == lead_data.get("mobile_number"):
+                continue
+            if field_name == "loan_type" and lead_data.get("loan_type_name") and lead_data.get("loan_type") == lead_data.get("loan_type_name"):
+                continue
+            walk(value, [field_name])
+
+        return rows
+
+    async def _resolve_status_activity_name(self, status_value: Any) -> Optional[str]:
+        if self._is_empty_activity_value(status_value):
+            return None
+        value = str(status_value)
+        status = await self.get_status_by_id(value)
+        if not status:
+            status = await self.get_status_by_name(value)
+        return status.get("name") if status else self._format_activity_display_value(status_value)
+
+    async def _resolve_sub_status_activity_name(self, sub_status_value: Any, status_name: Optional[str] = None) -> Optional[str]:
+        if self._is_empty_activity_value(sub_status_value):
+            return None
+        value = str(sub_status_value)
+        sub_status = await self.get_sub_status_by_id(value)
+        if not sub_status and ObjectId.is_valid(value):
+            sub_status = await self.get_sub_status(value)
+        if not sub_status:
+            sub_status = await self.get_sub_status_by_name(value, status_name)
+        if not sub_status:
+            sub_status = await self.get_sub_status_by_name(value)
+        return sub_status.get("name") if sub_status else self._format_activity_display_value(sub_status_value)
+
+    async def _build_creation_activity_details(
+        self,
+        lead_data: dict,
+        created_by_name: Optional[str],
+        assigned_to_name: Optional[str],
+        department_name: Optional[str],
+        reporting_user_names: Optional[List[str]],
+    ) -> Dict[str, Any]:
+        status_name = await self._resolve_status_activity_name(lead_data.get("status"))
+        sub_status_name = await self._resolve_sub_status_activity_name(lead_data.get("sub_status"), status_name)
+        clean_reporting_names = [
+            name for name in (reporting_user_names or [])
+            if name and name != "Unknown User"
+        ]
+
+        display_overrides = {
+            "created_by": created_by_name,
+            "assigned_to": assigned_to_name,
+            "department_id": department_name,
+            "assign_report_to": ", ".join(clean_reporting_names),
+            "status": status_name,
+            "sub_status": sub_status_name,
+        }
+        display_overrides = {
+            key: value for key, value in display_overrides.items()
+            if not self._is_empty_activity_value(value)
+        }
+
+        created_field_values = self._collect_created_field_values(lead_data, display_overrides)
+
+        return {
+            "department_id": lead_data.get("department_id"),
+            "department_name": department_name,
+            "assigned_to": self._activity_safe_value(lead_data.get("assigned_to")),
+            "assigned_to_name": assigned_to_name,
+            "reporting_users": self._activity_safe_value(lead_data.get("assign_report_to", [])),
+            "reporting_user_names": clean_reporting_names,
+            "created_by": lead_data.get("created_by"),
+            "created_by_name": created_by_name,
+            "initial_status": self._activity_safe_value(lead_data.get("status")),
+            "initial_status_name": status_name,
+            "initial_sub_status": self._activity_safe_value(lead_data.get("sub_status")),
+            "initial_sub_status_name": sub_status_name,
+            "created_field_values": created_field_values,
+            "filled_field_count": len(created_field_values),
+        }
     
     # ========= Lead CRUD Operations =========
         
@@ -292,20 +645,21 @@ class LeadsDB:
             department_name = await self._get_department_name(lead_data.get("department_id")) if lead_data.get("department_id") else None
             reporting_user_names = await self._get_multiple_user_names(lead_data.get("assign_report_to", []))
             
+            details = await self._build_creation_activity_details(
+                lead_data,
+                created_by_name,
+                assigned_to_name,
+                department_name,
+                reporting_user_names,
+            )
+
             activity_data = {
                 "lead_id": lead_id,
                 "user_id": lead_data["created_by"],
                 "user_name": created_by_name or "Unknown User",
                 "activity_type": "create",
                 "description": "Lead created",
-                "details": {
-                    "department_id": lead_data.get("department_id"),
-                    "department_name": department_name,
-                    "assigned_to": lead_data.get("assigned_to"),
-                    "assigned_to_name": assigned_to_name,
-                    "reporting_users": lead_data.get("assign_report_to", []),
-                    "reporting_user_names": reporting_user_names
-                },
+                "details": details,
                 "created_at": current_time
             }
             await self.activity_collection.insert_one(activity_data)
@@ -320,7 +674,9 @@ class LeadsDB:
                     "user_name": "System",
                     "activity_type": "create",
                     "description": "Lead created",
-                    "details": {},
+                    "details": {
+                        "created_field_values": self._collect_created_field_values(lead_data),
+                    },
                     "created_at": current_time
                 }
                 await self.activity_collection.insert_one(basic_activity)
@@ -1096,6 +1452,7 @@ class LeadsDB:
                 _top_level_labels = {
                     'status': 'Status', 'sub_status': 'Sub Status',
                     'assigned_to': 'Assigned To', 'assigned_lead': 'Assigned Lead',
+                    'first_name': 'Customer Name', 'last_name': 'Customer Name',
                     'customer_name': 'Customer Name', 'mobile_number': 'Mobile Number',
                     'alternate_number': 'Alternate Number', 'pincode': 'Pincode',
                     'city': 'City', 'state': 'State', 'email': 'Email',
@@ -1103,11 +1460,21 @@ class LeadsDB:
                     'campaign_name': 'Campaign Name', 'product_name': 'Product Name',
                     'loan_type': 'Loan Type', 'loan_type_name': 'Loan Type',
                     'company_name': 'Company Name', 'salary': 'Salary',
-                    'totalObligation': 'Total Obligation', 'totalBtPos': 'Total BT POS',
+                    'totalObligation': 'Total Obligation', 'totalObligations': 'Total Obligation',
+                    'total_obligation': 'Total Obligation', 'total_obligations': 'Total Obligation',
+                    'totalBtPos': 'Total BT POS', 'total_bt_pos': 'Total BT POS',
                     'cibilScore': 'CIBIL Score', 'partnerSalary': "Partner's Salary",
-                    'yearlyBonus': 'Bonus', 'companyName': 'Company Name',
-                    'companyType': 'Company Type', 'companyCategory': 'Company Category',
+                    'partner_salary': "Partner's Salary", 'yearlyBonus': 'Bonus',
+                    'yearly_bonus': 'Bonus', 'bonusDivision': 'Bonus Duration',
+                    'bonus_division': 'Bonus Duration', 'companyName': 'Company Name',
+                    'companyType': 'Decide Bank For Case', 'company_type': 'Decide Bank For Case',
+                    'companyCategory': 'Company Category', 'company_category': 'Company Category',
                     'loanRequired': 'Loan Required', 'processingBank': 'Login Bank',
+                    'ceCompanyCategory': 'Company Category', 'ceFoirPercent': 'FOIR %',
+                    'ceCustomFoirPercent': 'Custom FOIR %', 'ceMonthlyEmiCanPay': 'EMI Can Pay',
+                    'ceTenureMonths': 'Tenure', 'ceTenureYears': 'Tenure (Years)',
+                    'ceRoi': 'ROI %', 'ceMultiplier': 'Multiplier',
+                    'loanEligibilityStatus': 'Eligibility Status',
                     'how_to_process': 'How to Process',
                     'important_questions': 'Important Questions',
                 }
@@ -1309,13 +1676,13 @@ class LeadsDB:
                             if new_val.get('custom_foir_percent') and new_val.get('custom_foir_percent') not in [0, '', None]:
                                 check_fields.append(f"Custom FOIR %: {new_val['custom_foir_percent']}%")
                             if new_val.get('monthly_emi_can_pay') and new_val.get('monthly_emi_can_pay') not in [0, '', None]:
-                                check_fields.append(f"Monthly EMI Can Pay: ₹{new_val['monthly_emi_can_pay']}")
+                                check_fields.append(f"EMI Can Pay: ₹{new_val['monthly_emi_can_pay']}")
                             if new_val.get('tenure_months') and new_val.get('tenure_months') not in [0, '', None]:
-                                check_fields.append(f"Tenure (Months): {new_val['tenure_months']}")
+                                check_fields.append(f"Tenure: {new_val['tenure_months']}")
                             if new_val.get('tenure_years') and new_val.get('tenure_years') not in [0, '', None]:
                                 check_fields.append(f"Tenure (Years): {new_val['tenure_years']}")
                             if new_val.get('roi') and new_val.get('roi') not in [0, '', None]:
-                                check_fields.append(f"Rate of Interest (ROI): {new_val['roi']}%")
+                                check_fields.append(f"ROI %: {new_val['roi']}%")
                             if new_val.get('foir_eligibility') and new_val.get('foir_eligibility') not in [0, '', None]:
                                 check_fields.append(f"FOIR Eligibility: ₹{new_val['foir_eligibility']}")
                             if new_val.get('multiplier') and new_val.get('multiplier') not in [0, '', None, '0']:
@@ -1336,13 +1703,13 @@ class LeadsDB:
                                 if old_val.get('custom_foir_percent') and old_val.get('custom_foir_percent') not in [0, '', None]:
                                     old_check_fields.append(f"Custom FOIR %: {old_val['custom_foir_percent']}%")
                                 if old_val.get('monthly_emi_can_pay') and old_val.get('monthly_emi_can_pay') not in [0, '', None]:
-                                    old_check_fields.append(f"Monthly EMI Can Pay: ₹{old_val['monthly_emi_can_pay']}")
+                                    old_check_fields.append(f"EMI Can Pay: ₹{old_val['monthly_emi_can_pay']}")
                                 if old_val.get('tenure_months') and old_val.get('tenure_months') not in [0, '', None]:
-                                    old_check_fields.append(f"Tenure (Months): {old_val['tenure_months']}")
+                                    old_check_fields.append(f"Tenure: {old_val['tenure_months']}")
                                 if old_val.get('tenure_years') and old_val.get('tenure_years') not in [0, '', None]:
                                     old_check_fields.append(f"Tenure (Years): {old_val['tenure_years']}")
                                 if old_val.get('roi') and old_val.get('roi') not in [0, '', None]:
-                                    old_check_fields.append(f"Rate of Interest (ROI): {old_val['roi']}%")
+                                    old_check_fields.append(f"ROI %: {old_val['roi']}%")
                                 if old_val.get('foir_eligibility') and old_val.get('foir_eligibility') not in [0, '', None]:
                                     old_check_fields.append(f"FOIR Eligibility: ₹{old_val['foir_eligibility']}")
                                 if old_val.get('multiplier') and old_val.get('multiplier') not in [0, '', None, '0']:
@@ -1357,33 +1724,58 @@ class LeadsDB:
                         elif nested_field == "obligation_data" and isinstance(new_val, dict):
                             obligation_field_labels = {
                                 "salary": "Salary",
-                                "partnerSalary": "Partner Salary",
-                                "yearlyBonus": "Yearly Bonus",
-                                "bonusDivision": "Bonus Division",
+                                "partnerSalary": "Partner's Salary",
+                                "partner_salary": "Partner's Salary",
+                                "yearlyBonus": "Bonus",
+                                "yearly_bonus": "Bonus",
+                                "bonusDivision": "Bonus Duration",
+                                "bonus_division": "Bonus Duration",
                                 "loanRequired": "Loan Required",
                                 "loan_required": "Loan Required",
                                 "loan_amount": "Loan Amount",
                                 "companyName": "Company Name",
                                 "company_name": "Company Name",
-                                "companyType": "Company Type",
+                                "companyType": "Decide Bank For Case",
+                                "company_type": "Decide Bank For Case",
                                 "companyCategory": "Company Category",
+                                "company_category": "Company Category",
                                 "cibilScore": "CIBIL Score",
                                 "cibil_score": "CIBIL Score",
                                 "foirPercent": "FOIR %",
+                                "foir_percent": "FOIR %",
                                 "customFoirPercent": "Custom FOIR %",
+                                "custom_foir_percent": "Custom FOIR %",
                                 "totalBtPos": "Total BT POS",
                                 "total_bt_pos": "Total BT POS",
                                 "totalObligation": "Total Obligation",
+                                "totalObligations": "Total Obligation",
                                 "total_obligation": "Total Obligation",
+                                "total_obligations": "Total Obligation",
                                 "ceCompanyCategory": "Company Category",
                                 "ceFoirPercent": "FOIR %",
                                 "ceCustomFoirPercent": "Custom FOIR %",
-                                "ceMonthlyEmiCanPay": "Monthly EMI Can Pay",
-                                "ceTenureMonths": "Tenure Months",
-                                "ceTenureYears": "Tenure Years",
-                                "ceRoi": "ROI",
+                                "ceMonthlyEmiCanPay": "EMI Can Pay",
+                                "monthly_emi_can_pay": "EMI Can Pay",
+                                "ceTenureMonths": "Tenure",
+                                "tenure_months": "Tenure",
+                                "ceTenureYears": "Tenure (Years)",
+                                "tenure_years": "Tenure (Years)",
+                                "ceRoi": "ROI %",
+                                "roi": "ROI %",
                                 "ceMultiplier": "Multiplier",
+                                "multiplier": "Multiplier",
                                 "loanEligibilityStatus": "Eligibility Status",
+                                "loan_eligibility_status": "Eligibility Status",
+                                "totalIncome": "Total Income",
+                                "total_income": "Total Income",
+                                "foirAmount": "FOIR Amount",
+                                "foir_amount": "FOIR Amount",
+                                "finalEligibility": "FOIR Eligibility",
+                                "final_eligibility": "FOIR Eligibility",
+                                "foirEligibility": "FOIR Eligibility",
+                                "foir_eligibility": "FOIR Eligibility",
+                                "multiplierEligibility": "Multiplier Eligibility",
+                                "multiplier_eligibility": "Multiplier Eligibility",
                                 "processingBanks": "Processing Banks",
                                 "processing_banks": "Processing Banks",
                                 "processing_bank": "Processing Bank",
@@ -1393,9 +1785,12 @@ class LeadsDB:
                             }
 
                             currency_keys = {
-                                "salary", "partnerSalary", "yearlyBonus", "loanRequired",
+                                "salary", "partnerSalary", "partner_salary", "yearlyBonus", "yearly_bonus", "loanRequired",
                                 "loan_required", "loan_amount", "totalBtPos", "total_bt_pos",
-                                "totalObligation", "total_obligation", "ceMonthlyEmiCanPay"
+                                "totalObligation", "totalObligations", "total_obligation", "total_obligations",
+                                "ceMonthlyEmiCanPay", "monthly_emi_can_pay", "totalIncome", "total_income",
+                                "foirAmount", "foir_amount", "finalEligibility", "final_eligibility",
+                                "foirEligibility", "foir_eligibility", "multiplierEligibility", "multiplier_eligibility"
                             }
                             ignored_obligation_keys = {"dynamic_fields", "dynamic_details", "obligations"}
 
@@ -1422,7 +1817,8 @@ class LeadsDB:
                                             continue
                                         if isinstance(value, (dict, list)):
                                             continue
-                                        compact_values.append(f"{key.replace('_', ' ').title()}: {value}")
+                                        compact_label = obligation_field_labels.get(key, key.replace('_', ' ').title())
+                                        compact_values.append(f"{compact_label}: {value}")
                                         if len(compact_values) >= 4:
                                             break
                                     return ", ".join(compact_values) if compact_values else f"{len(raw_value)} fields"
@@ -1431,7 +1827,7 @@ class LeadsDB:
                                         return f"₹{int(float(str(raw_value).replace(',', ''))):,}"
                                     except (ValueError, TypeError):
                                         pass
-                                if field_key in ["ceFoirPercent", "ceCustomFoirPercent", "foirPercent", "customFoirPercent", "ceRoi"]:
+                                if field_key in ["ceFoirPercent", "ceCustomFoirPercent", "foirPercent", "customFoirPercent", "foir_percent", "custom_foir_percent", "ceRoi", "roi"]:
                                     text = str(raw_value)
                                     return text if "%" in text else f"{text}%"
                                 return str(raw_value)

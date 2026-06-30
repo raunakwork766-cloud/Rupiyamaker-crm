@@ -761,7 +761,9 @@ export default function TopNavbar({
               setUserProfilePhoto(profilePhotoUrl);
             }
             setProfilePhotoError(false);
-            localStorage.setItem('profile_photo', userProfilePhotoLS);
+            // NOTE: Do NOT write localStorage here. This runs inside a cross-tab
+            // 'storage' event handler; writing back would ping-pong storage events
+            // between tabs and cause the multi-tab flickering. Read-only here.
             return;
           }
           

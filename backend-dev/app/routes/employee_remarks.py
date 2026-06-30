@@ -98,7 +98,7 @@ async def create_employee_remark(
         remark_id = await remarks_db.create_remark(remark_dict)
         
         # Log activity
-        activity_db.log_remark_added(employee_id, user_id, remark_data.remark)
+        await activity_db.log_remark_added(employee_id, user_id, remark_data.remark)
         
         return {"message": "Remark created successfully", "id": remark_id}
         

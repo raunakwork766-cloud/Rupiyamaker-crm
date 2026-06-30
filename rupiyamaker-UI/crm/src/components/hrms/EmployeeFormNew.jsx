@@ -37,6 +37,20 @@ const normalizeEmployeeTextFields = (data) => {
     return normalized;
 };
 
+const hasBankSalaryDetails = (employee) => (
+    !!(
+        employee?.salary_account_number ||
+        employee?.salary_ifsc_code ||
+        employee?.salary_bank_name
+    )
+);
+
+const resolveSalaryPaymentMode = (employee) => {
+    const savedMode = String(employee?.salary_payment_mode || '').toLowerCase();
+    if (savedMode === 'bank' || savedMode === 'upi') return savedMode;
+    return employee?.salary_upi_id && !hasBankSalaryDetails(employee) ? 'upi' : 'bank';
+};
+
 const EmployeeForm = ({
     employee = null,
     onFinish,
@@ -102,6 +116,8 @@ const EmployeeForm = ({
         salary_ifsc_code: employee?.salary_ifsc_code || '',
         salary_bank_name: employee?.salary_bank_name || '',
         salary_account_name: employee?.salary_account_name || '',
+        salary_payment_mode: resolveSalaryPaymentMode(employee),
+        salary_upi_id: employee?.salary_upi_id || '',
         
         // Login Credentials
         username: employee?.username || '',
@@ -219,6 +235,8 @@ const EmployeeForm = ({
                 salary_ifsc_code: employee?.salary_ifsc_code || '',
                 salary_bank_name: employee?.salary_bank_name || '',
                 salary_account_name: employee?.salary_account_name || '',
+                salary_payment_mode: resolveSalaryPaymentMode(employee),
+                salary_upi_id: employee?.salary_upi_id || '',
                 
                 // Login Credentials
                 username: employee?.username || '',
@@ -563,6 +581,8 @@ const EmployeeForm = ({
                 salary_ifsc_code: employee?.salary_ifsc_code || '',
                 salary_bank_name: employee?.salary_bank_name || '',
                 salary_account_name: employee?.salary_account_name || '',
+                salary_payment_mode: resolveSalaryPaymentMode(employee),
+                salary_upi_id: employee?.salary_upi_id || '',
                 
                 // Login Credentials
                 username: employee?.username || '',
@@ -671,6 +691,8 @@ const EmployeeForm = ({
             salary_ifsc_code: '',
             salary_bank_name: '',
             salary_account_name: '',
+            salary_payment_mode: 'bank',
+            salary_upi_id: '',
             username: '',
             password: ''
         }));
@@ -815,6 +837,10 @@ const EmployeeForm = ({
                 case 'aadhaar_number':
                     // Allow only numbers, limit to 12 digits
                     processedValue = value.replace(/\D/g, '').slice(0, 12);
+                    break;
+
+                case 'salary_upi_id':
+                    processedValue = value.replace(/\s/g, '').slice(0, 80);
                     break;
                     
                 case 'password':
@@ -1640,11 +1666,13 @@ const EmployeeForm = ({
             if (formData.settled_target && String(formData.settled_target).trim()) submissionData.settled_target = parseFloat(formData.settled_target);
             if (formData.incentive && formData.incentive.trim()) submissionData.incentive = formData.incentive;
 
-            // Banking Details - only if provided and not empty
-            if (formData.salary_account_number && formData.salary_account_number.trim()) submissionData.salary_account_number = formData.salary_account_number;
-            if (formData.salary_ifsc_code && formData.salary_ifsc_code.trim()) submissionData.salary_ifsc_code = formData.salary_ifsc_code;
-            if (formData.salary_bank_name && formData.salary_bank_name.trim()) submissionData.salary_bank_name = formData.salary_bank_name;
-            if (formData.salary_account_name && formData.salary_account_name.trim()) submissionData.salary_account_name = formData.salary_account_name;
+            // Salary payment details are sent even when blank so edits can clear old values.
+            submissionData.salary_payment_mode = formData.salary_payment_mode === 'upi' ? 'upi' : 'bank';
+            submissionData.salary_account_number = (formData.salary_account_number || '').trim();
+            submissionData.salary_ifsc_code = (formData.salary_ifsc_code || '').trim();
+            submissionData.salary_bank_name = (formData.salary_bank_name || '').trim();
+            submissionData.salary_account_name = (formData.salary_account_name || '').trim();
+            submissionData.salary_upi_id = (formData.salary_upi_id || '').trim();
 
             // Profile photo - only if provided
             if (formData.profile_photo) submissionData.profile_photo = formData.profile_photo;
@@ -2593,65 +2621,109 @@ const EmployeeForm = ({
                                 <div className="ef-section-icon">💳</div>
                                 <h3 className="ef-section-title">Bank & Salary Account</h3>
                             </div>
+
+                            <div className="ef-payment-tabs" role="tablist" aria-label="Salary payment details">
+                                <button
+                                    type="button"
+                                    className={`ef-payment-tab${formData.salary_payment_mode !== 'upi' ? ' active' : ''}`}
+                                    onClick={() => setFormData(prev => ({ ...prev, salary_payment_mode: 'bank' }))}
+                                >
+                                    Bank Details
+                                </button>
+                                <button
+                                    type="button"
+                                    className={`ef-payment-tab${formData.salary_payment_mode === 'upi' ? ' active' : ''}`}
+                                    onClick={() => setFormData(prev => ({ ...prev, salary_payment_mode: 'upi' }))}
+                                >
+                                    UPI
+                                </button>
+                            </div>
                             
-                            <div className="ef-bank-alert">
-                                <span style={{ fontSize: '1.1rem', lineHeight: '1' }}>🛡️</span>
-                                <div>
-                                    Ensure the <strong>"Name as per Bank Account"</strong> precisely matches the passbook to avoid automated salary transfer failures.
-                                </div>
-                            </div>
+                            {formData.salary_payment_mode === 'upi' ? (
+                                <div className="ef-payment-panel">
+                                    <div className="ef-bank-alert ef-bank-alert--info">
+                                        <span style={{ fontSize: '1.1rem', lineHeight: '1' }}>i</span>
+                                        <div>
+                                            Add the employee UPI ID for salary transfer when bank account details are not available.
+                                        </div>
+                                    </div>
 
-                            <div className="ef-grid-2" style={{ marginBottom: '1rem' }}>
-                                {/* Bank Name */}
-                                <div className="ef-field">
-                                    <label className="ef-label">Bank Name</label>
-                                    <input 
-                                        type="text" 
-                                        name="salary_bank_name"
-                                        value={formData.salary_bank_name}
-                                        onChange={handleInputChange}
-                                        placeholder="e.g. HDFC Bank"
-                                    />
+                                    <div className="ef-grid-2">
+                                        <div className="ef-field">
+                                            <label className="ef-label">UPI ID</label>
+                                            <input
+                                                type="text"
+                                                name="salary_upi_id"
+                                                value={formData.salary_upi_id || ''}
+                                                onChange={handleInputChange}
+                                                placeholder="employee@bank"
+                                                autoComplete="off"
+                                            />
+                                        </div>
+                                    </div>
                                 </div>
+                            ) : (
+                                <div className="ef-payment-panel">
+                                    <div className="ef-bank-alert">
+                                        <span style={{ fontSize: '1.1rem', lineHeight: '1' }}>🛡️</span>
+                                        <div>
+                                            Ensure the <strong>"Name as per Bank Account"</strong> precisely matches the passbook to avoid automated salary transfer failures.
+                                        </div>
+                                    </div>
 
-                                {/* Name as per Bank Account */}
-                                <div className="ef-field">
-                                    <label className="ef-label">Name as per Bank Account <span className="ef-req">*</span></label>
-                                    <input 
-                                        type="text" 
-                                        name="salary_account_name"
-                                        value={formData.salary_account_name || ''}
-                                        onChange={handleInputChange}
-                                        placeholder="Exact name registered in bank"
-                                    />
-                                </div>
-                            </div>
+                                    <div className="ef-grid-2" style={{ marginBottom: '1rem' }}>
+                                        {/* Bank Name */}
+                                        <div className="ef-field">
+                                            <label className="ef-label">Bank Name</label>
+                                            <input 
+                                                type="text" 
+                                                name="salary_bank_name"
+                                                value={formData.salary_bank_name}
+                                                onChange={handleInputChange}
+                                                placeholder="e.g. HDFC Bank"
+                                            />
+                                        </div>
 
-                            <div className="ef-grid-2">
-                                {/* Salary Account Number */}
-                                <div className="ef-field">
-                                    <label className="ef-label">Salary Account Number</label>
-                                    <input 
-                                        type="text" 
-                                        name="salary_account_number"
-                                        value={formData.salary_account_number}
-                                        onChange={handleInputChange}
-                                        placeholder="Salary Account Number"
-                                    />
-                                </div>
+                                        {/* Name as per Bank Account */}
+                                        <div className="ef-field">
+                                            <label className="ef-label">Name as per Bank Account <span className="ef-req">*</span></label>
+                                            <input 
+                                                type="text" 
+                                                name="salary_account_name"
+                                                value={formData.salary_account_name || ''}
+                                                onChange={handleInputChange}
+                                                placeholder="Exact name registered in bank"
+                                            />
+                                        </div>
+                                    </div>
 
-                                {/* Salary IFSC Code */}
-                                <div className="ef-field">
-                                    <label className="ef-label">Salary IFSC Code</label>
-                                    <input 
-                                        type="text" 
-                                        name="salary_ifsc_code"
-                                        value={formData.salary_ifsc_code}
-                                        onChange={handleInputChange}
-                                        placeholder="Salary IFSC Code"
-                                    />
+                                    <div className="ef-grid-2">
+                                        {/* Salary Account Number */}
+                                        <div className="ef-field">
+                                            <label className="ef-label">Salary Account Number</label>
+                                            <input 
+                                                type="text" 
+                                                name="salary_account_number"
+                                                value={formData.salary_account_number}
+                                                onChange={handleInputChange}
+                                                placeholder="Salary Account Number"
+                                            />
+                                        </div>
+
+                                        {/* Salary IFSC Code */}
+                                        <div className="ef-field">
+                                            <label className="ef-label">Salary IFSC Code</label>
+                                            <input 
+                                                type="text" 
+                                                name="salary_ifsc_code"
+                                                value={formData.salary_ifsc_code}
+                                                onChange={handleInputChange}
+                                                placeholder="Salary IFSC Code"
+                                            />
+                                        </div>
+                                    </div>
                                 </div>
-                            </div>
+                            )}
                         </div>
 
                         {/* Login Credentials */}

@@ -26,8 +26,6 @@ import {
   CheckSquare,
   ChevronLeft,
   ChevronRight,
-  ShieldCheck,
-  RotateCcw,
   FolderPlus,
   Send,
   BellRing,
@@ -48,12 +46,53 @@ import {
   canEdit, 
   canDelete,
   getPermissionDisplayText,
-  getCurrentUserId,
   hasWarningsPermission,
   isSuperAdmin as hasGlobalSuperAdminPermission
 } from '../utils/permissions';
 
 const API_URL = "/api";
+
+const WaiveOffIcon = ({ className = "w-5 h-5" }) => (
+  <svg className={className} viewBox="0 0 24 24" fill="none" aria-hidden="true" focusable="false">
+    <path
+      d="M7.2 13.2V7.1a1.45 1.45 0 0 1 2.9 0v5.1"
+      stroke="currentColor"
+      strokeWidth="2.15"
+      strokeLinecap="round"
+    />
+    <path
+      d="M10.1 12.1V4.8a1.45 1.45 0 1 1 2.9 0v7.1"
+      stroke="currentColor"
+      strokeWidth="2.15"
+      strokeLinecap="round"
+    />
+    <path
+      d="M13 12.2V6.1a1.45 1.45 0 0 1 2.9 0v6.6"
+      stroke="currentColor"
+      strokeWidth="2.15"
+      strokeLinecap="round"
+    />
+    <path
+      d="M15.9 13V8.6a1.45 1.45 0 0 1 2.9 0v6.9c0 3.2-2.6 5.8-5.8 5.8h-.8c-2.1 0-4.1-.9-5.5-2.5l-3-3.4a1.55 1.55 0 0 1 2.3-2.1l2 2.1"
+      stroke="currentColor"
+      strokeWidth="2.15"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+    <path d="M18.1 2.8c1.5.9 2.6 2.3 3 4M20.8 1.1c1.3 1 2.2 2.2 2.8 3.7" stroke="currentColor" strokeWidth="1.65" strokeLinecap="round" opacity="0.75" />
+  </svg>
+);
+
+const WaiveBackIcon = ({ className = "w-4 h-4" }) => (
+  <svg className={className} viewBox="0 0 24 24" fill="none" aria-hidden="true" focusable="false">
+    <path d="M8.2 12.8V7a1.35 1.35 0 0 1 2.7 0v4.9" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+    <path d="M10.9 11.8V5.1a1.35 1.35 0 0 1 2.7 0v6.6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+    <path d="M13.6 12.2V6.8a1.35 1.35 0 0 1 2.7 0v6.2" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+    <path d="M16.3 13.1V9.6a1.35 1.35 0 0 1 2.7 0v5.7c0 3.1-2.5 5.6-5.6 5.6h-.6c-2 0-3.9-.8-5.2-2.3l-2.4-2.7a1.45 1.45 0 0 1 2.2-1.9l1.7 1.8" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+    <path d="M8.6 3.8H4.8v3.8" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" strokeLinejoin="round" />
+    <path d="M4.9 7.4c1.6-3.3 5.5-5 9.2-3.8" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" />
+  </svg>
+);
 
 const WarningPage = memo(() => {
   const warningPageStyles = `
@@ -138,6 +177,14 @@ const WarningPage = memo(() => {
     .warning-drawer-footer { padding: 12px 18px; border-top: 1px solid #e2e8f0; background: #f8fafc; display: flex; align-items: center; justify-content: flex-end; gap: 10px; flex-shrink: 0; }
     .warning-drawer-primary { padding: 8px 18px; border: none; background: #0284c7; color: #fff; border-radius: 6px; font-size: 13px; font-weight: 800; cursor: pointer; display: inline-flex; align-items: center; gap: 7px; text-transform: uppercase; box-shadow: 0 6px 14px rgba(2,132,199,0.22); }
     .warning-drawer-primary:hover { background: #0369a1; }
+    .warning-penalty-action { width: 32px; height: 32px; border-radius: 8px; display: inline-flex; align-items: center; justify-content: center; border: 1px solid transparent; transition: background 0.15s, border-color 0.15s, color 0.15s, transform 0.15s; line-height: 0; overflow: visible; }
+    .warning-penalty-action:hover { transform: translateY(-1px); }
+    .warning-penalty-action--waive { color: #ffffff; background: #0284c7; border-color: #38bdf8; box-shadow: 0 2px 10px rgba(2,132,199,0.34); }
+    .warning-penalty-action--waive:hover { color: #ffffff; background: #0369a1; border-color: #7dd3fc; box-shadow: 0 4px 14px rgba(2,132,199,0.44); }
+    .warning-penalty-action--waive svg { width: 24px; height: 24px; flex-shrink: 0; overflow: visible; }
+    .warning-penalty-action--reinstate { color: #ffffff; background: #d97706; border-color: #fbbf24; box-shadow: 0 2px 10px rgba(217,119,6,0.32); }
+    .warning-penalty-action--reinstate:hover { color: #ffffff; background: #b45309; border-color: #fde68a; box-shadow: 0 4px 14px rgba(217,119,6,0.42); }
+    .warning-penalty-action--reinstate svg { width: 23px; height: 23px; flex-shrink: 0; overflow: visible; }
     .warning-form-label { display: block; margin-bottom: 6px; font-size: 11px; font-weight: 800; color: #475569; text-transform: uppercase; letter-spacing: 0.5px; }
     .warning-form-input { width: 100%; border: 1.5px solid #94a3b8; background: #fff; color: #0f172a; border-radius: 6px; font-size: 13px; font-weight: 600; outline: none; }
     .warning-form-input-readonly { border-color: #cbd5e1; background: #f1f5f9; color: #64748b; cursor: not-allowed; }
@@ -333,16 +380,39 @@ const WarningPage = memo(() => {
   // Waived penalties tracking (local state - maps warning id to waived status)
   const [waivedPenalties, setWaivedPenalties] = useState({});
 
+  const normalizeId = (value) => {
+    if (!value) return '';
+    if (typeof value === 'object') {
+      return String(value.$oid || value._id || value.id || value.user_id || '');
+    }
+    return String(value);
+  };
+
   // Get current user ID
   const getCurrentUserId = () => {
+    const directId = localStorage.getItem('userId') || localStorage.getItem('user_id');
+    if (directId) return directId;
+
     const userData = localStorage.getItem('userData');
     if (userData) {
       try {
-        const { user_id } = JSON.parse(userData);
-        return user_id;
-      } catch (error) {
+        const parsed = JSON.parse(userData);
+        return parsed.user_id || parsed._id || parsed.id || null;
+      } catch {
+        // Continue to legacy storage fallback.
       }
     }
+
+    const user = localStorage.getItem('user');
+    if (user) {
+      try {
+        const parsed = JSON.parse(user);
+        return parsed.user_id || parsed._id || parsed.id || null;
+      } catch {
+        return null;
+      }
+    }
+
     return null;
   };
 
@@ -385,6 +455,9 @@ const WarningPage = memo(() => {
   // Simplified permission checking using new 3-type system
   const permissionLevel = getPermissionLevel('warnings');
   const currentUserId = getCurrentUserId();
+  const canCurrentUserEditWarning = (warning) => {
+    return Boolean(warning) && normalizeId(warning.issued_by) === normalizeId(currentUserId);
+  };
   
   // Permission check functions
   const canUserViewAll = () => canViewAll('warnings');
@@ -563,7 +636,7 @@ const WarningPage = memo(() => {
       const updated = warnings.find(w => w.id === selectedWarning.id);
       if (updated) {
         setSelectedWarning(updated);
-        if (canSuperAdminEditWarnings()) {
+        if (canCurrentUserEditWarning(updated)) {
           setEditingWarning(updated);
           setFormData({
             warning_type: updated.warning_type || '',
@@ -571,6 +644,8 @@ const WarningPage = memo(() => {
             penalty_amount: updated.penalty_amount != null ? String(updated.penalty_amount) : '',
             warning_message: updated.warning_message || ''
           });
+        } else {
+          setEditingWarning(null);
         }
       }
     }
@@ -1313,7 +1388,13 @@ const WarningPage = memo(() => {
 
   // Waive/Reinstate penalty handlers
   const handleWaivePenalty = async (warningId) => {
-    if (!window.confirm('Admin Action: Are you sure you want to completely waive off this penalty?')) return;
+    const targetWarning = warnings.find(w => w.id === warningId) || (selectedWarning?.id === warningId ? selectedWarning : null);
+    if (!canCurrentUserEditWarning(targetWarning)) {
+      showNotification('Only the warning creator can waive off this penalty', 'error');
+      return;
+    }
+
+    if (!window.confirm('Are you sure you want to waive off this penalty?')) return;
     try {
       const userId = getCurrentUserId();
       const response = await fetch(`${API_URL}/warnings/${warningId}/waive?user_id=${userId}`, {
@@ -1322,7 +1403,9 @@ const WarningPage = memo(() => {
       });
       if (response.ok) {
         // Update local warnings state
-        setWarnings(prev => prev.map(w => w.id === warningId ? { ...w, is_waived: true } : w));
+        const waivedAt = new Date().toISOString();
+        setWarnings(prev => prev.map(w => w.id === warningId ? { ...w, is_waived: true, waived_by: userId, waived_at: waivedAt } : w));
+        setSelectedWarning(prev => prev?.id === warningId ? { ...prev, is_waived: true, waived_by: userId, waived_at: waivedAt } : prev);
         setWaivedPenalties(prev => ({ ...prev, [warningId]: true }));
         showNotification('Penalty successfully waived off!', 'success');
       } else {
@@ -1336,7 +1419,13 @@ const WarningPage = memo(() => {
   };
 
   const handleReinstatePenalty = async (warningId) => {
-    if (!window.confirm('Admin Action: Are you sure you want to reinstate this penalty?')) return;
+    const targetWarning = warnings.find(w => w.id === warningId) || (selectedWarning?.id === warningId ? selectedWarning : null);
+    if (!canCurrentUserEditWarning(targetWarning)) {
+      showNotification('Only the warning creator can reinstate this penalty', 'error');
+      return;
+    }
+
+    if (!window.confirm('Are you sure you want to reinstate this penalty?')) return;
     try {
       const userId = getCurrentUserId();
       const response = await fetch(`${API_URL}/warnings/${warningId}/reinstate?user_id=${userId}`, {
@@ -1345,7 +1434,8 @@ const WarningPage = memo(() => {
       });
       if (response.ok) {
         // Update local warnings state
-        setWarnings(prev => prev.map(w => w.id === warningId ? { ...w, is_waived: false } : w));
+        setWarnings(prev => prev.map(w => w.id === warningId ? { ...w, is_waived: false, waived_by: null, waived_at: null } : w));
+        setSelectedWarning(prev => prev?.id === warningId ? { ...prev, is_waived: false, waived_by: null, waived_at: null } : prev);
         setWaivedPenalties(prev => {
           const updated = { ...prev };
           delete updated[warningId];
@@ -1555,6 +1645,11 @@ const WarningPage = memo(() => {
     try {
       if (!editingWarning || !editingWarning.id) {
         showNotification('No warning selected for editing', 'error');
+        return;
+      }
+
+      if (!canCurrentUserEditWarning(editingWarning)) {
+        showNotification('Only the warning creator can edit this warning', 'error');
         return;
       }
 
@@ -1780,6 +1875,10 @@ const WarningPage = memo(() => {
 
   // Open edit dialog
   const openEditDialog = (warning) => {
+    if (!canCurrentUserEditWarning(warning)) {
+      showNotification('Only the warning creator can edit this warning', 'error');
+      return;
+    }
     setEditingWarning(warning);
     setFormData({
       warning_type: warning.warning_type,
@@ -1792,7 +1891,7 @@ const WarningPage = memo(() => {
 
   const openWarningDetails = (warning) => {
     setSelectedWarning(warning);
-    if (canSuperAdminEditWarnings()) {
+    if (canCurrentUserEditWarning(warning)) {
       setEditingWarning(warning);
       setFormData({
         warning_type: warning.warning_type || '',
@@ -1904,6 +2003,8 @@ const WarningPage = memo(() => {
       </>
     );
   }
+
+  const selectedWarningCanEdit = canCurrentUserEditWarning(selectedWarning);
 
   try {
     return (
@@ -2079,20 +2180,20 @@ const WarningPage = memo(() => {
                                                   <div className="flex items-center gap-2">
                                                     <div className="flex flex-col">
                                                       <span className="text-gray-500 line-through text-xs">₹{Number(warning.penalty_amount).toLocaleString('en-IN')}</span>
-                                                      <span className="text-green-400 font-bold text-xs mt-0.5 flex items-center gap-1"><ShieldCheck className="w-3 h-3 inline" /> Waived Off</span>
+                                                      <span className="text-green-400 font-bold text-xs mt-0.5 flex items-center gap-1"><WaiveOffIcon className="w-4 h-4 inline" /> Waived Off</span>
                                                     </div>
-                                                    {permissions?.can_edit && (
-                                                      <button onClick={() => handleReinstatePenalty(warning.id)} className="text-amber-400 hover:text-white hover:bg-amber-600 border border-amber-700 p-1 rounded-md text-[10px] font-bold transition-colors" title="Reinstate Penalty">
-                                                        <RotateCcw className="w-3.5 h-3.5" />
+                                                    {canCurrentUserEditWarning(warning) && (
+                                                      <button type="button" onClick={() => handleReinstatePenalty(warning.id)} className="warning-penalty-action warning-penalty-action--reinstate" title="Cancel Waive Off" aria-label="Cancel waive off">
+                                                        <WaiveBackIcon className="w-4 h-4" />
                                                       </button>
                                                     )}
                                                   </div>
                                                 ) : (
                                                   <div className="flex items-center justify-between gap-2 group/penalty">
                                                     <span className="font-bold text-red-400">₹{Number(warning.penalty_amount).toLocaleString('en-IN')}</span>
-                                                    {permissions?.can_edit && (
-                                                      <button onClick={() => handleWaivePenalty(warning.id)} className="text-purple-400 hover:text-white hover:bg-purple-600 border border-purple-700 p-1 rounded-md text-[10px] font-bold transition-colors" title="Waive Penalty">
-                                                        <Edit className="w-3.5 h-3.5" />
+                                                    {canCurrentUserEditWarning(warning) && (
+                                                      <button type="button" onClick={() => handleWaivePenalty(warning.id)} className="warning-penalty-action warning-penalty-action--waive" title="Waive Off Penalty" aria-label="Waive off penalty">
+                                                        <WaiveOffIcon className="w-4 h-4" />
                                                       </button>
                                                     )}
                                                   </div>
@@ -2276,20 +2377,20 @@ const WarningPage = memo(() => {
                                                 <div className="flex items-center gap-2">
                                                   <div className="flex flex-col">
                                                     <span className="text-gray-500 line-through text-xs">₹{Number(warning.penalty_amount).toLocaleString('en-IN')}</span>
-                                                    <span className="text-green-400 font-bold text-xs mt-0.5 flex items-center gap-1"><ShieldCheck className="w-3 h-3 inline" /> Waived Off</span>
+                                                    <span className="text-green-400 font-bold text-xs mt-0.5 flex items-center gap-1"><WaiveOffIcon className="w-4 h-4 inline" /> Waived Off</span>
                                                   </div>
-                                                  {permissions?.can_edit && (
-                                                    <button onClick={() => handleReinstatePenalty(warning.id)} className="text-amber-400 hover:text-white hover:bg-amber-600 border border-amber-700 p-1 rounded-md text-[10px] font-bold transition-colors" title="Reinstate Penalty">
-                                                      <RotateCcw className="w-3.5 h-3.5" />
+                                                  {canCurrentUserEditWarning(warning) && (
+                                                    <button type="button" onClick={() => handleReinstatePenalty(warning.id)} className="warning-penalty-action warning-penalty-action--reinstate" title="Cancel Waive Off" aria-label="Cancel waive off">
+                                                      <WaiveBackIcon className="w-4 h-4" />
                                                     </button>
                                                   )}
                                                 </div>
                                               ) : (
                                                 <div className="flex items-center justify-between gap-2 group/penalty">
                                                   <span className="font-bold text-red-400">₹{Number(warning.penalty_amount).toLocaleString('en-IN')}</span>
-                                                  {permissions?.can_edit && (
-                                                    <button onClick={() => handleWaivePenalty(warning.id)} className="text-purple-400 hover:text-white hover:bg-purple-600 border border-purple-700 p-1 rounded-md text-[10px] font-bold transition-colors" title="Waive Penalty">
-                                                      <Edit className="w-3.5 h-3.5" />
+                                                  {canCurrentUserEditWarning(warning) && (
+                                                    <button type="button" onClick={() => handleWaivePenalty(warning.id)} className="warning-penalty-action warning-penalty-action--waive" title="Waive Off Penalty" aria-label="Waive off penalty">
+                                                      <WaiveOffIcon className="w-4 h-4" />
                                                     </button>
                                                   )}
                                                 </div>
@@ -2397,20 +2498,20 @@ const WarningPage = memo(() => {
                                                 <div className="flex items-center gap-2">
                                                   <div className="flex flex-col">
                                                     <span className="text-gray-500 line-through text-xs">₹{Number(warning.penalty_amount).toLocaleString('en-IN')}</span>
-                                                    <span className="text-green-400 font-bold text-xs mt-0.5 flex items-center gap-1"><ShieldCheck className="w-3 h-3 inline" /> Waived Off</span>
+                                                    <span className="text-green-400 font-bold text-xs mt-0.5 flex items-center gap-1"><WaiveOffIcon className="w-4 h-4 inline" /> Waived Off</span>
                                                   </div>
-                                                  {permissions?.can_edit && (
-                                                    <button onClick={() => handleReinstatePenalty(warning.id)} className="text-amber-400 hover:text-white hover:bg-amber-600 border border-amber-700 p-1 rounded-md text-[10px] font-bold transition-colors" title="Reinstate Penalty">
-                                                      <RotateCcw className="w-3.5 h-3.5" />
+                                                  {canCurrentUserEditWarning(warning) && (
+                                                    <button type="button" onClick={() => handleReinstatePenalty(warning.id)} className="warning-penalty-action warning-penalty-action--reinstate" title="Cancel Waive Off" aria-label="Cancel waive off">
+                                                      <WaiveBackIcon className="w-4 h-4" />
                                                     </button>
                                                   )}
                                                 </div>
                                               ) : (
                                                 <div className="flex items-center justify-between gap-2 group/penalty">
                                                   <span className="font-bold text-red-400">₹{Number(warning.penalty_amount).toLocaleString('en-IN')}</span>
-                                                  {permissions?.can_edit && (
-                                                    <button onClick={() => handleWaivePenalty(warning.id)} className="text-purple-400 hover:text-white hover:bg-purple-600 border border-purple-700 p-1 rounded-md text-[10px] font-bold transition-colors" title="Waive Penalty">
-                                                      <Edit className="w-3.5 h-3.5" />
+                                                  {canCurrentUserEditWarning(warning) && (
+                                                    <button type="button" onClick={() => handleWaivePenalty(warning.id)} className="warning-penalty-action warning-penalty-action--waive" title="Waive Off Penalty" aria-label="Waive off penalty">
+                                                      <WaiveOffIcon className="w-4 h-4" />
                                                     </button>
                                                   )}
                                                 </div>
@@ -2524,20 +2625,20 @@ const WarningPage = memo(() => {
                                             <div className="flex items-center gap-2">
                                               <div className="flex flex-col">
                                                 <span className="text-gray-500 line-through text-xs">₹{Number(warning.penalty_amount).toLocaleString('en-IN')}</span>
-                                                <span className="text-green-400 font-bold text-xs mt-0.5 flex items-center gap-1"><ShieldCheck className="w-3 h-3 inline" /> Waived Off</span>
+                                                <span className="text-green-400 font-bold text-xs mt-0.5 flex items-center gap-1"><WaiveOffIcon className="w-4 h-4 inline" /> Waived Off</span>
                                               </div>
-                                              {permissions?.can_edit && (
-                                                <button onClick={() => handleReinstatePenalty(warning.id)} className="text-amber-400 hover:text-white hover:bg-amber-600 border border-amber-700 p-1 rounded-md text-[10px] font-bold transition-colors" title="Reinstate Penalty">
-                                                  <RotateCcw className="w-3.5 h-3.5" />
+                                              {canCurrentUserEditWarning(warning) && (
+                                                <button type="button" onClick={() => handleReinstatePenalty(warning.id)} className="warning-penalty-action warning-penalty-action--reinstate" title="Cancel Waive Off" aria-label="Cancel waive off">
+                                                  <WaiveBackIcon className="w-4 h-4" />
                                                 </button>
                                               )}
                                             </div>
                                           ) : (
                                             <div className="flex items-center justify-between gap-2 group/penalty">
                                               <span className="font-bold text-red-400">₹{Number(warning.penalty_amount).toLocaleString('en-IN')}</span>
-                                              {permissions?.can_edit && (
-                                                <button onClick={() => handleWaivePenalty(warning.id)} className="text-purple-400 hover:text-white hover:bg-purple-600 border border-purple-700 p-1 rounded-md text-[10px] font-bold transition-colors" title="Waive Penalty">
-                                                  <Edit className="w-3.5 h-3.5" />
+                                              {canCurrentUserEditWarning(warning) && (
+                                                <button type="button" onClick={() => handleWaivePenalty(warning.id)} className="warning-penalty-action warning-penalty-action--waive" title="Waive Off Penalty" aria-label="Waive off penalty">
+                                                  <WaiveOffIcon className="w-4 h-4" />
                                                 </button>
                                               )}
                                             </div>
@@ -3151,8 +3252,8 @@ const WarningPage = memo(() => {
 
             <div className="warning-drawer-body space-y-5">
               <h2 className="warning-drawer-title">
-                {permissions?.can_edit ? <Edit className="w-5 h-5 text-blue-500" /> : <FileText className="w-5 h-5 text-blue-500" />}
-                {permissions?.can_edit ? 'Edit Warning' : 'Warning Record Details'}
+                {selectedWarningCanEdit ? <Edit className="w-5 h-5 text-blue-500" /> : <FileText className="w-5 h-5 text-blue-500" />}
+                {selectedWarningCanEdit ? 'Edit Warning' : 'Warning Record Details'}
               </h2>
               {/* 2x2 Grid: Employee, Issued By, Mistake Category, Penalty */}
               <div className="grid grid-cols-2 gap-4 warning-detail-card">
@@ -3166,7 +3267,7 @@ const WarningPage = memo(() => {
                 </div>
                 <div>
                   <p className="text-[10px] text-gray-500 font-bold uppercase tracking-wider mb-1">Mistake Category</p>
-                  {permissions?.can_edit ? (
+                  {selectedWarningCanEdit ? (
                     <select
                       value={formData.warning_type}
                       onChange={(e) => handleFormChange('warning_type', e.target.value)}
@@ -3189,7 +3290,7 @@ const WarningPage = memo(() => {
                 </div>
                 <div>
                   <p className="text-[10px] text-gray-500 font-bold uppercase tracking-wider mb-1">Penalty Amount</p>
-                  {permissions?.can_edit ? (
+                  {selectedWarningCanEdit ? (
                     <div className="relative border border-gray-300 rounded-lg bg-white flex items-center overflow-hidden">
                       <span className="px-3 py-2 text-gray-500 bg-gray-100 border-r border-gray-300 font-medium">₹</span>
                       <input
@@ -3242,7 +3343,7 @@ const WarningPage = memo(() => {
               {/* Manager's Remark */}
               <div>
                 <p className="text-[10px] text-gray-500 font-bold uppercase tracking-wider mb-2">Manager's Remark</p>
-                {permissions?.can_edit ? (
+                {selectedWarningCanEdit ? (
                   <textarea
                     value={formData.warning_message}
                     onChange={(e) => handleFormChange('warning_message', e.target.value)}
@@ -3275,7 +3376,7 @@ const WarningPage = memo(() => {
               </div>
 
             </div>
-            {permissions?.can_edit && (
+            {selectedWarningCanEdit && (
               <div className="warning-drawer-footer">
                 <button
                   type="button"

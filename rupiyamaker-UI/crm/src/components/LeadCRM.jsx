@@ -26,6 +26,22 @@ function useDebounce(value, delay) {
     return debouncedValue;
 }
 
+// 🛡️ Hide raw MongoDB ObjectIds that can briefly leak into the UI before the
+// API resolves related fields (e.g. created_by, department) into names.
+const OBJECT_ID_RE = /^[a-f0-9]{24}$/i;
+const isObjectIdString = (val) => typeof val === 'string' && OBJECT_ID_RE.test(val.trim());
+// Return a human-safe value: extract .name from objects, blank-out raw ObjectIds.
+const safeText = (val, fallback = '-') => {
+    if (val === null || val === undefined || val === '') return fallback;
+    if (typeof val === 'object') {
+        const name = val.name || val.display_name || val.full_name;
+        return name && !isObjectIdString(name) ? name : fallback;
+    }
+    if (isObjectIdString(val)) return fallback;
+    return val;
+};
+
+
 // Query Parameter Handler for Direct Lead View
 // This code runs immediately when the component is loaded
 (() => {
@@ -1408,9 +1424,14 @@ const LeadCRM = memo(function LeadCRM({ user, selectedLoanType: initialLoanType,
     const debouncedTeamNameSearch = useDebounce(teamNameSearch, 200);
     const debouncedAssignedTLSearch = useDebounce(assignedTLSearch, 200);
 
-    // 🚀 PERFORMANCE: Loading states - NEVER show loading on initial mount if cache exists
-    // Start with false to show cached data immediately, even if it's being refreshed
-    const [loadingLeads, setLoadingLeads] = useState(false);
+    // 🚀 PERFORMANCE: Loading states
+    // Start with true when NO cache exists (so "No leads available" doesn't flash before API loads).
+    // Start with false when cache exists (show cached data instantly, refresh silently in background).
+    const [loadingLeads, setLoadingLeads] = useState(!cachedLeadsData);
+    // True whenever a leads fetch is in flight. Used to keep the loader visible
+    // (instead of flashing "No leads available") until the first fetch resolves —
+    // even when an (empty) cache exists.
+    const [leadsFetching, setLeadsFetching] = useState(() => !(cachedLeadsData?.leads?.length > 0));
     const [loadingStatuses, setLoadingStatuses] = useState(false);
     const [loadingLoanTypes, setLoadingLoanTypes] = useState(false);
     const [loadingQuestions, setLoadingQuestions] = useState(false);
@@ -4736,6 +4757,10 @@ const LeadCRM = memo(function LeadCRM({ user, selectedLoanType: initialLoanType,
         fetchInProgressRef.current = true;
         lastFetchParamsRef.current = paramsKey;
 
+        if (!isLoadMore) {
+            // Keep the loader visible until this fetch resolves.
+            setLeadsFetching(true);
+        }
         if (isLoadMore) {
             // Silent background loading - no UI blocking
             setIsLoadingMore(true);
@@ -4849,6 +4874,7 @@ const LeadCRM = memo(function LeadCRM({ user, selectedLoanType: initialLoanType,
             setIsLoadingMore(false);
         } finally {
             fetchInProgressRef.current = false; // Release the lock
+            setLeadsFetching(false);
         }
     }, [userId, setError, setLoadingLeads, setIsLoading, setLeads, setFilteredLeads, filterOptions.noActivityDate]); // Removed pagination dependencies
 
@@ -7625,15 +7651,15 @@ const LeadCRM = memo(function LeadCRM({ user, selectedLoanType: initialLoanType,
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    {loadingLeads ? (
+                                    {(loadingLeads || (leadsFetching && leads.length === 0)) ? (
                                         <tr>
                                             <td
                                                 colSpan={((canDeleteLeads() || isSuperAdmin()) && checkboxVisible) ? columns.length + 1 : columns.length}
                                                 className="empty-cell"
                                             >
-                                                <div className="flex items-center justify-center gap-3">
-                                                    <div className="lead-crm-kpi-loading"></div>
-                                                    <span>Loading leads...</span>
+                                                <div className="flex items-center justify-center gap-3 py-6">
+                                                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-400"></div>
+                                                    <span className="text-gray-400">Loading leads...</span>
                                                 </div>
                                             </td>
                                         </tr>
@@ -7680,14 +7706,14 @@ const LeadCRM = memo(function LeadCRM({ user, selectedLoanType: initialLoanType,
                                         <td className="text-md font-semibold py-2 px-4 whitespace-nowrap text-white">
                                             <div className="flex items-center gap-3">
                                               
-                                                <span className='text-sm text-wrap'>{typeof lead.created_by_name === 'object' ? lead.created_by_name?.name || "-" : lead.created_by_name || "-"}</span>
+                                                <span className='text-sm text-wrap'>{safeText(lead.created_by_name)}</span>
                                             </div>
                                         </td>
-                                        <td className="text-sm font-semibold py-2 px-4 whitespace-nowrap text-white">{typeof lead.department_name === 'object' ? lead.department_name?.name || "-" : lead.department_name || "-"}</td>
+                                        <td className="text-sm font-semibold py-2 px-4 whitespace-nowrap text-white">{safeText(lead.department_name)}</td>
                                                         <td className="text-sm font-semibold py-2 px-4 whitespace-nowrap text-white">
                                                             <div className="flex items-center gap-3">
                                                                 
-                                                                <span className='text-wrap'>{lead.name || "-"}</span>
+                                                                <span className='text-wrap'>{safeText(lead.name)}</span>
                                                             </div>
                                                         </td>
                                                         <td
@@ -8061,8 +8087,15 @@ const LeadCRM = memo(function LeadCRM({ user, selectedLoanType: initialLoanType,
                                                                     ids = raw.split(',').map(s => s.trim()).filter(Boolean);
                                                                 }
                                                             }
-                                                            // Resolve each ID to name
-                                                            const names = ids.map(id => idToName[id] || id).filter(Boolean);
+                                                            // Resolve each ID to name; never show raw MongoDB ObjectIDs
+                                                            const isMongoId = (s) => /^[a-f\d]{24}$/i.test(s);
+                                                            const names = ids.map(id => {
+                                                                const name = idToName[id];
+                                                                if (name) return name;
+                                                                // Skip raw 24-char MongoDB ObjectIDs that haven't resolved yet
+                                                                if (isMongoId(id)) return null;
+                                                                return id;
+                                                            }).filter(Boolean);
                                                             if (names.length === 0) return <span className="text-gray-500 text-sm">-</span>;
                                                             const isMultiple = names.length > 1;
                                                             return (

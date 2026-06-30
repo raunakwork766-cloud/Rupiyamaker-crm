@@ -89,7 +89,7 @@ const EmployeeDetails = ({ employee, onBack, onEmployeeUpdate }) => {
                     content: (
                         <div className="p-4 bg-white rounded-xl shadow text-[1rem] text-[#03b0f5] border-l-4 border-cyan-400/40">
                             <EmployeeAttachments 
-                                key={`attachments-${employeeData._id}-${employeeData._refreshKey || 'initial'}`}
+                                key={`attachments-${employeeData._id}`}
                                 employee={employeeData} 
                             />
                         </div>
@@ -2012,6 +2012,9 @@ const ComprehensiveEmployeeForm = ({ employee, onUpdate }) => {
         salary_account_number: employee?.salary_account_number || '',
         salary_ifsc_code: employee?.salary_ifsc_code || '',
         salary_bank_name: employee?.salary_bank_name || '',
+        salary_account_name: employee?.salary_account_name || '',
+        salary_payment_mode: employee?.salary_payment_mode || (employee?.salary_upi_id ? 'upi' : 'bank'),
+        salary_upi_id: employee?.salary_upi_id || '',
         
         // Access Controls
         crm_access: employee?.crm_access || false,
@@ -2070,6 +2073,9 @@ const ComprehensiveEmployeeForm = ({ employee, onUpdate }) => {
             salary_account_number: employee?.salary_account_number || '',
             salary_ifsc_code: employee?.salary_ifsc_code || '',
             salary_bank_name: employee?.salary_bank_name || '',
+            salary_account_name: employee?.salary_account_name || '',
+            salary_payment_mode: employee?.salary_payment_mode || (employee?.salary_upi_id ? 'upi' : 'bank'),
+            salary_upi_id: employee?.salary_upi_id || '',
             crm_access: employee?.crm_access || false,
             login_enabled: employee?.login_enabled || false,
             onboarding_status: employee?.onboarding_status || 'pending'

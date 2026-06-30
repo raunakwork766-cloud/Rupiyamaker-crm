@@ -106,7 +106,7 @@ export default function EmployeeAttachmentsNew({ employee }) {
   };
 
   useEffect(() => { loadAttachmentTypes(); }, []);
-  useEffect(() => { if (employee?._id) loadUploadedDocuments(); }, [employee]);
+  useEffect(() => { if (employee?._id) loadUploadedDocuments(); }, [employee?._id]);
 
   // ── upload ─────────────────────────────────────────────────
   const handleFileChange = (key) => async (e) => {
@@ -594,8 +594,14 @@ export default function EmployeeAttachmentsNew({ employee }) {
                   <i className="fa-solid fa-download"></i> Download Instead
                 </a>
               </div>
-            ) : (viewerDoc.isPdf || viewerDoc.isImage) ? (
+            ) : viewerDoc.isPdf ? (
               <iframe src={viewerDoc.blobUrl} title={viewerDoc.name} className="w-full h-full border-0 bg-white" style={{ display: 'block' }} />
+            ) : viewerDoc.isImage ? (
+              <img
+                src={viewerDoc.blobUrl}
+                alt={viewerDoc.name}
+                style={{ maxWidth: '90vw', maxHeight: '85vh', objectFit: 'contain', borderRadius: 6, display: 'block', boxShadow: '0 4px 24px rgba(0,0,0,0.5)' }}
+              />
             ) : (
               <div className="flex flex-col items-center justify-center h-full text-white gap-5">
                 <i className="fa-solid fa-file-lines text-6xl text-gray-400"></i>

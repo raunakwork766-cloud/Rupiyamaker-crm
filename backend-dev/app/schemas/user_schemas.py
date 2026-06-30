@@ -33,12 +33,32 @@ class UserUpdate(BaseModel):
     password: Optional[str] = None
     otp_required: Optional[bool] = None  # Toggle OTP requirement
     profile_photo: Optional[str] = None  # Profile photo path
+
+    # Employee salary payment fields used by the employee edit form
+    joining_date: Optional[date] = None
+    designation: Optional[str] = None
+    salary: Optional[float] = None
+    monthly_target: Optional[float] = None
+    settled_target: Optional[float] = None
+    incentive: Optional[str] = None
+    salary_account_number: Optional[str] = None
+    salary_ifsc_code: Optional[str] = None
+    salary_bank_name: Optional[str] = None
+    salary_account_name: Optional[str] = None
+    salary_payment_mode: Optional[str] = None
+    salary_upi_id: Optional[str] = None
     
 class UserInDB(UserBase):
     id: str = Field(alias="_id")
     created_at: datetime
     updated_at: datetime
     profile_photo: Optional[str] = None  # Profile photo path
+    salary_account_number: Optional[str] = None
+    salary_ifsc_code: Optional[str] = None
+    salary_bank_name: Optional[str] = None
+    salary_account_name: Optional[str] = None
+    salary_payment_mode: Optional[str] = None
+    salary_upi_id: Optional[str] = None
     
     @validator('email', pre=True)
     def empty_string_to_none(cls, v):
@@ -115,6 +135,9 @@ class EmployeeCreate(BaseModel):
     salary_account_number: Optional[str] = None
     salary_ifsc_code: Optional[str] = None
     salary_bank_name: Optional[str] = None
+    salary_account_name: Optional[str] = None
+    salary_payment_mode: Optional[str] = None
+    salary_upi_id: Optional[str] = None
     
     # Work Email (separate from personal email)
     work_email: Optional[EmailStr] = None
@@ -190,6 +213,9 @@ class EmployeeUpdate(BaseModel):
     salary_account_number: Optional[str] = None
     salary_ifsc_code: Optional[str] = None
     salary_bank_name: Optional[str] = None
+    salary_account_name: Optional[str] = None
+    salary_payment_mode: Optional[str] = None
+    salary_upi_id: Optional[str] = None
     
     # Work Email
     work_email: Optional[EmailStr] = None
@@ -298,6 +324,9 @@ class EmployeeInDB(BaseModel):
     salary_account_number: Optional[str] = None
     salary_ifsc_code: Optional[str] = None
     salary_bank_name: Optional[str] = None
+    salary_account_name: Optional[str] = None
+    salary_payment_mode: Optional[str] = None
+    salary_upi_id: Optional[str] = None
     
     # Work Email
     work_email: Optional[EmailStr] = None
@@ -389,6 +418,9 @@ class ComprehensiveEmployeeInDB(EmployeeInDB):
     salary_account_number: Optional[str] = None
     salary_ifsc_code: Optional[str] = None
     salary_bank_name: Optional[str] = None
+    salary_account_name: Optional[str] = None
+    salary_payment_mode: Optional[str] = None
+    salary_upi_id: Optional[str] = None
     emergency_contact_relationship: Optional[str] = None
     current_city: Optional[str] = None  # Separate from address city
     

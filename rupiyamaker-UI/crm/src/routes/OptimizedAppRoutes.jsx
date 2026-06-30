@@ -9,6 +9,7 @@ import DetailedErrorBoundary from '../components/DetailedErrorBoundary.jsx';
 import NotFoundPage from '../components/NotFoundPage.jsx';
 import Unauthorized from '../pages/Unauthorized.jsx';
 import ProtectedRoute from '../components/ProtectedRoute';
+import { isChunkLoadError, reloadForFreshChunks } from '../utils/chunkReload.js';
 
 /**
  * SmartRootRedirect — priority-based redirect from root '/'. 
@@ -43,18 +44,60 @@ const SmartRootRedirect = () => {
 
 // Lazy load components for better performance - using direct import functions
 const createLazyComponent = (importFunc, componentName) => {
-  return lazy(() => 
+  return lazy(() =>
     importFunc().catch(error => {
       console.error(`Failed to load component ${componentName}:`, error);
-      // Return a fallback component
+
+      // Detect Vite/Rollup chunk loading errors (happen after a new build is
+      // deployed while old tabs are still open — the old chunk hashes no longer
+      // exist on the server).
+      if (isChunkLoadError(error)) {
+        console.warn(`Chunk load error for ${componentName}. New build deployed? Recovering...`);
+        // Retry the import once; if it still fails, reload ONCE (guarded against
+        // infinite reload loops via sessionStorage in reloadForFreshChunks()).
+        return importFunc().catch(() => {
+          const reloaded = reloadForFreshChunks();
+          if (reloaded) {
+            // Show a loading placeholder while the reload happens.
+            return {
+              default: () => (
+                <div className="flex items-center justify-center min-h-[400px]">
+                  <div className="flex flex-col items-center gap-3">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+                    <p className="text-sm text-gray-500">Updating app, please wait...</p>
+                  </div>
+                </div>
+              )
+            };
+          }
+          // Already reloaded recently — show a manual reload button instead of looping.
+          return {
+            default: () => (
+              <div className="p-6 text-center">
+                <h2 className="text-xl font-bold text-red-600 mb-2">A new version is available</h2>
+                <p className="text-gray-600 mb-4">Please reload to continue.</p>
+                <button
+                  onClick={() => window.location.reload()}
+                  className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"
+                >
+                  Reload Page
+                </button>
+              </div>
+            )
+          };
+        });
+      }
+
+      // Return a fallback component for non-chunk errors
       return {
         default: () => (
           <div className="p-6 text-center">
-            <h2 className="text-xl font-bold text-red-600 mb-2">Component Not Found</h2>
-            <p className="text-gray-600">Failed to load {componentName}</p>
-            <button 
-              onClick={() => window.location.reload()} 
-              className="mt-4 bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"
+            <h2 className="text-xl font-bold text-red-600 mb-2">Failed to Load Section</h2>
+            <p className="text-gray-600 mb-1">Could not load: <strong>{componentName}</strong></p>
+            <p className="text-gray-400 text-sm mb-4">{error?.message}</p>
+            <button
+              onClick={() => window.location.reload()}
+              className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"
             >
               Reload Page
             </button>

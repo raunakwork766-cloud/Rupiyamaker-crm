@@ -109,20 +109,39 @@ async def create_lead(
         department = await departments_db.get_department(lead.department_id)
         if not department:
             department = "Unknown"
+
+    def normalize_user_id_list(value):
+        if not value:
+            return []
+        items = value if isinstance(value, list) else [value]
+        user_ids = []
+        for item in items:
+            if isinstance(item, dict):
+                item = item.get("id") or item.get("_id") or item.get("user_id")
+            text = str(item or "").replace("[", "").replace("]", "").replace("'", "").replace('"', "").strip()
+            if not text or text.lower() in {"none", "null", "undefined"}:
+                continue
+            user_ids.append(text)
+        return user_ids
     
     # Validate assigned user
-    if lead.assigned_to:
-        assigned_user = await users_db.get_user(lead.assigned_to)
-        if not assigned_user:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"User with ID {lead.assigned_to} not found"
-            )
+    assigned_user_ids = normalize_user_id_list(lead.assigned_to)
+    if assigned_user_ids:
+        for assigned_user_id in assigned_user_ids:
+            assigned_user = await users_db.get_user(assigned_user_id)
+            if not assigned_user:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"User with ID {assigned_user_id} not found"
+                )
+        lead.assigned_to = assigned_user_ids if isinstance(lead.assigned_to, list) else assigned_user_ids[0]
+    elif lead.assigned_to:
+        lead.assigned_to = None
     
     # Validate reporting users
     if lead.assign_report_to:
         valid_reporters = []
-        for reporter_id in lead.assign_report_to:
+        for reporter_id in normalize_user_id_list(lead.assign_report_to):
             reporter = await users_db.get_user(reporter_id)
             if reporter:
                 valid_reporters.append(reporter_id)

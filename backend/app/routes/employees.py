@@ -309,7 +309,7 @@ async def create_employee_with_photo(
             await users_db.update_employee(str(created_employee_id), {"profile_photo": relative_photo_path})
             
             # Log photo upload activity
-            activity_db.log_photo_upload(str(created_employee_id), user_id, relative_photo_path)
+            await activity_db.log_photo_upload(str(created_employee_id), user_id, relative_photo_path)
             
         except Exception as e:
             # If photo upload fails, log the error but don't fail employee creation
@@ -317,7 +317,7 @@ async def create_employee_with_photo(
             # You might want to add proper logging here
     
     # Log employee creation activity
-    activity_db.log_employee_creation(str(created_employee_id), user_id, employee_data)
+    await activity_db.log_employee_creation(str(created_employee_id), user_id, employee_data)
     
     return {
         "id": str(created_employee_id),
@@ -346,7 +346,7 @@ async def create_employee(
     employee_id = await users_db.create_employee(employee_dict)
     
     # Log activity
-    activity_db.log_employee_creation(str(employee_id), user_id, employee_dict)
+    await activity_db.log_employee_creation(str(employee_id), user_id, employee_dict)
     
     return {"id": str(employee_id)}
 
@@ -423,7 +423,7 @@ async def update_employee(
     
     # Log activity with before/after tracking
     if update_data:
-        activity_db.log_employee_update(employee_id, user_id, update_data, original_employee)
+        await activity_db.log_employee_update(employee_id, user_id, update_data, original_employee)
         
     return {"status": "Employee updated successfully"}
 
@@ -499,7 +499,7 @@ async def upload_employee_photo(
         
         # Log photo upload activity
         try:
-            activity_db.log_photo_upload(employee_id, user_id, relative_file_path)
+            await activity_db.log_photo_upload(employee_id, user_id, relative_file_path)
         except Exception as e:
             print(f"Warning: Failed to log photo upload activity: {str(e)}")
         
@@ -562,7 +562,7 @@ async def update_employee_status(
         )
     
     # Log status change activity
-    activity_db.log_status_change(employee_id, user_id, old_status, status_update.status, status_update.remark)
+    await activity_db.log_status_change(employee_id, user_id, old_status, status_update.status, status_update.remark)
         
     return {"status": f"Employee status updated to {status_update.status}"}
 
@@ -572,7 +572,8 @@ async def update_onboarding_status(
     onboarding_update: OnboardingStatusUpdate,
     user_id: str = Query(..., description="ID of the user making the request"),
     users_db: UsersDB = Depends(get_users_db),
-    roles_db: RolesDB = Depends(get_roles_db)
+    roles_db: RolesDB = Depends(get_roles_db),
+    activity_db: EmployeeActivityDB = Depends(get_employee_activity_db)
 ):
     """Update employee onboarding status"""
     # Check permission
@@ -599,6 +600,7 @@ async def update_onboarding_status(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to update onboarding status for employee with ID {employee_id}"
         )
+    await activity_db.log_employee_update(employee_id, user_id, update_data, employee)
         
     return {"status": f"Onboarding status updated to {onboarding_update.status}"}
 
@@ -608,7 +610,8 @@ async def update_crm_access(
     access_update: CrmAccessUpdate,
     user_id: str = Query(..., description="ID of the user making the request"),
     users_db: UsersDB = Depends(get_users_db),
-    roles_db: RolesDB = Depends(get_roles_db)
+    roles_db: RolesDB = Depends(get_roles_db),
+    activity_db: EmployeeActivityDB = Depends(get_employee_activity_db)
 ):
     """Update employee CRM access"""
     # Check permission
@@ -631,6 +634,7 @@ async def update_crm_access(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to update CRM access for employee with ID {employee_id}"
         )
+    await activity_db.log_employee_update(employee_id, user_id, update_data, employee)
         
     return {"status": f"CRM access {'granted' if access_update.has_access else 'revoked'}"}
 
@@ -640,7 +644,8 @@ async def update_login_enabled(
     login_update: LoginStatusUpdate,
     user_id: str = Query(..., description="ID of the user making the request"),
     users_db: UsersDB = Depends(get_users_db),
-    roles_db: RolesDB = Depends(get_roles_db)
+    roles_db: RolesDB = Depends(get_roles_db),
+    activity_db: EmployeeActivityDB = Depends(get_employee_activity_db)
 ):
     """Update employee login enabled status"""
     # Check permission
@@ -674,6 +679,7 @@ async def update_login_enabled(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to update login enabled status for employee with ID {employee_id}"
         )
+    await activity_db.log_login_status_change(employee_id, user_id, login_update.enabled)
         
     return {"status": f"Login access {'enabled' if login_update.enabled else 'disabled'}"}
 
@@ -723,7 +729,7 @@ async def update_login_status(
         )
     
     # Log login status change activity
-    activity_db.log_login_status_change(employee_id, user_id, login_update.enabled)
+    await activity_db.log_login_status_change(employee_id, user_id, login_update.enabled)
         
     return {"status": f"Login {'enabled' if login_update.enabled else 'disabled'} for employee"}
 
@@ -940,7 +946,7 @@ async def create_employee_with_all_details(
             await users_db.update_employee(str(created_employee_id), {"profile_photo": relative_photo_path})
             
             # Log photo upload activity
-            activity_db.log_photo_upload(str(created_employee_id), user_id, relative_photo_path)
+            await activity_db.log_photo_upload(str(created_employee_id), user_id, relative_photo_path)
             
         except Exception as e:
             # If photo upload fails, log the error but don't fail employee creation
@@ -948,7 +954,7 @@ async def create_employee_with_all_details(
     
     # Log employee creation activity
     try:
-        activity_db.log_employee_creation(str(created_employee_id), user_id, employee_data)
+        await activity_db.log_employee_creation(str(created_employee_id), user_id, employee_data)
     except Exception as e:
         print(f"Warning: Failed to log activity for employee creation: {str(e)}")
     
@@ -1004,7 +1010,7 @@ async def update_comprehensive_employee(
     
     # Log activity with before/after tracking
     if update_data:
-        activity_db.log_employee_update(employee_id, user_id, update_data, original_employee)
+        await activity_db.log_employee_update(employee_id, user_id, update_data, original_employee)
         
     return {"status": "Employee updated successfully"}
 
@@ -1053,7 +1059,7 @@ async def change_employee_password(
         )
     
     # Log password change activity
-    activity_db.log_password_change(employee_id, user_id)
+    await activity_db.log_password_change(employee_id, user_id)
     
     return {"status": "Password changed successfully"}
 
@@ -1325,7 +1331,7 @@ async def update_employee_dict(
     
     # Log activity
     try:
-        activity_db.log_employee_update(employee_id, user_id, update_data, original_employee)
+        await activity_db.log_employee_update(employee_id, user_id, update_data, original_employee)
     except Exception as e:
         # Don't fail the update if activity logging fails
         print(f"Warning: Failed to log activity: {str(e)}")

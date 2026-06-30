@@ -68,6 +68,31 @@ const formatAttendanceDays = (value) => {
   if (!Number.isFinite(n)) return '0';
   return Number.isInteger(n) ? String(n) : n.toFixed(2).replace(/\.?0+$/, '');
 };
+const hasText = value => String(value || '').trim().length > 0;
+const employeeDisplayName = emp => `${emp?.first_name || ''} ${emp?.last_name || ''}`.trim();
+const getSalaryPaymentDetails = (emp) => {
+  const accountName = emp.salary_account_name || employeeDisplayName(emp);
+  const hasBank = hasText(emp.salary_account_number) || hasText(emp.salary_bank_name) || hasText(emp.salary_ifsc_code);
+  const hasUpi = hasText(emp.salary_upi_id);
+  const prefersUpi = String(emp.salary_payment_mode || '').toLowerCase() === 'upi';
+
+  if (prefersUpi && hasUpi) {
+    return { mode: 'UPI', accountName, accountNumber: emp.salary_upi_id || '', bankName: '', ifsc: '' };
+  }
+  if (hasBank) {
+    return {
+      mode: 'Bank',
+      accountName,
+      accountNumber: emp.salary_account_number || '',
+      bankName: emp.salary_bank_name || '',
+      ifsc: emp.salary_ifsc_code || '',
+    };
+  }
+  if (hasUpi) {
+    return { mode: 'UPI', accountName, accountNumber: emp.salary_upi_id || '', bankName: '', ifsc: '' };
+  }
+  return { mode: '', accountName: '', accountNumber: '', bankName: '', ifsc: '' };
+};
 const getISTDateParts = () => {
   const parts = new Intl.DateTimeFormat('en-IN', {
     timeZone: 'Asia/Kolkata',
@@ -372,8 +397,9 @@ const SALARY_EXPORT_COLUMNS = [
   { header: 'Salary Held Amount', key: 'salaryHeldAmount', width: 18, money: true },
   { header: 'Account Transfer', key: 'accountTransfer', width: 18, money: true },
   { header: 'Salary Hold Rule', key: 'salaryHold', width: 18 },
-  { header: 'Account Name', key: 'accountName', width: 24 },
-  { header: 'Account Number', key: 'accountNumber', width: 22 },
+  { header: 'Payment Mode', key: 'paymentMode', width: 14 },
+  { header: 'Account/UPI Name', key: 'accountName', width: 24 },
+  { header: 'Account Number / UPI ID', key: 'accountNumber', width: 24 },
   { header: 'Bank Name', key: 'bankName', width: 22 },
   { header: 'IFSC', key: 'ifsc', width: 16 },
 ];
@@ -438,6 +464,7 @@ const buildPerformanceExportColumns = perfMonths => [
 
 const buildSalaryExportRows = (rows, deptMap, processed, month, year) => rows.map(({ emp, calc, id }, index) => {
   const completed = processed.includes(periodK(id, month, year));
+  const paymentDetails = getSalaryPaymentDetails(emp);
   return {
     sno: index + 1,
     employeeName: `${emp.first_name || ''} ${emp.last_name || ''}`.trim(),
@@ -465,10 +492,11 @@ const buildSalaryExportRows = (rows, deptMap, processed, month, year) => rows.ma
     salaryHeldAmount: Math.round(num(calc.salaryHoldAmount)),
     accountTransfer: Math.round(num(calc.accountTransfer)),
     salaryHold: calc.isSalaryHeld ? (calc.salaryHoldRule || 'Held') : '',
-    accountName: emp.salary_account_name || '',
-    accountNumber: emp.salary_account_number || '',
-    bankName: emp.salary_bank_name || '',
-    ifsc: emp.salary_ifsc_code || '',
+    paymentMode: paymentDetails.mode,
+    accountName: paymentDetails.accountName,
+    accountNumber: paymentDetails.accountNumber,
+    bankName: paymentDetails.bankName,
+    ifsc: paymentDetails.ifsc,
   };
 });
 
@@ -1003,81 +1031,202 @@ const calcRow = (emp, allocs, deducts, advanceBalance, carryForward, warnDeducts
 
 // ─── CSS injected once ────────────────────────────────────────────────────────
 const CSS = `
-.sm-body { font-family: Arial, sans-serif; margin: 0; background: #f9fafb; color: #1f2937; min-height: 100vh; }
-.sm-tabs { display: inline-flex; background: #e5e7eb; padding: 6px; border-radius: 8px; margin: 16px; box-shadow: inset 0 2px 4px rgba(0,0,0,.05); }
-.sm-tab { padding: 10px 28px; cursor: pointer; border: none; background: transparent; font-size: 15px; font-weight: bold; color: #4b5563; border-radius: 6px; transition: all .2s; }
-.sm-tab:hover { color: #111827; }
-.sm-tab.active { background: white; color: #2563eb; box-shadow: 0 2px 4px rgba(0,0,0,.1); }
-.sm-toolbar { display: flex; gap: 15px; background: white; padding: 15px; border-radius: 8px 8px 0 0; box-shadow: 0 1px 3px rgba(0,0,0,.1); margin: 0 16px 2px; align-items: flex-end; flex-wrap: wrap; }
-.sm-fg { display: flex; flex-direction: column; gap: 4px; }
-.sm-fg label { font-size: 12px; font-weight: bold; color: #4b5563; }
-.sm-input { padding: 8px; border: 1px solid #d1d5db; border-radius: 4px; font-size: 13px; min-width: 180px; }
-.sm-table-wrap { overflow-x: auto; background: white; box-shadow: 0 4px 6px -1px rgba(0,0,0,.1); border-radius: 0 0 8px 8px; margin: 0 16px 24px; }
-.sm-table { border-collapse: collapse; width: 100%; font-size: 13px; white-space: nowrap; }
-.sm-table th, .sm-table td { border: 1px solid #e5e7eb; padding: 5px 8px; text-align: right; }
-.sm-table th:nth-child(1),.sm-table td:nth-child(1),
-.sm-table th:nth-child(2),.sm-table td:nth-child(2),
-.sm-table th:nth-child(3),.sm-table td:nth-child(3),
-.sm-table th:nth-child(15),.sm-table td:nth-child(15),
-.sm-table th:nth-child(16),.sm-table td:nth-child(16),
-.sm-table th:nth-child(17),.sm-table td:nth-child(17),
-.sm-table th:nth-child(18),.sm-table td:nth-child(18),
-.sm-table th:nth-child(19),.sm-table td:nth-child(19) { text-align: left; }
-.sm-table th:nth-child(4),.sm-table td:nth-child(4) { text-align: center; }
-.sm-table th { background: #f3f4f6; font-weight: bold; color: #374151; position: sticky; top: 0; z-index: 5; }
-.sm-table th.hl-yellow { background: #fef08a; color: #854d0e; min-width: 160px; white-space: normal; }
-.sm-table th.hl-green  { background: #86efac; color: #14532d; min-width: 130px; }
-.sm-table tbody tr:hover { background: #f9fafb; }
+.sm-body {
+  font-family: Inter, Arial, sans-serif;
+  margin: 0;
+  background: #f4f6fb;
+  color: #172033;
+  min-height: 100vh;
+  padding: 16px 0 24px;
+}
+.sm-page-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin: 0 16px 12px;
+  padding: 16px;
+  background: #ffffff;
+  border: 1px solid #e3e8f2;
+  border-radius: 10px;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.06);
+}
+.sm-page-title { display: flex; flex-direction: column; gap: 12px; min-width: 260px; }
+.sm-page-title h1 { margin: 0; font-size: 20px; line-height: 1.2; font-weight: 800; color: #111827; letter-spacing: 0; }
+.sm-page-actions { display: flex; gap: 8px; align-items: center; justify-content: flex-start; flex-wrap: wrap; }
+.sm-period-select {
+  height: 34px;
+  padding: 6px 28px 6px 10px;
+  border: 1px solid #cbd5e1;
+  border-radius: 7px;
+  background: #ffffff;
+  color: #1f2937;
+  font-size: 13px;
+  font-weight: 700;
+  outline: none;
+}
+.sm-period-select:focus { border-color: #2563eb; box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12); }
+.sm-pill {
+  display: inline-flex;
+  align-items: center;
+  min-height: 26px;
+  padding: 4px 9px;
+  border-radius: 999px;
+  border: 1px solid #dbe3ef;
+  background: #f8fafc;
+  color: #64748b;
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.sm-pill--warn { color: #b45309; background: #fffbeb; border-color: #fde68a; }
+.sm-pill--load { color: #6d28d9; background: #f5f3ff; border-color: #ddd6fe; }
+.sm-tabs {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: #f1f5f9;
+  padding: 4px;
+  border: 1px solid #e2e8f0;
+  border-radius: 9px;
+  margin: 0;
+}
+.sm-tab {
+  min-height: 34px;
+  padding: 8px 18px;
+  cursor: pointer;
+  border: none;
+  background: transparent;
+  font-size: 13px;
+  font-weight: 800;
+  color: #475569;
+  border-radius: 7px;
+  transition: background .18s, color .18s, box-shadow .18s;
+  letter-spacing: 0;
+}
+.sm-tab:hover { color: #111827; background: #e8eef7; }
+.sm-tab.active { background: #ffffff; color: #1d4ed8; box-shadow: 0 2px 8px rgba(15, 23, 42, 0.10); }
+.sm-toolbar {
+  display: flex;
+  gap: 12px;
+  background: #ffffff;
+  padding: 14px 16px;
+  border: 1px solid #e3e8f2;
+  border-bottom: none;
+  border-radius: 10px 10px 0 0;
+  box-shadow: 0 6px 18px rgba(15, 23, 42, 0.05);
+  margin: 0 16px 0;
+  align-items: flex-end;
+  flex-wrap: wrap;
+}
+.sm-toolbar h2 { letter-spacing: 0; }
+.sm-fg { display: flex; flex-direction: column; gap: 5px; }
+.sm-fg label { font-size: 11px; font-weight: 800; color: #475569; letter-spacing: .02em; text-transform: uppercase; }
+.sm-input {
+  padding: 8px 10px;
+  border: 1px solid #cbd5e1;
+  border-radius: 7px;
+  font-size: 13px;
+  min-width: 190px;
+  background: #ffffff;
+  color: #1f2937;
+  outline: none;
+}
+.sm-input:focus { border-color: #2563eb; box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12); }
+.sm-table-wrap {
+  overflow-x: auto;
+  background: #ffffff;
+  border: 1px solid #e3e8f2;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.06);
+  border-radius: 0 0 10px 10px;
+  margin: 0 16px 24px;
+}
+.sm-table { border-collapse: separate; border-spacing: 0; width: 100%; font-size: 13px; white-space: nowrap; }
+.sm-table th,
+.sm-table td {
+  border-right: 1px solid #e6ebf3;
+  border-bottom: 1px solid #e6ebf3;
+  padding: 8px 10px;
+  text-align: left !important;
+  vertical-align: top;
+}
+.sm-table th:last-child, .sm-table td:last-child { border-right: none; }
+.sm-table tr:last-child td { border-bottom: none; }
+.sm-table th {
+  background: #eef3f9;
+  font-weight: 800;
+  color: #334155;
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  font-size: 11px;
+  letter-spacing: .02em;
+  text-transform: uppercase;
+}
+.sm-table th.hl-yellow { background: #fef3c7; color: #92400e; min-width: 160px; white-space: normal; }
+.sm-table th.hl-green  { background: #dcfce7; color: #166534; min-width: 130px; }
+.sm-table tbody tr:nth-child(even) { background: #fbfdff; }
+.sm-table tbody tr:hover { background: #f1f7ff; }
 .sm-table tbody tr.processed { background: #ecfdf5 !important; }
-.sm-team-cell { cursor: pointer; color: #2563eb; font-weight: bold; background: #eff6ff !important; transition: background .2s; }
+.sm-team-cell { cursor: pointer; color: #1d4ed8; font-weight: 800; background: #eff6ff !important; transition: background .2s; }
 .sm-team-cell:hover { background: #dbeafe !important; }
-.sm-team-cell.locked { cursor: not-allowed; color: #9ca3af; background: #f3f4f6 !important; }
+.sm-team-cell.locked { cursor: not-allowed; color: #94a3b8; background: #f3f4f6 !important; }
 .sm-team-cell.locked:hover { background: #e5e7eb !important; }
-.sm-ded-cell { cursor: pointer; background: #fef2f2 !important; transition: background .2s; }
-.sm-ded-cell:hover { background: #fee2e2 !important; }
-.sm-ded-cell.locked { cursor: not-allowed; background: #f3f4f6 !important; color: #9ca3af; }
+.sm-ded-cell { cursor: pointer; background: #fff7ed !important; transition: background .2s; }
+.sm-ded-cell:hover { background: #ffedd5 !important; }
+.sm-ded-cell.locked { cursor: not-allowed; background: #f3f4f6 !important; color: #94a3b8; }
 .sm-ded-cell.locked:hover { background: #e5e7eb !important; }
 .sm-lock-alert { margin: 10px 16px 0; padding: 10px 12px; background: #fef2f2; border: 1px solid #fca5a5; border-radius: 8px; color: #991b1b; font-size: 12px; display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
 .sm-lock-alert strong { color: #7f1d1d; }
 .sm-lock-alert-actions { display: flex; align-items: center; gap: 8px; }
-.sm-overlay { display: flex; position: fixed; inset: 0; background: rgba(0,0,0,.6); z-index: 1000; justify-content: center; align-items: center; }
-.sm-modal { background: white; padding: 24px; border-radius: 8px; width: 90%; max-width: 680px; box-shadow: 0 20px 25px -5px rgba(0,0,0,.1); max-height: 90vh; overflow-y: visible; }
+.sm-overlay { display: flex; position: fixed; inset: 0; background: rgba(15, 23, 42, .62); z-index: 1000; justify-content: center; align-items: center; }
+.sm-modal { background: white; padding: 24px; border-radius: 10px; width: 90%; max-width: 680px; box-shadow: 0 24px 48px rgba(15, 23, 42, .22); max-height: 90vh; overflow-y: visible; }
 .sm-modal h2 { margin-top: 0; font-size: 18px; margin-bottom: 8px; }
 .sm-fg2 { margin-bottom: 16px; }
 .sm-fg2 label { display: block; font-weight: bold; margin-bottom: 6px; font-size: 14px; }
-.sm-fc { width: 100%; padding: 8px; border: 1px solid #d1d5db; border-radius: 4px; box-sizing: border-box; }
+.sm-fc { width: 100%; padding: 8px; border: 1px solid #d1d5db; border-radius: 6px; box-sizing: border-box; }
 .sm-dd-wrap { position: relative; }
 .sm-dd-list { display: none; position: absolute; top: 100%; left: 0; right: 0; background: white; border: 1px solid #d1d5db; max-height: 150px; overflow-y: auto; z-index: 10; border-radius: 0 0 4px 4px; box-shadow: 0 4px 6px -1px rgba(0,0,0,.1); }
 .sm-dd-item { padding: 8px; cursor: pointer; border-bottom: 1px solid #f3f4f6; font-size: 13px; }
 .sm-dd-item:hover { background: #f3f4f6; }
 .sm-info-card { background: #f8fafc; border: 1px solid #e2e8f0; padding: 12px; border-radius: 6px; margin-bottom: 16px; }
-.sm-btn { padding: 8px 16px; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; font-size: 13px; }
-.sm-btn-primary { background: #2563eb; color: white; }
+.sm-btn { padding: 8px 14px; border: none; border-radius: 7px; cursor: pointer; font-weight: 800; font-size: 13px; transition: background .18s, border-color .18s, color .18s, box-shadow .18s; }
+.sm-btn-primary { background: #2563eb; color: white; box-shadow: 0 6px 14px rgba(37, 99, 235, .18); }
 .sm-btn-primary:hover { background: #1d4ed8; }
 .sm-btn-secondary { background: #e5e7eb; color: #374151; }
 .sm-btn-secondary:hover { background: #d1d5db; }
-.sm-btn-outline { background: white; border: 1px solid #d1d5db; }
+.sm-btn-outline { background: white; border: 1px solid #cbd5e1; color: #334155; }
+.sm-btn-outline:hover { background: #f8fafc; border-color: #94a3b8; }
 .sm-btn-outline.active { background: #eff6ff; border-color: #2563eb; color: #2563eb; }
 .sm-btn-danger { background: white; border: 1px solid #ef4444; color: #ef4444; width: 100%; }
 .sm-btn-danger:hover { background: #fef2f2; }
 .sm-export-wrap { position: relative; display: inline-flex; }
 .sm-export-btn { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
-.sm-export-menu { position: absolute; top: calc(100% + 6px); right: 0; background: white; border: 1px solid #d1d5db; border-radius: 6px; box-shadow: 0 12px 28px rgba(0,0,0,.16); min-width: 160px; z-index: 20; overflow: hidden; }
+.sm-export-menu { position: absolute; top: calc(100% + 6px); right: 0; background: white; border: 1px solid #d1d5db; border-radius: 8px; box-shadow: 0 16px 34px rgba(15,23,42,.18); min-width: 170px; z-index: 20; overflow: hidden; }
 .sm-export-menu button { width: 100%; border: none; background: white; color: #1f2937; padding: 10px 12px; text-align: left; cursor: pointer; font-size: 13px; font-weight: bold; display: flex; align-items: center; gap: 8px; }
 .sm-export-menu button:hover { background: #eff6ff; color: #1d4ed8; }
 .sm-flex-right { display: flex; justify-content: flex-end; gap: 8px; }
 .sm-list-table { width: 100%; font-size: 13px; text-align: left; border-collapse: collapse; }
 .sm-list-table td { padding: 5px 4px; border-bottom: 1px solid #e5e7eb; white-space: nowrap; }
-.sm-perf-cell { padding: 8px; border-radius: 4px; width: 180px; box-shadow: 0 1px 2px rgba(0,0,0,.05); border: 1px solid transparent; transition: transform .2s, box-shadow .2s; }
-.sm-perf-cell:hover { transform: translateY(-1px); box-shadow: 0 2px 4px -1px rgba(0,0,0,.1); }
+.sm-perf-cell { padding: 9px; border-radius: 7px; width: 180px; box-shadow: 0 1px 2px rgba(0,0,0,.05); border: 1px solid transparent; transition: transform .2s, box-shadow .2s; }
+.sm-perf-cell:hover { transform: translateY(-1px); box-shadow: 0 4px 10px rgba(15,23,42,.10); }
 .sm-perf-success { background: linear-gradient(135deg,#ecfdf5,#f0fdf4); border-color: #a7f3d0; }
 .sm-perf-danger  { background: linear-gradient(135deg,#fef2f2,#fff1f2); border-color: #fecaca; }
-.sm-perf-nodata  { background: #f9fafb; border-color: #f3f4f6; display: flex; align-items: center; justify-content: center; min-height: 48px; }
-.sm-badge { padding: 2px 4px; border-radius: 3px; font-size: 8px; font-weight: bold; color: white; letter-spacing: .5px; }
+.sm-perf-nodata  { background: #f9fafb; border-color: #f3f4f6; display: flex; align-items: center; justify-content: flex-start; min-height: 48px; }
+.sm-badge { padding: 2px 5px; border-radius: 4px; font-size: 8px; font-weight: bold; color: white; letter-spacing: .5px; }
 .sm-badge-s { background: #10b981; }
 .sm-badge-d { background: #ef4444; }
 .sm-status-processed { background: #d1fae5; color: #065f46; padding: 4px 8px; border-radius: 12px; font-size: 11px; font-weight: bold; }
 .sm-status-pending   { background: #fef3c7; color: #92400e; padding: 4px 8px; border-radius: 12px; font-size: 11px; font-weight: bold; }
+@media (max-width: 768px) {
+  .sm-page-head { padding: 12px; }
+  .sm-page-actions, .sm-tabs { width: 100%; }
+  .sm-tabs { overflow-x: auto; justify-content: flex-start; }
+  .sm-tab { padding: 8px 14px; }
+  .sm-input { min-width: 100%; }
+  .sm-fg { width: 100%; }
+}
 `;
 
 let cssInjected = false;
@@ -1623,7 +1772,7 @@ function SalRow({ emp, calc, processed, deptMap, isLockedMonth, onTeam, onDeduct
           <div style={{fontWeight:'bold',color:'#374151'}}>{teamName(emp, deptMap)}</div>
           <div style={{fontSize:11,color:'#6b7280'}}>{displayText(emp.designation, '—')}</div>
         </td>
-        <td colSpan={18} style={{color:'#d1d5db',textAlign:'center'}}>—</td>
+        <td colSpan={19} style={{color:'#d1d5db',textAlign:'center'}}>—</td>
       </tr>
     );
   }
@@ -1632,6 +1781,7 @@ function SalRow({ emp, calc, processed, deptMap, isLockedMonth, onTeam, onDeduct
   const finalScore       = calc.hasPresentData ? calc.finalScore : null;
   const totalDaysInMonth = calc.totalDaysInMonth || 0;
   const isMidMonthJoiner = calc.hasPresentData && calc.effectiveDays < totalDaysInMonth;
+  const paymentDetails = getSalaryPaymentDetails(emp);
   return (
     <tr className={processed ? 'processed' : ''}>
       <td>
@@ -1729,12 +1879,13 @@ function SalRow({ emp, calc, processed, deptMap, isLockedMonth, onTeam, onDeduct
           </div>
         )}
       </td>
-      <td style={{fontFamily:'monospace',fontSize:11}}>{emp.salary_account_name||''}</td>
-      <td style={{fontFamily:'monospace',fontSize:11}}>{emp.salary_account_number||''}</td>
-      <td style={{fontSize:11}}>{emp.salary_bank_name||''}</td>
-      <td style={{fontFamily:'monospace',fontSize:11}}>{emp.salary_ifsc_code||''}</td>
+      <td style={{fontSize:11,fontWeight:600,color:paymentDetails.mode === 'UPI' ? '#7c3aed' : '#2563eb'}}>{paymentDetails.mode}</td>
+      <td style={{fontFamily:'monospace',fontSize:11}}>{paymentDetails.accountName}</td>
+      <td style={{fontFamily:'monospace',fontSize:11}}>{paymentDetails.accountNumber}</td>
+      <td style={{fontSize:11}}>{paymentDetails.bankName}</td>
+      <td style={{fontFamily:'monospace',fontSize:11}}>{paymentDetails.ifsc}</td>
       <td style={{textAlign:'center'}}>
-        <div style={{display:'flex',flexDirection:'column',alignItems:'center',gap:4}}>
+        <div style={{display:'flex',flexDirection:'column',alignItems:'flex-start',gap:4}}>
           {processed
             ? <>
                 <span className="sm-status-processed">✓ Done</span>
@@ -2403,7 +2554,7 @@ export default function SalaryManagement() {
     {label:'OVERALL BUISNESS'},{label:'FINAL BUISNESS',cls:'hl-green'},
     {label:'SHORTFALL',title:'Target + Carryforward - Final Business'},{label:'INCENTIVE AMOUNT'},
     {label:'FINAL SALARY'},{label:'DEDUCTION & REIMBURSEMENT',title:'Click to manage deductions & reimbursements'},
-    {label:'ACCOUNT TRANSFER'},{label:'ACCOUNT NAME'},{label:'ACCOUNT NUMBER'},{label:'BANK NAME'},{label:'IFSC'},
+    {label:'ACCOUNT TRANSFER'},{label:'PAYMENT MODE'},{label:'ACCOUNT/UPI NAME'},{label:'ACCOUNT NUMBER / UPI ID'},{label:'BANK NAME'},{label:'IFSC'},
     {label:'ACTION', center:true},
   ];
 
@@ -2429,30 +2580,31 @@ export default function SalaryManagement() {
       )}
 
       {/* Tabs */}
-      <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',flexWrap:'wrap',padding:'16px 16px 0'}}>
-        <div className="sm-tabs" style={{margin:0}}>
-          {[['pending',`Pending`],['completed','Completed'],['history','History'],['performance','Performance'],['inactive','Inactive']].map(([t,l])=>(
-            <button key={t} className={`sm-tab${tab===t?' active':''}`} onClick={()=>setTab(t)}>{l}</button>
-          ))}
+      <div className="sm-page-head">
+        <div className="sm-page-title">
+          <h1>Salary Management</h1>
+          <div className="sm-tabs">
+            {[['pending',`Pending`],['completed','Completed'],['history','History'],['performance','Performance'],['inactive','Inactive']].map(([t,l])=>(
+              <button key={t} className={`sm-tab${tab===t?' active':''}`} onClick={()=>setTab(t)}>{l}</button>
+            ))}
+          </div>
         </div>
-        <div style={{display:'flex',gap:8,alignItems:'center'}}>
-          <select value={month} onChange={e=>setMonth(Number(e.target.value))}
-            style={{padding:'6px 8px',border:'1px solid #d1d5db',borderRadius:4,fontSize:13}}>
+        <div className="sm-page-actions">
+          <select className="sm-period-select" value={month} onChange={e=>setMonth(Number(e.target.value))}>
             {MONTHS_FULL.map((m,i)=><option key={m} value={i}>{m}</option>)}
           </select>
-          <select value={year} onChange={e=>setYear(Number(e.target.value))}
-            style={{padding:'6px 8px',border:'1px solid #d1d5db',borderRadius:4,fontSize:13}}>
+          <select className="sm-period-select" value={year} onChange={e=>setYear(Number(e.target.value))}>
             {[year-1,year,year+1].map(y=><option key={y} value={y}>{y}</option>)}
           </select>
           {/* Start Month Config */}
           {startMonth && (
-            <span style={{fontSize:11,color:'#6b7280',background:'#f3f4f6',padding:'4px 8px',borderRadius:4,border:'1px solid #e5e7eb'}}>
-              📅 Start: {MONTHS_FULL[startMonth.month]} {startMonth.year}
+            <span className="sm-pill">
+              Start: {MONTHS_FULL[startMonth.month]} {startMonth.year}
             </span>
           )}
-          {warnLoad && <span style={{fontSize:12,color:'#f59e0b'}}>Loading warnings…</span>}
-          {hrmsLoad && <span style={{fontSize:12,color:'#8b5cf6'}}>Loading finance data…</span>}
-          <span style={{fontSize:11,color:'#9ca3af',background:'#f3f4f6',padding:'2px 6px',borderRadius:3}}>
+          {warnLoad && <span className="sm-pill sm-pill--warn">Loading warnings</span>}
+          {hrmsLoad && <span className="sm-pill sm-pill--load">Loading finance</span>}
+          <span className="sm-pill">
             Att: {Object.keys(presentDaysMap).length} emp
           </span>
           <div className="sm-export-wrap">
@@ -2659,7 +2811,7 @@ export default function SalaryManagement() {
                 <tr>
                   {TH_COLS.map(({label,title,cls,center})=>(
                     <th key={label} className={cls||''} title={title||''}
-                      style={center?{textAlign:'center'}:{}}>{label}</th>
+                      style={{}}>{label}</th>
                   ))}
                 </tr>
               </thead>

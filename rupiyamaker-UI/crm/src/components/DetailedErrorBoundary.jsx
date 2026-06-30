@@ -1,17 +1,26 @@
 import React from 'react';
+import { isChunkLoadError, reloadForFreshChunks } from '../utils/chunkReload.js';
 
 class DetailedErrorBoundary extends React.Component {
   constructor(props) {
     super(props);
-    this.state = { hasError: false, error: null, errorInfo: null };
+    this.state = { hasError: false, error: null, errorInfo: null, isChunkError: false };
   }
 
   static getDerivedStateFromError(error) {
-    return { hasError: true };
+    return { hasError: true, isChunkError: isChunkLoadError(error) };
   }
 
   componentDidCatch(error, errorInfo) {
     console.error('Detailed Error Boundary caught an error:', error, errorInfo);
+
+    // A stale chunk (new build deployed while this tab was open) is not a real
+    // crash — reload once to fetch the new build instead of showing an error.
+    if (isChunkLoadError(error)) {
+      reloadForFreshChunks();
+      return;
+    }
+
     this.setState({
       error: error,
       errorInfo: errorInfo || { componentStack: 'No component stack available' }
@@ -20,6 +29,17 @@ class DetailedErrorBoundary extends React.Component {
 
   render() {
     if (this.state.hasError) {
+      // While a chunk-recovery reload is in flight, show a neutral updating state.
+      if (this.state.isChunkError) {
+        return (
+          <div className="flex items-center justify-center min-h-[400px]">
+            <div className="flex flex-col items-center gap-3">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+              <p className="text-sm text-gray-500">Updating app, please wait...</p>
+            </div>
+          </div>
+        );
+      }
       return (
         <div className="error-boundary p-6 bg-red-50 border border-red-200 rounded-lg">
           <h2 className="text-xl font-bold text-red-800 mb-4">Something went wrong!</h2>

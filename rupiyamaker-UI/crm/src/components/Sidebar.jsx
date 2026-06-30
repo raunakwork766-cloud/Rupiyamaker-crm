@@ -420,15 +420,24 @@ function Sidebar({ selectedLabel: initialSelectedLabel, setSelectedLabel: parent
 
   // Listen for localStorage changes to update highlighting and persist after render - Enhanced
   useEffect(() => {
-    const handleStorageChange = () => {
-      const newSelectedLabel = localStorage.getItem('selectedLabel');
-      if (newSelectedLabel && newSelectedLabel !== selectedLabel) {
-        setSelectedLabel(newSelectedLabel);
-        if (parentSetSelectedLabel) {
-          parentSetSelectedLabel(newSelectedLabel);
-        }
-        setForceUpdate(prev => prev + 1);
+    // IMPORTANT: The native 'storage' event fires ONLY in OTHER browser tabs.
+    // Do NOT sync selectedLabel from other tabs — each tab must maintain its
+    // own independent navigation state. Cross-tab label sync was the root cause
+    // of the multi-tab flickering (sidebar/options flashing when CRM was open
+    // in two tabs simultaneously).
+    // We only use the storage event for permission changes across tabs.
+    const handleStorageChange = (e) => {
+      if (e.key === 'userPermissions' && e.newValue) {
+        // Permissions were updated in another tab — refresh sidebar menu items
+        try {
+          const freshPerms = JSON.parse(e.newValue);
+          if (freshPerms && typeof freshPerms === 'object') {
+            setUserPermissions(freshPerms);
+            setForceUpdate(prev => prev + 1);
+          }
+        } catch (_) { /* ignore parse errors */ }
       }
+      // Do NOT update selectedLabel from cross-tab storage events
     };
 
     // Also check for changes via custom event

@@ -183,7 +183,7 @@ async def upload_employee_attachment(
         # Log the attachment upload activity
         try:
             print(f"🔥 DEBUG: Logging attachment upload activity")
-            activity_db.log_attachment_upload(
+            await activity_db.log_attachment_upload(
                 employee_id=employee_id,
                 uploaded_by=user_id,
                 attachment_data={
@@ -383,7 +383,7 @@ async def delete_employee_attachment(
         # Log the attachment deletion activity
         try:
             print(f"🗑️ DEBUG: Logging attachment deletion activity")
-            activity_db.log_attachment_delete(
+            await activity_db.log_attachment_delete(
                 employee_id=employee_id,
                 deleted_by=user_id,
                 attachment_data={

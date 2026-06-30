@@ -11,6 +11,7 @@ from datetime import datetime, timedelta
 from app.database.Users import UsersDB
 from app.database.Roles import RolesDB
 from app.database.Departments import DepartmentsDB
+from app.database.EmployeeActivity import EmployeeActivityDB
 from app.database.Designations import DesignationService
 from app.database.Settings import SettingsDB
 from app.database import get_database_instances
@@ -42,6 +43,10 @@ async def get_roles_db():
 async def get_departments_db():
     db_instances = get_database_instances()
     return db_instances["departments"]
+
+async def get_employee_activity_db():
+    db_instances = get_database_instances()
+    return db_instances["employee_activity"]
 
 async def get_otp_db():
     db_instances = get_database_instances()
@@ -829,7 +834,8 @@ async def create_employee(
     user_id: str = Query(..., description="ID of the user making the request"),
     users_db: UsersDB = Depends(get_users_db),
     roles_db: RolesDB = Depends(get_roles_db),
-    departments_db: DepartmentsDB = Depends(get_departments_db)
+    departments_db: DepartmentsDB = Depends(get_departments_db),
+    activity_db: EmployeeActivityDB = Depends(get_employee_activity_db)
 ):
     """Create a new employee record with all necessary information"""
     # Check permission - allow users with employees.show OR hrms.show access
@@ -871,8 +877,10 @@ async def create_employee(
             )
     
     # Create employee
-    employee_id = await users_db.create_employee(employee.dict())
-    return {"id": employee_id}
+    employee_dict = employee.dict()
+    employee_id = await users_db.create_employee(employee_dict)
+    await activity_db.log_employee_creation(str(employee_id), user_id, employee_dict)
+    return {"id": str(employee_id)}
 
 @router.post("/employees/upload-photo/{employee_id}")
 async def upload_employee_photo(
@@ -880,7 +888,8 @@ async def upload_employee_photo(
     file: UploadFile = File(...),
     user_id: str = Query(..., description="ID of the user making the request"),
     users_db: UsersDB = Depends(get_users_db),
-    roles_db: RolesDB = Depends(get_roles_db)
+    roles_db: RolesDB = Depends(get_roles_db),
+    activity_db: EmployeeActivityDB = Depends(get_employee_activity_db)
 ):
     """Upload a profile photo for an employee"""
     # Check permission
@@ -909,6 +918,7 @@ async def upload_employee_photo(
     # Update employee with photo path
     relative_file_path = f"employees/{employee_id}/{unique_filename}"
     await users_db.update_user(employee_id, {"profile_photo": relative_file_path})
+    await activity_db.log_photo_upload(str(employee_id), user_id, relative_file_path)
     
     return {"filename": unique_filename, "path": relative_file_path}
 
@@ -947,7 +957,8 @@ async def update_employee(
     user_id: str = Query(..., description="ID of the user making the request"),
     users_db: UsersDB = Depends(get_users_db),
     roles_db: RolesDB = Depends(get_roles_db),
-    departments_db: DepartmentsDB = Depends(get_departments_db)
+    departments_db: DepartmentsDB = Depends(get_departments_db),
+    activity_db: EmployeeActivityDB = Depends(get_employee_activity_db)
 ):
     """Update employee information"""
     # Check permission
@@ -1007,6 +1018,7 @@ async def update_employee(
     # Update employee
     update_data = {k: v for k, v in employee_data.dict().items() if v is not None}
     await users_db.update_user(employee_id, update_data)
+    await activity_db.log_employee_update(str(employee_id), user_id, update_data, current_employee)
     
     return {"message": "Employee updated successfully"}
 
@@ -1016,7 +1028,8 @@ async def update_employee_status(
     status_data: EmployeeStatusUpdate,
     user_id: str = Query(..., description="ID of the user making the request"),
     users_db: UsersDB = Depends(get_users_db),
-    roles_db: RolesDB = Depends(get_roles_db)
+    roles_db: RolesDB = Depends(get_roles_db),
+    activity_db: EmployeeActivityDB = Depends(get_employee_activity_db)
 ):
     """Update employee status (active/inactive)"""
     # Check permission
@@ -1049,6 +1062,13 @@ async def update_employee_status(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to update employee status"
         )
+    await activity_db.log_status_change(
+        str(employee_id),
+        user_id,
+        employee.get("employee_status", "active"),
+        status_data.status,
+        status_data.remark
+    )
     
     return {"message": f"Employee status updated to {status_data.status}"}
 
@@ -1058,7 +1078,8 @@ async def update_onboarding_status(
     onboarding_data: OnboardingStatusUpdate,
     user_id: str = Query(..., description="ID of the user making the request"),
     users_db: UsersDB = Depends(get_users_db),
-    roles_db: RolesDB = Depends(get_roles_db)
+    roles_db: RolesDB = Depends(get_roles_db),
+    activity_db: EmployeeActivityDB = Depends(get_employee_activity_db)
 ):
     """Update employee onboarding status"""
     # Check permission
@@ -1091,6 +1112,15 @@ async def update_onboarding_status(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to update onboarding status"
         )
+    await activity_db.log_employee_update(
+        str(employee_id),
+        user_id,
+        {
+            "onboarding_status": onboarding_data.status,
+            "onboarding_remark": onboarding_data.remark
+        },
+        employee
+    )
     
     return {"message": f"Onboarding status updated to {onboarding_data.status}"}
 
@@ -1100,7 +1130,8 @@ async def update_crm_access(
     access_data: CrmAccessUpdate,
     user_id: str = Query(..., description="ID of the user making the request"),
     users_db: UsersDB = Depends(get_users_db),
-    roles_db: RolesDB = Depends(get_roles_db)
+    roles_db: RolesDB = Depends(get_roles_db),
+    activity_db: EmployeeActivityDB = Depends(get_employee_activity_db)
 ):
     """Update employee CRM access"""
     # Check permission
@@ -1122,6 +1153,12 @@ async def update_crm_access(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to update CRM access"
         )
+    await activity_db.log_employee_update(
+        str(employee_id),
+        user_id,
+        {"has_crm_access": access_data.has_access},
+        employee
+    )
     
     return {"message": f"CRM access set to {access_data.has_access}"}
 
@@ -1131,7 +1168,8 @@ async def update_login_enabled(
     login_data: LoginStatusUpdate,
     user_id: str = Query(..., description="ID of the user making the request"),
     users_db: UsersDB = Depends(get_users_db),
-    roles_db: RolesDB = Depends(get_roles_db)
+    roles_db: RolesDB = Depends(get_roles_db),
+    activity_db: EmployeeActivityDB = Depends(get_employee_activity_db)
 ):
     """Update employee login enabled status"""
     # Check permission
@@ -1153,6 +1191,7 @@ async def update_login_enabled(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to update login enabled status"
         )
+    await activity_db.log_login_status_change(str(employee_id), user_id, login_data.enabled)
     
     return {"message": f"Login access {'enabled' if login_data.enabled else 'disabled'}"}
 
@@ -1162,7 +1201,8 @@ async def update_login_status(
     login_data: LoginStatusUpdate,
     user_id: str = Query(..., description="ID of the user making the request"),
     users_db: UsersDB = Depends(get_users_db),
-    roles_db: RolesDB = Depends(get_roles_db)
+    roles_db: RolesDB = Depends(get_roles_db),
+    activity_db: EmployeeActivityDB = Depends(get_employee_activity_db)
 ):
     """Enable or disable login for an employee"""
     # Check permission
@@ -1184,6 +1224,7 @@ async def update_login_status(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to update login status"
         )
+    await activity_db.log_login_status_change(str(employee_id), user_id, login_data.enabled)
     
     return {"message": f"Login status set to {login_data.enabled}"}
 
@@ -1193,7 +1234,8 @@ async def update_otp_required(
     otp_data: OTPRequiredUpdate,
     user_id: str = Query(..., description="ID of the user making the request"),
     users_db: UsersDB = Depends(get_users_db),
-    roles_db: RolesDB = Depends(get_roles_db)
+    roles_db: RolesDB = Depends(get_roles_db),
+    activity_db: EmployeeActivityDB = Depends(get_employee_activity_db)
 ):
     """Toggle OTP requirement for an employee"""
     # Check permission
@@ -1215,6 +1257,12 @@ async def update_otp_required(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to update OTP requirement"
         )
+    await activity_db.log_employee_update(
+        str(employee_id),
+        user_id,
+        {"otp_required": otp_data.otp_required},
+        employee
+    )
     
     return {"message": f"OTP requirement set to {otp_data.otp_required}"}
 
@@ -1577,6 +1625,9 @@ async def update_user_with_photo(
     salary_account_number: Optional[str] = Form(None),
     salary_ifsc_code: Optional[str] = Form(None),
     salary_bank_name: Optional[str] = Form(None),
+    salary_account_name: Optional[str] = Form(None),
+    salary_payment_mode: Optional[str] = Form(None),
+    salary_upi_id: Optional[str] = Form(None),
     work_email: Optional[str] = Form(None),
     emergency_contact_name: Optional[str] = Form(None),
     emergency_contact_phone: Optional[str] = Form(None),
@@ -1693,6 +1744,12 @@ async def update_user_with_photo(
         update_data["salary_ifsc_code"] = salary_ifsc_code
     if salary_bank_name is not None:
         update_data["salary_bank_name"] = salary_bank_name
+    if salary_account_name is not None:
+        update_data["salary_account_name"] = salary_account_name
+    if salary_payment_mode is not None:
+        update_data["salary_payment_mode"] = salary_payment_mode
+    if salary_upi_id is not None:
+        update_data["salary_upi_id"] = salary_upi_id
     if work_email is not None:
         update_data["work_email"] = work_email
     if emergency_contact_name is not None:

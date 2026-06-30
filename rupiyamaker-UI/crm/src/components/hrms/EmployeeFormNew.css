@@ -472,6 +472,49 @@
     text-transform: uppercase;
 }
 
+/* ── Salary payment tabs ───────────────────────────────────────────────── */
+.employee-form-container .ef-payment-tabs {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    padding: 0.25rem;
+    margin: -0.35rem 0 1rem;
+    background: #f8fafc;
+    border: 1px solid var(--ef-border);
+    border-radius: var(--ef-radius);
+}
+
+.employee-form-container .ef-payment-tab {
+    appearance: none;
+    border: none;
+    border-radius: 6px;
+    background: transparent;
+    color: #475569;
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 0.8125rem;
+    font-weight: 700;
+    line-height: 1;
+    min-height: 32px;
+    padding: 0.55rem 0.8rem;
+    transition: background 0.2s, color 0.2s, box-shadow 0.2s;
+}
+
+.employee-form-container .ef-payment-tab.active {
+    background: var(--ef-card);
+    color: var(--ef-primary);
+    box-shadow: var(--ef-shadow);
+}
+
+.employee-form-container .ef-payment-tab:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.14);
+}
+
+.employee-form-container .ef-payment-panel {
+    min-width: 0;
+}
+
 /* ── Bank alert ─────────────────────────────────────────────────────────── */
 .employee-form-container .ef-bank-alert {
     display: flex;
@@ -489,6 +532,12 @@
 
 .employee-form-container .ef-bank-alert strong {
     font-weight: 700;
+}
+
+.employee-form-container .ef-bank-alert--info {
+    background: #eff6ff;
+    border-color: #bfdbfe;
+    color: #1d4ed8;
 }
 
 /* ── Login credentials dark card ───────────────────────────────────────── */
