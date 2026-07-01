@@ -348,6 +348,35 @@ async def get_loan_types_db():
     db_instances = get_database_instances()
     return db_instances["loan_types"]
 
+async def _record_file_sent_to_login_activity(leads_db, lead_id, user_id, sent_date, login_lead_id):
+    """Record a 'file_sent_to_login' entry in the ORIGINAL lead's activity timeline.
+
+    Makes "File sent to Login" show up as a dated status event in Lead Activity.
+    Previously the transfer was only logged on the login-lead copy, so the
+    original lead's own timeline never reflected that files were sent to login.
+    """
+    try:
+        sender_name = await leads_db._get_user_name(user_id)
+    except Exception:
+        sender_name = None
+    try:
+        await leads_db.activity_collection.insert_one({
+            "lead_id": lead_id,
+            "user_id": user_id,
+            "user_name": sender_name or "Unknown User",
+            "activity_type": "file_sent_to_login",
+            "description": "File sent to Login",
+            "details": {
+                "status": "Sent to Login",
+                "sent_date": sent_date,
+                "login_lead_id": login_lead_id,
+            },
+            "created_at": sent_date,
+        })
+    except Exception as e:
+        logger.warning(f"⚠️ Could not record file_sent_to_login activity on lead {lead_id}: {e}")
+
+
 @router.post("/send-to-login-department/{lead_id}")
 @router.post("/{lead_id}/send-to-login")  # Add alias route for frontend compatibility
 async def send_lead_to_login_department(
@@ -395,6 +424,11 @@ async def send_lead_to_login_department(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="Failed to re-mark lead as sent to login"
             )
+        # Record the status event on the ORIGINAL lead's activity timeline
+        await _record_file_sent_to_login_activity(
+            leads_db, lead_id, user_id,
+            re_update_data["login_department_sent_date"], existing_login_lead_id
+        )
         # Invalidate cache
         try:
             await invalidate_cache_pattern("login-department-leads*")
@@ -646,6 +680,13 @@ async def send_lead_to_login_department(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to update original lead"
         )
+    
+    # Record the status event on the ORIGINAL lead's activity timeline so
+    # "File sent to Login" appears (with date) in Lead Activity.
+    await _record_file_sent_to_login_activity(
+        leads_db, lead_id, user_id,
+        update_data["login_department_sent_date"], login_lead_id
+    )
     
     # ⚡ CACHE INVALIDATION: Clear login department leads cache after sending lead to login department
     try:

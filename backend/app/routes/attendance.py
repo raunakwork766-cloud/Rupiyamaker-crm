@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, Depends, status, Query, Request
+from fastapi import APIRouter, HTTPException, Depends, status, Query
 from typing import Dict, List, Any, Optional
 from datetime import datetime, date, timedelta, timezone, timezone
 import calendar
@@ -25,8 +25,7 @@ from app.database.Holidays import get_holidays_db
 from app.routes.settings import get_settings_db
 from app.utils.performance_cache import (
     cached_response, cache_user_permissions, get_cached_user_permissions,
-    performance_monitor, invalidate_cache_pattern, cache_response, get_cached_response,
-    cache  # direct cache access for sync invalidation in edit/mark handlers
+    performance_monitor, invalidate_cache_pattern, cache_response, get_cached_response
 )
 from app.schemas.attendance_schemas import (
     AttendanceCreate, AttendanceUpdate, BulkAttendanceCreate,
@@ -150,9 +149,6 @@ async def get_leaves_db():
 
 def save_attendance_photo(photo_data: str, user_id: str, date_str: str, photo_type: str = "checkin") -> str:
     """Save base64 encoded photo to file system with type (checkin/checkout)"""
-    # QR check-in may not send a photo — return empty string (allowed)
-    if not photo_data or not photo_data.strip():
-        return ""
     try:
         # Create directory structure
         media_dir = "media/attendance"
@@ -251,23 +247,6 @@ def validate_geofence(user_location: Dict[str, float], office_location: Dict[str
         # Error validating geofence
         return True  # Allow if validation fails
 
-def serialize_geolocation(geolocation: Optional[GeolocationData]) -> Dict[str, Any]:
-    """Return a consistent location payload even when location is optional."""
-    if not geolocation:
-        return {
-            "latitude": 0.0,
-            "longitude": 0.0,
-            "accuracy": None,
-            "address": None
-        }
-    return geolocation.dict()
-
-def geolocation_coordinates(location: Dict[str, Any]) -> Dict[str, float]:
-    return {
-        "latitude": float(location.get("latitude") or 0.0),
-        "longitude": float(location.get("longitude") or 0.0)
-    }
-
 async def get_user_permissions(user_id: str, users_db: UsersDB, roles_db: RolesDB) -> Dict[str, bool]:
     """Get attendance permissions for a user - SIMPLIFIED to 3-type system"""
     try:
@@ -347,7 +326,7 @@ async def get_attendance_permissions(
         )
 
 @router.get("/calendar")
-@cached_response(ttl=5)  # ⚡ Very short TTL — cache invalidated synchronously on edit/mark
+@cached_response(ttl=30)  # ⚡ Cache for 30 seconds - attendance data changes frequently
 async def get_attendance_calendar(
     user_id: str = Query(..., description="User _id making the request"),
     year: Optional[int] = Query(None, description="Year (default: current year)"),
@@ -605,21 +584,6 @@ async def get_attendance_calendar(
             emp_prev_attendance = prev_month_attendance_lookup.get(user_emp_id, {})
             all_emp_attendance = {**emp_prev_attendance, **employee_attendance}
             
-            # ── Joining date: days before joining must NOT be marked absent ──
-            # Parse joining_date to determine blackout boundary for this month
-            _joining_date_raw = employee.get("joining_date")
-            _joining_day_cutoff = 0  # 0 = employee was here the whole month (no blackout)
-            if _joining_date_raw:
-                try:
-                    _jd_str = str(_joining_date_raw)[:10]
-                    _jYear  = int(_jd_str[:4])
-                    _jMonth = int(_jd_str[5:7])
-                    _jDay   = int(_jd_str[8:10])
-                    if _jYear == year and _jMonth == month and _jDay > 1:
-                        _joining_day_cutoff = _jDay  # only days >= this day are active
-                except Exception:
-                    pass
-            
             # Generate days using lookup tables
             days = []
             total_days = 0
@@ -632,33 +596,6 @@ async def get_attendance_calendar(
             for day in range(1, days_in_month + 1):
                 date_obj = date(year, month, day)
                 date_str = date_obj.isoformat()
-                
-                # ── Pre-joining blackout: days before joining are not counted ──
-                # They must not be auto-marked absent or participate in absconding rules.
-                if _joining_day_cutoff > 0 and day < _joining_day_cutoff:
-                    day_data = {
-                        "day": day,
-                        "date": date_str,
-                        "is_weekend": date_obj.weekday() in weekend_days,
-                        "is_holiday": date_str in holiday_dates,
-                        "status": None,         # Blacked out — not marked
-                        "status_text": "Before Joining",
-                        "is_manually_edited": False,
-                        "is_before_joining": True,
-                        "check_in_time": None,
-                        "check_out_time": None,
-                        "total_working_hours": None,
-                        "is_late": False,
-                        "comments": None,
-                        "photo_path": None,
-                        "leave_id": None,
-                        "leave_type": None,
-                        "leave_reason": None,
-                        "leave_approved_by": None,
-                        "leave_approved_by_name": None,
-                    }
-                    days.append(day_data)
-                    continue
                 
                 # Fast weekend check
                 is_weekend = date_obj.weekday() in weekend_days
@@ -682,7 +619,6 @@ async def get_attendance_calendar(
                 leave_reason = None
                 leave_approved_by = None
                 leave_approved_by_name = None
-                leave_units = 0
                 
                 if is_holiday:
                     # ── Holiday takes TOP priority ──
@@ -693,24 +629,8 @@ async def get_attendance_calendar(
 
                 elif leave_info:
                     # Employee has approved leave
-                    attendance_status_for_leave = None
-                    if attendance_record:
-                        raw_leave_att_status = attendance_record.get("status")
-                        try:
-                            attendance_status_for_leave = float(raw_leave_att_status)
-                        except (TypeError, ValueError):
-                            if str(raw_leave_att_status).strip().lower() in ["0.5", "hd", "half", "half day"]:
-                                attendance_status_for_leave = 0.5
-
-                    if attendance_status_for_leave == 0.5:
-                        status = 0.5
-                        status_text = f"Half Day + Leave ({leave_info['leave_type_display']})"
-                        leave_units = 0.5
-                    else:
-                        status = 0
-                        status_text = f"Leave ({leave_info['leave_type_display']})"
-                        leave_units = 1
-
+                    status = 0
+                    status_text = f"Leave ({leave_info['leave_type_display']})"
                     comments = f"On {leave_info['leave_type_display']}: {leave_info['leave_reason']}"
                     if leave_info.get('approval_comments'):
                         comments += f" | Approval: {leave_info['approval_comments']}"
@@ -722,11 +642,7 @@ async def get_attendance_calendar(
                     leave_approved_by_name = leave_info["leave_approved_by_name"]
                     
                     total_days += 1
-                    if status == 0.5:
-                        half_days += 1
-                        leave_days += 0.5
-                    else:
-                        leave_days += 1
+                    leave_days += 1
                     
                 elif attendance_record:
                     # Use existing attendance record
@@ -736,25 +652,13 @@ async def get_attendance_calendar(
                     if isinstance(raw_status, str):
                         # Convert string status to numeric
                         status_mapping = {
-                            '1': 1.0,
-                            '1.0': 1.0,
                             'present': 1.0,
                             'full day': 1.0,
-                            '0.5': 0.5,
-                            'hd': 0.5,
                             'half day': 0.5,
                             'half': 0.5,
-                            '0': 0.0,
-                            '0.0': 0.0,
-                            'lv': 0.0,
                             'leave': 0.0,
-                            '-1': -1.0,
-                            '-1.0': -1.0,
                             'absent': -1.0,
-                            '-2': -2.0,
-                            '-2.0': -2.0,
                             'absconding': -2.0,
-                            '1.5': 1.5,
                             'holiday': 1.5
                         }
                         status = status_mapping.get(raw_status.lower(), 1.0)  # Default to full day
@@ -785,7 +689,7 @@ async def get_attendance_calendar(
                     # Override to ABSENT only when: has check-in, no check-out, not manually
                     # edited, and NOT already escalated to absconding by the age-based job.
                     # If auto_absconding=True the record is legitimately absconding — keep it.
-                    if chk_in and not chk_out and not was_manually_edited and not _auto_absconding and status not in [0.5, "0.5"]:
+                    if chk_in and not chk_out and not was_manually_edited and not _auto_absconding:
                         _day_date_obj = date.fromisoformat(date_str)
                         if _day_date_obj < get_ist_now().date():
                             status = -1.0  # Past date: missed checkout → ABSENT
@@ -840,17 +744,7 @@ async def get_attendance_calendar(
                     "is_holiday": is_holiday,
                     "status": status,
                     "status_text": status_text,
-                    "is_manually_edited": (
-                        # True only when a HUMAN admin explicitly changed this record.
-                        # System auto-marks (marked_by="system", auto_absconding=True) are NOT manual edits —
-                        # they should still be subject to Sunday sandwich rule re-evaluation.
-                        bool(attendance_record.get("edited_by"))
-                        or (attendance_record.get("marked_by") not in [None, "", "system", "auto"])
-                    ) and not (
-                        bool(attendance_record.get("auto_absconding"))
-                        or bool(attendance_record.get("auto_absent_no_checkin"))
-                        or bool(attendance_record.get("auto_absent_late"))
-                    ) if attendance_record else False,
+                    "is_manually_edited": attendance_record.get("edited_by") is not None or attendance_record.get("marked_by") is not None if attendance_record else False,
                     "check_in_time": attendance_record.get("check_in_time") if attendance_record else None,
                     "check_out_time": attendance_record.get("check_out_time") if attendance_record else None,
                     "total_working_hours": attendance_record.get("total_working_hours") if attendance_record else None,
@@ -859,7 +753,6 @@ async def get_attendance_calendar(
                     "photo_path": photo_path,
                     "leave_id": leave_id,
                     "leave_type": leave_type,
-                    "leave_units": leave_units,
                     "leave_reason": leave_reason,
                     "leave_approved_by": leave_approved_by,
                     "leave_approved_by_name": leave_approved_by_name
@@ -873,14 +766,8 @@ async def get_attendance_calendar(
 
                 def _day_absent(check_date):
                     """True if check_date is a working day that is absent/not-present."""
-                    # NOTE: Saturday (weekday=5) is a chargeable attendance day even if it's in
-                    # weekend_days — it is NOT a rest day like Sunday (weekday=6).
-                    # Only skip Sunday itself for the sandwich rule absence check.
-                    if check_date.weekday() == 6:
-                        return False  # Sunday itself — not a working absence
-                    # Pre-joining days are NOT absent — they simply don't exist for this employee
-                    if _joining_day_cutoff > 0 and check_date.year == year and check_date.month == month and check_date.day < _joining_day_cutoff:
-                        return False
+                    if check_date.weekday() in weekend_days:
+                        return False  # Weekend itself — not a working absence
                     d_s = check_date.isoformat()
                     # In-month days: use updated status from days list
                     if d_s in _days_by_date:
@@ -894,12 +781,6 @@ async def get_attendance_calendar(
                     # Out-of-month days: use raw attendance lookup
                     rec = all_emp_attendance.get(d_s)
                     if rec is None:
-                        # For days in the NEXT month (e.g. Monday after last Sunday of month),
-                        # we do NOT have that month's data — give benefit of doubt: not absent.
-                        # Only mark absent for out-of-month days that are in the PREVIOUS month.
-                        if check_date.month != month or check_date.year != year:
-                            if check_date > date(year, month, days_in_month):
-                                return False  # Next-month day — no data, assume not absent
                         return check_date < _today_ist  # No record in past → absent
                     try:
                         return float(rec.get("status", 0)) not in [1.0, 1.5, 0.0, 2.0, 0.5]
@@ -907,11 +788,8 @@ async def get_attendance_calendar(
                         return True
 
                 def _day_present(check_date):
-                    """True if check_date is a working day with present status.
-                    NOTE: Sunday (weekday=6) is always skipped; Saturday (weekday=5)
-                    is counted as a working day even though it's in weekend_days —
-                    it is a chargeable attendance day, not a rest day like Sunday."""
-                    if check_date.weekday() == 6:  # Only skip Sunday itself
+                    """True if check_date is a working day with present status."""
+                    if check_date.weekday() in weekend_days:
                         return False
                     d_s = check_date.isoformat()
                     if d_s in _days_by_date:
@@ -932,21 +810,6 @@ async def get_attendance_calendar(
 
                     # ── Holiday takes priority: skip Sunday rule for holiday Sundays ──
                     if day_data.get("is_holiday"):
-                        continue
-
-                    # ── Manual override: if admin explicitly edited this Sunday, respect it ──
-                    if day_data.get("is_manually_edited", False):
-                        # Admin has manually set this Sunday's status — don't override it
-                        # Still need to count it for stats
-                        s = day_data.get("status")
-                        if s in [1, 1.0, 2, 2.0, 0.5]:
-                            day_data["is_sunday_present"] = True
-                            full_days += 1
-                            total_days += 1
-                        elif s in [-1, -1.0, -2, -2.0, 0, 0.0]:
-                            day_data["is_sunday_present"] = False
-                            absent_days += 1
-                            total_days += 1
                         continue
 
                     saturday = d_sun - timedelta(days=1)
@@ -1004,20 +867,18 @@ async def get_attendance_calendar(
                     monday   = d_sun + timedelta(days=1)
                     sat_data = _days_by_date_abs.get(saturday.isoformat())
                     mon_data = _days_by_date_abs.get(monday.isoformat())
-                    # Saturday absent (working day) → Absconding (only if not manually edited and not pre-joining)
+                    # Saturday absent (working day) → Absconding (only if not manually edited)
                     if (sat_data and sat_data.get("status") in [-1, -1.0]
                             and saturday.weekday() not in weekend_days
-                            and not sat_data.get("is_manually_edited", False)
-                            and not sat_data.get("is_before_joining", False)):
+                            and not sat_data.get("is_manually_edited", False)):
                         sat_data["status"] = -2.0
                         sat_data["status_text"] = "Absconding"
                         absent_days -= 1
                         absconding_days += 1
-                    # Monday absent (working day) → Absconding (only if not manually edited and not pre-joining)
+                    # Monday absent (working day) → Absconding (only if not manually edited)
                     if (mon_data and mon_data.get("status") in [-1, -1.0]
                             and monday.weekday() not in weekend_days
-                            and not mon_data.get("is_manually_edited", False)
-                            and not mon_data.get("is_before_joining", False)):
+                            and not mon_data.get("is_manually_edited", False)):
                         mon_data["status"] = -2.0
                         mon_data["status_text"] = "Absconding"
                         absent_days -= 1
@@ -1400,8 +1261,8 @@ async def mark_attendance(
         
         # Invalidate calendar cache so the UI gets fresh data on next fetch
         try:
-            await invalidate_cache_pattern("get_calendar_attendance")
-            await invalidate_cache_pattern("get_attendance_calendar")
+            invalidate_cache_pattern("get_calendar_attendance")
+            invalidate_cache_pattern("get_attendance_calendar")
         except Exception:
             pass
 
@@ -2234,62 +2095,13 @@ async def get_attendance_details_for_date(
                 "status_text": get_status_text(attendance_record.get("status"))
             }
         
-        # No DB record found — return a synthetic "not marked / absent / weekend" response
-        # instead of 404, so the frontend modal can still display something useful.
+        # No record found
         else:
-            from app.database.Settings import SettingsDB as _SettingsDB
-            _sdb = _SettingsDB()
-            _att_settings = await _sdb.get_attendance_settings()
-            _weekend_days = _att_settings.get("weekend_days", [6])
-            _is_weekend = check_date.weekday() in _weekend_days
-            _is_holiday = False  # no holiday check here (holiday would have a record)
-            _today = get_ist_now().date()
-            if _is_weekend:
-                _status = None
-                _status_text = "Weekend"
-            elif check_date > _today:
-                _status = None
-                _status_text = "Not Marked"
-            else:
-                _status = -1.0
-                _status_text = "Absent"
-
-            return {
-                "success": True,
-                "type": "attendance",
-                "employee": {
-                    "employee_id": employee.get("employee_id", employee_id),
-                    "user_id": actual_user_id,
-                    "employee_name": employee_name,
-                    "email": employee.get("email", ""),
-                    "department_name": "Unknown Department",
-                    "role_name": employee.get("role_name", "Unknown Role"),
-                    "profile_picture": employee.get("profile_picture", "")
-                },
-                "attendance": {
-                    "attendance_id": None,
-                    "employee_id": employee.get("employee_id", employee_id),
-                    "employee_name": employee_name,
-                    "date": date,
-                    "status": _status,
-                    "status_text": _status_text,
-                    "check_in_time": None,
-                    "check_out_time": None,
-                    "total_working_hours": None,
-                    "comments": "",
-                    "is_holiday": _is_holiday,
-                    "is_weekend": _is_weekend,
-                    "photo_path": "",
-                    "check_in_photo_path": "",
-                    "check_out_photo_path": "",
-                    "check_in_geolocation": {},
-                    "check_out_geolocation": {}
-                },
-                "attendance_details": None,
-                "date": date,
-                "status": _status,
-                "status_text": _status_text
-            }
+            print(f"DEBUG: No attendance or leave record found for employee_id={employee_id} (user_id={actual_user_id}) on {date}")
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="No attendance or leave record found for this date"
+            )
         
     except HTTPException:
         raise
@@ -2345,7 +2157,6 @@ async def check_in_attendance(
     users_db: UsersDB = Depends(get_users_db)
 ):
     """Check-in with photo and geolocation (required)"""
-    print(f"[CHECK-IN] user={user_id} face_descriptor={check_in_data.face_descriptor is not None} descriptor_len={len((check_in_data.face_descriptor or {}).get('descriptor', [])) if check_in_data.face_descriptor else 0}", flush=True)
     try:
         # Get user info
         user = await users_db.get_user(user_id)
@@ -2358,124 +2169,84 @@ async def check_in_attendance(
         # Get attendance settings
         settings_db = SettingsDB()
         settings = await settings_db.get_attendance_settings()
-        check_in_location = serialize_geolocation(check_in_data.geolocation)
-        check_in_coordinates = geolocation_coordinates(check_in_location)
-
-        if settings.get("require_geolocation", True) and not check_in_data.geolocation:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Location is required for check-in"
-            )
         
         # Validate geofence if enabled
         if settings.get("geofence_enabled", False):
-            if not check_in_data.geolocation:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="Location is required because geofence is enabled"
-                )
             office_location = {
                 "latitude": settings.get("office_latitude"),
                 "longitude": settings.get("office_longitude")
             }
+            user_location = {
+                "latitude": check_in_data.geolocation.latitude,
+                "longitude": check_in_data.geolocation.longitude
+            }
             
-            if not validate_geofence(check_in_coordinates, office_location, settings.get("geofence_radius", 100.0)):
+            if not validate_geofence(user_location, office_location, settings.get("geofence_radius", 100.0)):
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail="You are outside the allowed check-in area"
                 )
         
-        # ==== FACIAL VERIFICATION ====
-        enforce_face = settings.get("enforce_facial_verification", False)
+        # ==== FACIAL VERIFICATION (if face descriptor provided) ====
         face_verification_result = None
-        logger.info(f"[FACE DEBUG] enforce_face={enforce_face}, face_descriptor={check_in_data.face_descriptor is not None}, descriptor_len={len((check_in_data.face_descriptor or {}).get('descriptor', [])) if check_in_data.face_descriptor else 0}")
-
-        if enforce_face and not check_in_data.face_descriptor:
-            # Face is required but frontend did not send a descriptor at all
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Face verification is required for attendance. Please allow camera access and try again."
-            )
-
         if check_in_data.face_descriptor:
             try:
-                import numpy as np
-
+                # Get registered face data
                 registered_face = await attendance_db.get_employee_face_data(user_id)
-
-                if not registered_face:
-                    if enforce_face:
-                        raise HTTPException(
-                            status_code=status.HTTP_403_FORBIDDEN,
-                            detail="No face registered for your account. Please ask admin to register your face first."
-                        )
-                else:
+                
+                if registered_face:
+                    # Verify face
+                    import numpy as np
+                    
                     current_descriptor = check_in_data.face_descriptor.get("descriptor", [])
-
-                    if len(current_descriptor) != 128:
-                        if enforce_face:
-                            raise HTTPException(
-                                status_code=status.HTTP_400_BAD_REQUEST,
-                                detail="Invalid face descriptor received. Please retake the photo."
-                            )
-                    else:
-                        # Filter only valid (128-dim) stored samples
-                        valid_samples = [
-                            s for s in registered_face.get("face_descriptors", [])
-                            if len(s.get("descriptor", [])) == 128
-                        ]
-
-                        if not valid_samples:
-                            if enforce_face:
-                                raise HTTPException(
-                                    status_code=status.HTTP_403_FORBIDDEN,
-                                    detail="Stored face data is invalid or empty. Please re-register your face."
-                                )
-                        else:
-                            # Euclidean distance — consistent threshold 0.6
-                            FACE_THRESHOLD = 0.6
+                    
+                    if len(current_descriptor) == 128:
+                        # Compare with all registered samples
+                        registered_descriptors = registered_face.get("face_descriptors", [])
+                        
+                        if registered_descriptors:
                             min_distance = float('inf')
-                            for sample in valid_samples:
-                                d = np.linalg.norm(
-                                    np.array(current_descriptor) - np.array(sample["descriptor"])
-                                )
-                                if d < min_distance:
-                                    min_distance = d
-
-                            verified = min_distance < FACE_THRESHOLD
-                            confidence = round(max(0.0, 1.0 - (min_distance / FACE_THRESHOLD)), 3)
-
+                            for sample in registered_descriptors:
+                                sample_desc = sample.get("descriptor", [])
+                                if len(sample_desc) == 128:
+                                    # Calculate Euclidean distance
+                                    distance = np.linalg.norm(np.array(current_descriptor) - np.array(sample_desc))
+                                    min_distance = min(min_distance, distance)
+                            
+                            threshold = 0.6
+                            verified = min_distance < threshold
+                            confidence = max(0, 1 - (min_distance / threshold))
+                            
                             face_verification_result = {
                                 "verified": verified,
-                                "confidence": confidence,
+                                "confidence": round(confidence, 3),
                                 "distance": round(min_distance, 3)
                             }
-
-                            # Log attempt
-                            try:
-                                await attendance_db.log_face_verification_attempt({
-                                    "employee_id": user_id,
-                                    "verification_result": "success" if verified else "failure",
-                                    "confidence_score": confidence,
-                                    "threshold_used": FACE_THRESHOLD
-                                })
-                            except Exception:
-                                pass  # logging failure must never block attendance
-
-                            if enforce_face and not verified:
+                            
+                            # Log verification attempt
+                            log_data = {
+                                "employee_id": user_id,
+                                "verification_result": "success" if verified else "failure",
+                                "confidence_score": confidence,
+                                "threshold_used": threshold
+                            }
+                            await attendance_db.log_face_verification_attempt(log_data)
+                            
+                            # If facial verification is enforced in settings, reject on failure
+                            if settings.get("enforce_facial_verification", False) and not verified:
                                 raise HTTPException(
                                     status_code=status.HTTP_403_FORBIDDEN,
-                                    detail=f"Face does not match. Confidence: {round(confidence * 100, 1)}%. Please look directly at the camera and try again."
+                                    detail=f"Facial verification failed. Confidence: {round(confidence*100, 1)}%"
                                 )
-
             except HTTPException:
                 raise
             except Exception as e:
-                logger.warning(f"Face verification error: {e}")
-                if enforce_face:
+                logger.warning(f"Face verification error (non-blocking): {e}")
+                # Don't block check-in if face verification fails (unless enforced)
+                if settings.get("enforce_facial_verification", False):
                     raise HTTPException(
                         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                        detail="Face verification system error. Please try again."
+                        detail="Face verification system error"
                     )
         
         # Check if already checked in today
@@ -2487,12 +2258,12 @@ async def check_in_attendance(
                 detail="Already checked in today"
             )
         
-        # Save check-in photo (empty string is OK for QR check-in without photo)
+        # Save check-in photo
         check_in_photo_path = save_attendance_photo(
-            check_in_data.photo_data or "", user_id, today, "checkin"
+            check_in_data.photo_data, user_id, today, "checkin"
         )
         
-        if check_in_photo_path is None:
+        if not check_in_photo_path:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="Failed to save check-in photo"
@@ -2541,8 +2312,16 @@ async def check_in_attendance(
         check_in_record = {
             "check_in_time": check_in_time,
             "check_in_photo_path": check_in_photo_path,
-            "check_in_location": check_in_location,
-            "check_in_coordinates": check_in_coordinates,
+            "check_in_location": {
+                "latitude": check_in_data.geolocation.latitude,
+                "longitude": check_in_data.geolocation.longitude,
+                "accuracy": check_in_data.geolocation.accuracy,
+                "address": check_in_data.geolocation.address
+            },
+            "check_in_coordinates": {
+                "latitude": check_in_data.geolocation.latitude,
+                "longitude": check_in_data.geolocation.longitude
+            },
             "comments": check_in_data.comments or status_reason,
             "status": attendance_status  # Set status based on timing
         }
@@ -2574,9 +2353,9 @@ async def check_in_attendance(
             "status_text": get_status_text(attendance_status),
             "status_reason": status_reason,
             "location": {
-                "latitude": check_in_location["latitude"],
-                "longitude": check_in_location["longitude"],
-                "address": check_in_location.get("address")
+                "latitude": check_in_data.geolocation.latitude,
+                "longitude": check_in_data.geolocation.longitude,
+                "address": check_in_data.geolocation.address
             }
         }
         
@@ -2615,14 +2394,6 @@ async def check_out_attendance(
         # Get attendance settings
         settings_db = SettingsDB()
         settings = await settings_db.get_attendance_settings()
-        check_out_location = serialize_geolocation(check_out_data.geolocation)
-        check_out_coordinates = geolocation_coordinates(check_out_location)
-
-        if settings.get("require_geolocation", True) and not check_out_data.geolocation:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Location is required for check-out"
-            )
         
         # Check if checked in today
         today = date.today().isoformat()
@@ -2641,17 +2412,16 @@ async def check_out_attendance(
         
         # Validate geofence if enabled
         if settings.get("geofence_enabled", False):
-            if not check_out_data.geolocation:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="Location is required because geofence is enabled"
-                )
             office_location = {
                 "latitude": settings.get("office_latitude"),
                 "longitude": settings.get("office_longitude")
             }
+            user_location = {
+                "latitude": check_out_data.geolocation.latitude,
+                "longitude": check_out_data.geolocation.longitude
+            }
             
-            if not validate_geofence(check_out_coordinates, office_location, settings.get("geofence_radius", 100.0)):
+            if not validate_geofence(user_location, office_location, settings.get("geofence_radius", 100.0)):
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail="You are outside the allowed check-out area"
@@ -2676,11 +2446,7 @@ async def check_out_attendance(
         check_out_start_time = settings.get("check_out_start_time", "17:00")  # Default 5:00 PM
         check_out_end_time = settings.get("check_out_end_time", "20:00")    # Default 8:00 PM
         minimum_hours = float(settings.get("minimum_working_hours") or settings.get("full_day_working_hours") or 8.0)
-        half_day_hours = float(
-            settings.get("half_day_minimum_working_hours")
-            or settings.get("minimum_working_hours_half_day")
-            or 4.5
-        )
+        half_day_hours = float(settings.get("half_day_minimum_working_hours") or settings.get("minimum_working_hours_half_day") or minimum_hours / 2)
         
         # Get current status from check-in (might be 1, 0.5, or -2)
         current_status = existing.get("status", 1)
@@ -2735,8 +2501,16 @@ async def check_out_attendance(
         check_out_record = {
             "check_out_time": check_out_time,
             "check_out_photo_path": check_out_photo_path,
-            "check_out_location": check_out_location,
-            "check_out_coordinates": check_out_coordinates,
+            "check_out_location": {
+                "latitude": check_out_data.geolocation.latitude,
+                "longitude": check_out_data.geolocation.longitude,
+                "accuracy": check_out_data.geolocation.accuracy,
+                "address": check_out_data.geolocation.address
+            },
+            "check_out_coordinates": {
+                "latitude": check_out_data.geolocation.latitude,
+                "longitude": check_out_data.geolocation.longitude
+            },
             "comments": check_out_data.comments or status_reason,
             "total_working_hours": round(working_hours, 2),
             "status": final_status
@@ -2779,9 +2553,9 @@ async def check_out_attendance(
             "status_reason": status_reason,
             "check_in_status": get_status_text(current_status),
             "location": {
-                "latitude": check_out_location["latitude"],
-                "longitude": check_out_location["longitude"],
-                "address": check_out_location.get("address")
+                "latitude": check_out_data.geolocation.latitude,
+                "longitude": check_out_data.geolocation.longitude,
+                "address": check_out_data.geolocation.address
             }
         }
         
@@ -2917,8 +2691,8 @@ async def edit_attendance(
 
         # Invalidate calendar cache so the UI gets fresh data on next fetch
         try:
-            await invalidate_cache_pattern("get_calendar_attendance")
-            await invalidate_cache_pattern("get_attendance_calendar")
+            invalidate_cache_pattern("get_calendar_attendance")
+            invalidate_cache_pattern("get_attendance_calendar")
         except Exception:
             pass
 
@@ -2985,12 +2759,16 @@ async def check_out_attendance(
         # Prepare check-out data
         now = get_ist_now()
         check_out_time = now.strftime("%H:%M:%S")
-        check_out_location = serialize_geolocation(check_out_data.geolocation)
         
         check_out_record = {
             "check_out_time": check_out_time,
             "check_out_photo_path": check_out_photo_path,
-            "check_out_location": check_out_location,
+            "check_out_location": {
+                "latitude": check_out_data.geolocation.latitude,
+                "longitude": check_out_data.geolocation.longitude,
+                "accuracy": check_out_data.geolocation.accuracy,
+                "address": check_out_data.geolocation.address
+            },
             "comments": check_out_data.comments
         }
         
@@ -3013,9 +2791,9 @@ async def check_out_attendance(
             "status": updated_record.get("status"),
             "status_text": get_status_text(updated_record.get("status", 0)),
             "location": {
-                "latitude": check_out_location["latitude"],
-                "longitude": check_out_location["longitude"],
-                "address": check_out_location.get("address")
+                "latitude": check_out_data.geolocation.latitude,
+                "longitude": check_out_data.geolocation.longitude,
+                "address": check_out_data.geolocation.address
             }
         }
         
@@ -3597,12 +3375,10 @@ async def get_attendance_settings(
             "check_out_end_time": settings.get("check_out_end_time", "20:00"),
             "minimum_working_hours": settings.get("minimum_working_hours", 8.0),
             "weekend_days": settings.get("weekend_days", [5, 6]),  # Saturday, Sunday
-            "require_geolocation": settings.get("require_geolocation", True),
             "geofence_enabled": settings.get("geofence_enabled", False),
             "geofence_radius": settings.get("geofence_radius", 100.0),
             "office_latitude": settings.get("office_latitude"),
-            "office_longitude": settings.get("office_longitude"),
-            "enforce_facial_verification": settings.get("enforce_facial_verification", False),
+            "office_longitude": settings.get("office_longitude")
         }
         
         # Status explanations
@@ -3851,8 +3627,7 @@ async def add_holiday(
 
         # Invalidate calendar cache so the UI gets fresh data immediately
         try:
-            await invalidate_cache_pattern("get_calendar_attendance")
-            await invalidate_cache_pattern("get_attendance_calendar")
+            invalidate_cache_pattern("get_calendar_attendance")
         except Exception:
             pass
 
@@ -4060,8 +3835,7 @@ async def delete_holiday(
 
         # Invalidate calendar cache so the UI gets fresh data immediately
         try:
-            await invalidate_cache_pattern("get_calendar_attendance")
-            await invalidate_cache_pattern("get_attendance_calendar")
+            invalidate_cache_pattern("get_calendar_attendance")
         except Exception:
             pass
 
@@ -4261,11 +4035,7 @@ async def check_out_attendance(
         settings_db_co = SettingsDB()
         settings_co = await settings_db_co.get_attendance_settings()
         min_full_day_hours = float(settings_co.get("full_day_working_hours") or settings_co.get("minimum_working_hours_full_day") or 8.0)
-        min_half_day_hours = float(
-            settings_co.get("half_day_minimum_working_hours")
-            or settings_co.get("minimum_working_hours_half_day")
-            or 4.5
-        )
+        min_half_day_hours = float(settings_co.get("half_day_minimum_working_hours") or settings_co.get("minimum_working_hours_half_day") or 4.0)
         check_out_start_str = settings_co.get("check_out_start_time", "17:00")
         
         # Calculate working hours
@@ -4343,23 +4113,15 @@ async def register_employee_face(
     Requires at least 3 face samples for accuracy
     """
     try:
-        # ── Step 1: extract employee_id from body FIRST ──────────
-        employee_id = registration_data.get("employee_id")
-        if not employee_id:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Employee ID is required"
-            )
-
-        # ── Step 2: verify admin user exists ─────────────────────
+        # Verify admin permissions
         admin_user = await users_db.get_user(admin_user_id)
         if not admin_user:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Admin user not found"
             )
-
-        # ── Step 3: check permissions ─────────────────────────────
+        
+        # Check admin permissions (allow admin, super admin, HR, manager, team leader)
         SUPER_ADMIN_ROLE_ID = "685292be8d7cdc3a71c4829b"
         admin_roles = ["admin", "super admin", "hr", "human resources", "manager", "team leader", "tl"]
         is_self_registration = admin_user_id == employee_id
@@ -4376,38 +4138,36 @@ async def register_employee_face(
                 detail="Only admins, HR, or managers can register employee faces"
             )
         
-        # ── Step 4: validate employee exists ─────────────────────
+        # Validate employee
+        employee_id = registration_data.get("employee_id")
+        if not employee_id:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Employee ID is required"
+            )
+        
         employee = await users_db.get_user(employee_id)
         if not employee:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Employee not found"
             )
-
-        # ── Step 5: validate face descriptors ────────────────────
+        
+        # Validate face descriptors
         face_descriptors = registration_data.get("face_descriptors", [])
-        if len(face_descriptors) < 1:
+        if len(face_descriptors) < 3:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="At least 1 face sample is required"
+                detail="At least 3 face samples required for registration"
             )
-
-        # Filter to only descriptors with exactly 128 dimensions
-        valid_descriptors = [
-            desc for desc in face_descriptors
-            if len(desc.get("descriptor", [])) == 128
-        ]
-
-        if len(valid_descriptors) < 3:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"At least 3 samples with valid face detection required. "
-                       f"Got {len(valid_descriptors)} valid out of {len(face_descriptors)} total. "
-                       f"Please ensure your face is clearly visible when capturing."
-            )
-
-        # Use only valid descriptors
-        face_descriptors = valid_descriptors
+        
+        # Validate each descriptor has 128 dimensions
+        for i, desc in enumerate(face_descriptors):
+            if len(desc.get("descriptor", [])) != 128:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Face descriptor {i+1} must have exactly 128 dimensions"
+                )
         
         # Save reference photo if provided
         photo_data = registration_data.get("photo_data")
@@ -4484,16 +4244,9 @@ async def get_employee_face_data(
                 detail="User not found"
             )
         
-        # Check if user is requesting their own data or has management role
+        # Check if user is requesting their own data or is admin
         is_own_data = user_id == employee_id
-        mgmt_roles = ["admin", "super admin", "hr", "human resources", "manager", "team leader", "tl"]
-        SUPER_ADMIN_ROLE_ID = "685292be8d7cdc3a71c4829b"
-        is_admin = (
-            user.get("is_super_admin") or
-            str(user.get("role_id", "")) == SUPER_ADMIN_ROLE_ID or
-            user.get("role_name", "").lower() in mgmt_roles or
-            user.get("role", {}).get("name", "").lower() in mgmt_roles
-        )
+        is_admin = user.get("is_super_admin") or str(user.get("role_id", "")) == "685292be8d7cdc3a71c4829b" or user.get("role_name", "").lower() in ["admin", "super admin"]
         
         if not is_own_data and not is_admin:
             raise HTTPException(
@@ -4601,8 +4354,8 @@ async def verify_employee_face(
                 distance = np.linalg.norm(np.array(current_descriptor) - np.array(sample_desc))
                 min_distance = min(min_distance, distance)
         
-        # Threshold for real-world webcam conditions — consistent with check-in route
-        threshold = 0.6
+        # Threshold for real-world webcam conditions (0.6 is LFW benchmark; 0.8 is better for webcam)
+        threshold = 0.8
         verified = min_distance < threshold
         # Confidence: 100% at distance 0, 0% at distance == threshold
         confidence = max(0.0, round(1 - (min_distance / threshold), 3))
@@ -4794,154 +4547,3 @@ async def trigger_daily_absent_job(
             raise HTTPException(status_code=400, detail="Invalid date format, use YYYY-MM-DD")
     await run_daily_absent_job(target_date=target)
     return {"success": True, "message": f"Daily absent job triggered for {for_date or 'yesterday'}."}
-
-
-# ============================================================================
-# QR CODE TOKEN ENDPOINTS — PERMANENT TOKEN (stored in DB, never changes)
-# ============================================================================
-
-async def _get_or_create_permanent_qr_token() -> str:
-    """
-    Return the permanent QR token from attendance_settings.
-    Creates one on first call and stores it permanently in DB.
-    This token NEVER expires or changes unless admin explicitly resets it.
-    """
-    settings_db = SettingsDB()
-    settings = await settings_db.get_attendance_settings()
-    existing_token = settings.get("qr_token")
-    if existing_token:
-        return existing_token
-    # First time — generate and persist
-    new_token = uuid.uuid4().hex + uuid.uuid4().hex  # 64 hex chars
-    await settings_db.update_attendance_settings({"qr_token": new_token})
-    return new_token
-
-
-def _build_checkin_url(token: str, request: "Request | None" = None) -> str:
-    # 1. Explicit env var (highest priority)
-    base_url = os.environ.get("FRONTEND_URL", "").rstrip("/")
-    if base_url:
-        return f"{base_url}/checkin?token={token}"
-    # 2. Derive from incoming request host
-    if request:
-        scheme = request.headers.get("x-forwarded-proto", request.url.scheme)
-        host = request.headers.get("x-forwarded-host", request.headers.get("host", ""))
-        if host:
-            return f"{scheme}://{host}/checkin?token={token}"
-    # 3. Fallback — relative path (still works if scanned from same domain)
-    return f"/checkin?token={token}"
-
-
-@router.get("/qr-token")
-async def get_attendance_qr_token(
-    request: Request,
-    user_id: str = Query(..., description="Admin user ID requesting QR token"),
-):
-    """
-    Return the permanent QR token for attendance check-in.
-    Token is created once and stored in DB — survives server restarts.
-    Only admins can view it.
-    """
-    try:
-        db_instances = get_database_instances()
-        users_db = db_instances["users"]
-        roles_db = db_instances["roles"]
-
-        perms = await PermissionManager.get_user_permissions(user_id, users_db, roles_db)
-        is_admin = (
-            PermissionManager.has_permission(perms, "attendance", "all") or
-            PermissionManager.has_permission(perms, "attendance", "view_all") or
-            PermissionManager.has_permission(perms, "settings", "show") or
-            PermissionManager.has_permission(perms, "settings", "edit")
-        )
-        if not is_admin:
-            raise HTTPException(status_code=403, detail="Admin permission required to view QR token")
-
-        token = await _get_or_create_permanent_qr_token()
-        return {
-            "success": True,
-            "token": token,
-            "attendance_url": _build_checkin_url(token, request),
-            "permanent": True,
-            "message": "This QR code is permanent and never expires.",
-        }
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error getting QR token: {e}")
-        raise HTTPException(status_code=500, detail=f"Error getting QR token: {str(e)}")
-
-
-@router.post("/qr-token/refresh")
-async def refresh_attendance_qr_token(
-    request: Request,
-    user_id: str = Query(..., description="Admin user ID"),
-):
-    """
-    Generate a brand-new permanent token (replaces the old one).
-    Use only if the QR code was compromised.
-    """
-    try:
-        db_instances = get_database_instances()
-        users_db = db_instances["users"]
-        roles_db = db_instances["roles"]
-
-        perms = await PermissionManager.get_user_permissions(user_id, users_db, roles_db)
-        is_admin = (
-            PermissionManager.has_permission(perms, "attendance", "all") or
-            PermissionManager.has_permission(perms, "attendance", "view_all") or
-            PermissionManager.has_permission(perms, "settings", "show") or
-            PermissionManager.has_permission(perms, "settings", "edit")
-        )
-        if not is_admin:
-            raise HTTPException(status_code=403, detail="Admin permission required")
-
-        new_token = uuid.uuid4().hex + uuid.uuid4().hex
-        settings_db = SettingsDB()
-        await settings_db.update_attendance_settings({"qr_token": new_token})
-
-        return {
-            "success": True,
-            "token": new_token,
-            "attendance_url": _build_checkin_url(new_token, request),
-            "permanent": True,
-            "message": "New permanent QR token generated. Update the printed QR code.",
-        }
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error refreshing QR token: {e}")
-        raise HTTPException(status_code=500, detail=f"Error refreshing QR token: {str(e)}")
-
-
-@router.get("/qr-token/verify")
-async def verify_attendance_qr_token(
-    token: str = Query(..., description="QR token to verify"),
-):
-    """
-    Verify if a QR token is valid.
-    No auth required — called by employee's phone after scanning.
-    Also returns geofence settings so frontend can check location.
-    """
-    try:
-        settings_db = SettingsDB()
-        settings = await settings_db.get_attendance_settings()
-        stored_token = settings.get("qr_token")
-
-        if not stored_token or token != stored_token:
-            return {"valid": False, "reason": "Invalid QR code. Please scan the correct attendance QR code."}
-
-        return {
-            "valid": True,
-            "message": "QR code is valid",
-            "geofence_enabled": settings.get("geofence_enabled", False),
-            "office_latitude": settings.get("office_latitude"),
-            "office_longitude": settings.get("office_longitude"),
-            "geofence_radius": settings.get("geofence_radius", 10.0),
-        }
-
-    except Exception as e:
-        logger.error(f"Error verifying QR token: {e}")
-        raise HTTPException(status_code=500, detail=f"Error verifying token: {str(e)}")

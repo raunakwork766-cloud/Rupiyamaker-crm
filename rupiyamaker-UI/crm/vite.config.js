@@ -194,8 +194,14 @@ export default defineConfig({
     // Output directory
     outDir: 'dist',
     
-    // Always clear output directory on build — ensures no stale chunks survive
-    emptyOutDir: true
+    // Keep previous builds' hashed chunks on disk — do NOT wipe the output dir.
+    // Wiping it (emptyOutDir:true) deletes old chunk files, so any browser tab
+    // still running the previous build 404s when it lazy-loads a chunk, causing
+    // "component not found / failed to load" (and a white screen if the stale
+    // tab's entry script itself was deleted). Keeping old chunks lets already-open
+    // tabs finish on the old build while fresh loads get the new index.html +
+    // chunks. Truly dead chunks are pruned after 14 days by the build scripts.
+    emptyOutDir: false
   },
   
   // Optimize dependencies

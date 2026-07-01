@@ -2067,9 +2067,9 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
           'CD (CONSUMER DURABLE LOAN)', 'APP LOAN', 'INSURANCE'
         ];
         const sortedOnLoad = [...processedObligations].sort((a, b) => {
-          const ap = { 'BT': 1, 'Obligate': 2, 'CO-PAY': 3, 'NO-PAY': 4, 'Closed': 5 };
-          const pa = ap[a.action] || 6;
-          const pb = ap[b.action] || 6;
+          const ap = { 'BT': 1, 'Obligate': 2, 'CO-PAY': 3, 'NO-PAY': 4, 'Guarantor': 5, 'Closed': 6 };
+          const pa = ap[a.action] || 7;
+          const pb = ap[b.action] || 7;
           if (pa !== pb) return pa - pb;
           const ra = productOrderOnLoad.indexOf((a.product || '').toUpperCase()); const rb = productOrderOnLoad.indexOf((b.product || '').toUpperCase());
           return (ra === -1 ? 999 : ra) - (rb === -1 ? 999 : rb);
@@ -2589,9 +2589,9 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
             'CD (CONSUMER DURABLE LOAN)', 'APP LOAN', 'INSURANCE'
           ];
           const sortedSync = [...processedObligations].sort((a, b) => {
-            const ap = { 'BT': 1, 'Obligate': 2, 'CO-PAY': 3, 'NO-PAY': 4, 'Closed': 5 };
-            const pa = ap[a.action] || 6;
-            const pb = ap[b.action] || 6;
+            const ap = { 'BT': 1, 'Obligate': 2, 'CO-PAY': 3, 'NO-PAY': 4, 'Guarantor': 5, 'Closed': 6 };
+            const pa = ap[a.action] || 7;
+            const pb = ap[b.action] || 7;
             if (pa !== pb) return pa - pb;
             const ra = productOrderSync.indexOf((a.product || '').toUpperCase()); const rb = productOrderSync.indexOf((b.product || '').toUpperCase());
             return (ra === -1 ? 999 : ra) - (rb === -1 ? 999 : rb);
@@ -4032,6 +4032,7 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
     { value: 'Obligate', label: 'Obligate', color: 'yellow' },  // Second priority - Default obligation
     { value: 'CO-PAY', label: 'CO-PAY', color: 'orange' },      // Third priority - Co-payment
     { value: 'NO-PAY', label: 'NO-PAY', color: 'blue' },        // Fourth priority - No payment
+    { value: 'Guarantor', label: 'Guarantor', color: 'gray' }, // Same behavior as Closed - not counted in obligations
     { value: 'Closed', label: 'Closed', color: 'red' }          // Lowest priority - Closed/Finished
   ];
 
@@ -4106,9 +4107,9 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
   const sortObligationsByPriority = (obligations) => {
     console.log('🔄 Sorting obligations by priority then product order');
     return [...obligations].sort((a, b) => {
-      const actionPriority = { 'BT': 1, 'Obligate': 2, 'CO-PAY': 3, 'NO-PAY': 4, 'Closed': 5 };
-      const pa = actionPriority[a.action] || 6;
-      const pb = actionPriority[b.action] || 6;
+      const actionPriority = { 'BT': 1, 'Obligate': 2, 'CO-PAY': 3, 'NO-PAY': 4, 'Guarantor': 5, 'Closed': 6 };
+      const pa = actionPriority[a.action] || 7;
+      const pb = actionPriority[b.action] || 7;
       if (pa !== pb) return pa - pb;
       // Same action: sort by product dropdown order (case-insensitive)
       const prodA = PRODUCT_ORDER.indexOf((a.product || '').toUpperCase());
@@ -5026,6 +5027,8 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
         return 'bg-orange-400 border-orange-600 text-black font-bold'; // Orange background for CO-PAY cells
       case 'NO-PAY':
         return 'bg-blue-400 border-blue-600 text-black font-bold'; // Blue background for NO-PAY cells
+      case 'Guarantor':
+        return 'bg-gray-400 border-gray-600 text-black font-bold'; // Grey background for Guarantor cells
       case 'Closed':
         return 'bg-red-400 border-red-600 text-black font-bold'; // Red background for Closed cells
       default:
@@ -5044,6 +5047,8 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
         return 'bg-orange-400 border-orange-600 text-black font-bold'; // Orange background for CO-PAY
       case 'NO-PAY':
         return 'bg-blue-400 border-blue-600 text-black font-bold'; // Blue background for NO-PAY
+      case 'Guarantor':
+        return 'bg-gray-400 border-gray-600 text-black font-bold'; // Grey background for Guarantor
       case 'Closed':
         return 'bg-red-400 border-red-600 text-black font-bold'; // Red background for Closed
       default:
@@ -5536,6 +5541,10 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
                     case 'no-pay':
                     case 'nopay':
                       actionBg = '#60a5fa';
+                      actionColor = 'black';
+                      break;
+                    case 'guarantor':
+                      actionBg = '#9ca3af';
                       actionColor = 'black';
                       break;
                     case 'closed':
@@ -6644,6 +6653,7 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
           totalObligations += emiValue / 2; // Half of EMI for CO-PAY
           break;
         case 'NO-PAY':
+        case 'Guarantor':
         case 'Closed':
           // Nothing added to totals
           break;
@@ -6792,6 +6802,7 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
           totalObligations += emiValue / 2; // Half of EMI for CO-PAY
           break;
         case 'NO-PAY':
+        case 'Guarantor':
         case 'Closed':
           console.log(`🟦 [DEDICATED] ${obl.action} - NOT adding to total`);
           // Nothing added to totals
@@ -7674,6 +7685,7 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
                               row.action === 'Obligate' ? '#facc15' :
                               row.action === 'CO-PAY' ? '#fb923c' :
                               row.action === 'NO-PAY' ? '#60a5fa' :
+                              row.action === 'Guarantor' ? '#9ca3af' :
                               row.action === 'Closed' ? '#f87171' :
                               '#ffffff',
                             color: '#000000',
@@ -7697,6 +7709,7 @@ export default function CustomerObligationForm({ leadData, handleChangeFunc, onD
                                     opt.value === 'Obligate' ? '#facc15' :
                                     opt.value === 'CO-PAY' ? '#fb923c' :
                                     opt.value === 'NO-PAY' ? '#60a5fa' :
+                                    opt.value === 'Guarantor' ? '#9ca3af' :
                                     opt.value === 'Closed' ? '#f87171' :
                                     '#ffffff',
                                   color: '#000000',

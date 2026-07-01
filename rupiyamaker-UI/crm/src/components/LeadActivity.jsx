@@ -870,6 +870,53 @@ function getFrontendFieldLabel(fieldKey, fallbackLabel) {
   return fromFallback || titleize(lastSegment || rawKey);
 }
 
+/**
+ * Strict check: does this field have an EXPLICIT frontend label/name?
+ *
+ * The lead-activity timeline must only show fields the frontend actually names.
+ * Fields that exist only in the backend (internal keys, ad-hoc/compound keys,
+ * un-labelled nested data) must be hidden — we never invent a label by
+ * titleizing a raw backend key. Only the backend VALUE is shown, paired with the
+ * known frontend label.
+ */
+function hasExplicitFrontendLabel(fieldKey) {
+  const rawKey = String(fieldKey || '').trim();
+  if (!rawKey) return false;
+  const lastSegment = rawKey.split('.').pop() || rawKey;
+  const normalized = rawKey.replace(/_/g, ' ').trim().toLowerCase();
+  const lastNormalized = lastSegment.replace(/_/g, ' ').trim().toLowerCase();
+  const compact = rawKey.replace(/_/g, '').trim();
+  const lastCompact = lastSegment.replace(/_/g, '').trim();
+
+  if (
+    CHECK_ELIGIBILITY_ALIAS_TO_FIELD.has(rawKey) ||
+    CHECK_ELIGIBILITY_ALIAS_TO_FIELD.has(lastSegment) ||
+    CHECK_ELIGIBILITY_ALIAS_TO_FIELD.has(compact) ||
+    CHECK_ELIGIBILITY_ALIAS_TO_FIELD.has(lastCompact)
+  ) return true;
+
+  if (
+    OBLIGATION_DATA_FIELD_LABELS[rawKey] || OBLIGATION_DATA_FIELD_LABELS[lastSegment] ||
+    CREATED_FIELD_LABELS[rawKey] || CREATED_FIELD_LABELS[lastSegment] ||
+    CREATED_OBLIGATION_FIELD_LABELS[lastSegment] ||
+    FRONTEND_LABEL_OVERRIDES[rawKey.toLowerCase()] ||
+    FRONTEND_LABEL_OVERRIDES[normalized] ||
+    FRONTEND_LABEL_OVERRIDES[lastNormalized]
+  ) return true;
+
+  // Created-obligation aliases (bank_name, totalLoan, …) map to a known label.
+  for (const aliases of Object.values(CREATED_OBLIGATION_FIELD_ALIASES)) {
+    if (aliases.includes(lastSegment)) return true;
+  }
+
+  // Names/reporting/status are resolved to frontend labels in dedicated code.
+  if (CUSTOMER_NAME_FIELD_KEYS.has(rawKey) || CUSTOMER_NAME_FIELD_KEYS.has(lastSegment)) return true;
+  if (['assign_report_to', 'reporting_users', 'reporting_to'].includes(lastSegment)) return true;
+  if (lastSegment === 'sub_status' || lastSegment === 'status') return true;
+
+  return false;
+}
+
 function normalizeLegacyActivityTextLabels(value) {
   if (typeof value !== 'string' || !value.includes(':')) return value;
   return value
@@ -950,6 +997,9 @@ function normalizeCreatedFieldRows(rows) {
     .map((item, index) => {
       const fieldKey = String(item?.field_key || item?.key || item?.name || `field_${index}`);
       if (shouldHideCreatedField(fieldKey)) return null;
+      // Only show fields that have an explicit frontend label — never a titleized
+      // raw backend key. If the frontend doesn't name it, it isn't shown.
+      if (!hasExplicitFrontendLabel(fieldKey)) return null;
       const displayValue = formatCreatedFieldValue(item?.display_value ?? item?.value);
       if (displayValue === 'Not set') return null;
       const label = getFrontendFieldLabel(fieldKey, item?.label || getCreatedFieldLabel(fieldKey.split('.')));
@@ -985,6 +1035,8 @@ function buildCreatedRowsFromLeadData(leadData) {
     const fieldKey = path.join('.');
     const value = displayOverrides[fieldKey] ?? rawValue;
     if (isEmptyDisplayValue(value) || shouldHideCreatedField(fieldKey)) return;
+    // Strict: skip anything the frontend doesn't have a named label for.
+    if (!hasExplicitFrontendLabel(fieldKey)) return;
     const displayValue = formatCreatedFieldValue(value);
     if (displayValue === 'Not set') return;
     const label = getFrontendFieldLabel(fieldKey, getCreatedFieldLabel(path));

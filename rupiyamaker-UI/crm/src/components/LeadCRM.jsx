@@ -41,6 +41,163 @@ const safeText = (val, fallback = '-') => {
     return val;
 };
 
+const LEAD_CACHE_PREFIX = 'leads_cache_v2_';
+const LEAD_CACHE_TIMESTAMP_PREFIX = 'leads_cache_timestamp_';
+const LEAD_CACHE_MAX_ROWS = 250;
+const LEAD_CACHE_MAX_CHARS = 1200000;
+
+const LEAD_CACHE_ROOT_FIELDS = [
+    '_id', 'id', 'custom_lead_id', 'lead_id',
+    'name', 'customerName', 'customer_name', 'first_name', 'last_name',
+    'mobile_number', 'phone', 'alternative_phone', 'alt_phone_number', 'email',
+    'status', 'status_name', 'status_color', 'sub_status', 'sub_status_name',
+    'loan_type', 'loan_type_id', 'loan_type_name',
+    'campaign_name', 'campaignName', 'data_code', 'dataCode', 'source',
+    'department_id', 'department_name', 'team_name',
+    'assigned_to', 'assigned_to_name', 'assigned_user_name',
+    'created_by', 'created_by_name', 'created_by_role',
+    'created_at', 'updated_at', 'date_created', 'created', 'date',
+    'priority', 'loan_amount', 'product_name', 'processing_bank',
+    'assign_report_to', 'assignReportTo', 'reporting_user_names',
+    'file_sent_to_login', 'file_sent_to_login_date', 'file_sent_date',
+    'fileSentToLoginDate', 'file_sent_to_login_at', 'sent_to_login_date',
+    'login_file_sent_date', 'file_sent_to_login_time', 'login_sent_date',
+    'last_activity_date', 'important_questions_validated',
+    'totalIncome', 'total_income', 'income', 'monthly_income',
+    'totalBtPos', 'total_bt_pos', 'bt_position', 'btPosition',
+    'total_balance_transfer', 'totalBalanceTransfer',
+    'salary', 'cibil_score', 'credit_score'
+];
+
+const pickFields = (source, fields) => {
+    if (!source || typeof source !== 'object') return undefined;
+    const picked = {};
+    fields.forEach((field) => {
+        if (source[field] !== undefined) {
+            picked[field] = source[field];
+        }
+    });
+    return Object.keys(picked).length ? picked : undefined;
+};
+
+const compactLeadDynamicFields = (dynamicFields) => {
+    if (!dynamicFields || typeof dynamicFields !== 'object') return undefined;
+
+    const compact = {};
+    const financial = pickFields(dynamicFields.financial_details, [
+        'monthly_income', 'cibil_score', 'credit_score', 'total_bt_pos', 'totalBtPos'
+    ]);
+    const eligibility = pickFields(dynamicFields.eligibility_details, [
+        'totalIncome', 'total_income', 'totalBtPos', 'total_bt_pos'
+    ]);
+    const obligation = pickFields(dynamicFields.obligation_data, [
+        'eligibility', 'financial_details', 'cibil_score', 'totalBtPos', 'total_bt_pos'
+    ]);
+    const checkEligibility = pickFields(dynamicFields.check_eligibility, [
+        'monthly_emi_can_pay', 'tenure_months', 'tenure_years', 'roi'
+    ]);
+    const personal = pickFields(dynamicFields.personal_details, [
+        'company_name', 'cibil_score'
+    ]);
+
+    if (financial) compact.financial_details = financial;
+    if (eligibility) compact.eligibility_details = eligibility;
+    if (obligation) compact.obligation_data = obligation;
+    if (checkEligibility) compact.check_eligibility = checkEligibility;
+    if (personal) compact.personal_details = personal;
+
+    ['totalIncome', 'total_income', 'income', 'monthly_income', 'totalBtPos', 'total_bt_pos'].forEach((field) => {
+        if (dynamicFields[field] !== undefined) compact[field] = dynamicFields[field];
+    });
+
+    return Object.keys(compact).length ? compact : undefined;
+};
+
+const compactLeadForCache = (lead) => {
+    const compact = pickFields(lead, LEAD_CACHE_ROOT_FIELDS) || {};
+
+    Object.keys(lead || {}).forEach((key) => {
+        if ((key.startsWith('can_') || key.startsWith('is_')) && typeof lead[key] !== 'object') {
+            compact[key] = lead[key];
+        }
+    });
+
+    const dynamicFields = compactLeadDynamicFields(lead?.dynamic_fields);
+    if (dynamicFields) compact.dynamic_fields = dynamicFields;
+
+    return compact;
+};
+
+const isQuotaExceededError = (error) => {
+    return error?.name === 'QuotaExceededError' ||
+        error?.name === 'NS_ERROR_DOM_QUOTA_REACHED' ||
+        error?.code === 22 ||
+        error?.code === 1014;
+};
+
+const pruneLeadCaches = (keepKeys = new Set()) => {
+    for (let i = localStorage.length - 1; i >= 0; i -= 1) {
+        const key = localStorage.key(i);
+        if (!key || keepKeys.has(key)) continue;
+        if (key.startsWith(LEAD_CACHE_PREFIX) || key.startsWith(LEAD_CACHE_TIMESTAMP_PREFIX)) {
+            localStorage.removeItem(key);
+        }
+    }
+};
+
+const serializeLeadsForCache = (leadRows) => {
+    const compactRows = (Array.isArray(leadRows) ? leadRows : [])
+        .slice(0, LEAD_CACHE_MAX_ROWS)
+        .map(compactLeadForCache);
+    let payload = JSON.stringify(compactRows);
+
+    while (payload.length > LEAD_CACHE_MAX_CHARS && compactRows.length > 50) {
+        compactRows.length = Math.max(50, Math.floor(compactRows.length * 0.75));
+        payload = JSON.stringify(compactRows);
+    }
+
+    return payload.length <= LEAD_CACHE_MAX_CHARS
+        ? { payload, count: compactRows.length }
+        : { payload: null, count: 0 };
+};
+
+const writeLeadsCache = (cacheKeys, leadRows) => {
+    if (!cacheKeys?.LEADS || !cacheKeys?.TIMESTAMP) return false;
+
+    const { payload, count } = serializeLeadsForCache(leadRows);
+    if (!payload) {
+        localStorage.removeItem(cacheKeys.LEADS);
+        localStorage.removeItem(cacheKeys.TIMESTAMP);
+        return false;
+    }
+
+    const keepKeys = new Set([cacheKeys.LEADS, cacheKeys.TIMESTAMP]);
+
+    try {
+        localStorage.setItem(cacheKeys.LEADS, payload);
+        localStorage.setItem(cacheKeys.TIMESTAMP, Date.now().toString());
+        return count;
+    } catch (error) {
+        if (!isQuotaExceededError(error)) {
+            console.debug('Lead cache write skipped:', error);
+            return false;
+        }
+
+        try {
+            localStorage.removeItem(cacheKeys.LEADS);
+            localStorage.removeItem(cacheKeys.TIMESTAMP);
+            pruneLeadCaches(keepKeys);
+            localStorage.setItem(cacheKeys.LEADS, payload);
+            localStorage.setItem(cacheKeys.TIMESTAMP, Date.now().toString());
+            return count;
+        } catch {
+            localStorage.removeItem(cacheKeys.LEADS);
+            localStorage.removeItem(cacheKeys.TIMESTAMP);
+            return false;
+        }
+    }
+};
+
 
 // Query Parameter Handler for Direct Lead View
 // This code runs immediately when the component is loaded
@@ -369,14 +526,19 @@ const LeadCRM = memo(function LeadCRM({ user, selectedLoanType: initialLoanType,
 
     // 🚀 OPTIMIZATION: Load cached data immediately for instant display
     // Cache is now loan-type specific to prevent PL/OD data mixing
-    const getCachedLeadsData = (loanType = null) => {
+    const getCachedLeadsData = (loanType = null, ignoreAge = false) => {
         try {
             const CACHE_KEYS = getCacheKeys(loanType);
             const timestamp = localStorage.getItem(CACHE_KEYS.TIMESTAMP);
             const now = Date.now();
             
-            // Check if cache is still valid (5 minutes)
-            if (timestamp && (now - parseInt(timestamp)) < CACHE_DURATION) {
+            // Stale-while-revalidate: when ignoreAge is true we return whatever was
+            // last cached (even if older than CACHE_DURATION) so the leads table
+            // paints INSTANTLY on open. loadLeads() always runs on mount to refresh
+            // the data in the background, so the user sees last-known leads with no
+            // blank/loading flash and gets fresh data a moment later.
+            const isFresh = timestamp && (now - parseInt(timestamp)) < CACHE_DURATION;
+            if (isFresh || ignoreAge) {
                 const cachedLeads = localStorage.getItem(CACHE_KEYS.LEADS);
                 const cachedLoanTypes = localStorage.getItem(CACHE_KEYS.LOAN_TYPES);
                 
@@ -394,7 +556,8 @@ const LeadCRM = memo(function LeadCRM({ user, selectedLoanType: initialLoanType,
     };
 
     // 🚀 Get cached data before initializing states (loan-type specific)
-    const cachedLeadsData = getCachedLeadsData();
+    // ignoreAge=true → always show last-known leads instantly; mount refresh follows.
+    const cachedLeadsData = getCachedLeadsData(null, true);
 
     const [loanTypes, setLoanTypes] = useState(cachedLeadsData?.loanTypes || []);
     // Get the selected loan type from localStorage (set by Sidebar) or from props
@@ -1676,9 +1839,8 @@ const LeadCRM = memo(function LeadCRM({ user, selectedLoanType: initialLoanType,
                     // Prevent cache duplicates
                     if (!cachedLeads.some(l => l._id === processedLead._id)) {
                         const updatedCache = [processedLead, ...cachedLeads];
-                        localStorage.setItem(CACHE_KEYS.LEADS, JSON.stringify(updatedCache));
-                        localStorage.setItem(CACHE_KEYS.TIMESTAMP, Date.now().toString());
-                        console.log('💾 Cache updated');
+                        const cachedCount = writeLeadsCache(CACHE_KEYS, updatedCache);
+                        if (cachedCount) console.log(`💾 Cache updated (${cachedCount} compact rows)`);
                     }
                 }
             } catch (cacheError) {
@@ -4844,13 +5006,10 @@ const LeadCRM = memo(function LeadCRM({ user, selectedLoanType: initialLoanType,
             setFilteredLeads(finalLeads);
             
             // 🚀 PERFORMANCE: Cache the data with loan-type specific key
-            try {
-                const CACHE_KEYS = getCacheKeys(selectedLoanType);
-                localStorage.setItem(CACHE_KEYS.LEADS, JSON.stringify(finalLeads));
-                localStorage.setItem(CACHE_KEYS.TIMESTAMP, Date.now().toString());
-                console.log(`💾 Cached ${selectedLoanType || 'all'} leads data for future loads`);
-            } catch (cacheError) {
-                console.warn('Cache write error:', cacheError);
+            const CACHE_KEYS = getCacheKeys(selectedLoanType);
+            const cachedCount = writeLeadsCache(CACHE_KEYS, finalLeads);
+            if (cachedCount) {
+                console.log(`💾 Cached ${cachedCount} compact ${selectedLoanType || 'all'} leads for future loads`);
             }
 
             // Mark initial load as complete
@@ -7471,13 +7630,6 @@ const LeadCRM = memo(function LeadCRM({ user, selectedLoanType: initialLoanType,
                         </div>
                     );
                 })()}
-
-                {loadingLeads && (
-                    <div className="lead-crm-alert info mb-3 shrink-0">
-                        <div className="lead-crm-kpi-loading"></div>
-                        <p className="font-medium">Loading leads and preparing sections...</p>
-                    </div>
-                )}
 
                 {/* Table Section */}
                 <div className="lead-crm-table-panel">

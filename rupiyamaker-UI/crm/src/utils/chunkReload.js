@@ -31,9 +31,17 @@ export const isChunkLoadError = (error) => {
   const msg = (error && (error.message || error.toString())) || '';
   return (
     msg.includes('Failed to fetch dynamically imported module') ||
-    msg.includes('Importing a module script failed') ||
     msg.includes('error loading dynamically imported module') ||
+    msg.includes('Importing a module script failed') ||
+    msg.includes('Failed to load module script') ||
+    // Browser served HTML (e.g. index.html) where a JS module was expected —
+    // happens when a stale chunk 404s and the server falls back to index.html.
+    msg.includes('Expected a JavaScript module script') ||
     msg.includes('Unable to preload CSS') ||
+    msg.includes('Loading chunk') ||
+    msg.includes('Loading CSS chunk') ||
+    // Generic catch-all for the dynamic-import error family.
+    msg.includes('dynamically imported module') ||
     error.name === 'ChunkLoadError'
   );
 };
@@ -94,4 +102,51 @@ export const lazyWithReload = (importFn) => {
         }, 600);
       });
     });
+};
+
+let _globalHandlerInstalled = false;
+
+/**
+ * Install global listeners that recover from stale-chunk failures which happen
+ * OUTSIDE React error boundaries — e.g. a `<link rel="modulepreload">` chunk,
+ * a route chunk preloaded eagerly, or the entry `<script type="module">` of a
+ * stale tab. Without this, those failures produce a blank screen with no React
+ * mounted (so no boundary can render a fallback). Each path funnels into the
+ * same guarded single-reload, so there is never an infinite reload loop.
+ *
+ * Call once at app startup (main.jsx).
+ */
+export const installChunkErrorAutoReload = () => {
+  if (_globalHandlerInstalled || typeof window === 'undefined') return;
+  _globalHandlerInstalled = true;
+
+  // Vite fires this when a modulepreload (rel="modulepreload") chunk fails.
+  window.addEventListener('vite:preloadError', (event) => {
+    try { event.preventDefault(); } catch (_) { /* noop */ }
+    reloadForFreshChunks();
+  });
+
+  // Unhandled rejections from failed dynamic import()s not caught by a boundary.
+  window.addEventListener('unhandledrejection', (event) => {
+    if (isChunkLoadError(event && event.reason)) {
+      reloadForFreshChunks();
+    }
+  });
+
+  // Failed <script>/<link> element loads. Resource errors don't bubble, so we
+  // listen in the capture phase and confirm the failing URL is one of our
+  // hashed build assets before reloading.
+  window.addEventListener('error', (event) => {
+    const target = event && event.target;
+    if (!target || !target.tagName) return; // runtime JS errors target window
+    const tag = target.tagName.toLowerCase();
+    const url = target.src || target.href || '';
+    const rel = (target.rel || '').toLowerCase();
+    const isAssetTag =
+      tag === 'script' ||
+      (tag === 'link' && /stylesheet|modulepreload|preload/.test(rel));
+    if (isAssetTag && /\/(chunks|assets|styles)\/[^/]+\.(m?js|css)(\?|$)/.test(url)) {
+      reloadForFreshChunks();
+    }
+  }, true);
 };
